@@ -1,0 +1,36 @@
+[
+  {
+    "identifier": "Anandamide",
+    "precursor_mz": 348.261,
+    "metadata": {
+      "title": "Anandamide",
+      "charge": 1,
+      "compound_name": "Anandamide",
+      "precursor_mz": 348.261,
+      "name": "Anandamide"
+    },
+    "vector": {
+      "peak@50.00": 0.15173339455447185,
+      "peak@129.10": 0.42092419409815013,
+      "peak@180.20": 0.483977514182461,
+      "peak@348.30": 1.0
+    }
+  },
+  {
+    "identifier": "Cannabidiol",
+    "precursor_mz": 314.224,
+    "metadata": {
+      "title": "Cannabidiol",
+      "charge": 1,
+      "compound_name": "Cannabidiol",
+      "precursor_mz": 314.224,
+      "name": "Cannabidiol"
+    },
+    "vector": {
+      "peak@45.00": 0.23570226039551584,
+      "peak@123.00": 0.4714045207910317,
+      "peak@193.00": 0.6009252125773316,
+      "peak@314.20": 1.0
+    }
+  }
+]

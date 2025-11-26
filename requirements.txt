@@ -1,14 +1,9 @@
-<<<<<<< HEAD
 # Yogimass runtime requirements
 matchms>=0.23
 pandas>=2.0
 numpy>=1.24
+pyyaml>=6.0
 
 # Development extras (optional)
 pytest>=8.0
 pytest-cov>=5.0
-=======
-matchms
-requests
-pandas
->>>>>>> cb54338b4013dcd6c2b65af94882ad45be881156

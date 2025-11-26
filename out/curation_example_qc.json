@@ -1,0 +1,48 @@
+{
+  "summary": {
+    "total": 1,
+    "kept": 1,
+    "dropped": 0,
+    "merged_groups": 0,
+    "merged_entries": 0,
+    "drop_reasons": {},
+    "precursor_tolerance": 0.01,
+    "similarity_threshold": 0.9,
+    "quality": {
+      "num_peaks": {
+        "<= 0": 0,
+        "0 - 2": 1,
+        "2 - 5": 0,
+        "5 - 10": 0,
+        "> 10": 0
+      },
+      "total_ion_current": {
+        "<= 0.05": 0,
+        "0.05 - 0.1": 0,
+        "0.1 - 0.5": 0,
+        "0.5 - 1.0": 0,
+        "1.0 - 2.0": 1,
+        "2.0 - 5.0": 0,
+        "> 5.0": 0
+      },
+      "single_peak_fraction": {
+        "<= 0.25": 0,
+        "0.25 - 0.5": 0,
+        "0.5 - 0.75": 1,
+        "0.75 - 0.9": 0,
+        "> 0.9": 0
+      }
+    }
+  },
+  "actions": [
+    {
+      "identifier": "TestCompound",
+      "action": "keep",
+      "reason": null,
+      "representative": null,
+      "merged_ids": [],
+      "quality_score": 2.242640687119285
+    }
+  ],
+  "merged": []
+}

@@ -1,0 +1,5 @@
+query_id,hit_id,score,precursor_mz,metadata_json
+Anandamide,Anandamide,1.000000,348.261,"{""title"": ""Anandamide"", ""charge"": 1, ""compound_name"": ""Anandamide"", ""precursor_mz"": 348.261, ""name"": ""Anandamide""}"
+Anandamide,Cannabidiol,0.000000,314.224,"{""title"": ""Cannabidiol"", ""charge"": 1, ""compound_name"": ""Cannabidiol"", ""precursor_mz"": 314.224, ""name"": ""Cannabidiol""}"
+Cannabidiol,Cannabidiol,1.000000,314.224,"{""title"": ""Cannabidiol"", ""charge"": 1, ""compound_name"": ""Cannabidiol"", ""precursor_mz"": 314.224, ""name"": ""Cannabidiol""}"
+Cannabidiol,Anandamide,0.000000,348.261,"{""title"": ""Anandamide"", ""charge"": 1, ""compound_name"": ""Anandamide"", ""precursor_mz"": 348.261, ""name"": ""Anandamide""}"

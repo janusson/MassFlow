@@ -4,104 +4,45 @@
 [![Coverage](https://codecov.io/gh/ericjanusson/yogimass/branch/main/graph/badge.svg)](https://codecov.io/gh/ericjanusson/yogimass)
 [![Docs](https://img.shields.io/badge/docs-local-blue)](docs/)
 
-Yogimass is a modular, Python-based pipeline for the import, cleaning, processing, and comparison of tandem mass spectrometry (MS/MS) data. Built on top of the powerful [matchms](https://matchms.readthedocs.io/en/latest/index.html) library, Yogimass streamlines the workflow for researchers in metabolomics, analytical chemistry, and bioinformatics.
+Yogimass is a config-driven LC-MS/MS toolkit for ingesting spectra, building and searching spectral libraries, generating similarity networks, and curating libraries with QC reporting. The recommended way to run Yogimass is through YAML/JSON configs plus `yogimass config run`. See `USAGE.md` for install and smoke-test steps.
+
+## Quick start (config-first)
+
+Drive the full pipeline from a config file:
+
+```bash
+yogimass config run --config examples/simple_workflow.yaml
+```
+
+The configs in `examples/` are the fastest way to exercise library build/search, network export, and curation/QC. Details live in `USAGE.md`.
 
 ## Features
 
-- **Import & Manage Spectral Libraries**  
-  - Supports both MGF (GNPS-style) and MSP (NIST-style) formats.
-  - List, filter, and inspect available libraries.
+- **Import & Manage**: MGF (GNPS-style) and MSP (NIST-style) support.
+- **Cleaning & Processing**: metadata harmonization and peak filtering/normalization.
+- **Similarity & Search**: cosine/modified cosine/spec2vec-style vectors for local search.
+- **Library Curation & QC**: drop low-quality spectra, merge near-duplicates, emit QC reports.
+- **Networks & Reporting**: build similarity networks and write summaries/exports.
 
-- **Automated Data Cleaning & Harmonization**  
-  - Cleans and harmonizes spectrum metadata (names, formulas, adducts, etc.).
-  - Processes and normalizes spectral peaks.
-  - Modular filters for extensibility, including helpers for both MGF and MSP libraries and directory-wide batch cleaners.
-
-- **Export Processed Data**  
-  - Export cleaned spectra to MGF, MSP, JSON, or Python pickle formats.
-
-- **Spectral Similarity & Identification**  
-  - Compute cosine and modified cosine similarity scores between spectra.
-  - Retrieve top matches and filter by minimum peak matches.
-  - Designed for compound identification and spectral library curation.
-
-- **Logging & Debugging**  
-  - Integrated logging for reproducibility and troubleshooting.
-
-## Planned & Experimental Features
-
-- **Interactive Visualization**  
-  - Integration with Jupyter notebooks and plotting libraries for spectrum visualization.
-
-- **Batch Processing & CLI**  
-  - Command-line tools for batch library processing and scoring.
-
-- **Advanced Filtering**  
-  - Support for custom, user-defined filters and workflows.
-
-- **Integration with Public Databases**  
-  - Automated download and update of public spectral libraries (e.g., GNPS, MassBank).
-
-- **Machine Learning Integration**  
-  - Hooks for spectral embedding and clustering (e.g., Spec2Vec, deep learning).
-
-## Why Yogimass?
-
-- **Flexible**: Modular design lets you swap in new filters, formats, or scoring methods.
-- **Reproducible**: Logging and configuration management for scientific workflows.
-- **Open**: Built on open standards and libraries, easy to extend and contribute.
-
-## Quick Start
-
-```bash
-# Install dependencies
-pip install -r requirements.txt
-
-# Example usage (Python)
-from yogimass import pipeline
-
-mgf_files = pipeline.list_mgf_libraries('./data')
-cleaned = pipeline.clean_mgf_library(mgf_files[0])
-pipeline.save_spectra_to_mgf(cleaned, './out', 'cleaned_library')
-
-# Batch clean every MGF file in ./data and export to MGF + JSON
-pipeline.batch_clean_mgf_libraries(
-    './data',
-    './out',
-    export_formats=('mgf', 'json'),
-)
-
-# Batch clean MSP libraries as well
-pipeline.batch_clean_msp_libraries(
-    './data',
-    './out',
-    export_formats=('msp',),
-)
-```
-
-## Command-line batch cleaning
-
-After installing Yogimass (either from source or via `pip install .`), a `yogimass` CLI becomes available:
-
-```bash
-# Clean MGF libraries in ./data and write cleaned MGF + JSON exports to ./out
-yogimass clean ./data ./out --type mgf --formats mgf json
-
-# Clean MSP libraries and keep MSP output
-yogimass clean ./data ./out --type msp --formats msp
-```
-
-Place your raw libraries (MGF or MSP) anywhere under the input directory. Cleaned files follow the `<library>_cleaned.<ext>` naming convention and are written to the specified output directory (created if it does not exist).
-
-## CLI Reference
+## CLI reference
 
 | Command | Description | Key Options |
 | --- | --- | --- |
-| `yogimass clean <input_dir> <output_dir>` | Batch-clean every library (MGF/MSP) under `input_dir` and export cleaned copies. | `--type {mgf,msp}` choose input format; `--formats` choose one or more export formats (`mgf`, `msp`, `json`, `pickle`). |
+| `yogimass config run --config path/to/config.yaml` | Execute an end-to-end workflow from a YAML/JSON config. | Sections: `input`, `library`, `similarity`, `network`, `outputs`. |
+| `yogimass library build --input ... --library out/library.json` | Build/update a local library from MGF/MSP files or folders. | `--format {mgf,msp}`, `--recursive`, `--storage {json,sqlite}` |
+| `yogimass library search --queries ... --library out/library.json` | Search query spectra against a stored library. | `--top-n`, `--min-score`, `--output <csv/json>` |
+| `yogimass library curate --input raw.json --output curated.json` | QC and de-duplicate a stored library, writing a curated copy and QC report. | `--qc-report`, `--min-peaks`, `--min-tic`, `--max-single-peak-fraction`, `--precursor-tolerance`, `--similarity-threshold` |
+| `yogimass network build --input <dir>|--library <lib> --output graph.csv` | Build a similarity network (threshold or k-NN) and export edges/graphs. | `--metric {cosine,modified_cosine,spec2vec}`, `--threshold` or `--knn`, `--summary` |
+| `yogimass clean <input_dir> <output_dir>` | (Legacy) Batch-clean every library (MGF/MSP) under `input_dir` and export cleaned copies. | `--type {mgf,msp}` choose input format; `--formats` choose one or more export formats (`mgf`, `msp`, `json`, `pickle`). |
 
 ## Documentation
 
-See the `docs/` directory for full API documentation and usage examples.
+- `USAGE.md`: editable install steps and the two golden-path smoke tests.
+- `docs/`: full API documentation and examples.
+
+### Legacy scripts and deprecation
+
+Legacy entrypoints (`yogimass_pipeline.py`, `yogimass_buildDB.py`, `build_library_from_msp.py`, `msdial_fragment_search.py`) remain as thin wrappers that forward to the unified workflow/CLI. Each prints a deprecation warning; prefer config-driven runs via `yogimass config run`.
 
 ## Contributing & License
 
