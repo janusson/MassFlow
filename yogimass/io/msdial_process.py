@@ -7,7 +7,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Sequence
 
+import numpy as np
 import pandas as pd
+from matchms import Spectrum
 
 from yogimass.utils.logging import get_logger
 
@@ -88,3 +90,57 @@ def summarize_by_experiment(
         .reset_index()
     )
     return counts
+
+
+def _parse_msms_string(peaks_string: str) -> tuple[np.ndarray, np.ndarray]:
+    peaks: list[tuple[float, float]] = []
+    for entry in peaks_string.strip().split():
+        if ":" not in entry:
+            continue
+        try:
+            mz, intensity = entry.split(":")
+            peaks.append((float(mz), float(intensity)))
+        except ValueError:
+            continue
+    if not peaks:
+        return np.array([], dtype="float32"), np.array([], dtype="float32")
+    mz_values, intensities = zip(*peaks)
+    return np.asarray(mz_values, dtype="float32"), np.asarray(intensities, dtype="float32")
+
+
+def msdial_dataframe_to_spectra(processed_data: pd.DataFrame) -> list[Spectrum]:
+    """
+    Convert a cleaned MS-DIAL dataframe into ``matchms.Spectrum`` objects.
+    Rows missing MS/MS data are skipped.
+    """
+    spectra: list[Spectrum] = []
+    if processed_data.empty:
+        return spectra
+    for _, row in processed_data.iterrows():
+        peaks_string = str(row.get("MS/MS spectrum", "") or "")
+        mz_array, intensities = _parse_msms_string(peaks_string)
+        if mz_array.size == 0 or intensities.size == 0:
+            continue
+        alignment_id = row.get("Alignment ID")
+        experiment = row.get("Experiment")
+        name = row.get("Name")
+        try:
+            alignment_id_int = int(alignment_id) if alignment_id is not None else None
+        except (TypeError, ValueError):
+            alignment_id_int = None
+        metadata = {
+            "name": str(name) if name else f"alignment-{alignment_id_int or 'unknown'}",
+            "compound_name": name,
+            "alignment_id": alignment_id_int,
+            "experiment": experiment,
+            "precursor_mz": row.get("Average Mz"),
+        }
+        spectrum = Spectrum(
+            mz=mz_array,
+            intensities=intensities,
+            metadata={k: v for k, v in metadata.items() if v is not None},
+        )
+        spectra.append(spectrum)
+    if not spectra:
+        logger.warning("No valid MS-DIAL MS/MS spectra were parsed from the dataframe.")
+    return spectra

@@ -8,6 +8,8 @@ pytest.importorskip("matchms", reason="Similarity module depends on matchms.")
 
 from matchms import Spectrum
 
+from yogimass.similarity.backends import create_index_backend
+from yogimass.similarity.embeddings import build_embeddings, embedding_vectorizer
 from yogimass.similarity import (
     LibrarySearcher,
     LocalSpectralLibrary,
@@ -91,3 +93,42 @@ def test_batch_processing_adds_to_library(tmp_path):
 
     assert len(processed) == 1
     assert len(library) == 1
+
+
+def test_naive_backend_queries(tmp_path):
+    library = LocalSpectralLibrary(tmp_path / "backend.json")
+    spectrum = _spectrum([10, 20], [1.0, 0.5], name="a")
+    other = _spectrum([100, 200], [1.0, 0.5], name="b")
+    library.add_spectrum(spectrum, identifier="a")
+    library.add_spectrum(other, identifier="b")
+
+    backend = create_index_backend("naive", entries=library.iter_entries())
+    hits = backend.query(spec2vec_vectorize(spectrum), top_n=1, min_score=0.0)
+
+    assert hits
+    assert hits[0].entry.identifier == "a"
+
+
+def test_annoy_backend_queries_when_available(tmp_path):
+    pytest.importorskip("annoy", reason="Annoy backend is optional.")
+    library = LocalSpectralLibrary(tmp_path / "annoy.json")
+    spectrum = _spectrum([5, 15], [0.8, 0.2], name="x")
+    library.add_spectrum(spectrum, identifier="x")
+
+    backend = create_index_backend("annoy", entries=library.iter_entries())
+    hits = backend.query(spec2vec_vectorize(spectrum), top_n=1, min_score=0.0)
+
+    assert hits and hits[0].entry.identifier == "x"
+
+
+def test_embedding_helpers_produce_vectors():
+    spectra = [
+        _spectrum([50.0, 75.0], [1.0, 0.5], name="embed-a"),
+        _spectrum([60.0], [1.0], name="embed-b"),
+    ]
+
+    embeddings = build_embeddings("spec2vec-lite", spectra, dimension=8)
+    assert embeddings.shape == (2, 8)
+    tokens = embedding_vectorizer(spectra[0], dimension=8)
+    assert tokens
+    assert any(key.startswith("spec2vec-lite") for key in tokens)

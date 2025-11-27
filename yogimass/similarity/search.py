@@ -40,10 +40,13 @@ class LibrarySearcher:
         *,
         processor: SpectrumProcessor | None = None,
         vectorizer: Callable[[Spectrum], dict[str, float]] = spec2vec_vectorize,
+        backend: str = "naive",
     ):
         self.library = library
         self.processor = processor or SpectrumProcessor()
         self.vectorizer = vectorizer
+        self.backend_name = backend
+        self._index = self._build_index()
 
     def search_spectrum(
         self,
@@ -58,7 +61,7 @@ class LibrarySearcher:
         """
         processed = self.processor.process(spectrum, reference_mz=reference_mz)
         query_vector = self.vectorizer(processed)
-        hits = self.library.search(query_vector, top_n=top_n, min_score=min_score)
+        hits = self._index.query(query_vector, top_n=top_n, min_score=min_score) if self._index else []
         return [self._to_result(hit) for hit in hits]
 
     def _to_result(self, hit: SearchHit) -> SearchResult:
@@ -68,3 +71,8 @@ class LibrarySearcher:
             metadata=hit.entry.metadata,
             precursor_mz=hit.entry.precursor_mz,
         )
+
+    def _build_index(self):
+        from yogimass.similarity.backends import create_index_backend
+
+        return create_index_backend(self.backend_name, entries=self.library.iter_entries())

@@ -29,6 +29,9 @@ dev = [
     "pytest>=8.0",
     "pytest-cov>=5.0",
 ]
+annoy = ["annoy>=1.17"]
+faiss = ["faiss-cpu>=1.7.4"]
+spec2vec = ["spec2vec>=0.9"]
 
 [project.scripts]
 yogimass = "yogimass.cli:main"

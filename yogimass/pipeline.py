@@ -131,7 +131,6 @@ def _batch_clean_libraries(
     return exported_files
 
 logger = get_logger("yogimass.pipeline")
-logger.info("Yogimass pipeline loaded.")
 
 __all__ = [
     "load_settings",

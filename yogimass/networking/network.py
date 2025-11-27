@@ -253,6 +253,14 @@ def _compute_similarity(node_a: SpectrumNode, node_b: SpectrumNode, metric: Metr
         vector_a = node_a.vector or spec2vec_vectorize(_require_spectrum(node_a))
         vector_b = node_b.vector or spec2vec_vectorize(_require_spectrum(node_b))
         return cosine_from_vectors(vector_a, vector_b)
+    if metric == "embedding":
+        try:
+            from yogimass.similarity.embeddings import embedding_vectorizer
+        except Exception as exc:  # pragma: no cover - optional import guard
+            raise ImportError("Embedding support requires optional similarity embeddings.") from exc
+        vector_a = node_a.vector or embedding_vectorizer(_require_spectrum(node_a))
+        vector_b = node_b.vector or embedding_vectorizer(_require_spectrum(node_b))
+        return cosine_from_vectors(vector_a, vector_b)
     raise ValueError(f"Unsupported metric: {metric}")
 
 

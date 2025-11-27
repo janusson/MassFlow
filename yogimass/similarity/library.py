@@ -108,19 +108,26 @@ class LocalSpectralLibrary:
         top_n: int = 5,
         min_score: float = 0.0,
         metadata_filter: Callable[[LibraryEntry], bool] | None = None,
+        backend: str = "naive",
     ) -> list[SearchHit]:
         """
         Return the top entries ranked by cosine similarity to ``query_vector``.
         """
-        hits: list[SearchHit] = []
-        for entry in self.iter_entries():
-            if metadata_filter and not metadata_filter(entry):
-                continue
-            score = cosine_from_vectors(entry.vector, query_vector)
-            if score >= min_score:
-                hits.append(SearchHit(entry=entry, score=score))
-        hits.sort(key=lambda item: item.score, reverse=True)
-        return hits[:top_n]
+        entries = self.iter_entries()
+        if metadata_filter:
+            entries = (entry for entry in entries if metadata_filter(entry))
+        from yogimass.similarity.backends import create_index_backend
+
+        index = create_index_backend(backend, entries=entries)
+        return index.query(query_vector, top_n=top_n, min_score=min_score)
+
+    def build_index(self, *, backend: str = "naive"):
+        """
+        Build and return a populated search backend for this library.
+        """
+        from yogimass.similarity.backends import create_index_backend
+
+        return create_index_backend(backend, entries=self.iter_entries())
 
     def __len__(self) -> int:
         if self.storage == "json":

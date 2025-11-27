@@ -76,3 +76,24 @@ def test_process_msdial_sorts_and_drops():
 
     summary = msdial.summarize_by_experiment(processed)
     assert summary.loc[summary["Experiment"] == "A", "count"].item() == 1
+
+
+def test_dataframe_to_spectra_parses_metadata():
+    df = pd.DataFrame(
+        {
+            "Alignment ID": [5],
+            "Average Mz": [111.1],
+            "Name": ["compound_x"],
+            "Experiment": ["exp1"],
+            "MS/MS spectrum": ["50:10 75:5"],
+        }
+    )
+
+    spectra = msdial.msdial_dataframe_to_spectra(df)
+
+    assert len(spectra) == 1
+    spectrum = spectra[0]
+    assert spectrum.metadata["alignment_id"] == 5
+    assert spectrum.metadata["precursor_mz"] == 111.1
+    assert spectrum.metadata["experiment"] == "exp1"
+    assert spectrum.peaks.mz.tolist() == [50.0, 75.0]

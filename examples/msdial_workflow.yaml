@@ -1,0 +1,32 @@
+input:
+  path: tests/data/msdial_small
+  format: msdial
+  msdial_output: out/msdial_clean
+
+library:
+  path: out/msdial_library.json
+  build: true
+  input_format: msdial
+
+curation:
+  enabled: true
+  output: out/msdial_library_curated.json
+  qc_report: out/msdial_qc.json
+  min_peaks: 2
+
+similarity:
+  search: true
+  queries:
+    - tests/data/msdial_small
+  query_format: msdial
+  top_n: 2
+
+network:
+  enabled: true
+  metric: spec2vec
+  knn: 2
+  output: out/msdial_network.csv
+
+outputs:
+  search_results: out/msdial_search.csv
+  network_summary: out/msdial_network_summary.json

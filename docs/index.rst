@@ -1,43 +1,97 @@
-Yogimass documentation index
-============================
+Yogimass
+========
 
-Welcome to Yogimass, a modular toolkit for importing, cleaning, exporting, and comparing tandem mass spectrometry (MS/MS) data.
+Yogimass is a config-first toolkit for importing, cleaning, searching, and networking tandem mass spectrometry (MS/MS) data. It wraps the `matchms <https://matchms.readthedocs.io/>`_ ecosystem with a small set of batteries-included workflows and a CLI.
 
-.. contents::
-   :depth: 1
-   :local:
+Config-driven quick start
+-------------------------
 
-What is Yogimass?
------------------
+Create a minimal config (mirrors ``examples/simple_workflow.yaml``):
 
-Yogimass wraps the `matchms <https://matchms.readthedocs.io/>`_ ecosystem into a cohesive pipeline. The ``yogimass.pipeline`` module exposes helpers for:
+.. code-block:: yaml
 
-- listing MGF/MSP libraries from a directory
-- applying metadata and peak cleaning filters
-- exporting curated spectra back to MGF/MSP/JSON/pickle formats
-- computing cosine and modified cosine similarity scores between spectra
+   input:
+     path: data/example_library.mgf
+   library:
+     path: out/example_library.json
+   similarity:
+     search: true
+     queries:
+       - data/example_library.mgf
+   network:
+     enabled: true
+     metric: spec2vec
+     knn: 5
+     output: out/example_network.csv
+   outputs:
+     search_results: out/example_search.csv
+     network_summary: out/example_network_summary.json
 
-Current capabilities
---------------------
+Run it via the CLI:
 
-- **I/O helpers** (``yogimass.io.mgf``) list available libraries, fetch individual spectra, and save cleaned collections.
-- **Filtering utilities** (``yogimass.filters.metadata``) normalize compound metadata and peak lists using the standard matchms filters.
-- **Scoring** (``yogimass.scoring.cosine``) calculates cosine/modified cosine similarities and surfaces top matches.
-- **Example workflow** (``scripts/example_workflow.py``) demonstrates loading an MGF library, cleaning each spectrum, and exporting the cleaned spectra.
-- **Batch cleaning** (``yogimass.pipeline``) provides ``batch_clean_mgf_libraries`` / ``batch_clean_msp_libraries`` and a CLI entry point (``yogimass clean``) to sweep entire directories and export cleaned spectra in multiple formats.
+.. code-block:: bash
 
-What still needs work
----------------------
+   python -m yogimass.cli config run --config examples/simple_workflow.yaml
 
-- Implement the MSDIAL cleaning/processing stubs in ``yogimass/io/msdial_*.py``.
-- Add thorough unit/integration tests that cover the full cleaning and scoring workflow.
-- Provide packaging metadata (``pyproject.toml`` or ``setup.py``) for installation.
-- Expand the documentation with API references, CLI/Notebook examples, and data requirements.
+All configs are validated up front by ``yogimass.config.load_config`` and raise a ``ConfigError`` with a dotted path (e.g., ``network.threshold``) and a clear message if something is wrong.
 
-Quick start
------------
+Architecture map
+----------------
 
-1. Install dependencies: ``pip install -r requirements.txt``
-2. Drop raw MGF/MSP libraries anywhere under ``./data`` (or point the CLI/scripts to another directory). Output directories are created automatically and cleaned files follow the ``<library>_cleaned.<ext>`` naming pattern.
-3. Run ``python scripts/example_workflow.py`` to clean and export the first available library into ``./out`` (or call ``clean_mgf_library`` / ``clean_msp_library`` or the batch helpers directly for custom workflows).
-4. Prefer the CLI for automation: ``yogimass clean ./data ./out --type mgf --formats mgf json``.
+- ``yogimass.workflow`` — orchestration: ``run_from_config``, ``build_library``, ``search_library``, ``build_network``, ``curate_library``.
+- ``yogimass.config`` — typed schema, defaults, and validation for YAML/JSON configs.
+- ``yogimass.io`` — I/O helpers for MGF/MSP plus MS-DIAL cleaning/combining utilities.
+- ``yogimass.similarity`` — spectrum processing, vectorization, library storage/search, and search backends.
+- ``yogimass.networking`` — similarity network construction and export.
+- ``yogimass.reporting`` / ``yogimass.curation`` — QC, summaries, and writing reports.
+
+Optional extras: install with ``yogimass[annoy]`` or ``yogimass[faiss]`` to experiment with ANN backends, or ``yogimass[spec2vec]`` when layering in model-backed embeddings.
+
+Using MS-DIAL with Yogimass
+---------------------------
+
+MS-DIAL exports are supported as tab-delimited ``.txt``/``.tsv`` alignment tables. Expected columns:
+
+- ``Alignment ID`` (int), ``Average Mz`` (float), ``Name`` (string), ``Model ion area`` (numeric), ``MS/MS spectrum`` (space-delimited ``mz:intensity`` pairs).
+
+Example snippet:
+
+.. code-block:: text
+
+   Alignment ID	Average Mz	Name	Model ion area	MS/MS spectrum
+   1	123.45	Citrus_A	1200	100:50 150:25 200:10
+
+Config + CLI:
+
+.. code-block:: yaml
+
+   # examples/msdial_workflow.yaml
+   input:
+     path: tests/data/msdial_small
+     format: msdial
+     msdial_output: out/msdial_clean
+   library:
+     path: out/msdial_library.json
+     build: true
+     input_format: msdial
+   network:
+     enabled: true
+     metric: spec2vec
+     knn: 2
+     output: out/msdial_network.csv
+   outputs:
+     search_results: out/msdial_search.csv
+     network_summary: out/msdial_network_summary.json
+
+Run with:
+
+.. code-block:: bash
+
+   python -m yogimass.cli config run --config examples/msdial_workflow.yaml
+
+Outputs map back to MS-DIAL concepts: cleaned per-experiment CSVs and a combined summary live under ``input.msdial_output``; libraries/search results reference MS-DIAL ``Alignment ID``/``Name`` metadata; network exports summarize feature-to-feature similarity.
+
+Legacy utilities
+----------------
+
+The ``scripts/example_workflow.py`` script remains for developer tinkering, but the canonical path is the config + CLI flow above. Use ``yogimass config run`` for reproducible pipelines.

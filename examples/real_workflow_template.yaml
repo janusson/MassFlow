@@ -45,6 +45,10 @@ similarity:
   top_n: 5
   # Minimum score to report.
   min_score: 0.0
+  # Search backend and vectorizer (default: naive + spec2vec).
+  # backend: naive   # or annoy/faiss (install extras)
+  # vectorizer: spec2vec  # set to "embedding" for hashed embeddings
+  # embedding_model: spec2vec-lite
   # Vectorization/processing happen internally; adjust processor defaults in code if needed.
   # For reference-based alignment, supply a reference m/z list:
   # reference_mz:

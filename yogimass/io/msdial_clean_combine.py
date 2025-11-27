@@ -24,15 +24,16 @@ def list_msdial_txt(directory: str | Path) -> List[Path]:
     if not directory.exists():
         logger.warning("MS-DIAL directory does not exist: %s", directory)
         return []
-    results = []
-    for path in sorted(directory.glob("*.txt")):
-        try:
-            first_line = path.open("r", encoding="utf-8-sig").readline()
-        except OSError as exc:
-            logger.error("Unable to read %s: %s", path, exc)
-            continue
-        if "Scan" in first_line or "Alignment ID" in first_line:
-            results.append(path)
+    results: list[Path] = []
+    for pattern in ("*.txt", "*.tsv"):
+        for path in sorted(directory.glob(pattern)):
+            try:
+                first_line = path.open("r", encoding="utf-8-sig").readline()
+            except OSError as exc:
+                logger.error("Unable to read %s: %s", path, exc)
+                continue
+            if "Scan" in first_line or "Alignment ID" in first_line:
+                results.append(path)
     logger.info("Found %d MS-DIAL exports in %s", len(results), directory)
     return results
 

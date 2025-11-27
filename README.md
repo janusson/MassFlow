@@ -30,7 +30,7 @@ The configs in `examples/` are the fastest way to exercise library build/search,
 | --- | --- | --- |
 | `yogimass config run --config path/to/config.yaml` | Execute an end-to-end workflow from a YAML/JSON config. | Sections: `input`, `library`, `similarity`, `network`, `outputs`. |
 | `yogimass library build --input ... --library out/library.json` | Build/update a local library from MGF/MSP files or folders. | `--format {mgf,msp}`, `--recursive`, `--storage {json,sqlite}` |
-| `yogimass library search --queries ... --library out/library.json` | Search query spectra against a stored library. | `--top-n`, `--min-score`, `--output <csv/json>` |
+| `yogimass library search --queries ... --library out/library.json` | Search query spectra against a stored library. | `--top-n`, `--min-score`, `--backend {naive,annoy,faiss}`, `--output <csv/json>` |
 | `yogimass library curate --input raw.json --output curated.json` | QC and de-duplicate a stored library, writing a curated copy and QC report. | `--qc-report`, `--min-peaks`, `--min-tic`, `--max-single-peak-fraction`, `--precursor-tolerance`, `--similarity-threshold` |
 | `yogimass network build --input <dir>|--library <lib> --output graph.csv` | Build a similarity network (threshold or k-NN) and export edges/graphs. | `--metric {cosine,modified_cosine,spec2vec}`, `--threshold` or `--knn`, `--summary` |
 | `yogimass clean <input_dir> <output_dir>` | (Legacy) Batch-clean every library (MGF/MSP) under `input_dir` and export cleaned copies. | `--type {mgf,msp}` choose input format; `--formats` choose one or more export formats (`mgf`, `msp`, `json`, `pickle`). |

@@ -19,14 +19,14 @@ Avoids:
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
-from typing import Any, Iterable, Sequence
+from typing import Any, Callable, Iterable, Mapping, Sequence
 
 from matchms import Spectrum
 from matchms.importing import load_from_mgf, load_from_msp
 
 from yogimass import curation
+from yogimass.config import ConfigError, WorkflowConfig, load_config
 from yogimass.networking import network as network_builder
 from yogimass.reporting import (
     SearchMatch,
@@ -91,20 +91,27 @@ def build_library(
     *,
     input_format: str = "mgf",
     recursive: bool = False,
+    msdial_output_dir: str | Path | None = None,
     storage: str | None = None,
     processor: SpectrumProcessor | None = None,
     overwrite: bool = True,
+    vectorizer: Callable[[Spectrum], Mapping[str, float]] | None = None,
 ) -> LocalSpectralLibrary:
     """
     Build or update a ``LocalSpectralLibrary`` from spectra.
     """
-    spectra = _ensure_spectra(sources, input_format=input_format, recursive=recursive)
+    spectra = _ensure_spectra(
+        sources,
+        input_format=input_format,
+        recursive=recursive,
+        msdial_output_dir=msdial_output_dir,
+    )
     library = LocalSpectralLibrary(library_path, storage=storage)
     processor = processor or SpectrumProcessor()
     added = 0
     for spectrum in spectra:
         processed = processor.process(spectrum)
-        library.add_spectrum(processed, vectorizer=spec2vec_vectorize, overwrite=overwrite)
+        library.add_spectrum(processed, vectorizer=vectorizer or spec2vec_vectorize, overwrite=overwrite)
         added += 1
     logger.info("Added %d spectra to library at %s (total=%d).", added, library.path, len(library))
     return library
@@ -116,16 +123,29 @@ def search_library(
     *,
     input_format: str = "mgf",
     recursive: bool = False,
+    msdial_output_dir: str | Path | None = None,
     top_n: int = 5,
     min_score: float = 0.0,
+    backend: str = "naive",
+    vectorizer: Callable[[Spectrum], Mapping[str, float]] | None = None,
     processor: SpectrumProcessor | None = None,
 ) -> list[SearchMatch]:
     """
     Search query spectra against a stored library and return flattened matches.
     """
-    spectra = _ensure_spectra(queries, input_format=input_format, recursive=recursive)
+    spectra = _ensure_spectra(
+        queries,
+        input_format=input_format,
+        recursive=recursive,
+        msdial_output_dir=msdial_output_dir,
+    )
     library = LocalSpectralLibrary(library_path)
-    searcher = LibrarySearcher(library, processor=processor or SpectrumProcessor())
+    searcher = LibrarySearcher(
+        library,
+        processor=processor or SpectrumProcessor(),
+        vectorizer=vectorizer or spec2vec_vectorize,
+        backend=backend,
+    )
     results: list[SearchMatch] = []
     for idx, spectrum in enumerate(spectra):
         query_id = (
@@ -226,109 +246,118 @@ def build_network(
     return nodes, edges
 
 
-def run_from_config(config_path: str | Path) -> None:
+def run_from_config(config: str | Path | Mapping[str, Any] | WorkflowConfig) -> None:
     """
-    Execute a pipeline based on a YAML/JSON configuration file.
+    Execute a pipeline based on a YAML/JSON configuration file or a loaded mapping.
     """
-    config = _load_config(config_path)
-    inputs_cfg = config.get("input", {})
-    outputs_cfg = config.get("outputs", {})
-    network_cfg = config.get("network", {})
-    similarity_cfg = config.get("similarity", {})
-    library_cfg = config.get("library", {})
-    curation_cfg = config.get("curation", {})
+    cfg = config if isinstance(config, WorkflowConfig) else load_config(config)
+    inputs_cfg = cfg.input
+    outputs_cfg = cfg.outputs
 
-    input_paths = inputs_cfg.get("paths") or inputs_cfg.get("path")
-    input_format = inputs_cfg.get("format", "mgf")
-    recursive = bool(inputs_cfg.get("recursive", False))
+    input_paths = inputs_cfg.paths
+    input_format = inputs_cfg.format
+    recursive = inputs_cfg.recursive
+    vectorizer_choice = cfg.similarity.vectorizer
+    if cfg.network.metric == "embedding":
+        vectorizer_choice = "embedding"
+    vectorizer = _vectorizer_for_config(vectorizer_choice, cfg.similarity.embedding_model)
 
     data = load_data(
         input_paths,
         input_format=input_format,
         recursive=recursive,
-        msdial_output_dir=inputs_cfg.get("msdial_output"),
+        msdial_output_dir=inputs_cfg.msdial_output,
     )
     spectra = data if isinstance(data, list) else []
 
-    library_path = library_cfg.get("path") or outputs_cfg.get("library")
-    library_storage = library_cfg.get("format")
-    library_sources = library_cfg.get("sources") or input_paths
+    library_path = cfg.library.path
+    library_sources = cfg.library.sources or input_paths
+    library_input_format = cfg.library.input_format or input_format
+    library_recursive = cfg.library.recursive if cfg.library.recursive is not None else recursive
     library_built = None
     active_library_path = library_path
-    if library_path and library_cfg.get("build", True):
+    if cfg.library.build:
+        if not library_path:
+            raise ConfigError("library.path", "Library path is required when building a library.")
         library_built = build_library(
-            library_sources if library_sources is not None else spectra,
+            library_sources if library_sources else spectra,
             library_path,
-            input_format=library_cfg.get("input_format", input_format),
-            recursive=library_cfg.get("recursive", recursive),
-            storage=library_storage,
-            overwrite=library_cfg.get("overwrite", True),
+            input_format=library_input_format,
+            recursive=library_recursive,
+            msdial_output_dir=inputs_cfg.msdial_output,
+            storage=cfg.library.storage,
+            overwrite=cfg.library.overwrite,
+            vectorizer=vectorizer,
         )
         active_library_path = library_built.path
+    elif library_path:
+        active_library_path = library_path
 
-    curation_enabled = curation_cfg.get("enabled", False)
-    if curation_enabled:
+    if cfg.curation.enabled:
         if not active_library_path:
-            raise ValueError("Curation enabled but no library path is available.")
-        curated_output = (
-            curation_cfg.get("output")
-            or outputs_cfg.get("curated_library")
-            or _derive_curated_path(active_library_path)
-        )
-        qc_report_path = curation_cfg.get("qc_report") or outputs_cfg.get("qc_report")
+            raise ConfigError("curation.enabled", "Curation enabled but no library path is available.")
+        curated_output = cfg.curation.output or outputs_cfg.curated_library or _derive_curated_path(active_library_path)
+        qc_report_path = cfg.curation.qc_report or outputs_cfg.qc_report
         curate_library(
             active_library_path,
             curated_output,
-            config=curation_cfg,
+            config=cfg.curation.to_dict(),
             qc_report_path=qc_report_path,
         )
         active_library_path = curated_output
 
     search_results: list[SearchMatch] = []
-    search_enabled = similarity_cfg.get("search", False) or similarity_cfg.get("queries") is not None
-    if search_enabled and active_library_path:
-        query_sources = similarity_cfg.get("queries") or input_paths
-        search_results = search_library(
-            query_sources if query_sources is not None else spectra,
-            active_library_path,
-            input_format=similarity_cfg.get("query_format", input_format),
-            recursive=similarity_cfg.get("recursive", recursive),
-            top_n=int(similarity_cfg.get("top_n", 5)),
-            min_score=float(similarity_cfg.get("min_score", 0.0)),
-        )
-        results_output = outputs_cfg.get("search_results") or similarity_cfg.get("output")
+    search_enabled = bool(cfg.similarity.enabled and active_library_path)
+    if search_enabled:
+        query_sources = cfg.similarity.queries or input_paths
+        try:
+            search_results = search_library(
+                query_sources if query_sources is not None else spectra,
+                active_library_path,
+                input_format=cfg.similarity.query_format or input_format,
+                recursive=cfg.similarity.recursive if cfg.similarity.recursive is not None else recursive,
+                msdial_output_dir=inputs_cfg.msdial_output,
+                top_n=cfg.similarity.top_n,
+                min_score=cfg.similarity.min_score,
+                backend=cfg.similarity.backend,
+                vectorizer=vectorizer,
+            )
+        except (ImportError, ValueError) as exc:
+            raise ConfigError("similarity.backend", str(exc)) from exc
+        results_output = outputs_cfg.search_results or cfg.similarity.output
         if results_output:
             write_search_results(search_results, results_output)
 
-    network_enabled = network_cfg.get("enabled", False) or network_cfg.get("output") or outputs_cfg.get("network")
+    network_enabled = cfg.network.enabled
     if network_enabled:
-        network_output = network_cfg.get("output") or outputs_cfg.get("network")
-        undirected = not bool(network_cfg.get("directed", False))
-        net_input_dir = network_cfg.get("input")
-        net_library_path = network_cfg.get("library") or active_library_path
-        network_metric = network_cfg.get(
-            "metric",
-            "spec2vec" if (net_library_path and not net_input_dir) else "cosine",
+        network_output = cfg.network.output or outputs_cfg.network
+        undirected = not cfg.network.directed
+        net_input_dir = cfg.network.input
+        net_library_path = cfg.network.library or active_library_path
+        network_metric = cfg.network.metric or (
+            "embedding"
+            if vectorizer_choice == "embedding"
+            else ("spec2vec" if (net_library_path and not net_input_dir) else "cosine")
         )
         nodes, edges = build_network(
             input_dir=net_input_dir,
             library_path=net_library_path if not net_input_dir else None,
             metric=network_metric,
-            threshold=network_cfg.get("threshold"),
-            knn=network_cfg.get("knn"),
+            threshold=cfg.network.threshold,
+            knn=cfg.network.knn,
             processor=SpectrumProcessor(),
-            reference_mz=network_cfg.get("reference_mz"),
+            reference_mz=cfg.network.reference_mz,
             undirected=undirected,
             output_path=network_output,
         )
-        summary_output = outputs_cfg.get("network_summary") or network_cfg.get("summary")
+        summary_output = cfg.network.summary or outputs_cfg.network_summary
         if summary_output:
             summary = summarize_network(nodes, edges)
             write_network_summary(summary, summary_output)
 
     if library_built:
         logger.info("Library written to %s", library_built.path)
-    if search_results and not (outputs_cfg.get("search_results") or similarity_cfg.get("output")):
+    if search_results and not (outputs_cfg.search_results or cfg.similarity.output):
         logger.info("Generated %d search hits (no output file configured).", len(search_results))
 
 
@@ -359,30 +388,31 @@ def _ensure_spectra(
     *,
     input_format: str,
     recursive: bool,
+    msdial_output_dir: str | Path | None = None,
 ) -> list[Spectrum]:
     if isinstance(sources, Sequence) and sources and isinstance(sources[0], Spectrum):  # type: ignore[index]
         return list(sources)  # type: ignore[arg-type]
-    loaded = load_data(sources, input_format=input_format, recursive=recursive)
+    try:
+        import pandas as pd
+    except ImportError:  # pragma: no cover - pandas is a core dependency
+        pd = None  # type: ignore
+    if pd is not None and isinstance(sources, pd.DataFrame):
+        from yogimass.io.msdial_process import msdial_dataframe_to_spectra
+
+        return msdial_dataframe_to_spectra(sources)
+    loaded = load_data(
+        sources,
+        input_format=input_format,
+        recursive=recursive,
+        msdial_output_dir=msdial_output_dir,
+    )
     if not isinstance(loaded, list):
+        if pd is not None and isinstance(loaded, pd.DataFrame):
+            from yogimass.io.msdial_process import msdial_dataframe_to_spectra
+
+            return msdial_dataframe_to_spectra(loaded)
         raise ValueError(f"Expected spectra list, got {type(loaded)} for format '{input_format}'.")
     return loaded
-
-
-def _load_config(config_path: str | Path) -> dict[str, Any]:
-    config_path = Path(config_path)
-    text = config_path.read_text(encoding="utf-8")
-    suffix = config_path.suffix.lower()
-    if suffix in {".yaml", ".yml"}:
-        try:
-            import yaml
-        except ImportError as exc:  # pragma: no cover - import guard
-            raise ImportError("PyYAML is required to parse YAML configuration files.") from exc
-        data = yaml.safe_load(text) or {}
-    else:
-        data = json.loads(text)
-    if not isinstance(data, dict):
-        raise ValueError("Configuration root must be a mapping/object.")
-    return data
 
 
 def _derive_curated_path(library_path: str | Path) -> Path:
@@ -396,6 +426,15 @@ def _qc_report_path(output_library_path: str | Path, explicit_report: str | Path
         return Path(explicit_report)
     base = Path(output_library_path)
     return base.with_name(f"{base.stem}_qc.json")
+
+
+def _vectorizer_for_config(vectorizer_name: str, embedding_model: str | None):
+    if vectorizer_name == "embedding":
+        from yogimass.similarity.embeddings import embedding_vectorizer
+
+        model = embedding_model or "spec2vec-lite"
+        return lambda spectrum: embedding_vectorizer(spectrum, model_name=model)
+    return spec2vec_vectorize
 
 
 __all__ = [

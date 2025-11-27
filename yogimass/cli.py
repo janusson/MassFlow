@@ -22,6 +22,7 @@ import sys
 from pathlib import Path
 
 from yogimass import pipeline, workflow
+from yogimass.config import ConfigError
 from yogimass.reporting import summarize_network, write_network_summary, write_search_results
 from yogimass.utils.logging import get_logger
 
@@ -43,6 +44,9 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         return args.func(args)
+    except ConfigError as exc:  # pragma: no cover - validated in config tests
+        logger.error("Config error at %s: %s", exc.path, exc.message)
+        return 1
     except Exception as exc:  # pragma: no cover - surfaced to users
         logger.error("%s", exc)
         return 1
@@ -136,6 +140,12 @@ def _add_library_subparser(subparsers):
         "--recursive",
         action="store_true",
         help="Recurse into subdirectories when loading queries.",
+    )
+    search_parser.add_argument(
+        "--backend",
+        choices=["naive", "annoy", "faiss"],
+        default="naive",
+        help="Search backend to use (default: naive).",
     )
     search_parser.set_defaults(func=_run_library_search_command)
 
@@ -303,6 +313,7 @@ def _run_library_search_command(args) -> int:
         recursive=args.recursive,
         top_n=args.top_n,
         min_score=args.min_score,
+        backend=args.backend,
     )
     if args.output:
         write_search_results(results, args.output)

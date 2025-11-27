@@ -1,5 +1,6 @@
 """
-Example script for running Yogimass cleaning workflows for both MGF and MSP libraries.
+Legacy example script for running Yogimass cleaning workflows for both MGF and MSP libraries.
+Prefer the config-driven CLI: ``python -m yogimass.cli config run --config examples/simple_workflow.yaml``.
 """
 from pathlib import Path
 import sys
@@ -31,6 +32,9 @@ _EXTENSION_LOOKUP = {
 
 def main(data_dir="./data", output_dir="./out"):
     logger = get_logger(__name__)
+    logger.warning(
+        "Legacy example script; prefer `yogimass config run --config examples/simple_workflow.yaml` for reproducible runs."
+    )
     data_dir = Path(data_dir)
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
