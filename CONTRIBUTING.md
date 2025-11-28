@@ -33,4 +33,4 @@ Thanks for your interest in improving Yogimass! Please follow these guidelines t
 - Provide reproduction steps, expected vs actual behavior, and relevant logs/tracebacks.
 - Mention the OS, Python version, and dependency versions you used.
 
-Thank you for helping make Yogimass better!
+Thanks for your help!

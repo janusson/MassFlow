@@ -19,6 +19,7 @@ python -m yogimass.cli config run --config examples/simple_workflow.yaml
 ```
 
 What it does:
+
 - Loads the sample MGF at `data/example_library.mgf`
 - Builds a library at `out/example_library.json`
 - Searches the library with the same spectra and writes `out/example_search.csv`
@@ -31,6 +32,7 @@ python -m yogimass.cli config run --config examples/curation_workflow.yaml
 ```
 
 What it does:
+
 - Builds a small library from `tests/data/simple.mgf`
 - Runs library curation/QC
 - Writes a curated library (`out/curation_example_curated.json`) and QC report (`out/curation_example_qc.json`)
