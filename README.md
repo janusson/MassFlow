@@ -1,61 +1,116 @@
-# Yogimass - Modular Tandem Mass Spectrometry Data Analysis
+# Yogimass - Config-first LC-MS/MS workflows
 
 [![CI](https://github.com/ericjanusson/yogimass/actions/workflows/ci.yml/badge.svg)](https://github.com/ericjanusson/yogimass/actions/workflows/ci.yml)
-[![Coverage](https://codecov.io/gh/ericjanusson/yogimass/branch/main/graph/badge.svg)](https://codecov.io/gh/ericjanusson/yogimass)
 [![Docs](https://img.shields.io/badge/docs-local-blue)](docs/)
 
-Yogimass is a config-driven LC-MS/MS toolkit for ingesting spectra, building and searching spectral libraries, generating similarity networks, and curating libraries with QC reporting. The recommended way to run Yogimass is through YAML/JSON configs plus `yogimass config run`. See `USAGE.md` for install and smoke-test steps.
+Yogimass is a config-driven LC-MS/MS toolkit for ingesting spectra, building/searching spectral libraries, generating similarity networks, and curating libraries with QC reporting. The canonical entrypoint is a YAML/JSON config plus the `yogimass` CLI.
+
+## Install
+
+```bash
+python -m pip install -e .[dev]        # from a clone
+# or, when published:
+pip install yogimass
+```
+
+Optional extras:
+
+- `yogimass[annoy]` — enable ANN-backed search with Annoy.
+- `yogimass[faiss]` — placeholder for FAISS; currently falls back to naive search.
+- `yogimass[spec2vec]` — reserved for future model-backed embeddings.
+
+Requires Python 3.10+.
 
 ## Quick start (config-first)
 
-Drive the full pipeline from a config file:
+Run the full MGF pipeline:
 
 ```bash
 yogimass config run --config examples/simple_workflow.yaml
 ```
 
-The configs in `examples/` are the fastest way to exercise library build/search, network export, and curation/QC. Details live in `USAGE.md`.
+Run the MS-DIAL pipeline:
 
-## Features
+```bash
+yogimass config run --config examples/msdial_workflow.yaml
+```
 
-- **Import & Manage**: MGF (GNPS-style) and MSP (NIST-style) support.
-- **Cleaning & Processing**: metadata harmonization and peak filtering/normalization.
-- **Similarity & Search**: cosine/modified cosine/spec2vec-style vectors for local search.
-- **Library Curation & QC**: drop low-quality spectra, merge near-duplicates, emit QC reports.
-- **Networks & Reporting**: build similarity networks and write summaries/exports.
+Configs are validated up front via `yogimass.config.load_config` and raise a `ConfigError` with a dotted path (e.g., `network.threshold`) when something is wrong.
+
+## Minimal configs
+
+MGF (from `examples/simple_workflow.yaml`):
+
+```yaml
+input:
+  path: data/example_library.mgf
+  format: mgf
+library:
+  path: out/example_library.json
+  build: true
+similarity:
+  search: true
+  queries:
+    - data/example_library.mgf
+network:
+  enabled: true
+  metric: spec2vec
+  knn: 5
+  output: out/example_network.csv
+outputs:
+  search_results: out/example_search.csv
+  network_summary: out/example_network_summary.json
+```
+
+MS-DIAL (from `examples/msdial_workflow.yaml`):
+
+```yaml
+input:
+  path: tests/data/msdial_small
+  format: msdial
+  msdial_output: out/msdial_clean
+library:
+  path: out/msdial_library.json
+  build: true
+  input_format: msdial
+network:
+  enabled: true
+  metric: spec2vec
+  knn: 2
+  output: out/msdial_network.csv
+outputs:
+  search_results: out/msdial_search.csv
+  network_summary: out/msdial_network_summary.json
+```
 
 ## CLI reference
 
 | Command | Description | Key Options |
 | --- | --- | --- |
-| `yogimass config run --config path/to/config.yaml` | Execute an end-to-end workflow from a YAML/JSON config. | Sections: `input`, `library`, `similarity`, `network`, `outputs`. |
-| `yogimass library build --input ... --library out/library.json` | Build/update a local library from MGF/MSP files or folders. | `--format {mgf,msp}`, `--recursive`, `--storage {json,sqlite}` |
+| `yogimass config run --config <file>` | Execute an end-to-end workflow from a YAML/JSON config. | Sections: `input`, `library`, `similarity`, `network`, `outputs`. |
+| `yogimass library build --input ... --library out/library.json` | Build/update a local library from MGF/MSP/MS-DIAL sources. | `--format {mgf,msp}`, `--recursive`, `--storage {json,sqlite}` |
 | `yogimass library search --queries ... --library out/library.json` | Search query spectra against a stored library. | `--top-n`, `--min-score`, `--backend {naive,annoy,faiss}`, `--output <csv/json>` |
 | `yogimass library curate --input raw.json --output curated.json` | QC and de-duplicate a stored library, writing a curated copy and QC report. | `--qc-report`, `--min-peaks`, `--min-tic`, `--max-single-peak-fraction`, `--precursor-tolerance`, `--similarity-threshold` |
 | `yogimass network build --input <dir>|--library <lib> --output graph.csv` | Build a similarity network (threshold or k-NN) and export edges/graphs. | `--metric {cosine,modified_cosine,spec2vec}`, `--threshold` or `--knn`, `--summary` |
-| `yogimass clean <input_dir> <output_dir>` | (Legacy) Batch-clean every library (MGF/MSP) under `input_dir` and export cleaned copies. | `--type {mgf,msp}` choose input format; `--formats` choose one or more export formats (`mgf`, `msp`, `json`, `pickle`). |
+| `yogimass clean <input_dir> <output_dir>` | (Legacy) Batch-clean every library (MGF/MSP) under `input_dir`. | `--type {mgf,msp}`, `--formats {mgf,msp,json,pickle}` |
 
-## Documentation
+## MS-DIAL expectations
 
-- `USAGE.md`: editable install steps and the two golden-path smoke tests.
-- `docs/`: full API documentation and examples.
+MS-DIAL inputs are tab-delimited exports with columns:
 
-### Legacy scripts and deprecation
+- `Alignment ID` (int), `Average Mz` (float), `Name` (string), `Model ion area` (numeric), `MS/MS spectrum` (space-delimited `mz:intensity` pairs).
+- Yogimass cleans per-experiment CSVs under `input.msdial_output`, combines them, and converts spectra for library/search/network steps.
 
-Legacy entrypoints (`yogimass_pipeline.py`, `yogimass_buildDB.py`, `build_library_from_msp.py`, `msdial_fragment_search.py`) remain as thin wrappers that forward to the unified workflow/CLI. Each prints a deprecation warning; prefer config-driven runs via `yogimass config run`.
+## Development
+
+- Run tests: `python -m pytest`
+- Type check (lightweight): `python -m mypy --config-file mypy.ini yogimass`
+- Linting is minimal; prefer readability and small, tested changes.
+
+## Legacy scripts
+
+Legacy entrypoints (`yogimass_pipeline.py`, `yogimass_buildDB.py`, `build_library_from_msp.py`, `msdial_fragment_search.py`) remain as thin wrappers that forward to the unified workflow/CLI. Prefer config-driven runs via `yogimass config run`.
 
 ## Contributing & License
 
 Contributions are welcome—see `CONTRIBUTING.md` for setup and PR guidelines. Yogimass is released under the MIT License (see `LICENSE`).
-
-## Continuous Integration
-
-All pushes and pull requests run `python -m pytest --cov=yogimass` on Python 3.10–3.12 via the GitHub Actions workflow defined in `.github/workflows/ci.yml`, and coverage results are uploaded to Codecov. Make sure the CI and Coverage badges are green before merging or tagging releases.
-
-## Release Plan
-
-1. Ensure CI is green (tests + coverage) and docs/README reflect your changes.
-2. Update `pyproject.toml` version and CHANGELOG/`CHANGES_AND_NEXT_STEPS.md`.
-3. Tag the release (e.g., `git tag v0.1.0 && git push --tags`) and publish to GitHub.
-4. (Optional) Publish to PyPI: `python -m build && twine upload dist/*`.
-5. Verify `pip install yogimass==<version>` works in a clean environment and that badges link to the latest build/coverage.
