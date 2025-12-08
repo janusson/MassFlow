@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to this project will be documented here.
+Notable changes to this project will be documented here.
 
 ## [0.3.0] - 2025-11-27
 
