@@ -5,6 +5,7 @@ Thanks for your interest in improving Yogimass! Please follow these guidelines t
 ## Getting Started
 
 1. Fork the repository and create a feature branch from `main`.
+
 2. Set up a virtual environment and install dependencies:
 
    ```bash
