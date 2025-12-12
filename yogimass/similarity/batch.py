@@ -44,7 +44,9 @@ def batch_process_folder(
         if library is not None:
             for spectrum in processed_spectra:
                 library.add_spectrum(spectrum, overwrite=True)
-        logger.info("Processed %d spectra from %s", len(processed_spectra), filepath.name)
+        logger.info(
+            "Processed %d spectra from %s", len(processed_spectra), filepath.name
+        )
     return processed
 
 

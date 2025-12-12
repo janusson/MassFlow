@@ -25,7 +25,9 @@ def _dense_embedding(vector: Mapping[str, float], dimension: int) -> np.ndarray:
     return dense
 
 
-def build_embeddings(model_name: str, spectra: Iterable[Spectrum], *, dimension: int = 64) -> np.ndarray:
+def build_embeddings(
+    model_name: str, spectra: Iterable[Spectrum], *, dimension: int = 64
+) -> np.ndarray:
     """
     Build simple hashed embeddings for a collection of spectra.
     Placeholder for future model-backed embeddings.
@@ -50,7 +52,9 @@ def embedding_vectorizer(
     Uses hashed buckets for stability without external models.
     """
     dense = _dense_embedding(spec2vec_vectorize(spectrum), dimension)
-    return {f"{model_name}:{idx}": value for idx, value in enumerate(dense) if value != 0.0}
+    return {
+        f"{model_name}:{idx}": value for idx, value in enumerate(dense) if value != 0.0
+    }
 
 
 __all__ = ["build_embeddings", "embedding_vectorizer"]

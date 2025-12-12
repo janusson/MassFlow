@@ -32,7 +32,7 @@ def mf_from_accmass(
         "integerUnsaturation": False,
         # Ions/Radicals can have non-integer unsaturation
         "referenceVersion": "2013",
-        "massRange": mass_tolerance
+        "massRange": mass_tolerance,
         #              'minMass': -0.5,
         #              'maxMass': 0.5,
     }
@@ -44,6 +44,7 @@ def mf_from_accmass(
     print(f"> > > Top ten hits for {mz}:\n {df1.head(10)}")
 
     return df1
+
 
 x = input("Enter m/z: ")
 result_of_search = mf_from_accmass(

@@ -18,14 +18,13 @@ class SpectrumIndexBackend(Protocol):
 
     name: str
 
-    def add(self, entry: LibraryEntry) -> None:
-        ...
+    def add(self, entry: LibraryEntry) -> None: ...
 
-    def build(self) -> None:
-        ...
+    def build(self) -> None: ...
 
-    def query(self, vector: Mapping[str, float], *, top_n: int, min_score: float) -> list[SearchHit]:
-        ...
+    def query(
+        self, vector: Mapping[str, float], *, top_n: int, min_score: float
+    ) -> list[SearchHit]: ...
 
 
 class NaiveSpectrumIndex:
@@ -42,7 +41,9 @@ class NaiveSpectrumIndex:
     def build(self) -> None:  # pragma: no cover - nothing to build
         return None
 
-    def query(self, vector: Mapping[str, float], *, top_n: int, min_score: float) -> list[SearchHit]:
+    def query(
+        self, vector: Mapping[str, float], *, top_n: int, min_score: float
+    ) -> list[SearchHit]:
         hits: list[SearchHit] = []
         for entry in self._entries:
             score = cosine_from_vectors(entry.vector, vector)
@@ -85,7 +86,9 @@ class AnnoySpectrumIndex:
         if self._entries:
             self._index.build(self._num_trees)
 
-    def query(self, vector: Mapping[str, float], *, top_n: int, min_score: float) -> list[SearchHit]:
+    def query(
+        self, vector: Mapping[str, float], *, top_n: int, min_score: float
+    ) -> list[SearchHit]:
         if not self._entries:
             return []
         if self._index is None:
@@ -117,7 +120,9 @@ class AnnoySpectrumIndex:
         return dense
 
 
-def create_index_backend(name: str, *, entries: Iterable[LibraryEntry]) -> SpectrumIndexBackend:
+def create_index_backend(
+    name: str, *, entries: Iterable[LibraryEntry]
+) -> SpectrumIndexBackend:
     """
     Construct and populate a search backend.
     """
@@ -137,4 +142,9 @@ def create_index_backend(name: str, *, entries: Iterable[LibraryEntry]) -> Spect
     return backend
 
 
-__all__ = ["AnnoySpectrumIndex", "NaiveSpectrumIndex", "SpectrumIndexBackend", "create_index_backend"]
+__all__ = [
+    "AnnoySpectrumIndex",
+    "NaiveSpectrumIndex",
+    "SpectrumIndexBackend",
+    "create_index_backend",
+]

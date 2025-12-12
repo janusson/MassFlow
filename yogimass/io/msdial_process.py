@@ -105,7 +105,9 @@ def _parse_msms_string(peaks_string: str) -> tuple[np.ndarray, np.ndarray]:
     if not peaks:
         return np.array([], dtype="float32"), np.array([], dtype="float32")
     mz_values, intensities = zip(*peaks)
-    return np.asarray(mz_values, dtype="float32"), np.asarray(intensities, dtype="float32")
+    return np.asarray(mz_values, dtype="float32"), np.asarray(
+        intensities, dtype="float32"
+    )
 
 
 def msdial_dataframe_to_spectra(processed_data: pd.DataFrame) -> list[Spectrum]:

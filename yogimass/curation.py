@@ -118,7 +118,9 @@ def score_quality(entry: LibraryEntry, thresholds: QualityThresholds) -> Quality
     num_peaks = len(vector)
     total_ion_current = float(sum(vector.values())) if vector else 0.0
     max_intensity = float(max(vector.values())) if vector else 0.0
-    single_peak_fraction = (max_intensity / total_ion_current) if total_ion_current > 0 else 0.0
+    single_peak_fraction = (
+        (max_intensity / total_ion_current) if total_ion_current > 0 else 0.0
+    )
     has_precursor = entry.precursor_mz is not None
 
     issues: list[str] = []
@@ -131,8 +133,10 @@ def score_quality(entry: LibraryEntry, thresholds: QualityThresholds) -> Quality
     if single_peak_fraction > thresholds.max_single_peak_fraction:
         issues.append("single_peak_dominance")
 
-    quality_score = (total_ion_current + 1.0) * (1.0 - single_peak_fraction) * (
-        1.0 + num_peaks / max(thresholds.min_peaks, 1)
+    quality_score = (
+        (total_ion_current + 1.0)
+        * (1.0 - single_peak_fraction)
+        * (1.0 + num_peaks / max(thresholds.min_peaks, 1))
     )
     if not has_precursor:
         quality_score *= 0.5
@@ -237,9 +241,15 @@ def curate_entries(
     handled_ids: set[str] = set()
 
     for group_ids in duplicate_groups_ids:
-        group_entries = [id_to_entry[group_id] for group_id in group_ids if group_id in id_to_entry]
+        group_entries = [
+            id_to_entry[group_id] for group_id in group_ids if group_id in id_to_entry
+        ]
         representative = _choose_representative(group_entries, quality_results)
-        merged_ids = [entry.identifier for entry in group_entries if entry.identifier != representative.identifier]
+        merged_ids = [
+            entry.identifier
+            for entry in group_entries
+            if entry.identifier != representative.identifier
+        ]
         metadata = dict(representative.metadata)
         if merged_ids:
             metadata["merged_ids"] = sorted([representative.identifier, *merged_ids])
@@ -265,7 +275,9 @@ def curate_entries(
                 )
             )
         duplicate_groups.append(
-            DuplicateGroup(representative=representative.identifier, members=sorted(group_ids))
+            DuplicateGroup(
+                representative=representative.identifier, members=sorted(group_ids)
+            )
         )
         handled_ids.update(group_ids)
 
@@ -318,7 +330,9 @@ def curate_entries(
     )
 
 
-def _choose_representative(entries: Sequence[LibraryEntry], quality: Mapping[str, QualityResult]) -> LibraryEntry:
+def _choose_representative(
+    entries: Sequence[LibraryEntry], quality: Mapping[str, QualityResult]
+) -> LibraryEntry:
     """
     Select the highest-quality entry from a duplicate group.
     """

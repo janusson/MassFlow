@@ -2,6 +2,7 @@
 Legacy example script for running Yogimass cleaning workflows for both MGF and MSP libraries.
 Prefer the config-driven CLI: ``python -m yogimass.cli config run --config examples/simple_workflow.yaml``.
 """
+
 from pathlib import Path
 import sys
 
@@ -21,7 +22,10 @@ def _clean_and_export_single_library(library_path, cleaner, saver, output_dir):
         return
     export_name = f"{Path(library_path).stem}_cleaned"
     saver(cleaned, str(output_dir), export_name)
-    logger.info("Saved cleaned spectra to %s", output_dir / f"{export_name}{_EXTENSION_LOOKUP[saver]}")
+    logger.info(
+        "Saved cleaned spectra to %s",
+        output_dir / f"{export_name}{_EXTENSION_LOOKUP[saver]}",
+    )
 
 
 _EXTENSION_LOOKUP = {

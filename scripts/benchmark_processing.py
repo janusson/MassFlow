@@ -10,7 +10,6 @@ import argparse
 import sys
 import time
 from pathlib import Path
-from typing import Any
 
 from yogimass import workflow
 from yogimass.config import load_config
@@ -44,7 +43,9 @@ def _count_spectra(config_path: Path) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Benchmark SpectrumProcessor on a config-driven workflow.")
+    parser = argparse.ArgumentParser(
+        description="Benchmark SpectrumProcessor on a config-driven workflow."
+    )
     parser.add_argument(
         "--config",
         type=Path,

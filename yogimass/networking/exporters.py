@@ -29,7 +29,9 @@ def export_network_for_cytoscape(
     for node in nodes:
         metadata_keys.update(k for k, v in node.metadata.items() if v is not None)
 
-    node_fieldnames = ["id", "label", "precursor_mz"] + [f"meta_{k}" for k in sorted(metadata_keys)]
+    node_fieldnames = ["id", "label", "precursor_mz"] + [
+        f"meta_{k}" for k in sorted(metadata_keys)
+    ]
     with node_path.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=node_fieldnames)
         writer.writeheader()
@@ -37,7 +39,9 @@ def export_network_for_cytoscape(
             row = {
                 "id": node.identifier,
                 "label": node.metadata.get("name") or node.identifier,
-                "precursor_mz": node.precursor_mz if node.precursor_mz is not None else "",
+                "precursor_mz": node.precursor_mz
+                if node.precursor_mz is not None
+                else "",
             }
             for key in metadata_keys:
                 value = node.metadata.get(key)
@@ -46,7 +50,9 @@ def export_network_for_cytoscape(
             writer.writerow(row)
 
     with edge_path.open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(handle, fieldnames=["source", "target", "similarity", "metric"])
+        writer = csv.DictWriter(
+            handle, fieldnames=["source", "target", "similarity", "metric"]
+        )
         writer.writeheader()
         for edge in edges:
             writer.writerow(

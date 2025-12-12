@@ -3,18 +3,22 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-pytest.importorskip("matchms", reason="MSDIAL helpers import yogimass.io, which depends on matchms.")
+pytest.importorskip(
+    "matchms", reason="MSDIAL helpers import yogimass.io, which depends on matchms."
+)
 
 from yogimass.io import msdial
 
 
-MSDIAL_HEADER = "\t".join([
-    "Alignment ID",
-    "Average Mz",
-    "Name",
-    "Model ion area",
-    "MS/MS spectrum",
-])
+MSDIAL_HEADER = "\t".join(
+    [
+        "Alignment ID",
+        "Average Mz",
+        "Name",
+        "Model ion area",
+        "MS/MS spectrum",
+    ]
+)
 
 
 def _write_export(path: Path, rows):

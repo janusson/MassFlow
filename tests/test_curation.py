@@ -43,9 +43,15 @@ def test_curate_library_merges_duplicates_and_drops_low_quality(tmp_path):
     qc_report = tmp_path / "qc.json"
 
     library = LocalSpectralLibrary(raw_library)
-    library.add_spectrum(_spectrum([50, 75, 90], [100, 80, 10], "dup1", 100.0), identifier="dup-1")
-    library.add_spectrum(_spectrum([50, 75, 91], [95, 70, 5], "dup2", 100.004), identifier="dup-2")
-    library.add_spectrum(_spectrum([150, 175], [50, 40], "keeper", 200.0), identifier="keep-1")
+    library.add_spectrum(
+        _spectrum([50, 75, 90], [100, 80, 10], "dup1", 100.0), identifier="dup-1"
+    )
+    library.add_spectrum(
+        _spectrum([50, 75, 91], [95, 70, 5], "dup2", 100.004), identifier="dup-2"
+    )
+    library.add_spectrum(
+        _spectrum([150, 175], [50, 40], "keeper", 200.0), identifier="keep-1"
+    )
     # Low-quality: single dominant peak and missing precursor should trigger drop.
     library.add_spectrum(_spectrum([10], [1], "low", None), identifier="low-quality")
 
@@ -67,7 +73,9 @@ def test_curate_library_merges_duplicates_and_drops_low_quality(tmp_path):
     assert identifiers == ["dup-1", "keep-1"] or identifiers == ["dup-2", "keep-1"]
 
     # Duplicate metadata should keep merged IDs.
-    merged_entry = next(entry for entry in curated_entries if entry.identifier.startswith("dup"))
+    merged_entry = next(
+        entry for entry in curated_entries if entry.identifier.startswith("dup")
+    )
     assert "merged_ids" in merged_entry.metadata
     assert set(merged_entry.metadata["merged_ids"]) == {"dup-1", "dup-2"}
 

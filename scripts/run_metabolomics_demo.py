@@ -44,7 +44,9 @@ def _count_processed(spectra: Sequence[Spectrum], processor: SpectrumProcessor) 
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Run an untargeted metabolomics demo workflow.")
+    parser = argparse.ArgumentParser(
+        description="Run an untargeted metabolomics demo workflow."
+    )
     parser.add_argument(
         "--config",
         type=Path,

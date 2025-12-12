@@ -26,7 +26,7 @@ from uuid import uuid4
 
 from matchms import Spectrum
 
-from yogimass.similarity.metrics import cosine_from_vectors, spec2vec_vectorize
+from yogimass.similarity.metrics import spec2vec_vectorize
 from yogimass.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -65,7 +65,9 @@ class LocalSpectralLibrary:
     Minimal persistent library backed by JSON or SQLite.
     """
 
-    def __init__(self, path: str | Path, storage: Literal["json", "sqlite"] | None = None):
+    def __init__(
+        self, path: str | Path, storage: Literal["json", "sqlite"] | None = None
+    ):
         self.path = Path(path)
         self.storage: Literal["json", "sqlite"] = storage or self._infer_storage()
         self._ensure_store()
@@ -209,7 +211,9 @@ class LocalSpectralLibrary:
             records = self._json_entries(data)
             existing = {item["identifier"]: idx for idx, item in enumerate(records)}
             if entry.identifier in existing and not overwrite:
-                raise ValueError(f"Entry '{entry.identifier}' already exists in {self.path}")
+                raise ValueError(
+                    f"Entry '{entry.identifier}' already exists in {self.path}"
+                )
             entry_record = entry.to_record()
             if entry.identifier in existing:
                 records[existing[entry.identifier]] = entry_record
@@ -232,8 +236,15 @@ class LocalSpectralLibrary:
     def _iter_sqlite_entries(self) -> Iterator[LibraryEntry]:
         with sqlite3.connect(self.path) as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT identifier, precursor_mz, metadata, vector FROM spectra")
-            for identifier, precursor_mz, metadata_json, vector_json in cursor.fetchall():
+            cursor.execute(
+                "SELECT identifier, precursor_mz, metadata, vector FROM spectra"
+            )
+            for (
+                identifier,
+                precursor_mz,
+                metadata_json,
+                vector_json,
+            ) in cursor.fetchall():
                 yield LibraryEntry(
                     identifier=identifier,
                     precursor_mz=precursor_mz,
@@ -265,7 +276,9 @@ class LocalSpectralLibrary:
         try:
             return json.loads(text)
         except json.JSONDecodeError:
-            logger.warning("Could not parse JSON library %s, resetting to empty list.", self.path)
+            logger.warning(
+                "Could not parse JSON library %s, resetting to empty list.", self.path
+            )
             return []
 
     def _json_entries(self, data: Any) -> list[dict[str, Any]]:

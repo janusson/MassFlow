@@ -7,7 +7,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any, Mapping
 
 import numpy as np
 
@@ -58,7 +58,9 @@ def _listify(value: Any) -> list[Any]:
     return [value]
 
 
-def _check_unknown_keys(section: Mapping[str, Any], allowed: set[str], *, prefix: str) -> None:
+def _check_unknown_keys(
+    section: Mapping[str, Any], allowed: set[str], *, prefix: str
+) -> None:
     for key in section:
         if key not in allowed:
             path = key if prefix in {"", "<root>"} else f"{prefix}.{key}"
@@ -102,15 +104,23 @@ class InputConfig:
             raw_paths.extend(_listify(data.get("path")))
         if "paths" in data:
             raw_paths.extend(_listify(data.get("paths")))
-        paths = [_coerce_path(item, path="input.paths") for item in raw_paths if item is not None]
+        paths = [
+            _coerce_path(item, path="input.paths")
+            for item in raw_paths
+            if item is not None
+        ]
 
         fmt = str(data.get("format", "mgf")).lower()
         if fmt not in {"mgf", "msp", "msdial"}:
             raise ConfigError("input.format", f"Unsupported format '{fmt}'.")
 
         recursive = _coerce_bool(data.get("recursive", False), path="input.recursive")
-        msdial_output = _coerce_optional_path(data.get("msdial_output"), path="input.msdial_output")
-        return cls(paths=paths, format=fmt, recursive=recursive, msdial_output=msdial_output)
+        msdial_output = _coerce_optional_path(
+            data.get("msdial_output"), path="input.msdial_output"
+        )
+        return cls(
+            paths=paths, format=fmt, recursive=recursive, msdial_output=msdial_output
+        )
 
 
 @dataclass
@@ -124,8 +134,18 @@ class LibraryConfig:
     sources: list[Path] = field(default_factory=list)
 
     @classmethod
-    def from_mapping(cls, data: Mapping[str, Any], *, outputs: "OutputsConfig") -> LibraryConfig:
-        allowed = {"path", "build", "input_format", "recursive", "format", "overwrite", "sources"}
+    def from_mapping(
+        cls, data: Mapping[str, Any], *, outputs: "OutputsConfig"
+    ) -> LibraryConfig:
+        allowed = {
+            "path",
+            "build",
+            "input_format",
+            "recursive",
+            "format",
+            "overwrite",
+            "sources",
+        }
         _check_unknown_keys(data, allowed, prefix="library")
 
         path_value = data.get("path") or outputs.library
@@ -137,16 +157,24 @@ class LibraryConfig:
         if input_format is not None:
             input_format = str(input_format).lower()
             if input_format not in {"mgf", "msp", "msdial"}:
-                raise ConfigError("library.input_format", f"Unsupported format '{input_format}'.")
+                raise ConfigError(
+                    "library.input_format", f"Unsupported format '{input_format}'."
+                )
 
         recursive_value = data.get("recursive")
-        recursive = _coerce_bool(recursive_value, path="library.recursive") if recursive_value is not None else None
+        recursive = (
+            _coerce_bool(recursive_value, path="library.recursive")
+            if recursive_value is not None
+            else None
+        )
         storage = data.get("format")
         if storage is not None and storage not in {"json", "sqlite"}:
             raise ConfigError("library.format", "Format must be 'json' or 'sqlite'.")
         overwrite = _coerce_bool(data.get("overwrite", True), path="library.overwrite")
         sources = [
-            _coerce_path(item, path="library.sources") for item in _listify(data.get("sources")) if item is not None
+            _coerce_path(item, path="library.sources")
+            for item in _listify(data.get("sources"))
+            if item is not None
         ]
         return cls(
             path=path,
@@ -192,7 +220,9 @@ class SimilarityConfig:
 
         enabled = _coerce_bool(data.get("search", False), path="similarity.search")
         queries = [
-            _coerce_path(item, path="similarity.queries") for item in _listify(data.get("queries")) if item is not None
+            _coerce_path(item, path="similarity.queries")
+            for item in _listify(data.get("queries"))
+            if item is not None
         ]
         if queries and not enabled:
             enabled = True
@@ -201,7 +231,9 @@ class SimilarityConfig:
         if query_format is not None:
             query_format = str(query_format).lower()
             if query_format not in {"mgf", "msp", "msdial"}:
-                raise ConfigError("similarity.query_format", f"Unsupported format '{query_format}'.")
+                raise ConfigError(
+                    "similarity.query_format", f"Unsupported format '{query_format}'."
+                )
         if "recursive" in data:
             recursive = _coerce_bool(data.get("recursive"), path="similarity.recursive")
         else:
@@ -217,7 +249,9 @@ class SimilarityConfig:
         try:
             min_score = float(data.get("min_score", 0.0))
         except (TypeError, ValueError) as exc:
-            raise ConfigError("similarity.min_score", "min_score must be a number.") from exc
+            raise ConfigError(
+                "similarity.min_score", "min_score must be a number."
+            ) from exc
         if min_score < 0:
             raise ConfigError("similarity.min_score", "min_score cannot be negative.")
 
@@ -227,7 +261,9 @@ class SimilarityConfig:
 
         vectorizer = str(data.get("vectorizer", "spec2vec")).lower()
         if vectorizer not in {"spec2vec", "embedding"}:
-            raise ConfigError("similarity.vectorizer", f"Unsupported vectorizer '{vectorizer}'.")
+            raise ConfigError(
+                "similarity.vectorizer", f"Unsupported vectorizer '{vectorizer}'."
+            )
 
         embedding_model = data.get("embedding_model")
         if embedding_model is not None:
@@ -364,7 +400,9 @@ class NetworkConfig:
     summary: Path | None = None
 
     @classmethod
-    def from_mapping(cls, data: Mapping[str, Any], *, outputs: "OutputsConfig") -> NetworkConfig:
+    def from_mapping(
+        cls, data: Mapping[str, Any], *, outputs: "OutputsConfig"
+    ) -> NetworkConfig:
         allowed = {
             "enabled",
             "input",
@@ -380,18 +418,30 @@ class NetworkConfig:
         _check_unknown_keys(data, allowed, prefix="network")
 
         enabled = _coerce_bool(data.get("enabled", False), path="network.enabled")
-        output = _coerce_optional_path(data.get("output") or outputs.network, path="network.output")
-        summary = _coerce_optional_path(data.get("summary") or outputs.network_summary, path="network.summary")
+        output = _coerce_optional_path(
+            data.get("output") or outputs.network, path="network.output"
+        )
+        summary = _coerce_optional_path(
+            data.get("summary") or outputs.network_summary, path="network.summary"
+        )
         if output and not enabled:
             enabled = True
 
         network_input = _coerce_optional_path(data.get("input"), path="network.input")
-        library = _coerce_optional_path(data.get("library") or outputs.library, path="network.library")
+        library = _coerce_optional_path(
+            data.get("library") or outputs.library, path="network.library"
+        )
 
         metric = data.get("metric")
         if metric is not None:
             metric = str(metric).lower()
-            if metric not in {"cosine", "modified_cosine", "modified-cosine", "spec2vec", "embedding"}:
+            if metric not in {
+                "cosine",
+                "modified_cosine",
+                "modified-cosine",
+                "spec2vec",
+                "embedding",
+            }:
                 raise ConfigError("network.metric", f"Unsupported metric '{metric}'.")
 
         threshold = data.get("threshold")
@@ -399,9 +449,13 @@ class NetworkConfig:
             try:
                 threshold = float(threshold)
             except (TypeError, ValueError) as exc:
-                raise ConfigError("network.threshold", "threshold must be numeric.") from exc
+                raise ConfigError(
+                    "network.threshold", "threshold must be numeric."
+                ) from exc
             if threshold <= 0:
-                raise ConfigError("network.threshold", "threshold must be greater than zero.")
+                raise ConfigError(
+                    "network.threshold", "threshold must be greater than zero."
+                )
 
         knn = data.get("knn")
         if knn is not None:
@@ -413,14 +467,18 @@ class NetworkConfig:
                 raise ConfigError("network.knn", "knn must be greater than zero.")
 
         if threshold is not None and knn is not None:
-            raise ConfigError("network.threshold", "Specify either threshold or knn, not both.")
+            raise ConfigError(
+                "network.threshold", "Specify either threshold or knn, not both."
+            )
 
         reference_mz = None
         if data.get("reference_mz") is not None:
             try:
                 reference_mz = [float(value) for value in data.get("reference_mz", [])]
             except (TypeError, ValueError) as exc:
-                raise ConfigError("network.reference_mz", "reference_mz must be a list of numbers.") from exc
+                raise ConfigError(
+                    "network.reference_mz", "reference_mz must be a list of numbers."
+                ) from exc
 
         directed = _coerce_bool(data.get("directed", False), path="network.directed")
 
@@ -451,7 +509,9 @@ class CurationConfig:
     require_precursor_mz: bool = True
 
     @classmethod
-    def from_mapping(cls, data: Mapping[str, Any], *, outputs: "OutputsConfig") -> CurationConfig:
+    def from_mapping(
+        cls, data: Mapping[str, Any], *, outputs: "OutputsConfig"
+    ) -> CurationConfig:
         allowed = {
             "enabled",
             "output",
@@ -466,43 +526,67 @@ class CurationConfig:
         _check_unknown_keys(data, allowed, prefix="curation")
 
         enabled = _coerce_bool(data.get("enabled", False), path="curation.enabled")
-        output = _coerce_optional_path(data.get("output") or outputs.curated_library, path="curation.output")
-        qc_report = _coerce_optional_path(data.get("qc_report") or outputs.qc_report, path="curation.qc_report")
+        output = _coerce_optional_path(
+            data.get("output") or outputs.curated_library, path="curation.output"
+        )
+        qc_report = _coerce_optional_path(
+            data.get("qc_report") or outputs.qc_report, path="curation.qc_report"
+        )
 
         try:
             min_peaks = int(data.get("min_peaks", 3))
         except (TypeError, ValueError) as exc:
-            raise ConfigError("curation.min_peaks", "min_peaks must be an integer.") from exc
+            raise ConfigError(
+                "curation.min_peaks", "min_peaks must be an integer."
+            ) from exc
         if min_peaks <= 0:
-            raise ConfigError("curation.min_peaks", "min_peaks must be greater than zero.")
+            raise ConfigError(
+                "curation.min_peaks", "min_peaks must be greater than zero."
+            )
 
         try:
             min_total_ion_current = float(data.get("min_total_ion_current", 0.05))
         except (TypeError, ValueError) as exc:
-            raise ConfigError("curation.min_total_ion_current", "Value must be numeric.") from exc
+            raise ConfigError(
+                "curation.min_total_ion_current", "Value must be numeric."
+            ) from exc
         if min_total_ion_current < 0:
-            raise ConfigError("curation.min_total_ion_current", "Value cannot be negative.")
+            raise ConfigError(
+                "curation.min_total_ion_current", "Value cannot be negative."
+            )
 
         try:
             max_single_peak_fraction = float(data.get("max_single_peak_fraction", 0.9))
         except (TypeError, ValueError) as exc:
-            raise ConfigError("curation.max_single_peak_fraction", "Value must be numeric.") from exc
+            raise ConfigError(
+                "curation.max_single_peak_fraction", "Value must be numeric."
+            ) from exc
         if not 0 < max_single_peak_fraction <= 1:
-            raise ConfigError("curation.max_single_peak_fraction", "Value must be between 0 and 1.")
+            raise ConfigError(
+                "curation.max_single_peak_fraction", "Value must be between 0 and 1."
+            )
 
         try:
             precursor_tolerance = float(data.get("precursor_tolerance", 0.01))
         except (TypeError, ValueError) as exc:
-            raise ConfigError("curation.precursor_tolerance", "Value must be numeric.") from exc
+            raise ConfigError(
+                "curation.precursor_tolerance", "Value must be numeric."
+            ) from exc
         if precursor_tolerance <= 0:
-            raise ConfigError("curation.precursor_tolerance", "Value must be greater than zero.")
+            raise ConfigError(
+                "curation.precursor_tolerance", "Value must be greater than zero."
+            )
 
         try:
             similarity_threshold = float(data.get("similarity_threshold", 0.95))
         except (TypeError, ValueError) as exc:
-            raise ConfigError("curation.similarity_threshold", "Value must be numeric.") from exc
+            raise ConfigError(
+                "curation.similarity_threshold", "Value must be numeric."
+            ) from exc
         if not 0 < similarity_threshold <= 1:
-            raise ConfigError("curation.similarity_threshold", "Value must be between 0 and 1.")
+            raise ConfigError(
+                "curation.similarity_threshold", "Value must be between 0 and 1."
+            )
 
         require_precursor_mz = _coerce_bool(
             data.get("require_precursor_mz", True),
@@ -554,11 +638,19 @@ class OutputsConfig:
         _check_unknown_keys(data, allowed, prefix="outputs")
         return cls(
             library=_coerce_optional_path(data.get("library"), path="outputs.library"),
-            curated_library=_coerce_optional_path(data.get("curated_library"), path="outputs.curated_library"),
-            qc_report=_coerce_optional_path(data.get("qc_report"), path="outputs.qc_report"),
-            search_results=_coerce_optional_path(data.get("search_results"), path="outputs.search_results"),
+            curated_library=_coerce_optional_path(
+                data.get("curated_library"), path="outputs.curated_library"
+            ),
+            qc_report=_coerce_optional_path(
+                data.get("qc_report"), path="outputs.qc_report"
+            ),
+            search_results=_coerce_optional_path(
+                data.get("search_results"), path="outputs.search_results"
+            ),
             network=_coerce_optional_path(data.get("network"), path="outputs.network"),
-            network_summary=_coerce_optional_path(data.get("network_summary"), path="outputs.network_summary"),
+            network_summary=_coerce_optional_path(
+                data.get("network_summary"), path="outputs.network_summary"
+            ),
         )
 
 
@@ -575,15 +667,28 @@ class WorkflowConfig:
     def from_mapping(cls, data: Mapping[str, Any]) -> WorkflowConfig:
         if not isinstance(data, Mapping):
             raise ConfigError("<root>", "Configuration root must be a mapping/object.")
-        allowed_top = {"input", "library", "similarity", "network", "outputs", "curation"}
+        allowed_top = {
+            "input",
+            "library",
+            "similarity",
+            "network",
+            "outputs",
+            "curation",
+        }
         _check_unknown_keys(data, allowed_top, prefix="<root>")
 
         outputs = OutputsConfig.from_mapping(data.get("outputs", {}))
         input_cfg = InputConfig.from_mapping(data.get("input", {}))
-        library_cfg = LibraryConfig.from_mapping(data.get("library", {}), outputs=outputs)
+        library_cfg = LibraryConfig.from_mapping(
+            data.get("library", {}), outputs=outputs
+        )
         similarity_cfg = SimilarityConfig.from_mapping(data.get("similarity", {}))
-        network_cfg = NetworkConfig.from_mapping(data.get("network", {}), outputs=outputs)
-        curation_cfg = CurationConfig.from_mapping(data.get("curation", {}), outputs=outputs)
+        network_cfg = NetworkConfig.from_mapping(
+            data.get("network", {}), outputs=outputs
+        )
+        curation_cfg = CurationConfig.from_mapping(
+            data.get("curation", {}), outputs=outputs
+        )
 
         config = cls(
             input=input_cfg,
@@ -597,25 +702,48 @@ class WorkflowConfig:
         return config
 
     def _validate(self) -> None:
-        if not (self.input.paths or self.library.sources or self.similarity.queries or self.library.path):
-            raise ConfigError("input.paths", "Provide at least one input path, library, or query source.")
+        if not (
+            self.input.paths
+            or self.library.sources
+            or self.similarity.queries
+            or self.library.path
+        ):
+            raise ConfigError(
+                "input.paths",
+                "Provide at least one input path, library, or query source.",
+            )
 
         if self.library.build and self.library.path is None:
-            raise ConfigError("library.path", "Provide a library path when build is enabled.")
+            raise ConfigError(
+                "library.path", "Provide a library path when build is enabled."
+            )
 
         if self.similarity.enabled:
             if self.library.path is None:
-                raise ConfigError("similarity.search", "Similarity search requires a library.path.")
+                raise ConfigError(
+                    "similarity.search", "Similarity search requires a library.path."
+                )
             if not (self.similarity.queries or self.input.paths):
-                raise ConfigError("similarity.queries", "Provide queries or reuse input.paths for search.")
+                raise ConfigError(
+                    "similarity.queries",
+                    "Provide queries or reuse input.paths for search.",
+                )
 
         if self.network.enabled:
             if self.network.output is None:
-                raise ConfigError("network.output", "Building a network requires an output path.")
+                raise ConfigError(
+                    "network.output", "Building a network requires an output path."
+                )
             if self.network.threshold is None and self.network.knn is None:
-                raise ConfigError("network.threshold", "Specify either a threshold or knn for networking.")
+                raise ConfigError(
+                    "network.threshold",
+                    "Specify either a threshold or knn for networking.",
+                )
             if not (self.network.input or self.library.path):
-                raise ConfigError("network.input", "Provide network.input or library.path for network construction.")
+                raise ConfigError(
+                    "network.input",
+                    "Provide network.input or library.path for network construction.",
+                )
 
         if self.curation.enabled and self.library.path is None:
             raise ConfigError("curation.enabled", "Curation requires a library.path.")
@@ -639,7 +767,9 @@ def _load_config_data(config: str | Path | Mapping[str, Any]) -> Mapping[str, An
         suffix = config_path.suffix.lower()
         if suffix in {".yaml", ".yml"}:
             if yaml is None:
-                raise ConfigError("<root>", "PyYAML is required to parse YAML configuration files.")
+                raise ConfigError(
+                    "<root>", "PyYAML is required to parse YAML configuration files."
+                )
             data = yaml.safe_load(text) or {}
         else:
             data = json.loads(text)

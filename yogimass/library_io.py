@@ -36,15 +36,21 @@ def read_schema_version(library_path: str | Path) -> str | None:
     return None
 
 
-def assert_schema_compatible(library_path: str | Path, minimum_version: str = SCHEMA_VERSION) -> None:
+def assert_schema_compatible(
+    library_path: str | Path, minimum_version: str = SCHEMA_VERSION
+) -> None:
     version = read_schema_version(library_path)
     if version is None:
         return  # legacy/unknown; accept for now
     if _parse_version(version) < _parse_version(minimum_version):
-        raise ValueError(f"Library schema version {version} is older than supported minimum {minimum_version}.")
+        raise ValueError(
+            f"Library schema version {version} is older than supported minimum {minimum_version}."
+        )
 
 
-def export_library_summary_csv(library_path: str | Path, output_path: str | Path) -> Path:
+def export_library_summary_csv(
+    library_path: str | Path, output_path: str | Path
+) -> Path:
     lib = LocalSpectralLibrary(library_path)
     rows = []
     for entry in lib.iter_entries():
@@ -52,7 +58,9 @@ def export_library_summary_csv(library_path: str | Path, output_path: str | Path
         rows.append(
             {
                 "id": entry.identifier,
-                "precursor_mz": entry.precursor_mz if entry.precursor_mz is not None else "",
+                "precursor_mz": entry.precursor_mz
+                if entry.precursor_mz is not None
+                else "",
                 "name": metadata.get("name") or metadata.get("compound_name") or "",
                 "retention_time": metadata.get("retention_time") or "",
             }
@@ -60,7 +68,9 @@ def export_library_summary_csv(library_path: str | Path, output_path: str | Path
     out_path = Path(output_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with out_path.open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(handle, fieldnames=["id", "precursor_mz", "name", "retention_time"])
+        writer = csv.DictWriter(
+            handle, fieldnames=["id", "precursor_mz", "name", "retention_time"]
+        )
         writer.writeheader()
         writer.writerows(rows)
     return out_path

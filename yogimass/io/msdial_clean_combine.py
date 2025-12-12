@@ -122,9 +122,7 @@ def extract_msms_peaks(processed_data: pd.DataFrame, alignment_id: int) -> pd.Da
         raise KeyError("Processed data must contain 'Alignment ID'.")
     if "MS/MS spectrum" not in processed_data.columns:
         raise KeyError("Processed data must contain 'MS/MS spectrum'.")
-    alignment_values = pd.to_numeric(
-        processed_data["Alignment ID"], errors="coerce"
-    )
+    alignment_values = pd.to_numeric(processed_data["Alignment ID"], errors="coerce")
     mask = alignment_values == int(alignment_id)
     subset = processed_data.loc[mask]
     if subset.empty:

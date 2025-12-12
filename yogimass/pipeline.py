@@ -14,7 +14,6 @@ from .io import (
     list_msp_libraries,
     list_mgf_libraries,
     list_available_libraries,
-    fetch_mgflib_spectrum,
     save_spectra_to_mgf,
     save_spectra_to_msp,
     save_spectra_to_json,
@@ -129,6 +128,7 @@ def _batch_clean_libraries(
     if not library_paths:
         logger.warning("No libraries found to clean.")
     return exported_files
+
 
 logger = get_logger("yogimass.pipeline")
 

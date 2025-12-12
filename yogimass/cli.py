@@ -27,7 +27,11 @@ from yogimass import pipeline, workflow
 from yogimass.config import ConfigError, load_config
 from yogimass.networking.exporters import export_network_for_cytoscape
 from yogimass.networking.network import SimilarityEdge, SpectrumNode
-from yogimass.reporting import summarize_network, write_network_summary, write_search_results
+from yogimass.reporting import (
+    summarize_network,
+    write_network_summary,
+    write_search_results,
+)
 from yogimass.similarity.library import LocalSpectralLibrary
 from yogimass.similarity.processing import SpectrumProcessor
 from yogimass.utils.logging import get_logger
@@ -50,9 +54,13 @@ def _positive_int(value: str) -> int:
     try:
         number = int(value)
     except ValueError as exc:  # pragma: no cover - argparse handles messaging
-        raise argparse.ArgumentTypeError(f"Expected an integer, got '{value}'.") from exc
+        raise argparse.ArgumentTypeError(
+            f"Expected an integer, got '{value}'."
+        ) from exc
     if number <= 0:
-        raise argparse.ArgumentTypeError(f"Value must be greater than zero, got {value}.")
+        raise argparse.ArgumentTypeError(
+            f"Value must be greater than zero, got {value}."
+        )
     return number
 
 
@@ -213,19 +221,31 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _add_config_subparser(subparsers):
-    config_parser = subparsers.add_parser("config", help="Run workflows from a config file.")
-    config_subparsers = config_parser.add_subparsers(dest="config_command", required=True)
+    config_parser = subparsers.add_parser(
+        "config", help="Run workflows from a config file."
+    )
+    config_subparsers = config_parser.add_subparsers(
+        dest="config_command", required=True
+    )
     run_parser = config_subparsers.add_parser("run", help="Execute a YAML/JSON config.")
-    run_parser.add_argument("--config", required=True, help="Path to the configuration file.")
+    run_parser.add_argument(
+        "--config", required=True, help="Path to the configuration file."
+    )
     run_parser.set_defaults(func=_run_config_command)
     return run_parser
 
 
 def _add_library_subparser(subparsers):
-    library_parser = subparsers.add_parser("library", help="Build or search spectral libraries.")
-    library_subparsers = library_parser.add_subparsers(dest="library_command", required=True)
+    library_parser = subparsers.add_parser(
+        "library", help="Build or search spectral libraries."
+    )
+    library_subparsers = library_parser.add_subparsers(
+        dest="library_command", required=True
+    )
 
-    build_parser = library_subparsers.add_parser("build", help="Build or update a local library.")
+    build_parser = library_subparsers.add_parser(
+        "build", help="Build or update a local library."
+    )
     build_parser.add_argument(
         "--input",
         nargs="+",
@@ -263,7 +283,9 @@ def _add_library_subparser(subparsers):
     _add_processor_args(build_parser)
     build_parser.set_defaults(func=_run_library_build_command, overwrite=True)
 
-    search_parser = library_subparsers.add_parser("search", help="Search queries against a library.")
+    search_parser = library_subparsers.add_parser(
+        "search", help="Search queries against a library."
+    )
     search_parser.add_argument(
         "--queries",
         nargs="+",
@@ -311,7 +333,9 @@ def _add_library_subparser(subparsers):
     _add_processor_args(search_parser)
     search_parser.set_defaults(func=_run_library_search_command)
 
-    curate_parser = library_subparsers.add_parser("curate", help="Curate and QC an existing library.")
+    curate_parser = library_subparsers.add_parser(
+        "curate", help="Curate and QC an existing library."
+    )
     curate_parser.add_argument(
         "--input",
         required=True,
@@ -370,7 +394,9 @@ def _add_network_subparser(subparsers):
         "network",
         help="Build MS/MS similarity networks.",
     )
-    network_subparsers = network_parser.add_subparsers(dest="network_command", required=True)
+    network_subparsers = network_parser.add_subparsers(
+        dest="network_command", required=True
+    )
 
     build_parser = network_subparsers.add_parser(
         "build",
@@ -563,7 +589,10 @@ def _run_network_export_cytoscape_command(args) -> int:
     cfg = load_config(args.config)
     network_path_value = args.network or cfg.network.output or cfg.outputs.network
     if not network_path_value:
-        raise ConfigError("network.output", "Network output path is required to export Cytoscape tables.")
+        raise ConfigError(
+            "network.output",
+            "Network output path is required to export Cytoscape tables.",
+        )
     network_path = Path(network_path_value)
     if not network_path.exists():
         raise FileNotFoundError(f"Network file not found: {network_path}")

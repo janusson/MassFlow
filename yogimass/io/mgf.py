@@ -7,21 +7,25 @@ import os
 from os import path
 from pathlib import Path
 import pandas as pd
-from matchms.importing import load_from_mgf, load_from_msp
+from matchms.importing import load_from_mgf
 from matchms.exporting import save_as_mgf, save_as_msp, save_as_json
 import pickle
 from yogimass.utils.logging import get_logger
+
 logger = get_logger(__name__)
+
 
 def list_msp_libraries(directory):
     msp_libraries_list = glob.glob(os.path.join(directory, "*.msp"), recursive=True)
     logger.info(f"{len(msp_libraries_list)} MSP libraries found.")
     return msp_libraries_list
 
+
 def list_mgf_libraries(directory):
     mgf_libraries_list = glob.glob(path.join(directory, "*.mgf"), recursive=True)
     logger.info(f"{len(mgf_libraries_list)} MGF libraries found.")
     return mgf_libraries_list
+
 
 def list_available_libraries(mgf_libraries_list, msp_libraries_list):
     summary = {
@@ -38,6 +42,7 @@ def list_available_libraries(mgf_libraries_list, msp_libraries_list):
             logger.info("  (none found)")
     logger.info("MGF/MSP Libraries listed.")
     return summary
+
 
 def fetch_mgflib_spectrum(library_filepath, spectrum_number):
     spectra_list = list(load_from_mgf(library_filepath))
@@ -56,20 +61,24 @@ def fetch_mgflib_spectrum(library_filepath, spectrum_number):
     spectrum_chemical = spectra_list[spectrum_number].metadata["name"]
     return spectrum_xy_data, spectrum_metadata, spectrum_chemical
 
+
 def save_spectra_to_mgf(spectra_list, export_filepath, export_name):
     export_mgf_path = path.join(export_filepath, export_name + ".mgf")
     save_as_mgf(spectra_list, export_mgf_path)
     logger.info(f"{len(spectra_list)} spectra saved to MGF: {export_mgf_path}")
+
 
 def save_spectra_to_msp(spectra_list, export_filepath, export_name):
     export_msp_path = path.join(export_filepath, export_name + ".msp")
     save_as_msp(spectra_list, export_msp_path)
     logger.info(f"{len(spectra_list)} spectra saved to MSP: {export_msp_path}")
 
+
 def save_spectra_to_json(spectra_list, export_filepath, export_name):
     export_json_path = path.join(export_filepath, export_name + ".json")
     save_as_json(spectra_list, export_json_path)
     logger.info(f"{len(spectra_list)} spectra saved to JSON: {export_json_path}")
+
 
 def save_spectra_to_pickle(spectra_list, export_filepath, export_name):
     file_export_pickle = path.join(export_filepath, export_name + ".pickle")

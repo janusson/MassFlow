@@ -1,6 +1,5 @@
 import csv
 import json
-from pathlib import Path
 
 import numpy as np
 import pytest
@@ -9,7 +8,11 @@ pytest.importorskip("matchms", reason="Library IO tests require matchms.")
 
 from matchms import Spectrum
 
-from yogimass.library_io import assert_schema_compatible, export_library_summary_csv, read_schema_version
+from yogimass.library_io import (
+    assert_schema_compatible,
+    export_library_summary_csv,
+    read_schema_version,
+)
 from yogimass.similarity.library import LocalSpectralLibrary, SCHEMA_VERSION
 
 
@@ -32,7 +35,9 @@ def test_schema_version_written_and_read(tmp_path):
 
 def test_schema_version_incompatible_raises(tmp_path):
     lib_path = tmp_path / "old_lib.json"
-    lib_path.write_text(json.dumps({"schema_version": "0.5", "entries": []}), encoding="utf-8")
+    lib_path.write_text(
+        json.dumps({"schema_version": "0.5", "entries": []}), encoding="utf-8"
+    )
     with pytest.raises(ValueError):
         assert_schema_compatible(lib_path, minimum_version="0.9")
 
@@ -40,7 +45,9 @@ def test_schema_version_incompatible_raises(tmp_path):
 def test_export_library_summary_csv(tmp_path):
     lib_path = tmp_path / "lib.json"
     lib = LocalSpectralLibrary(lib_path)
-    lib.add_spectrum(_spectrum([100.0], [1.0], name="s1", retention_time=5.0), overwrite=True)
+    lib.add_spectrum(
+        _spectrum([100.0], [1.0], name="s1", retention_time=5.0), overwrite=True
+    )
     lib.add_spectrum(_spectrum([200.0], [2.0], compound_name="s2"), overwrite=True)
 
     csv_path = export_library_summary_csv(lib_path, tmp_path / "summary.csv")

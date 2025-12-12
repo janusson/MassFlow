@@ -24,7 +24,9 @@ def ensure_name_metadata(spectrum):
     for key in ("compound_name", "title"):
         value = spectrum.get(key)
         if value:
-            metadata_store = getattr(getattr(spectrum, "_metadata", None), "_data", None)
+            metadata_store = getattr(
+                getattr(spectrum, "_metadata", None), "_data", None
+            )
             if metadata_store is not None:
                 dict.__setitem__(metadata_store, "name", value)
             break
@@ -34,9 +36,6 @@ def ensure_name_metadata(spectrum):
 def metadata_processing(spectrum):
     from matchms.filtering import default_filters
     from matchms.filtering import repair_inchi_inchikey_smiles
-    from matchms.filtering import derive_inchikey_from_inchi
-    from matchms.filtering import derive_smiles_from_inchi
-    from matchms.filtering import derive_inchi_from_smiles
     from matchms.filtering import harmonize_undefined_inchi
     from matchms.filtering import harmonize_undefined_inchikey
     from matchms.filtering import harmonize_undefined_smiles
@@ -60,12 +59,14 @@ def metadata_processing(spectrum):
     spectrum = _set_ionmode_na_when_missing(spectrum)
     return spectrum
 
+
 def peak_processing(spectrum):
     from matchms.filtering import default_filters
     from matchms.filtering import normalize_intensities
     from matchms.filtering import select_by_intensity
     from matchms.filtering import select_by_relative_intensity
     from matchms.filtering import select_by_mz
+
     spectrum = default_filters(spectrum)
     spectrum = select_by_intensity(spectrum, intensity_from=0.01)
     spectrum = select_by_relative_intensity(spectrum, intensity_from=0.08)

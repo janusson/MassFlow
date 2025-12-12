@@ -27,7 +27,9 @@ def _cast_spectrum(spectrum: Spectrum, dtype: type = float) -> Spectrum:
     return Spectrum(mz=mz, intensities=intensities, metadata=spectrum.metadata)
 
 
-def _dedup_mz_window(mz: np.ndarray, intensities: np.ndarray, tolerance: float) -> tuple[np.ndarray, np.ndarray]:
+def _dedup_mz_window(
+    mz: np.ndarray, intensities: np.ndarray, tolerance: float
+) -> tuple[np.ndarray, np.ndarray]:
     """Deduplicate peaks within an m/z window by choosing the apex (max intensity) peak.
 
     Deterministic grouping: sort by m/z then group adjacent peaks within `tolerance`.
@@ -123,7 +125,9 @@ class SpectrumProcessor:
         if max_intensity == 0.0:
             return clone
 
-        threshold = max(max_intensity * self.min_relative_intensity, self.min_absolute_intensity)
+        threshold = max(
+            max_intensity * self.min_relative_intensity, self.min_absolute_intensity
+        )
         keep_mask = intensities >= threshold
         kept_indices = np.nonzero(keep_mask)[0]
 
@@ -144,7 +148,9 @@ class SpectrumProcessor:
 
         # Optional m/z-window deduplication
         if self.mz_dedup_tolerance is not None and self.mz_dedup_tolerance > 0:
-            new_mz, new_intensities = _dedup_mz_window(new_mz, new_intensities, self.mz_dedup_tolerance)
+            new_mz, new_intensities = _dedup_mz_window(
+                new_mz, new_intensities, self.mz_dedup_tolerance
+            )
 
         # if nothing changed from original (after dedup) and lengths are same
         if new_mz.size == mz.size and np.allclose(new_mz, mz):
@@ -216,7 +222,9 @@ class SpectrumProcessor:
             metadata=clone.metadata,
         )
 
-    def align_to_reference(self, spectrum: Spectrum, reference_mz: Sequence[float]) -> Spectrum:
+    def align_to_reference(
+        self, spectrum: Spectrum, reference_mz: Sequence[float]
+    ) -> Spectrum:
         """
         Align a spectrum to a reference m/z grid within align_tolerance.
         Returns a new Spectrum with intensities on the reference grid.
@@ -241,7 +249,9 @@ class SpectrumProcessor:
             metadata=spectrum.metadata,
         )
 
-    def process(self, spectrum: Spectrum, reference_mz: Optional[Sequence[float]] = None) -> Spectrum:
+    def process(
+        self, spectrum: Spectrum, reference_mz: Optional[Sequence[float]] = None
+    ) -> Spectrum:
         """
         Apply filtering and (optionally) alignment to a spectrum.
         """

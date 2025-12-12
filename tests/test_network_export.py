@@ -1,5 +1,4 @@
 import csv
-from pathlib import Path
 
 import pytest
 
@@ -45,14 +44,22 @@ def test_export_network_for_cytoscape_writes_tables(tmp_path):
 def test_network_export_cli_with_library_metadata(tmp_path):
     lib_path = tmp_path / "lib.json"
     lib = LocalSpectralLibrary(lib_path)
-    lib.add_spectrum(_spectrum([100.0], [1.0], name="A"), identifier="s1", overwrite=True)
-    lib.add_spectrum(_spectrum([200.0], [2.0], name="B"), identifier="s2", overwrite=True)
+    lib.add_spectrum(
+        _spectrum([100.0], [1.0], name="A"), identifier="s1", overwrite=True
+    )
+    lib.add_spectrum(
+        _spectrum([200.0], [2.0], name="B"), identifier="s2", overwrite=True
+    )
 
     edges_path = tmp_path / "network.csv"
     with edges_path.open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(handle, fieldnames=["source", "target", "similarity", "metric"])
+        writer = csv.DictWriter(
+            handle, fieldnames=["source", "target", "similarity", "metric"]
+        )
         writer.writeheader()
-        writer.writerow({"source": "s1", "target": "s2", "similarity": 0.8, "metric": "cosine"})
+        writer.writerow(
+            {"source": "s1", "target": "s2", "similarity": 0.8, "metric": "cosine"}
+        )
 
     config_path = tmp_path / "config.yaml"
     config_path.write_text(

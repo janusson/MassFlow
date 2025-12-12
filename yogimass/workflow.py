@@ -68,17 +68,26 @@ def load_data(
             spectra.extend(list(loader(str(file_path))))
         if not spectra:
             logger.warning("No spectra loaded from %s input(s).", fmt)
-        logger.info("Loaded %d spectra from %d %s file(s).", len(spectra), len(files), fmt.upper())
+        logger.info(
+            "Loaded %d spectra from %d %s file(s).",
+            len(spectra),
+            len(files),
+            fmt.upper(),
+        )
         return spectra
     if fmt == "msdial":
         try:
             from yogimass.io.msdial_clean_combine import clean_and_combine_msdial
         except Exception as exc:  # pragma: no cover - import guard
-            raise ImportError("MS-DIAL support requires pandas and related utilities.") from exc
+            raise ImportError(
+                "MS-DIAL support requires pandas and related utilities."
+            ) from exc
         if not paths:
             raise ValueError("At least one input path is required for msdial data.")
         input_dir = paths[0]
-        output_dir = Path(msdial_output_dir) if msdial_output_dir is not None else input_dir
+        output_dir = (
+            Path(msdial_output_dir) if msdial_output_dir is not None else input_dir
+        )
         dataframe, _ = clean_and_combine_msdial(input_dir, output_dir)
         logger.info("Loaded MS-DIAL dataframe with %d rows.", len(dataframe))
         return dataframe
@@ -111,9 +120,16 @@ def build_library(
     added = 0
     for spectrum in spectra:
         processed = processor.process(spectrum)
-        library.add_spectrum(processed, vectorizer=vectorizer or spec2vec_vectorize, overwrite=overwrite)
+        library.add_spectrum(
+            processed, vectorizer=vectorizer or spec2vec_vectorize, overwrite=overwrite
+        )
         added += 1
-    logger.info("Added %d spectra to library at %s (total=%d).", added, library.path, len(library))
+    logger.info(
+        "Added %d spectra to library at %s (total=%d).",
+        added,
+        library.path,
+        len(library),
+    )
     return library
 
 
@@ -165,7 +181,9 @@ def search_library(
                     metadata=hit.metadata,
                 )
             )
-    logger.info("Completed search for %d queries against %s.", len(spectra), library_path)
+    logger.info(
+        "Completed search for %d queries against %s.", len(spectra), library_path
+    )
     return results
 
 
@@ -183,7 +201,9 @@ def curate_library(
     entries = list(source_library.iter_entries())
     result = curation.curate_entries(entries, config=config)
 
-    output_library = LocalSpectralLibrary(output_library_path, storage=source_library.storage)
+    output_library = LocalSpectralLibrary(
+        output_library_path, storage=source_library.storage
+    )
     output_library.write_entries(result.curated_entries)
 
     report_path = _qc_report_path(output_library_path, qc_report_path)
@@ -216,11 +236,15 @@ def build_network(
     Build a similarity network from either spectra on disk or a stored library.
     """
     if not input_dir and not library_path:
-        raise ValueError("Provide either input_dir or library_path for network building.")
+        raise ValueError(
+            "Provide either input_dir or library_path for network building."
+        )
     if input_dir and library_path:
         raise ValueError("Choose either input_dir or library_path, not both.")
     if library_path and metric in {"cosine", "modified_cosine", "modified-cosine"}:
-        raise ValueError("Library input requires a vector-based metric such as 'spec2vec'.")
+        raise ValueError(
+            "Library input requires a vector-based metric such as 'spec2vec'."
+        )
 
     if library_path:
         nodes, edges = network_builder.build_network_from_library(
@@ -260,7 +284,9 @@ def run_from_config(config: str | Path | Mapping[str, Any] | WorkflowConfig) -> 
     vectorizer_choice = cfg.similarity.vectorizer
     if cfg.network.metric == "embedding":
         vectorizer_choice = "embedding"
-    vectorizer = _vectorizer_for_config(vectorizer_choice, cfg.similarity.embedding_model)
+    vectorizer = _vectorizer_for_config(
+        vectorizer_choice, cfg.similarity.embedding_model
+    )
     processor = _processor_from_config(cfg.similarity.processor)
 
     data = load_data(
@@ -274,12 +300,16 @@ def run_from_config(config: str | Path | Mapping[str, Any] | WorkflowConfig) -> 
     library_path = cfg.library.path
     library_sources = cfg.library.sources or input_paths
     library_input_format = cfg.library.input_format or input_format
-    library_recursive = cfg.library.recursive if cfg.library.recursive is not None else recursive
+    library_recursive = (
+        cfg.library.recursive if cfg.library.recursive is not None else recursive
+    )
     library_built = None
     active_library_path = library_path
     if cfg.library.build:
         if not library_path:
-            raise ConfigError("library.path", "Library path is required when building a library.")
+            raise ConfigError(
+                "library.path", "Library path is required when building a library."
+            )
         library_built = build_library(
             library_sources if library_sources else spectra,
             library_path,
@@ -297,8 +327,14 @@ def run_from_config(config: str | Path | Mapping[str, Any] | WorkflowConfig) -> 
 
     if cfg.curation.enabled:
         if not active_library_path:
-            raise ConfigError("curation.enabled", "Curation enabled but no library path is available.")
-        curated_output = cfg.curation.output or outputs_cfg.curated_library or _derive_curated_path(active_library_path)
+            raise ConfigError(
+                "curation.enabled", "Curation enabled but no library path is available."
+            )
+        curated_output = (
+            cfg.curation.output
+            or outputs_cfg.curated_library
+            or _derive_curated_path(active_library_path)
+        )
         qc_report_path = cfg.curation.qc_report or outputs_cfg.qc_report
         curate_library(
             active_library_path,
@@ -317,7 +353,9 @@ def run_from_config(config: str | Path | Mapping[str, Any] | WorkflowConfig) -> 
                 query_sources if query_sources is not None else spectra,
                 active_library_path,
                 input_format=cfg.similarity.query_format or input_format,
-                recursive=cfg.similarity.recursive if cfg.similarity.recursive is not None else recursive,
+                recursive=cfg.similarity.recursive
+                if cfg.similarity.recursive is not None
+                else recursive,
                 msdial_output_dir=inputs_cfg.msdial_output,
                 top_n=cfg.similarity.top_n,
                 min_score=cfg.similarity.min_score,
@@ -361,7 +399,9 @@ def run_from_config(config: str | Path | Mapping[str, Any] | WorkflowConfig) -> 
     if library_built:
         logger.info("Library written to %s", library_built.path)
     if search_results and not (outputs_cfg.search_results or cfg.similarity.output):
-        logger.info("Generated %d search hits (no output file configured).", len(search_results))
+        logger.info(
+            "Generated %d search hits (no output file configured).", len(search_results)
+        )
 
 
 def _coerce_paths(inputs: str | Path | Sequence[str | Path] | None) -> list[Path]:
@@ -372,7 +412,9 @@ def _coerce_paths(inputs: str | Path | Sequence[str | Path] | None) -> list[Path
     return [Path(item) for item in inputs]
 
 
-def _iter_files(paths: Iterable[Path], suffixes: set[str], *, recursive: bool) -> Iterable[Path]:
+def _iter_files(
+    paths: Iterable[Path], suffixes: set[str], *, recursive: bool
+) -> Iterable[Path]:
     for base in paths:
         if base.is_dir():
             pattern = "**/*" if recursive else "*"
@@ -414,7 +456,9 @@ def _ensure_spectra(
             from yogimass.io.msdial_process import msdial_dataframe_to_spectra
 
             return msdial_dataframe_to_spectra(loaded)
-        raise ValueError(f"Expected spectra list, got {type(loaded)} for format '{input_format}'.")
+        raise ValueError(
+            f"Expected spectra list, got {type(loaded)} for format '{input_format}'."
+        )
     return loaded
 
 
@@ -424,7 +468,9 @@ def _derive_curated_path(library_path: str | Path) -> Path:
     return base.with_name(f"{base.stem}_curated{suffix}")
 
 
-def _qc_report_path(output_library_path: str | Path, explicit_report: str | Path | None) -> Path:
+def _qc_report_path(
+    output_library_path: str | Path, explicit_report: str | Path | None
+) -> Path:
     if explicit_report is not None:
         return Path(explicit_report)
     base = Path(output_library_path)

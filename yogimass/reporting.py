@@ -43,7 +43,9 @@ class SearchMatch:
     metadata: dict[str, Any]
 
 
-def write_search_results(results: Sequence[SearchMatch], output_path: str | Path) -> Path:
+def write_search_results(
+    results: Sequence[SearchMatch], output_path: str | Path
+) -> Path:
     """
     Write search results to CSV or JSON. Metadata is JSON-encoded for CSV output.
     """
@@ -64,7 +66,13 @@ def write_search_results(results: Sequence[SearchMatch], output_path: str | Path
         output_path.write_text(json.dumps(rows, indent=2), encoding="utf-8")
     else:
         with output_path.open("w", newline="", encoding="utf-8") as handle:
-            fieldnames = ["query_id", "hit_id", "score", "precursor_mz", "metadata_json"]
+            fieldnames = [
+                "query_id",
+                "hit_id",
+                "score",
+                "precursor_mz",
+                "metadata_json",
+            ]
             writer = csv.DictWriter(handle, fieldnames=fieldnames)
             writer.writeheader()
             for row in rows:
@@ -73,7 +81,9 @@ def write_search_results(results: Sequence[SearchMatch], output_path: str | Path
                         "query_id": row["query_id"],
                         "hit_id": row["hit_id"],
                         "score": f"{row['score']:.6f}",
-                        "precursor_mz": row["precursor_mz"] if row["precursor_mz"] is not None else "",
+                        "precursor_mz": row["precursor_mz"]
+                        if row["precursor_mz"] is not None
+                        else "",
                         "metadata_json": json.dumps(row["metadata"]),
                     }
                 )
@@ -81,7 +91,9 @@ def write_search_results(results: Sequence[SearchMatch], output_path: str | Path
     return output_path
 
 
-def summarize_network(nodes: Sequence[SpectrumNode], edges: Sequence[SimilarityEdge]) -> dict[str, Any]:
+def summarize_network(
+    nodes: Sequence[SpectrumNode], edges: Sequence[SimilarityEdge]
+) -> dict[str, Any]:
     """
     Basic network summary: counts and simple degree statistics.
     """
@@ -127,7 +139,9 @@ def write_network_summary(summary: Mapping[str, Any], output_path: str | Path) -
     return output_path
 
 
-def summarize_quality_distributions(quality: Mapping[str, QualityResult]) -> dict[str, Mapping[str, int]]:
+def summarize_quality_distributions(
+    quality: Mapping[str, QualityResult],
+) -> dict[str, Mapping[str, int]]:
     """
     Build coarse histograms for quality metrics to avoid plotting dependencies.
     """
@@ -136,8 +150,12 @@ def summarize_quality_distributions(quality: Mapping[str, QualityResult]) -> dic
     single_peak_fraction = [result.single_peak_fraction for result in quality.values()]
     return {
         "num_peaks": _bucketize(num_peaks, [0, 2, 5, 10]),
-        "total_ion_current": _bucketize(total_ion_current, [0.05, 0.1, 0.5, 1.0, 2.0, 5.0]),
-        "single_peak_fraction": _bucketize(single_peak_fraction, [0.25, 0.5, 0.75, 0.9]),
+        "total_ion_current": _bucketize(
+            total_ion_current, [0.05, 0.1, 0.5, 1.0, 2.0, 5.0]
+        ),
+        "single_peak_fraction": _bucketize(
+            single_peak_fraction, [0.25, 0.5, 0.75, 0.9]
+        ),
     }
 
 
@@ -183,9 +201,15 @@ def write_curation_report(result: CurationResult, output_path: str | Path) -> Pa
                         "representative": decision.representative or "",
                         "merged_ids": ",".join(decision.merged_ids or []),
                         "num_peaks": quality.num_peaks if quality else "",
-                        "total_ion_current": f"{quality.total_ion_current:.4f}" if quality else "",
-                        "single_peak_fraction": f"{quality.single_peak_fraction:.4f}" if quality else "",
-                        "quality_score": f"{quality.quality_score:.4f}" if quality else "",
+                        "total_ion_current": f"{quality.total_ion_current:.4f}"
+                        if quality
+                        else "",
+                        "single_peak_fraction": f"{quality.single_peak_fraction:.4f}"
+                        if quality
+                        else "",
+                        "quality_score": f"{quality.quality_score:.4f}"
+                        if quality
+                        else "",
                     }
                 )
     logger.info("Wrote curation report to %s", output_path)

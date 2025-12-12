@@ -42,7 +42,9 @@ def _cosine_from_maps(a: Dict[Hashable, float], b: Dict[Hashable, float]) -> flo
     return float(va.dot(vb) / denom)
 
 
-def cosine_similarity(spectrum_a: Spectrum, spectrum_b: Spectrum, tolerance: float = 0.005) -> float:
+def cosine_similarity(
+    spectrum_a: Spectrum, spectrum_b: Spectrum, tolerance: float = 0.005
+) -> float:
     """
     Compute a simple cosine similarity between two spectra.
 
@@ -83,7 +85,7 @@ def spec2vec_vectorize(
     if max_intensity == 0:
         return {}
     normalized = intensities / max_intensity
-    weights = normalized ** intensity_power
+    weights = normalized**intensity_power
     tokens = [f"peak@{value:.{decimal_places}f}" for value in mz]
     vector: dict[str, float] = {}
     for token, weight in zip(tokens, weights):
@@ -91,7 +93,9 @@ def spec2vec_vectorize(
     return vector
 
 
-def cosine_from_vectors(vector_a: Mapping[str, float], vector_b: Mapping[str, float]) -> float:
+def cosine_from_vectors(
+    vector_a: Mapping[str, float], vector_b: Mapping[str, float]
+) -> float:
     """
     Compute cosine similarity between sparse token-weight vectors.
     """

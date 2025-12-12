@@ -62,7 +62,9 @@ class LibrarySearcher:
         processed = self.processor.process(spectrum, reference_mz=reference_mz)
         query_vector = self.vectorizer(processed)
         index = self._index or self._build_index()
-        hits = index.query(query_vector, top_n=top_n, min_score=min_score) if index else []
+        hits = (
+            index.query(query_vector, top_n=top_n, min_score=min_score) if index else []
+        )
         return [self._to_result(hit) for hit in hits]
 
     def _to_result(self, hit: SearchHit) -> SearchResult:
@@ -76,6 +78,8 @@ class LibrarySearcher:
     def _build_index(self):
         from yogimass.similarity.backends import create_index_backend
 
-        index = create_index_backend(self.backend_name, entries=self.library.iter_entries())
+        index = create_index_backend(
+            self.backend_name, entries=self.library.iter_entries()
+        )
         self._index = index
         return index

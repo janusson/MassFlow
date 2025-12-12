@@ -115,7 +115,9 @@ def build_network_from_library(
         )
         for entry in library.iter_entries()
     ]
-    return _build_edges(nodes, metric=metric, threshold=threshold, knn=knn, undirected=undirected)
+    return _build_edges(
+        nodes, metric=metric, threshold=threshold, knn=knn, undirected=undirected
+    )
 
 
 def build_network_from_spectra(
@@ -142,7 +144,9 @@ def build_network_from_spectra(
             or f"spectrum-{idx}"
         )
         nodes.append(_node_from_spectrum(processed, identifier=identifier))
-    return _build_edges(nodes, metric=metric, threshold=threshold, knn=knn, undirected=undirected)
+    return _build_edges(
+        nodes, metric=metric, threshold=threshold, knn=knn, undirected=undirected
+    )
 
 
 def _load_spectra_from_mgf(input_dir: str | Path) -> list[Spectrum]:
@@ -182,14 +186,20 @@ def _build_edges(
         raise ValueError("Choose either threshold or k-NN mode, not both.")
 
     if threshold is not None:
-        edges = _threshold_edges(nodes, metric=metric, threshold=threshold, undirected=undirected)
+        edges = _threshold_edges(
+            nodes, metric=metric, threshold=threshold, undirected=undirected
+        )
     else:
         edges = _knn_edges(nodes, metric=metric, k=knn or 0, undirected=undirected)
     return list(nodes), edges
 
 
 def _threshold_edges(
-    nodes: Sequence[SpectrumNode], *, metric: MetricName, threshold: float, undirected: bool
+    nodes: Sequence[SpectrumNode],
+    *,
+    metric: MetricName,
+    threshold: float,
+    undirected: bool,
 ) -> list[SimilarityEdge]:
     edges: list[SimilarityEdge] = []
     seen_pairs: set[tuple[str, str]] = set()
@@ -213,7 +223,9 @@ def _threshold_edges(
     return edges
 
 
-def _knn_edges(nodes: Sequence[SpectrumNode], *, metric: MetricName, k: int, undirected: bool) -> list[SimilarityEdge]:
+def _knn_edges(
+    nodes: Sequence[SpectrumNode], *, metric: MetricName, k: int, undirected: bool
+) -> list[SimilarityEdge]:
     if k <= 0:
         raise ValueError("k-NN mode requires k > 0.")
     edges: list[SimilarityEdge] = []
@@ -244,11 +256,15 @@ def _knn_edges(nodes: Sequence[SpectrumNode], *, metric: MetricName, k: int, und
     return edges
 
 
-def _compute_similarity(node_a: SpectrumNode, node_b: SpectrumNode, metric: MetricName) -> float:
+def _compute_similarity(
+    node_a: SpectrumNode, node_b: SpectrumNode, metric: MetricName
+) -> float:
     if metric == "cosine":
         return cosine_similarity(_require_spectrum(node_a), _require_spectrum(node_b))
     if metric in {"modified_cosine", "modified-cosine"}:
-        return modified_cosine_similarity(_require_spectrum(node_a), _require_spectrum(node_b))
+        return modified_cosine_similarity(
+            _require_spectrum(node_a), _require_spectrum(node_b)
+        )
     if metric == "spec2vec":
         vector_a = node_a.vector or spec2vec_vectorize(_require_spectrum(node_a))
         vector_b = node_b.vector or spec2vec_vectorize(_require_spectrum(node_b))
@@ -257,7 +273,9 @@ def _compute_similarity(node_a: SpectrumNode, node_b: SpectrumNode, metric: Metr
         try:
             from yogimass.similarity.embeddings import embedding_vectorizer
         except Exception as exc:  # pragma: no cover - optional import guard
-            raise ImportError("Embedding support requires optional similarity embeddings.") from exc
+            raise ImportError(
+                "Embedding support requires optional similarity embeddings."
+            ) from exc
         vector_a = node_a.vector or embedding_vectorizer(_require_spectrum(node_a))
         vector_b = node_b.vector or embedding_vectorizer(_require_spectrum(node_b))
         return cosine_from_vectors(vector_a, vector_b)
@@ -303,7 +321,9 @@ def _export_edges_csv(edges: Sequence[SimilarityEdge], path: Path) -> None:
         writer = csv.writer(handle)
         writer.writerow(["source", "target", "similarity", "metric"])
         for edge in edges:
-            writer.writerow([edge.source, edge.target, f"{edge.similarity:.6f}", edge.metric])
+            writer.writerow(
+                [edge.source, edge.target, f"{edge.similarity:.6f}", edge.metric]
+            )
     logger.info("Wrote CSV edge list to %s", path)
 
 
@@ -324,7 +344,9 @@ def _export_with_networkx(
             attrs["precursor_mz"] = node.precursor_mz
         graph.add_node(node.identifier, **attrs)
     for edge in edges:
-        graph.add_edge(edge.source, edge.target, similarity=edge.similarity, metric=edge.metric)
+        graph.add_edge(
+            edge.source, edge.target, similarity=edge.similarity, metric=edge.metric
+        )
 
     path.parent.mkdir(parents=True, exist_ok=True)
     if suffix == ".graphml":

@@ -46,7 +46,10 @@ _PRESETS: Mapping[str, dict] = {
         "description": "Untargeted LC-MS/MS defaults (basepeak norm, dedup, top-N).",
         "template": {
             "input": {"path": "{input_path}", "format": "{input_format}"},
-            "library": {"path": "{output_dir}/metabolomics_library.json", "build": True},
+            "library": {
+                "path": "{output_dir}/metabolomics_library.json",
+                "build": True,
+            },
             "similarity": {
                 "search": True,
                 "queries": ["{input_path}"],
@@ -108,7 +111,9 @@ def _prompt(prompt: str, *, input_func: Callable[[str], str]) -> str:
     return input_func(prompt).strip()
 
 
-def _prompt_choice(prompt: str, choices: list[str], *, input_func: Callable[[str], str]) -> str:
+def _prompt_choice(
+    prompt: str, choices: list[str], *, input_func: Callable[[str], str]
+) -> str:
     choice_set = {c.lower() for c in choices}
     while True:
         value = _prompt(prompt, input_func=input_func).lower()
@@ -117,7 +122,9 @@ def _prompt_choice(prompt: str, choices: list[str], *, input_func: Callable[[str
         print(f"Please enter one of: {', '.join(choices)}")
 
 
-def _build_config(preset: str, input_path: str, output_dir: str, input_format: str) -> dict:
+def _build_config(
+    preset: str, input_path: str, output_dir: str, input_format: str
+) -> dict:
     template = _PRESETS[preset]["template"]
     placeholders = {
         "input_path": input_path,
@@ -129,7 +136,9 @@ def _build_config(preset: str, input_path: str, output_dir: str, input_format: s
     return yaml.safe_load(filled)
 
 
-def _choose_output_path(default_path: Path, *, input_func: Callable[[str], str]) -> Path:
+def _choose_output_path(
+    default_path: Path, *, input_func: Callable[[str], str]
+) -> Path:
     path = default_path
     if path.exists():
         resp = _prompt(
@@ -155,7 +164,9 @@ def run_quickstart(*, input_func: Callable[[str], str] | None = None) -> int:
         input_func=input_func,
     )
     input_path = _prompt("Path to input file or directory: ", input_func=input_func)
-    output_dir = _prompt("Output directory (will be created if missing): ", input_func=input_func)
+    output_dir = _prompt(
+        "Output directory (will be created if missing): ", input_func=input_func
+    )
     if not output_dir:
         output_dir = "out"
     output_dir_path = Path(output_dir).expanduser()
@@ -163,7 +174,9 @@ def run_quickstart(*, input_func: Callable[[str], str] | None = None) -> int:
 
     config = _build_config(preset, input_path, str(output_dir_path), input_format)
 
-    output_path = _choose_output_path(Path("yogimass-quickstart.yaml"), input_func=input_func)
+    output_path = _choose_output_path(
+        Path("yogimass-quickstart.yaml"), input_func=input_func
+    )
     yaml.safe_dump(config, output_path.open("w", encoding="utf-8"))
 
     try:

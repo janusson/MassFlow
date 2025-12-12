@@ -64,7 +64,9 @@ def calculate_cosscores(reference_spectra_list, query_spectra_list, tolerance=0.
     return cosine_scores
 
 
-def top10_cosine_matches(reference_library, query_spectra, query_index=0, tolerance=0.005):
+def top10_cosine_matches(
+    reference_library, query_spectra, query_index=0, tolerance=0.005
+):
     """
     Return the SMILES strings for the top ten cosine matches of a query spectrum.
     """
