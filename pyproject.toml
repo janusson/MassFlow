@@ -35,6 +35,7 @@ spec2vec = ["spec2vec>=0.9"]
 
 [project.scripts]
 yogimass = "yogimass.cli:main"
+yogimass-quickstart = "yogimass.quickstart:main"
 
 [tool.setuptools]
 package-dir = {"" = "."}

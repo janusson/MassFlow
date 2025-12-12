@@ -9,6 +9,8 @@ This document summarizes the major public functions and classes, grouped by modu
 - `yogimass.workflow.run_from_config(config)` — main entrypoint to execute end-to-end pipelines from a validated config or path.
 - CLI: `python -m yogimass.cli config run --config <file>` uses the same validation layer before running.
 - Config fields: `similarity.backend` (``naive`` default; ``annoy``/``faiss`` optional), `similarity.vectorizer` (``spec2vec`` or ``embedding``), `input.msdial_output` for directing cleaned MS-DIAL exports.
+- Spectrum processor: `similarity.processor` validates normalization (`tic`/`basepeak`/`none`), min relative/absolute intensities (non-negative), max_peaks (positive int/None), optional `mz_dedup_tolerance`, and `float_dtype` (`float32`/`float64`); defaults match `SpectrumProcessor`.
+- Library storage formats are documented in `docs/library_schema.md` (JSON/SQLite layouts, invariants, compatibility expectations).
 
 ## yogimass.workflow (primary API)
 

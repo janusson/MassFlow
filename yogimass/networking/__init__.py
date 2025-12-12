@@ -10,6 +10,7 @@ from yogimass.networking.network import (
     build_network_from_spectra,
     export_network,
 )
+from yogimass.networking.exporters import export_network_for_cytoscape
 
 __all__ = [
     "SimilarityEdge",
@@ -18,4 +19,5 @@ __all__ = [
     "build_network_from_library",
     "build_network_from_spectra",
     "export_network",
+    "export_network_for_cytoscape",
 ]

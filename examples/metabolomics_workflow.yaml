@@ -1,0 +1,29 @@
+input:
+  path: data/example_library.mgf
+  format: mgf
+
+library:
+  path: out/metabolomics_library.json
+  build: true
+
+similarity:
+  search: true
+  queries:
+    - data/example_library.mgf
+  top_n: 3
+  processor:
+    normalization: basepeak
+    min_relative_intensity: 0.02
+    min_absolute_intensity: 0.0
+    max_peaks: 300
+    mz_dedup_tolerance: 0.01
+
+network:
+  enabled: true
+  metric: spec2vec
+  knn: 5
+  output: out/metabolomics_network.csv
+
+outputs:
+  search_results: out/metabolomics_search.csv
+  network_summary: out/metabolomics_network_summary.json

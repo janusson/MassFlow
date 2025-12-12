@@ -31,6 +31,8 @@ from yogimass.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
+SCHEMA_VERSION = "1.0"
+
 
 @dataclass
 class LibraryEntry:
@@ -131,7 +133,8 @@ class LocalSpectralLibrary:
 
     def __len__(self) -> int:
         if self.storage == "json":
-            return len(self._read_json())
+            data = self._read_json_data()
+            return len(self._json_entries(data))
         with sqlite3.connect(self.path) as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT COUNT(*) FROM spectra")
@@ -171,7 +174,7 @@ class LocalSpectralLibrary:
         if self.storage == "json":
             if not self.path.exists():
                 self.path.parent.mkdir(parents=True, exist_ok=True)
-                self.path.write_text("[]", encoding="utf-8")
+                self._write_json([])
         else:
             self.path.parent.mkdir(parents=True, exist_ok=True)
             with sqlite3.connect(self.path) as conn:
@@ -186,11 +189,24 @@ class LocalSpectralLibrary:
                     )
                     """
                 )
+                cursor.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS metadata (
+                        key TEXT PRIMARY KEY,
+                        value TEXT NOT NULL
+                    )
+                    """
+                )
+                cursor.execute(
+                    "INSERT OR IGNORE INTO metadata(key, value) VALUES (?, ?)",
+                    ("schema_version", SCHEMA_VERSION),
+                )
                 conn.commit()
 
     def _write_entry(self, entry: LibraryEntry, *, overwrite: bool) -> None:
         if self.storage == "json":
-            records = self._read_json()
+            data = self._read_json_data()
+            records = self._json_entries(data)
             existing = {item["identifier"]: idx for idx, item in enumerate(records)}
             if entry.identifier in existing and not overwrite:
                 raise ValueError(f"Entry '{entry.identifier}' already exists in {self.path}")
@@ -204,7 +220,8 @@ class LocalSpectralLibrary:
             self._write_sqlite(entry, overwrite=overwrite)
 
     def _iter_json_entries(self) -> Iterator[LibraryEntry]:
-        for record in self._read_json():
+        data = self._read_json_data()
+        for record in self._json_entries(data):
             yield LibraryEntry(
                 identifier=record["identifier"],
                 precursor_mz=record.get("precursor_mz"),
@@ -243,7 +260,7 @@ class LocalSpectralLibrary:
             )
             conn.commit()
 
-    def _read_json(self) -> list[dict[str, Any]]:
+    def _read_json_data(self) -> Any:
         text = self.path.read_text(encoding="utf-8")
         try:
             return json.loads(text)
@@ -251,8 +268,20 @@ class LocalSpectralLibrary:
             logger.warning("Could not parse JSON library %s, resetting to empty list.", self.path)
             return []
 
+    def _json_entries(self, data: Any) -> list[dict[str, Any]]:
+        if isinstance(data, list):
+            return data
+        if isinstance(data, dict):
+            entries = data.get("entries", [])
+            return entries if isinstance(entries, list) else []
+        return []
+
     def _write_json(self, records: Iterable[dict[str, Any]]) -> None:
-        data = json.dumps(list(records), indent=2)
+        payload = {
+            "schema_version": SCHEMA_VERSION,
+            "entries": list(records),
+        }
+        data = json.dumps(payload, indent=2)
         self.path.write_text(data, encoding="utf-8")
 
     def _spectrum_metadata(self, spectrum: Spectrum) -> dict[str, Any]:

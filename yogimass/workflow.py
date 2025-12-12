@@ -26,7 +26,7 @@ from matchms import Spectrum
 from matchms.importing import load_from_mgf, load_from_msp
 
 from yogimass import curation
-from yogimass.config import ConfigError, WorkflowConfig, load_config
+from yogimass.config import ConfigError, ProcessorConfig, WorkflowConfig, load_config
 from yogimass.networking import network as network_builder
 from yogimass.reporting import (
     SearchMatch,
@@ -261,6 +261,7 @@ def run_from_config(config: str | Path | Mapping[str, Any] | WorkflowConfig) -> 
     if cfg.network.metric == "embedding":
         vectorizer_choice = "embedding"
     vectorizer = _vectorizer_for_config(vectorizer_choice, cfg.similarity.embedding_model)
+    processor = _processor_from_config(cfg.similarity.processor)
 
     data = load_data(
         input_paths,
@@ -288,6 +289,7 @@ def run_from_config(config: str | Path | Mapping[str, Any] | WorkflowConfig) -> 
             storage=cfg.library.storage,
             overwrite=cfg.library.overwrite,
             vectorizer=vectorizer,
+            processor=processor,
         )
         active_library_path = library_built.path
     elif library_path:
@@ -321,6 +323,7 @@ def run_from_config(config: str | Path | Mapping[str, Any] | WorkflowConfig) -> 
                 min_score=cfg.similarity.min_score,
                 backend=cfg.similarity.backend,
                 vectorizer=vectorizer,
+                processor=processor,
             )
         except (ImportError, ValueError) as exc:
             raise ConfigError("similarity.backend", str(exc)) from exc
@@ -345,7 +348,7 @@ def run_from_config(config: str | Path | Mapping[str, Any] | WorkflowConfig) -> 
             metric=network_metric,
             threshold=cfg.network.threshold,
             knn=cfg.network.knn,
-            processor=SpectrumProcessor(),
+            processor=processor,
             reference_mz=cfg.network.reference_mz,
             undirected=undirected,
             output_path=network_output,
@@ -435,6 +438,18 @@ def _vectorizer_for_config(vectorizer_name: str, embedding_model: str | None):
         model = embedding_model or "spec2vec-lite"
         return lambda spectrum: embedding_vectorizer(spectrum, model_name=model)
     return spec2vec_vectorize
+
+
+def _processor_from_config(processor_cfg: ProcessorConfig | None) -> SpectrumProcessor:
+    cfg = processor_cfg or ProcessorConfig()
+    return SpectrumProcessor(
+        normalization=cfg.normalization,
+        min_relative_intensity=cfg.min_relative_intensity,
+        min_absolute_intensity=cfg.min_absolute_intensity,
+        max_peaks=cfg.max_peaks,
+        mz_dedup_tolerance=cfg.mz_dedup_tolerance,
+        float_dtype=cfg.float_dtype,
+    )
 
 
 __all__ = [
