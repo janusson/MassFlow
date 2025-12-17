@@ -1,10 +1,10 @@
-# Yogimass architecture overview
+# Yogimass overview
 
-Yogimass is organized into layered modules to keep I/O, similarity, curation, and orchestration concerns separate. This guide summarizes what each layer does, what it depends on, and what it should avoid. Use this as a map when adding features or debugging.
+Yogimass is organized into layered modules. This guide summarizes what each layer does, what it depends on, and what it should avoid. Use this as a map when adding features or debugging.
 
 ## Dependency flow (simplified)
 
-```
+```text
 Raw data (MGF/MSP/MSDial) ──> I/O ──> Similarity/Library ──> Workflow ──> Reporting
                                │            │                 │
                                │            └─> Network ─────┘
