@@ -1,7 +1,5 @@
 """
-Quality control and curation utilities for spectral libraries.
-
-Responsibilities:
+QC and curation utilities for spectral libraries.
 - Score spectra for basic quality, flag/drop low-quality entries.
 - Detect and merge near-duplicates using cosine similarity + precursor tolerance.
 - Emit structured decisions, summaries, and merged metadata.

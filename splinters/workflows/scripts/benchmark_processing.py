@@ -23,7 +23,7 @@ def _max_rss_mb() -> float | None:
 
     usage = resource.getrusage(resource.RUSAGE_SELF)
     rss = float(usage.ru_maxrss)
-    # ru_maxrss is kilobytes on Linux, bytes on macOS/BSD.
+    # ru_maxrss is bytes on macOS/BSD.
     if sys.platform == "darwin":
         rss_mb = rss / (1024 * 1024)
     else:

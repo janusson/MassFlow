@@ -1,7 +1,3 @@
-# usr/bin/python3
-#  -*- coding: utf-8 -*-
-# Description: Given a m/z value, returns a list of molecular formulae matching the m/z value.
-# ? Currently implemented as manual input, but can be automated for larger datasets
 import requests
 import pandas as pd
 

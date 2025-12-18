@@ -10,16 +10,16 @@ def test_imports_do_not_create_artifacts(tmp_path, monkeypatch):
     before = set(tmp_path.iterdir())
     modules = [
         "yogimass",
-        "yogimass.cli",
-        "yogimass.workflow",
-        "yogimass.pipeline",
         "yogimass.config",
-        "yogimass.io.msdial_clean_combine",
-        "yogimass.io.msdial_process",
-        "yogimass.similarity.library",
-        "yogimass.similarity.backends",
-        "yogimass.similarity.embeddings",
-        "yogimass.networking.network",
+        "yogimass.similarity",
+        "yogimass.similarity.metrics",
+        "yogimass.similarity.processing",
+        "yogimass.scoring",
+        "yogimass.scoring.cosine",
+        "yogimass.filters",
+        "yogimass.filters.metadata",
+        "yogimass.utils",
+        "yogimass.utils.logging",
     ]
     for module in modules:
         importlib.invalidate_caches()

@@ -1,7 +1,5 @@
-"""
-Utility helpers exposed at the ``yogimass.utils`` package level.
-"""
+"""Utility helpers exposed at the ``yogimass.utils`` package level."""
 
-from .misc import get_spectrum_inchi
+from .logging import configure_logging, get_logger
 
-__all__ = ["get_spectrum_inchi"]
+__all__ = ["configure_logging", "get_logger"]

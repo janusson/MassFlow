@@ -1,12 +1,12 @@
 """
-Unified command-line interface for Yogimass workflows.
+Command-line interface for Yogimass.
 
-Responsibilities:
-- Parse user commands/subcommands and dispatch to ``yogimass.workflow`` helpers.
+Functionality:
+- Parse user commands and dispatch to ``yogimass.workflow`` helpers.
 - Provide entrypoints for config runs, library build/search/curate, network build, and legacy clean.
 - Emit user-facing logs/errors.
 
-Depends on:
+Dependencies:
 - ``yogimass.workflow`` for core operations.
 - ``yogimass.reporting`` for optional output writing.
 

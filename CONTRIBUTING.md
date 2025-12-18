@@ -14,7 +14,7 @@ Thanks for your interest in improving Yogimass! Please follow these guidelines t
    pip install -r requirements.txt
    ```
 
-3. For matchms-dependent modules, make sure `matchms`, `numpy`, and `pandas` install cleanly before running tests.
+3. For matchms-dependent modules, make sure `matchms` and `numpy` install cleanly before running tests.
 
 ## Coding Standards
 
