@@ -1,4 +1,4 @@
-# GitHub Copilot / Agent instructions for Yogimass 🚀
+# GitHub Copilot / Agent instructions for Yogimass
 
 Purpose: give a concise, immediately actionable briefing so an AI coding agent can be productive in this repository.
 

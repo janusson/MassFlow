@@ -16,8 +16,7 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip setuptools wheel
+        run: |          # Quote the extras to prevent shell globbing (e.g., .[dev]) and upgrade build tools (setuptools, wheel)          python -m pip install --upgrade pip setuptools wheel
           pip install ".[dev]"
       - name: Run pytest
         run: |
