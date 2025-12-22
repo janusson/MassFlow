@@ -1,0 +1,102 @@
+# Template for running Yogimass on real data.
+# Copy this file, adjust the paths/parameters, then run:
+#   python -m yogimass.cli config run --config path/to/my_real_config.yaml
+
+input:
+  # Provide one or more input paths. These can be:
+  # - MGF files or directories of MGF files (e.g., GNPS-style exports)
+  # - MSDial output directories containing alignment/feature lists
+  # Use "paths" for multiple, or "path" for a single entry.
+  paths:
+    - /path/to/raw_spectra_or_msdial_outputs
+  # Format can be "mgf", "msp", or "msdial". For MSDial, point to the output directory.
+  format: mgf
+  # Set to true if you want to recurse into subdirectories when loading files.
+  recursive: false
+  # Optional: if using MSDial, you can direct cleaned outputs here (otherwise defaults to input dir).
+  msdial_output: /path/to/msdial_cleaned_outputs
+
+library:
+  # Where to write the built/updated library (JSON or SQLite). Required if building/searching.
+  path: /path/to/out/my_library.json
+  # Whether to build the library from the inputs above. Set false to reuse an existing library.
+  build: true
+  # Input format for library build (typically matches input.format).
+  input_format: mgf
+  # Set true to walk subdirectories when building (mirrors input.recursive).
+  recursive: false
+  # Storage type override ("json" or "sqlite"); usually omit to infer from file extension.
+  # format: json
+  # Overwrite existing entries with the same identifier; set false to keep existing ones.
+  overwrite: true
+  # Optional: explicitly list sources different from input.paths.
+  # sources:
+  #   - /path/to/another_folder_or_file.mgf
+
+similarity:
+  # Toggle search; requires a built library.
+  search: true
+  # One or more query files/directories (default: input.paths if omitted).
+  queries:
+    - /path/to/query_spectra.mgf
+  # Format of queries ("mgf" or "msp").
+  query_format: mgf
+  # Number of top hits per query.
+  top_n: 5
+  # Minimum score to report.
+  min_score: 0.0
+  # Search backend and vectorizer (default: naive + spec2vec).
+  # backend: naive   # or annoy/faiss (install extras)
+  # vectorizer: spec2vec  # set to "embedding" for hashed embeddings
+  # embedding_model: spec2vec-lite
+  # Vectorization/processing happen internally; adjust processor defaults in code if needed.
+  # For reference-based alignment, supply a reference m/z list:
+  # reference_mz:
+  #   - 100.0
+  #   - 150.5
+
+network:
+  # Set true to build a similarity network.
+  enabled: true
+  # If provided, uses an existing library; otherwise can point to a folder of spectra.
+  # library: /path/to/out/my_library.json
+  # input: /path/to/folder/of/mgf/files
+  # Similarity metric: "cosine", "modified_cosine", or "spec2vec".
+  metric: spec2vec
+  # Use either threshold or knn (not both). Threshold builds edges above this similarity.
+  threshold: 0.5
+  # knn: 5
+  # Output path for the network file (.csv, .graphml, .gexf, .gml).
+  output: /path/to/out/my_network.csv
+  # Optional summary JSON/text file.
+  summary: /path/to/out/my_network_summary.json
+  # Set true to keep edges directed; default is undirected.
+  directed: false
+
+curation:
+  # Toggle library curation/QC.
+  enabled: false
+  # Output curated library path; defaults to <library>_curated.<ext> if omitted.
+  output: /path/to/out/my_library_curated.json
+  # QC report path; defaults next to the curated library.
+  qc_report: /path/to/out/my_library_qc.json
+  # Quality thresholds:
+  min_peaks: 3
+  min_total_ion_current: 0.05
+  max_single_peak_fraction: 0.9
+  precursor_tolerance: 0.01   # m/z window for duplicate detection
+  similarity_threshold: 0.95  # cosine threshold for merging duplicates
+  require_precursor_mz: true
+
+outputs:
+  # Library path override (can mirror library.path).
+  library: /path/to/out/my_library.json
+  # Search results output (CSV or JSON). Leave empty to skip writing to disk.
+  search_results: /path/to/out/my_search_results.csv
+  # Network export location (can mirror network.output).
+  network: /path/to/out/my_network.csv
+  # Network summary (optional).
+  network_summary: /path/to/out/my_network_summary.json
+  # Curated library and QC report (can mirror curation outputs).
+  curated_library: /path/to/out/my_library_curated.json
+  qc_report: /path/to/out/my_library_qc.json

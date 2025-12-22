@@ -63,9 +63,45 @@ def modified_cosine_similarity(
     """
     Compute modified cosine similarity, which accounts for precursor m/z shifts.
     """
+    spectrum_a = _ensure_precursor_mz(spectrum_a)
+    spectrum_b = _ensure_precursor_mz(spectrum_b)
     similarity = ModifiedCosine(tolerance=tolerance)
-    score, _ = similarity.pair(spectrum_a, spectrum_b)
+    result = similarity.pair(spectrum_a, spectrum_b)
+    score = _extract_pair_score(result)
     return float(score or 0.0)
+
+
+def _ensure_precursor_mz(spectrum: Spectrum) -> Spectrum:
+    precursor = spectrum.get("precursor_mz")
+    if isinstance(precursor, (int, float)) and precursor > 0:
+        return spectrum
+    mz_values = np.asarray(spectrum.peaks.mz, dtype=float)
+    fallback = float(mz_values.max()) if mz_values.size else 1.0
+    if fallback <= 0:
+        fallback = 1.0
+    metadata = dict(spectrum.metadata or {})
+    metadata["precursor_mz"] = fallback
+    return Spectrum(
+        mz=np.asarray(spectrum.peaks.mz, dtype=float),
+        intensities=np.asarray(spectrum.peaks.intensities, dtype=float),
+        metadata=metadata,
+    )
+
+
+def _extract_pair_score(result: object) -> float:
+    if isinstance(result, np.ndarray):
+        if result.shape == ():
+            result = result.item()
+        else:
+            result = result.tolist()
+    if isinstance(result, (list, tuple)):
+        return float(result[0]) if result else 0.0
+    if hasattr(result, "score"):
+        return float(getattr(result, "score"))
+    try:
+        return float(result)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return 0.0
 
 
 def spec2vec_vectorize(

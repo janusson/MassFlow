@@ -1,0 +1,16 @@
+input:
+  path: tests/data/simple.mgf
+  format: mgf
+
+library:
+  path: out/curation_example_library.json
+  build: true
+
+curation:
+  enabled: true
+  output: out/curation_example_curated.json
+  qc_report: out/curation_example_qc.json
+  min_peaks: 2
+  max_single_peak_fraction: 0.95
+  precursor_tolerance: 0.01
+  similarity_threshold: 0.9
