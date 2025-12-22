@@ -10,6 +10,8 @@ Yogimass focuses on deterministic MS/MS spectrum processing defaults and similar
 
 ## Install
 
+Install the core package:
+
 ```bash
 pip install -e .
 ```
@@ -51,3 +53,26 @@ into `splinters/` for future extraction into separate repositories:
 - `splinters/curation`: QC/curation and reporting
 - `splinters/deprecated`: legacy entrypoints
 - `splinters/utils`: misc utilities and formula helpers
+
+## Optional Installs
+
+Optional extras (enable splinter features such as ANN search, MS-DIAL helpers, or model-backed embeddings):
+
+```bash
+# developer/test deps
+pip install -e ".[dev]"
+
+# add annoy (ANN-backed search)
+pip install -e ".[annoy]"
+
+# MS-DIAL support (pandas)
+pip install -e ".[msdial]"
+
+# install common optional extras
+pip install -e ".[all]"
+
+# full install (includes all optional extras)
+pip install -e ".[full]"
+```
+
+> Note: The `faiss`/`faiss-cpu` packages are platform-specific and were removed from the default extras in order to keep the repository minimal and easy to install. If you need FAISS later, you can install it manually (e.g., `pip install faiss-cpu`) and add a FAISS-backed search backend as needed.

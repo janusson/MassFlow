@@ -21,3 +21,33 @@ jobs:
       - name: Run pytest
         run: |
           python -m pytest -q
+
+  extras-test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        extras: ["dev", "dev,annoy", "dev,msdial", "dev,annoy,msdial"]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install extras
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          pip install -e ".[${{ matrix.extras }}]"
+      - name: Verify optional imports (annoy)
+        if: contains(matrix.extras, 'annoy')
+        run: |
+          python - <<'PY'
+          import annoy
+          print('annoy OK', annoy.__version__)
+          PY
+      - name: Run core subset tests
+        run: |
+          python -m pytest -q tests/test_library_io.py tests/test_processor_config.py
+      - name: Run msdial tests
+        if: contains(matrix.extras, 'msdial')
+        run: |
+          python -m pytest -q tests/test_msdial.py
