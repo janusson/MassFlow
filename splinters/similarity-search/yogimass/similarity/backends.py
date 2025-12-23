@@ -132,7 +132,12 @@ def create_index_backend(
     elif normalized == "annoy":
         backend = AnnoySpectrumIndex()
     elif normalized == "faiss":
-        logger.warning("FAISS backend not yet implemented; using naive search.")
+        # FAISS is an optional, platform-specific library and is not supported
+        # by default in this repository. We intentionally fall back to the
+        # naive in-memory backend while leaving a clear warning for users.
+        logger.warning(
+            "FAISS backend is not supported in this release; falling back to naive search."
+        )
         backend = NaiveSpectrumIndex()
     else:
         raise ValueError(f"Unsupported search backend: {name}")

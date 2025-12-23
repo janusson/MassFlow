@@ -11,6 +11,14 @@ Yogimass is a config-driven LC-MS/MS toolkit for ingesting spectra, building/sea
 python -m pip install -e .[dev]        # from a clone
 # or, when published:
 pip install yogimass
+
+After installation you can run workflows from the command-line:
+
+```bash
+yogimass config run --config examples/simple_workflow.yaml
+# or
+python -m yogimass config run --config examples/simple_workflow.yaml
+```
 ```
 
 Optional extras:
