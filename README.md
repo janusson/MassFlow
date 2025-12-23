@@ -41,6 +41,16 @@ score = cosine_similarity(processed, processed)
 print(score)
 ```
 
+## CLI
+
+After installing, you can run workflows from the command line:
+
+```bash
+yogimass config run --config examples/simple_workflow.yaml
+# or
+python -m yogimass config run --config examples/simple_workflow.yaml
+```
+
 ## Splinters
 
 Legacy workflow/CLI, I/O, networking, and MS-DIAL integration code has been moved

@@ -55,6 +55,9 @@ full = [
     "gensim>=4.2",
 ]
 
+[project.scripts]
+yogimass = "yogimass.cli:main"
+
 [tool.setuptools]
 package-dir = {"" = "."}
 
