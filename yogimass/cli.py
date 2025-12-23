@@ -1,22 +1,9 @@
 """
-DEPRECATED: This file was the historical CLI implementation. The canonical,
-installable CLI is now `yogimass/cli.py` in the package root and should be used
-instead (see top-level README and package entry point).
+Command-line interface for Yogimass (canonical entrypoint).
 
-Command-line interface for Yogimass.
-
-Functionality:
-- Parse user commands and dispatch to ``yogimass.workflow`` helpers.
-- Provide entrypoints for config runs, library build/search/curate, network build, and legacy clean.
-- Emit user-facing logs/errors.
-
-Dependencies:
-- ``yogimass.workflow`` for core operations.
-- ``yogimass.reporting`` for optional output writing.
-
-Avoids:
-- Business logic (delegates to workflow/reporting).
-- Deep coupling to specific file formats beyond flags passed through to workflow.
+This file is the installable CLI wrapper for the package. It delegates all
+business logic to `yogimass.workflow` and `yogimass.reporting` so the CLI stays
+thin and testable.
 """
 
 from __future__ import annotations
