@@ -43,26 +43,22 @@ print(score)
 
 ## CLI
 
-After installing, you can run workflows from the command line:
+The core package currently provides a minimal CLI for version checking:
 
 ```bash
-yogimass config run --config examples/simple_workflow.yaml
-# or
-python -m yogimass config run --config examples/simple_workflow.yaml
+yogimass --version
 ```
 
-## Splinters
+## Future Roadmap (Splinters)
 
-Legacy workflow/CLI, I/O, networking, and MS-DIAL integration code has been moved
-into `splinters/` for future extraction into separate repositories:
+Support for complex workflows, I/O integrations (e.g., MS-DIAL), networking, and advanced curation is currently under development in the `splinters/` directory. These features will be integrated into the core package as they mature.
 
-- `splinters/workflows`: config runner, CLI, pipeline orchestration, examples/docs
-- `splinters/similarity-search`: library storage/search and indexing backends
-- `splinters/io-msdial`: file I/O and MS-DIAL integration
-- `splinters/networking`: similarity graph construction/export
+Current splinter areas:
+- `splinters/workflows`: Pipeline orchestration and CLI commands
+- `splinters/similarity-search`: Library storage/search and indexing backends
+- `splinters/io-msdial`: File I/O and MS-DIAL integration
+- `splinters/networking`: Similarity graph construction/export
 - `splinters/curation`: QC/curation and reporting
-- `splinters/deprecated`: legacy entrypoints
-- `splinters/utils`: misc utilities and formula helpers
 
 ## Optional Installs
 

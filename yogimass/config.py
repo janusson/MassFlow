@@ -5,58 +5,18 @@ Processing configuration and validation for Yogimass core.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any, Mapping
-import importlib.util
-import sys
 
 import numpy as np
 
-_WORKFLOW_CONFIG_MODULE = "_yogimass_workflows_config"
 
+class ConfigError(ValueError):
+    """Configuration validation error with dotted-path context."""
 
-def _load_workflow_config_module():
-    module = sys.modules.get(_WORKFLOW_CONFIG_MODULE)
-    if module is not None:
-        return module
-    config_path = (
-        Path(__file__).resolve().parent.parent
-        / "splinters"
-        / "workflows"
-        / "yogimass"
-        / "config.py"
-    )
-    if not config_path.is_file():
-        return None
-    spec = importlib.util.spec_from_file_location(_WORKFLOW_CONFIG_MODULE, config_path)
-    if spec is None or spec.loader is None:
-        return None
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[_WORKFLOW_CONFIG_MODULE] = module
-    spec.loader.exec_module(module)
-    return module
-
-
-_workflow_config = _load_workflow_config_module()
-
-if _workflow_config is not None:
-    ConfigError = _workflow_config.ConfigError
-    WorkflowConfig = _workflow_config.WorkflowConfig
-    load_config = _workflow_config.load_config
-else:
-
-    class ConfigError(ValueError):
-        """Configuration validation error with dotted-path context."""
-
-        def __init__(self, path: str, message: str):
-            self.path = path
-            self.message = message
-            super().__init__(f"{path}: {message}")
-
-    WorkflowConfig = None
-
-    def load_config(*_: Any, **__: Any):
-        raise RuntimeError("Workflow config module not available.")
+    def __init__(self, path: str, message: str):
+        self.path = path
+        self.message = message
+        super().__init__(f"{path}: {message}")
 
 
 def _check_unknown_keys(
@@ -178,4 +138,4 @@ class ProcessorConfig:
         }
 
 
-__all__ = ["ConfigError", "ProcessorConfig", "WorkflowConfig", "load_config"]
+__all__ = ["ConfigError", "ProcessorConfig"]
