@@ -1,6 +1,8 @@
 # Repo-specific
 environment/
 out/
+AI_GUIDE.md
+Repo Analysis.md
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
