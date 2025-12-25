@@ -1,24 +1,27 @@
-input:
-  path: data/example_library.mgf
-  format: mgf
+# Simple Yogimass Workflow Example
+# This workflow demonstrates the minimum viable slice: ingestion, processing, and similarity.
 
-library:
-  path: out/example_library.json
-  build: true
+workflow:
+  name: "simple-similarity-check"
+  version: "1.0"
+
+input:
+  # Path to input spectra file (MGF, MSP, etc.)
+  source: "tests/data/test_spectra.mgf"
+  format: "mgf"
+
+processing:
+  # Sequential filters to apply using matchms
+  filters:
+    - name: "normalize_intensities"
+    - name: "select_by_relative_intensity"
+      params:
+        intensity_from: 0.01
 
 similarity:
-  search: true
-  queries:
-    - data/example_library.mgf
-  top_n: 3
-  min_score: 0.0
+  method: "cosine"  # or "spec2vec"
+  tolerance: 0.005
 
-network:
-  enabled: true
-  metric: spec2vec
-  knn: 5
-  output: out/example_network.csv
-
-outputs:
-  search_results: out/example_search.csv
-  network_summary: out/example_network_summary.json
+output:
+  # Where to save the results
+  path: "results/scores.json"

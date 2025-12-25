@@ -4,12 +4,12 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "yogimass"
-version = "0.3.0"
-description = "Spectrum processing defaults and similarity scoring for tandem MS/MS data."
+version = "0.1.0"
+description = "Config-first LC-MS/MS spectral similarity toolkit."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { file = "LICENSE" }
-authors = [{ name = "Eric Janusson" }]
+authors = [{ name = "Yogimass Contributors" }]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Science/Research",
@@ -20,16 +20,16 @@ classifiers = [
 dependencies = [
     "matchms>=0.23",
     "numpy>=1.24",
+    "PyYAML>=6.0",
 ]
 
 [project.optional-dependencies]
-# Optional feature extras: enable splinter functionality documented in README and code
-# Examples: `pip install "yogimass[annoy]"` or `pip install "yogimass[msdial]"`.
 dev = [
     "pytest>=8.0",
     "pytest-cov>=5.0",
 ]
 
+# Planned extras for future weeks
 annoy = [
     "annoy>=1.17",
 ]
@@ -42,14 +42,7 @@ spec2vec = [
     "gensim>=4.2",
 ]
 
-# Convenience groups
 all = [
-    "annoy>=1.17",
-    "pandas>=1.5",
-    "gensim>=4.2",
-]
-
-full = [
     "annoy>=1.17",
     "pandas>=1.5",
     "gensim>=4.2",
