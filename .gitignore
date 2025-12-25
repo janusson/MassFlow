@@ -215,3 +215,4 @@ __marimo__/
 # Development
 data/ALL_GNPS.msp
 data/GNPS-LIBRARY.msp
+.DS_Store
