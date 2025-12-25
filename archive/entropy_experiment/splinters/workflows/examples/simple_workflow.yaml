@@ -1,0 +1,24 @@
+input:
+  path: data/example_library.mgf
+  format: mgf
+
+library:
+  path: out/example_library.json
+  build: true
+
+similarity:
+  search: true
+  queries:
+    - data/example_library.mgf
+  top_n: 3
+  min_score: 0.0
+
+network:
+  enabled: true
+  metric: spec2vec
+  knn: 5
+  output: out/example_network.csv
+
+outputs:
+  search_results: out/example_search.csv
+  network_summary: out/example_network_summary.json
