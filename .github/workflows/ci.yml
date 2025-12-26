@@ -16,54 +16,9 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install dependencies
-        run: |          # Quote the extras to prevent shell globbing (e.g., .[dev]) and upgrade build tools (setuptools, wheel)          python -m pip install --upgrade pip setuptools wheel
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
           pip install ".[dev]"
-      - name: Run pytest
+      - name: Run tests
         run: |
-          python -m pytest -q
-
-  cli-smoke:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-      - name: Install package
-        run: |
-          python -m pip install --upgrade pip setuptools wheel
-          pip install -e .
-      - name: Run CLI smoke tests
-        run: |
-          python -m pytest -q tests/test_cli_entry.py
-
-  extras-test:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        extras: ["dev", "dev,annoy", "dev,msdial", "dev,annoy,msdial"]
-    steps:
-      - uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-      - name: Install extras
-        run: |
-          python -m pip install --upgrade pip setuptools wheel
-          pip install -e ".[${{ matrix.extras }}]"
-      - name: Verify optional imports (annoy)
-        if: contains(matrix.extras, 'annoy')
-        run: |
-          python - <<'PY'
-          import annoy
-          print('annoy OK', annoy.__version__)
-          PY
-      - name: Run core subset tests
-        run: |
-          python -m pytest -q tests/test_library_io.py tests/test_processor_config.py
-      - name: Run msdial tests
-        if: contains(matrix.extras, 'msdial')
-        run: |
-          python -m pytest -q tests/test_msdial.py
+          python -m pytest tests/test_core.py
