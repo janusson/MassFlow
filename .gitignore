@@ -1,6 +1,8 @@
 # Repo-specific
 environment/
 out/
+archive/
+original_source/
 AI_GUIDE.md
 Repo Analysis.md
 

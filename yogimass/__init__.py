@@ -1,9 +1,12 @@
 """
-Yogimass: Config-first LC-MS/MS spectral similarity toolkit.
+Yogimass Core Package.
 """
+from __future__ import annotations
 
-__version__ = "0.1.0"
+__version__ = "0.4.0"
 
-from . import cli, workflow, config
+from . import io
+from . import processing
+from . import similarity
 
-__all__ = ["__version__", "cli", "workflow", "config"]
+__all__ = ["io", "processing", "similarity", "__version__"]

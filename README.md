@@ -2,18 +2,6 @@
 
 ---
 
-## 🗓 First Three Weeks Roadmap
-
-**Goal:** Rebuild Yogimass with clarity, reproducibility, and modularity while regaining full understanding.
-
-| Week | Focus | Key Actions |
-|------|-------|-------------|
-| 1 | **Foundational architecture** | Freeze old repo as `archive/entropy_experiment`. Set up skeleton repo with core modules (`cli`, `workflow`, `config`, `similarity`, `io`, `filters`, `networking`, `reporting`). Add top-level `README.md` and `docs/architecture.md`. Create one simple workflow example (`examples/simple_workflow.yaml`). |
-| 2 | **Core functionality & unit tests** | Implement minimal vertical slice: ingest spectra, apply basic filters, compute spec2vec similarity, return scores. Add unit tests for each component, including dotted `ConfigError` validation. Rationalize `splinters/` by marking experimental or moving stable code. |
-| 3 | **Integration, CI, and documentation** | Run the workflow end-to-end. Organize tests into `tests/unit/` and `tests/integration/`, centralize example data under `tests/data/`. Add logging, incremental type hints, CI jobs for optional extras (`annoy`, `pandas`) and mypy checks. Update architecture doc with diagrams and public API surface. |
-
----
-
 ## **Short Summary**
 
 Yogimass is a config‑first toolkit for working with LC‑MS/MS tandem spectra: ingesting spectra (MGF/MSP/MS‑DIAL), cleaning & filtering them, building and searching local spectral libraries, constructing similarity networks, and performing curation and QC. It focuses on spectral similarity (using matchms/spec2vec), pragmatic tooling for library management/search, and workflows you can drive from a YAML config or the CLI.
@@ -84,3 +72,21 @@ flowchart LR
 * CLI: `python -m yogimass.cli <command>`
 * Workflow: `yogimass config run --config examples/simple_workflow.yaml`
 * Tests: `python -m pytest` (use `pytest.importorskip` for optional deps)
+
+---
+
+## License & Attribution 📜
+
+Yogimass is released under the MIT License. See [LICENSE](LICENSE) for details.
+
+---
+
+## ⚠️ AI Development Rules (Codex, Claude, Gemini, etc.)
+
+- **Source of Truth**: All core logic resides in `original_source/`.
+- **No Restructuring**: Do not archived, move, or 'splinter' code without explicit user approval.
+- **Simplification**: If asked to simplify, focus on removing unused dependencies or cleaning up imports, NOT deleting functional business logic.
+- **No Refactoring**: Do not refactor code without explicit user approval.
+- **No Code Generation**: Do not generate code without explicit user approval.
+
+---
