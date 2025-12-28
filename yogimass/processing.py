@@ -5,6 +5,7 @@ Ported from original_source/yogimass_pipeline.py.
 from __future__ import annotations
 
 import logging
+from tqdm import tqdm
 from matchms.importing import load_from_mgf, load_from_msp
 from matchms.filtering import (
     default_filters,
@@ -78,7 +79,7 @@ def clean_mgf_library(mgf_path: str) -> list:
     
     # Apply filters sequentially
     processed_spectra = []
-    for s in library_list:
+    for s in tqdm(library_list, desc="Cleaning MGF spectra", unit="spectra"):
         meta_processed = metadata_processing(s)
         if meta_processed:
             peak_processed = peak_processing(meta_processed)
@@ -97,7 +98,7 @@ def clean_msp_library(msp_path: str) -> list:
     library_list = list(load_from_msp(msp_path))
     
     processed_spectra = []
-    for s in library_list:
+    for s in tqdm(library_list, desc="Cleaning MSP spectra", unit="spectra"):
         meta_processed = metadata_processing(s)
         if meta_processed:
             peak_processed = peak_processing(meta_processed)
