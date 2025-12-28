@@ -75,16 +75,22 @@ def clean_mgf_library(mgf_path: str) -> list:
     """
     logger.info(f"Cleaning {mgf_path} library spectra...")
     library_list = list(load_from_mgf(mgf_path))
+    total_spectra = len(library_list)
+    logger.info(f"Loaded {total_spectra} spectra. Starting processing...")
     
     # Apply filters sequentially
     processed_spectra = []
-    for s in library_list:
+    for i, s in enumerate(library_list):
         meta_processed = metadata_processing(s)
         if meta_processed:
             peak_processed = peak_processing(meta_processed)
             if peak_processed:
                 processed_spectra.append(peak_processed)
-    
+
+        # UX Improvement: Progress logging
+        if (i + 1) % 100 == 0:
+            logger.info(f"Processed {i + 1}/{total_spectra} spectra ({(i + 1)/total_spectra:.0%})")
+
     logger.info(f"Retained {len(processed_spectra)} spectra after cleaning.")
     return processed_spectra
 
@@ -95,14 +101,20 @@ def clean_msp_library(msp_path: str) -> list:
     """
     logger.info(f"Cleaning {msp_path} library spectra...")
     library_list = list(load_from_msp(msp_path))
+    total_spectra = len(library_list)
+    logger.info(f"Loaded {total_spectra} spectra. Starting processing...")
     
     processed_spectra = []
-    for s in library_list:
+    for i, s in enumerate(library_list):
         meta_processed = metadata_processing(s)
         if meta_processed:
             peak_processed = peak_processing(meta_processed)
             if peak_processed:
                 processed_spectra.append(peak_processed)
+
+        # UX Improvement: Progress logging
+        if (i + 1) % 100 == 0:
+            logger.info(f"Processed {i + 1}/{total_spectra} spectra ({(i + 1)/total_spectra:.0%})")
                 
     logger.info(f"Retained {len(processed_spectra)} spectra after cleaning.")
     return processed_spectra
