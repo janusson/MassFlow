@@ -72,8 +72,13 @@ def run_clean(args):
     output_dir = args.output_dir
     export_format = args.format
     
+    if not os.path.exists(input_path):
+        logger.error(f"Input file not found: {input_path}")
+        return 1
+
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
+        logger.info(f"Created output directory: {output_dir}")
         
     logger.info(f"Starting clean operation on {input_path}")
     
@@ -101,7 +106,8 @@ def run_clean(args):
         io.save_spectra_to_mgf(spectra, output_dir, lib_name)
     elif export_format == "json":
         io.save_spectra_to_json(spectra, output_dir, lib_name)
-        
+
+    logger.info(f"Successfully processed {len(spectra)} spectra and saved to {output_dir}")
     return 0
 
 
