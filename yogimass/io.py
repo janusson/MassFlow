@@ -1,5 +1,5 @@
 """
-I/O functions for Yogimass: import/export of libraries and spectra.
+I/O functions for SpectralMetricMS: import/export of libraries and spectra.
 Ported from original_source/io/mgf.py and yogimass_pipeline.py.
 """
 from __future__ import annotations

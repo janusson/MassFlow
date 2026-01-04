@@ -1,16 +1,16 @@
-# Yogimass — AI One‑Pager & Design Guide 🧭
+# SpectralMetricMS — AI One‑Pager & Design Guide 🧭
 
 ---
 
 ## **Short Summary**
 
-Yogimass is a config‑first toolkit for working with LC‑MS/MS tandem spectra: ingesting spectra (MGF/MSP/MS‑DIAL), cleaning & filtering them, building and searching local spectral libraries, constructing similarity networks, and performing curation and QC. It focuses on spectral similarity (using matchms/spec2vec), pragmatic tooling for library management/search, and workflows you can drive from a YAML config or the CLI.
+SpectralMetricMS is a config‑first toolkit for working with LC‑MS/MS tandem spectra: ingesting spectra (MGF/MSP/MS‑DIAL), cleaning & filtering them, building and searching local spectral libraries, constructing similarity networks, and performing curation and QC. It focuses on spectral similarity (using matchms/spec2vec), pragmatic tooling for library management/search, and workflows you can drive from a YAML config or the CLI.
 
 ---
 
 ## Philosophy & Goals ✅
 
-- **Config‑first:** Reproducible workflows are declared as YAML and driven by the `yogimass` CLI (`yogimass config run --config <file>`). Prefer changing configs over ad‑hoc scripts.
+- **Config‑first:** Reproducible workflows are declared as YAML and driven by the `SpectralMetricMS` CLI (`SpectralMetricMS config run --config <file>`). Prefer changing configs over ad‑hoc scripts.
 - **Composability:** Small, testable components (parsers, processors, filters, backends, exporters) that can be recombined in workflows.
 - **Practical ML/AI use:** Use learned representations (spec2vec via `matchms`) where they provide clear gains, but keep non‑ML fallbacks for reproducibility and debugging.
 - **Lightweight, local-first:** Tools to build and search **local** spectral libraries (JSON/SQLite) suitable for iterative development and benchmarking.
@@ -20,16 +20,16 @@ Yogimass is a config‑first toolkit for working with LC‑MS/MS tandem spectra:
 
 ## Core Components & Where to Look 🔎
 
-- **CLI / entrypoints:** `yogimass/cli.py` — top‑level commands and argument mapping.
-- **Orchestration:** `yogimass/workflow.py` — executes the pipeline defined by config.
-- **Configuration:** `yogimass/config.py` — schema + dotted `ConfigError` validation.
+- **CLI / entrypoints:** `SpectralMetricMS/cli.py` — top‑level commands and argument mapping.
+- **Orchestration:** `SpectralMetricMS/workflow.py` — executes the pipeline defined by config.
+- **Configuration:** `SpectralMetricMS/config.py` — schema + dotted `ConfigError` validation.
 - **Similarity & storage:**
-  - `yogimass/similarity/library.py` — `LocalSpectralLibrary` (JSON/SQLite storage inference by extension).
-  - `yogimass/similarity/backends.py` — search backends (naive, `annoy`, `faiss` placeholders).
-  - `yogimass/similarity/processing.py` & `yogimass/scoring/*` — processors and scoring logic.
-- **IO & filters:** `yogimass/io/`, `yogimass/filters/` — parsers, cleanup, metadata handling.
-- **Networking & export:** `yogimass/networking/*` — building/exporting similarity networks.
-- **Reporting & curation:** `yogimass/curation.py`, `yogimass/reporting.py` (helpers in `splinters/`).
+  - `SpectralMetricMS/similarity/library.py` — `LocalSpectralLibrary` (JSON/SQLite storage inference by extension).
+  - `SpectralMetricMS/similarity/backends.py` — search backends (naive, `annoy`, `faiss` placeholders).
+  - `SpectralMetricMS/similarity/processing.py` & `SpectralMetricMS/scoring/*` — processors and scoring logic.
+- **IO & filters:** `SpectralMetricMS/io/`, `SpectralMetricMS/filters/` — parsers, cleanup, metadata handling.
+- **Networking & export:** `SpectralMetricMS/networking/*` — building/exporting similarity networks.
+- **Reporting & curation:** `SpectralMetricMS/curation.py`, `SpectralMetricMS/reporting.py` (helpers in `splinters/`).
 - **Tests & examples:** `tests/` and `examples/` provide usage and expected behaviors.
 
 ---
@@ -51,33 +51,33 @@ flowchart LR
 
 ## Spectral Similarity & matchms ⚙️
 
-* matchms is used for **preprocessing/cleaning** and **spectral similarity**.
-* Pipelines (filters/processors) remain explicit and configurable for reproducibility.
-* Keep non-ML fallbacks for comparison/debugging.
+- matchms is used for **preprocessing/cleaning** and **spectral similarity**.
+- Pipelines (filters/processors) remain explicit and configurable for reproducibility.
+- Keep non-ML fallbacks for comparison/debugging.
 
 ---
 
 ## Design Patterns & Conventions 🔧
 
-* **Dotted config validation:** `ConfigError(path, msg)` where `path` is dotted (e.g., `network.threshold`).
-* **Storage inference:** `LocalSpectralLibrary` infers from filename extension; override with `--storage`.
-* **Optional deps & graceful failure:** Optional libraries (`annoy`, `pandas`) are `importorskip`-style or raise informative errors.
-* **Small PRs + tests:** Narrow, well-tested changes with example configs.
-* **Public vs internal API:** Explicit `__all__` in `yogimass/__init__.py`. Only CLI and main modules are public; helpers remain internal.
+- **Dotted config validation:** `ConfigError(path, msg)` where `path` is dotted (e.g., `network.threshold`).
+- **Storage inference:** `LocalSpectralLibrary` infers from filename extension; override with `--storage`.
+- **Optional deps & graceful failure:** Optional libraries (`annoy`, `pandas`) are `importorskip`-style or raise informative errors.
+- **Small PRs + tests:** Narrow, well-tested changes with example configs.
+- **Public vs internal API:** Explicit `__all__` in `SpectralMetricMS/__init__.py`. Only CLI and main modules are public; helpers remain internal.
 
 ---
 
 ## How to Run & Test ▶️
 
-* CLI: `python -m yogimass.cli <command>`
-* Workflow: `yogimass config run --config examples/simple_workflow.yaml`
-* Tests: `python -m pytest` (use `pytest.importorskip` for optional deps)
+- CLI: `python -m SpectralMetricMS.cli <command>`
+- Workflow: `SpectralMetricMS config run --config examples/simple_workflow.yaml`
+- Tests: `python -m pytest` (use `pytest.importorskip` for optional deps)
 
 ---
 
 ## License & Attribution 📜
 
-Yogimass is released under the MIT License. See [LICENSE](LICENSE) for details.
+SpectralMetricMS is released under the MIT License. See [LICENSE](LICENSE) for details.
 
 ---
 

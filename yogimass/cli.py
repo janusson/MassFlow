@@ -1,5 +1,5 @@
 """
-Simple CLI for Yogimass.
+Simple CLI for SpectralMetricMS.
 Replaces yogimass_buildDB.py and yogimass_pipeline.py entry points.
 """
 from __future__ import annotations
@@ -7,7 +7,7 @@ from __future__ import annotations
 import argparse
 import sys
 import os
-from yogimass import io, processing, similarity, __version__
+from SpectralMetricMS import io, processing, similarity, __version__
 
 # Configure logging
 import logging
@@ -58,14 +58,14 @@ def run_search(args):
     """Run similarity search."""
     # This is a placeholder for the pipeline search logic.
     # To implement this fully, we'd need to load a reference library and query spectra.
-    logger.info("Search functionality is available in yogimass.similarity but CLI wrapper is pending specific requirements.")
+    logger.info("Search functionality is available in SpectralMetricMS.similarity but CLI wrapper is pending specific requirements.")
     return 0
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        prog="yogimass",
-        description="Yogimass: Tandem MS/MS data analysis pipeline.",
+        prog="SpectralMetricMS",
+        description="SpectralMetricMS: Tandem MS/MS data analysis pipeline.",
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     

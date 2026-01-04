@@ -1,5 +1,5 @@
 '''
-Tests for Yogimass core functions.
+Tests for SpectralMetricMS core functions.
 Verifies logic ported from original_source.
 '''
 import pytest
@@ -8,7 +8,7 @@ import numpy as np
 from unittest.mock import MagicMock, patch
 from matchms import Spectrum
 
-from yogimass import processing, similarity, io
+from SpectralMetricMS import processing, similarity, io
 
 @pytest.fixture
 def mock_spectrum():

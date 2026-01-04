@@ -1,5 +1,5 @@
 """
-Yogimass Core Package.
+SpectralMetricMS Core Package.
 """
 from __future__ import annotations
 

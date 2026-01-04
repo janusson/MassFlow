@@ -3,13 +3,13 @@ requires = ["setuptools>=69.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "yogimass"
+name = "SpectralMetricMS"
 version = "0.1.0"
 description = "Config-first LC-MS/MS spectral similarity toolkit."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { file = "LICENSE" }
-authors = [{ name = "Yogimass Contributors" }]
+authors = [{ name = "SpectralMetricMS Contributors" }]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Science/Research",
@@ -49,14 +49,14 @@ all = [
 ]
 
 [project.scripts]
-yogimass = "yogimass.cli:main"
+SpectralMetricMS = "SpectralMetricMS.cli:main"
 
 [tool.setuptools]
 package-dir = {"" = "."}
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["yogimass*"]
+include = ["SpectralMetricMS*"]
 
 [tool.pytest.ini_options]
 pythonpath = [

@@ -1,6 +1,6 @@
-# Contributing to Yogimass
+# Contributing to SpectralMetricMS
 
-Thanks for your interest in improving Yogimass! Please follow these guidelines to keep the project healthy.
+Thanks for your interest in improving SpectralMetricMS! Please follow these guidelines to keep the project healthy.
 
 ## Getting Started
 
@@ -21,7 +21,7 @@ Thanks for your interest in improving Yogimass! Please follow these guidelines t
 - Keep imports sorted and avoid introducing unused dependencies.
 - Favor small, composable functions with clear logging where side-effects occur.
 - Write or update tests in `tests/` for new features and bug fixes.
-- Run `python3 -m pytest` (and `python3 -m pytest --cov=yogimass` if you have `pytest-cov` installed) before opening a PR.
+- Run `python3 -m pytest` (and `python3 -m pytest --cov=SpectralMetricMS` if you have `pytest-cov` installed) before opening a PR.
 
 ## Pull Requests
 
