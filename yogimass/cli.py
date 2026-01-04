@@ -11,7 +11,58 @@ from SpectralMetricMS import io, processing, similarity, __version__
 
 # Configure logging
 import logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
+class ColoredFormatter(logging.Formatter):
+    """
+    Formatter to add colors to logging output based on log level.
+    """
+    grey = "\x1b[38;20m"
+    green = "\x1b[32m"
+    yellow = "\x1b[33;20m"
+    red = "\x1b[31;20m"
+    bold_red = "\x1b[31;1m"
+    reset = "\x1b[0m"
+    format_str = "%(levelname)s: %(message)s"
+
+    FORMATS = {
+        logging.DEBUG: grey + format_str + reset,
+        logging.INFO: green + format_str + reset,
+        logging.WARNING: yellow + format_str + reset,
+        logging.ERROR: red + format_str + reset,
+        logging.CRITICAL: bold_red + format_str + reset
+    }
+
+    def __init__(self):
+        super().__init__()
+        self.formatters = {
+            level: logging.Formatter(fmt)
+            for level, fmt in self.FORMATS.items()
+        }
+
+    def format(self, record):
+        formatter = self.formatters.get(record.levelno)
+        if formatter is None:
+            return super().format(record)
+        return formatter.format(record)
+
+
+def setup_logging():
+    """Set up logging configuration."""
+    logger = logging.getLogger()
+    logger.setLevel(logging.INFO)
+
+    # Check if handlers are already configured to avoid duplication
+    if not logger.handlers:
+        handler = logging.StreamHandler()
+
+        # Use colored formatter only if stream is a TTY (terminal)
+        if sys.stderr.isatty():
+            handler.setFormatter(ColoredFormatter())
+        else:
+            handler.setFormatter(logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s"))
+
+        logger.addHandler(handler)
+
 logger = logging.getLogger(__name__)
 
 
@@ -63,6 +114,8 @@ def run_search(args):
 
 
 def main(argv: list[str] | None = None) -> int:
+    setup_logging()
+
     parser = argparse.ArgumentParser(
         prog="SpectralMetricMS",
         description="SpectralMetricMS: Tandem MS/MS data analysis pipeline.",
@@ -72,7 +125,11 @@ def main(argv: list[str] | None = None) -> int:
     subparsers = parser.add_subparsers(dest="command", help="Command to run")
     
     # Clean command
-    clean_parser = subparsers.add_parser("clean", help="Clean and process a spectral library.")
+    clean_parser = subparsers.add_parser(
+        "clean",
+        help="Clean and process a spectral library.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter
+    )
     clean_parser.add_argument("--input", required=True, help="Input library file (.msp or .mgf)")
     clean_parser.add_argument("--output-dir", required=True, help="Directory to save processed library")
     clean_parser.add_argument("--format", choices=["pickle", "msp", "mgf", "json"], default="pickle", help="Output format")
