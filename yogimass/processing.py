@@ -5,6 +5,7 @@ Ported from original_source/yogimass_pipeline.py.
 from __future__ import annotations
 
 import logging
+from tqdm import tqdm
 from matchms.importing import load_from_mgf, load_from_msp
 from matchms.filtering import (
     default_filters,
@@ -24,9 +25,6 @@ from matchms.filtering import (
 )
 
 logger = logging.getLogger(__name__)
-
-# Interval for progress logging
-LOG_INTERVAL = 1000
 
 
 def metadata_processing(spectrum):
@@ -78,19 +76,16 @@ def clean_mgf_library(mgf_path: str) -> list:
     """
     logger.info(f"Cleaning {mgf_path} library spectra...")
     library_list = list(load_from_mgf(mgf_path))
-    
+
     # Apply filters sequentially
     processed_spectra = []
-    for i, s in enumerate(library_list):
-        if (i + 1) % LOG_INTERVAL == 0:
-            logger.info(f"Processed {i + 1} / {len(library_list)} spectra...")
-
+    for s in tqdm(library_list, desc="Cleaning spectra", unit="spectrum"):
         meta_processed = metadata_processing(s)
         if meta_processed:
             peak_processed = peak_processing(meta_processed)
             if peak_processed:
                 processed_spectra.append(peak_processed)
-    
+
     logger.info(f"Retained {len(processed_spectra)} spectra after cleaning.")
     return processed_spectra
 
@@ -101,17 +96,14 @@ def clean_msp_library(msp_path: str) -> list:
     """
     logger.info(f"Cleaning {msp_path} library spectra...")
     library_list = list(load_from_msp(msp_path))
-    
-    processed_spectra = []
-    for i, s in enumerate(library_list):
-        if (i + 1) % LOG_INTERVAL == 0:
-            logger.info(f"Processed {i + 1} / {len(library_list)} spectra...")
 
+    processed_spectra = []
+    for s in tqdm(library_list, desc="Cleaning spectra", unit="spectrum"):
         meta_processed = metadata_processing(s)
         if meta_processed:
             peak_processed = peak_processing(meta_processed)
             if peak_processed:
                 processed_spectra.append(peak_processed)
-                
+
     logger.info(f"Retained {len(processed_spectra)} spectra after cleaning.")
     return processed_spectra
