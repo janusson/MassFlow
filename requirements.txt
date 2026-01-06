@@ -1,4 +1,4 @@
-# SpectralMetricMS runtime requirements
+# MassFlow runtime requirements
 matchms>=0.23
 numpy>=1.24
 

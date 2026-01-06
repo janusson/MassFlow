@@ -1,6 +1,6 @@
 """
-I/O functions for SpectralMetricMS: import/export of libraries and spectra.
-Ported from original_source/io/mgf.py and yogimass_pipeline.py.
+I/O functions for MassFlow: import/export of libraries and spectra.
+Ported from original_source/io/mgf.py and massflow_pipeline.py.
 """
 from __future__ import annotations
 

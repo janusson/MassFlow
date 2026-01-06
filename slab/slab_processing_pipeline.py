@@ -21,7 +21,7 @@ def load_settings():
     """
     from os import path as path
 
-    libraries_path = path.abspath(r"./database/msp databases") # SpectralMetricMS library directory
+    libraries_path = path.abspath(r"./database/msp databases") # MassFlow library directory
     reference_msp_lib = path.join(libraries_path, "eric_lib.msp") # reference debugging library
     return libraries_path, reference_msp_lib
 

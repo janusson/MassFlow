@@ -1,13 +1,13 @@
 """
-Simple CLI for SpectralMetricMS.
-Replaces yogimass_buildDB.py and yogimass_pipeline.py entry points.
+Simple CLI for MassFlow.
+Replaces massflow_buildDB.py and massflow_pipeline.py entry points.
 """
 from __future__ import annotations
 
 import argparse
 import sys
 import os
-from SpectralMetricMS import io, processing, similarity, __version__
+from MassFlow import io, processing, similarity, __version__
 
 # Configure logging
 import logging
@@ -67,7 +67,7 @@ logger = logging.getLogger(__name__)
 
 
 def run_clean(args):
-    """Run library cleaning (similar to yogimass_buildDB.py)."""
+    """Run library cleaning (similar to massflow_buildDB.py)."""
     input_path = args.input
     output_dir = args.output_dir
     export_format = args.format
@@ -109,7 +109,7 @@ def run_search(args):
     """Run similarity search."""
     # This is a placeholder for the pipeline search logic.
     # To implement this fully, we'd need to load a reference library and query spectra.
-    logger.info("Search functionality is available in SpectralMetricMS.similarity but CLI wrapper is pending specific requirements.")
+    logger.info("Search functionality is available in MassFlow.similarity but CLI wrapper is pending specific requirements.")
     return 0
 
 
@@ -117,8 +117,8 @@ def main(argv: list[str] | None = None) -> int:
     setup_logging()
 
     parser = argparse.ArgumentParser(
-        prog="SpectralMetricMS",
-        description="SpectralMetricMS: Tandem MS/MS data analysis pipeline.",
+        prog="MassFlow",
+        description="MassFlow: Tandem MS/MS data analysis pipeline.",
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     

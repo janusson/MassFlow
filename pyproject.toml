@@ -3,13 +3,13 @@ requires = ["setuptools>=69.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "SpectralMetricMS"
+name = "MassFlow"
 version = "0.1.0"
 description = "Config-first LC-MS/MS spectral similarity toolkit."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { file = "LICENSE" }
-authors = [{ name = "SpectralMetricMS Contributors" }]
+authors = [{ name = "MassFlow Contributors" }]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Science/Research",
@@ -49,14 +49,14 @@ all = [
 ]
 
 [project.scripts]
-SpectralMetricMS = "SpectralMetricMS.cli:main"
+MassFlow = "MassFlow.cli:main"
 
 [tool.setuptools]
 package-dir = {"" = "."}
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["SpectralMetricMS*"]
+include = ["MassFlow*"]
 
 [tool.pytest.ini_options]
 pythonpath = [

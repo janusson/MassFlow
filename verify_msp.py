@@ -1,10 +1,10 @@
 
 import sys
 import os
-from SpectralMetricMS import processing, io
+from MassFlow import processing, io
 
 # Path provided by user
-msp_path = "/Users/ericjanusson/Programming/SpectralMetricMS/original_source/data/GNPS-NIH-CLINICALCOLLECTION1.msp"
+msp_path = "/Users/ericjanusson/Programming/MassFlow/original_source/data/GNPS-NIH-CLINICALCOLLECTION1.msp"
 
 print(f"Testing MSP loading from: {msp_path}")
 

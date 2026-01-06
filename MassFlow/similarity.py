@@ -1,6 +1,6 @@
 """
 Compute spectra similarities: Cosine and Modified Cosine scores.
-Ported from original_source/yogimass_pipeline.py.
+Ported from original_source/massflow_pipeline.py.
 """
 from __future__ import annotations
 
