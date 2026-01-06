@@ -1,0 +1,30 @@
+# MassFlow Configuration Template
+# -----------------------------
+# This configuration drives the LC-MS analysis pipeline.
+# For reproducibility, keep this file with your raw data.
+
+project:
+  name: "MassFlow_Example"
+  output_directory: "./results"
+
+input:
+  # Supported formats: .msp, .mgf
+  data_directory: "./raw_data"
+
+processing:
+  # Mass tolerance for precursor ions (ppm)
+  ms1_tolerance: 10.0
+  # Mass tolerance for fragment ions (Daltons)
+  ms2_tolerance: 0.02
+  # Minimum intensity threshold to consider a peak
+  noise_threshold: 1000
+
+workflow:
+  # Set steps to True/False to toggle modular components
+  perform_peak_picking: True
+  perform_alignment: True
+  perform_networking: False
+  export_consensus: True
+
+export:
+  format: "pickle" # Options: pickle, msp, mgf, json

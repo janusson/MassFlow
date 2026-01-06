@@ -1,44 +1,17 @@
-# MassFlow Readme
+# MassFlow
 
----
+**A Config-First Analytical Pipeline for High-Throughput Metabolomics**
 
-## **Summary**
+MassFlow is a Python-based processing engine designed to streamline LC-MS data analysis. Built for reproducibility and scalability, it bridges the gap between raw mass spectrometry data and actionable chemical insights.
 
-MassFlow is a config-first Python toolkit for reproducible untargeted metabolomics, orchestrating the matchms ecosystem to automate LC-MS/MS spectral processing. Driven by declarative YAML configurations or the CLI, it streamlines spectral ingestion, cleaning, library matching, network construction, and scoring without the need for ad-hoc scripts.
+Unlike GUI-based tools that obscure processing parameters, MassFlow is driven by a transparent YAML configuration, ensuring every analysis is version-controlled and reproducible. It leverages the **matchms** ecosystem to orchestrate spectral ingestion, cleaning, library matching, and network construction without the need for ad-hoc scripts.
 
----
+## Key Features
 
-## Installation
-
-```bash
-pip install .
-```
-
----
-
-## Philosophy & Goals ✅
-
-- **Config‑first:** Reproducible workflows are declared as YAML and driven by the `MassFlow` CLI (`MassFlow config run --config <file>`). Prefer changing configs over ad‑hoc scripts.
-- **Composability:** Small, testable components (parsers, processors, filters, backends, exporters) that can be recombined in workflows.
-- **Practical ML/AI use:** Use learned representations (spec2vec via `matchms`) where they provide clear gains, but keep non‑ML fallbacks for reproducibility and debugging.
-- **Lightweight, local-first:** Tools to build and search **local** spectral libraries (JSON/SQLite) suitable for iterative development and benchmarking.
-- **Test and document everything:** Changes should include tests and, where relevant, example configs under `examples/`.
-
----
-
-## Core Components & Where to Look 🔎
-
-- **CLI / entrypoints:** `MassFlow/cli.py` — top‑level commands and argument mapping.
-- **Orchestration:** `MassFlow/workflow.py` — executes the pipeline defined by config.
-- **Configuration:** `MassFlow/config.py` — schema + dotted `ConfigError` validation.
-- **Similarity & storage:**
-  - `MassFlow/similarity/library.py` — `LocalSpectralLibrary` (JSON/SQLite storage inference by extension).
-  - `MassFlow/similarity/backends.py` — search backends (naive, `annoy`, `faiss` placeholders).
-  - `MassFlow/similarity/processing.py` & `MassFlow/scoring/*` — processors and scoring logic.
-- **IO & filters:** `MassFlow/io/`, `MassFlow/filters/` — parsers, cleanup, metadata handling.
-- **Networking & export:** `MassFlow/networking/*` — building/exporting similarity networks.
-- **Reporting & curation:** `MassFlow/curation.py`, `MassFlow/reporting.py` (helpers in `splinters/`).
-- **Tests & examples:** `tests/` and `examples/` provide usage and expected behaviors.
+* **YAML-Driven Workflow:** Define your entire processing logic (tolerances, thresholds, steps) in a single human-readable file.
+* **Modular Architecture:** Isolate peak picking, alignment, and identification steps for easier debugging and custom extensions.
+* **High-Performance I/O:** Optimized reading of standard MS formats (.mzML, .mzXML) with low memory overhead.
+* **Automated Reporting:** Generates clean, structured output files ready for downstream statistical analysis (Pandas/R).
 
 ---
 
@@ -46,55 +19,98 @@ pip install .
 
 ```mermaid
 flowchart LR
-    A[Spectrum Input: MGF/MSP/MS-DIAL] --> B[Preprocessing & Cleaning]
-    B --> C[Similarity Computation: spec2vec / matchms]
-    C --> D[LocalSpectralLibrary Storage (JSON/SQLite)]
-    D --> E[Search & Retrieval: naive / ANN backends]
-    E --> F[Network Construction & Export]
+    A[Input: MGF/MSP/MS-DIAL] --> B[Preprocessing & Cleaning]
+    B --> C[Similarity: spec2vec / matchms]
+    C --> D[LocalSpectralLibrary Storage]
+    D --> E[Search: naive / ANN backends]
+    E --> F[Network Construction]
     F --> G[Curation & Reporting]
-    G --> H[QC & Benchmark Metrics]
+    G --> H[QC & Metrics] 
 ```
 
 ---
 
-## Spectral Similarity & matchms ⚙️
+## Quick Start
 
-- matchms is used for **preprocessing/cleaning** and **spectral similarity**.
-- Pipelines (filters/processors) remain explicit and configurable for reproducibility.
-- Keep non-ML fallbacks for comparison/debugging.
+1. Installation
 
----
+```bash
+pip install .
+```
 
-## Design Patterns & Conventions 🔧
+1. Configure Your Run
 
-- **Dotted config validation:** `ConfigError(path, msg)` where `path` is dotted (e.g., `network.threshold`).
-- **Storage inference:** `LocalSpectralLibrary` infers from filename extension; override with `--storage`.
-- **Optional deps & graceful failure:** Optional libraries (`annoy`, `pandas`) are `importorskip`-style or raise informative errors.
-- **Small PRs + tests:** Narrow, well-tested changes with example configs.
-- **Public vs internal API:** Explicit `__all__` in `MassFlow/__init__.py`. Only CLI and main modules are public; helpers remain internal.
+Copy the example_config.yaml and adjust parameters for your instrument. This adheres to the "Config-First" philosophy—parameters live with the data, not the code.
 
----
+```yaml
+processing:
+  ms1_tolerance: 10.0  # ppm
+  ms2_tolerance: 0.02  # Da
+workflow:
+  perform_peak_picking: True
+  perform_networking: False
+```
 
-## How to Run & Test ▶️
+1. Execute Pipeline
 
-- CLI: `python -m MassFlow.cli <command>`
-- Workflow: `MassFlow config run --config examples/simple_workflow.yaml`
-- Tests: `python -m pytest` (use `pytest.importorskip` for optional deps)
-
----
-
-## License & Attribution 📜
-
-MassFlow is released under the MIT License. See [LICENSE](LICENSE) for details.
+```bash
+massflow run --config my_experiment.yaml
+```
 
 ---
 
-## ⚠️ AI Development Rules (Codex, Claude, Gemini, etc.)
+## Technical Architecture
 
-- **Source of Truth**: All core logic resides in `original_source/`.
-- **No Restructuring**: Do not archived, move, or 'splinter' code without explicit user approval.
-- **Simplification**: If asked to simplify, focus on removing unused dependencies or cleaning up imports, NOT deleting functional business logic.
-- **No Refactoring**: Do not refactor code without explicit user approval.
-- **No Code Generation**: Do not generate code without explicit user approval.
+MassFlow is designed with composability in mind. The codebase is structured to allow small, testable components to be recombined.
+
+Core Components 🔎
+
+CLI / Entrypoints: MassFlow/cli.py — Top‑level commands and argument mapping.
+
+Orchestration: MassFlow/workflow.py — Executes the pipeline defined by the config.
+
+Configuration: MassFlow/config.py — Schema validation + dotted ConfigError handling.
+
+Similarity & Storage:
+
+MassFlow/similarity/library.py — LocalSpectralLibrary (JSON/SQLite storage).
+
+MassFlow/similarity/backends.py — Search backends (naive, annoy, faiss placeholders).
+
+Networking: MassFlow/networking/* — Building and exporting similarity networks (GraphML).
+
+Design Philosophy
+
+* Config‑First: Reproducible workflows are declared as YAML. We prefer changing configs over writing ad‑hoc scripts.
+* Practical ML/AI: We use learned representations (spec2vec via matchms) where they provide clear gains, but maintain non‑ML fallbacks (Cosine) for validation and debugging.
+* Lightweight, Local-First: Tools are optimized to build and search local spectral libraries, suitable for iterative development behind corporate firewalls.
 
 ---
+
+## Roadmap
+
+MassFlow is under active development to support advanced lead optimization workflows.
+
+v0.1.0 (Current): Core processing pipeline, peak alignment, and CSV export.
+
+v0.2.0 (Coming Soon): Molecular Networking & GraphML Export for structural similarity analysis.
+
+v0.3.0 (Planned): Direct integration with external spectral libraries (GNPS/MassBank).
+
+---
+
+## License
+
+MIT License
+
+---
+
+### ⚠️ Internal Development Rules (AI Assistants)
+
+Source of Truth: All core logic resides in MassFlow/ (formerly original_source/).
+
+No Restructuring: Do not archive, move, or 'splinter' code without explicit user approval.
+
+Simplification: If asked to simplify, focus on removing unused dependencies, NOT deleting functional business logic.
+
+No Refactoring: Do not refactor code without explicit user approval.
