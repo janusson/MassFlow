@@ -1,10 +1,3 @@
-# Repo-specific
-environment/
-out/
-archive/
-AI_GUIDE.md
-Repo Analysis.md
-
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
@@ -222,3 +215,5 @@ out/
 __pycache__/
 *.pyc
 .DS_Store
+AI_GUIDE.md
+Repo Analysis.md
