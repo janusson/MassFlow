@@ -107,7 +107,7 @@ MIT License
 
 ### ⚠️ Internal Development Rules (AI Assistants)
 
-Source of Truth: All core logic resides in MassFlow/ (formerly original_source/).
+Source of Truth: All core logic resides in MassFlow/ (formerly archive/original_source/).
 
 No Restructuring: Do not archive, move, or 'splinter' code without explicit user approval.
 
