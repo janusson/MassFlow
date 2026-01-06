@@ -2,7 +2,6 @@
 environment/
 out/
 archive/
-original_source/
 AI_GUIDE.md
 Repo Analysis.md
 
@@ -217,4 +216,9 @@ __marimo__/
 # Development
 data/ALL_GNPS.msp
 data/GNPS-LIBRARY.msp
+.DS_Store
+archive/
+out/
+__pycache__/
+*.pyc
 .DS_Store

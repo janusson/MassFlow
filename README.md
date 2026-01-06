@@ -2,9 +2,17 @@
 
 ---
 
-## **Short Summary**
+## **Summary**
 
-MassFlow is a config‑first toolkit for working with LC‑MS/MS tandem spectra: ingesting spectra (MGF/MSP/MS‑DIAL), cleaning & filtering them, building and searching local spectral libraries, constructing similarity networks, and performing curation and QC. It focuses on spectral similarity (using matchms/spec2vec), pragmatic tooling for library management/search, and workflows you can drive from a YAML config or the CLI.
+MassFlow is a config-first Python toolkit for reproducible untargeted metabolomics, orchestrating the matchms ecosystem to automate LC-MS/MS spectral processing. Driven by declarative YAML configurations or the CLI, it streamlines spectral ingestion, cleaning, library matching, network construction, and scoring without the need for ad-hoc scripts.
+
+---
+
+## Installation
+
+```bash
+pip install .
+```
 
 ---
 
