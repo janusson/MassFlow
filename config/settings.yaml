@@ -1,0 +1,38 @@
+# yogimass Configuration
+
+data:
+  # Path to the directory containing raw MGF/MSP files
+  raw_library_path: "data/raw_libraries"
+  # Path to the directory for caching processed libraries
+  cache_path: "data/processed_cache"
+  # Name of the reference library file to use
+  reference_library_file: "test.mgf"
+  # Path to the query spectrum file (optional, can be passed via CLI/code)
+  query_file: "query.mgf"
+
+models:
+  # Path to the directory containing pre-trained models
+  model_path: "data/models"
+  # Selected model: "cosine" or "spec2vec"
+  selected_model: "cosine"
+  # Parameters for Cosine Greedy search
+  cosine:
+    tolerance: 0.005
+    mz_power: 0.0
+    intensity_power: 1.0
+  # Parameters for Spec2Vec
+  spec2vec:
+    model_file: "spec2vec_model.model"
+    intensity_weighting_power: 0.5
+    allowed_missing_percentage: 5.0
+
+filters:
+  # List of filters to apply in order
+  # These names must map to functions in src/filters.py
+  - name: "default_filters"
+  - name: "normalize_intensities"
+  - name: "select_by_intensity"
+    intensity_from: 0.01
+  - name: "select_by_mz"
+    mz_from: 0
+    mz_to: 1000
