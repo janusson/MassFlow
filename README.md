@@ -1,116 +1,114 @@
 # MassFlow
 
-**A Config-First Analytical Pipeline for High-Throughput Metabolomics**
+**MassFlow** is a lightweight Python toolkit for processing, cleaning, and analyzing tandem mass spectrometry (MS/MS) data. It leverages the [matchms](https://github.com/matchms/matchms) ecosystem to provide efficient spectral data handling and similarity calculations.
 
-MassFlow is a Python-based processing engine designed to streamline LC-MS data analysis. Built for reproducibility and scalability, it bridges the gap between raw mass spectrometry data and actionable chemical insights.
+## Features
 
-Unlike GUI-based tools that obscure processing parameters, MassFlow is driven by a transparent YAML configuration, ensuring every analysis is version-controlled and reproducible. It leverages the **matchms** ecosystem to orchestrate spectral ingestion, cleaning, library matching, and network construction without the need for ad-hoc scripts.
+- **Spectral Cleaning**: Automated metadata repair, peak filtering, and normalization.
+- **Format Conversion**: Convert between MGF, MSP, JSON, and Pickle formats.
+- **Similarity Search**: Calculate Cosine and Modified Cosine similarity scores between spectra.
+- **CLI & Library**: Use as a command-line tool or import as a Python library.
 
-## Key Features
+## Installation
 
-* **YAML-Driven Workflow:** Define your entire processing logic (tolerances, thresholds, steps) in a single human-readable file.
-* **Modular Architecture:** Isolate peak picking, alignment, and identification steps for easier debugging and custom extensions.
-* **High-Performance I/O:** Optimized reading of standard MS formats (.mzML, .mzXML) with low memory overhead.
-* **Automated Reporting:** Generates clean, structured output files ready for downstream statistical analysis (Pandas/R).
+### Prerequisites
 
----
+- Python 3.10+
 
-## Workflow Diagram 🌐
-
-```mermaid
-flowchart LR
-    A[Input: MGF/MSP/MS-DIAL] --> B[Preprocessing & Cleaning]
-    B --> C[Similarity: spec2vec / matchms]
-    C --> D[LocalSpectralLibrary Storage]
-    D --> E[Search: naive / ANN backends]
-    E --> F[Network Construction]
-    F --> G[Curation & Reporting]
-    G --> H[QC & Metrics] 
-```
-
----
-
-## Quick Start
-
-1. Installation
+### Install from Source
 
 ```bash
+git clone https://github.com/yourusername/MassFlow.git
+cd MassFlow
 pip install .
 ```
 
-1. Configure Your Run
-
-Copy the example_config.yaml and adjust parameters for your instrument. This adheres to the "Config-First" philosophy—parameters live with the data, not the code.
-
-```yaml
-processing:
-  ms1_tolerance: 10.0  # ppm
-  ms2_tolerance: 0.02  # Da
-workflow:
-  perform_peak_picking: True
-  perform_networking: False
-```
-
-1. Execute Pipeline
+### Development Setup
 
 ```bash
-massflow run --config my_experiment.yaml
+pip install -r requirements.txt
 ```
 
----
+## Usage
 
-## Technical Architecture
+MassFlow provides a CLI entry point `massflow` (or `MassFlow` depending on installation).
 
-MassFlow is designed with composability in mind. The codebase is structured to allow small, testable components to be recombined.
+### Command Line Interface (CLI)
 
-Core Components 🔎
+#### 1. Clean and Convert a Library
 
-CLI / Entrypoints: MassFlow/cli.py — Top‑level commands and argument mapping.
+Process an MGF or MSP file to apply filters (intensity, mz range, metadata cleanup) and save it in a new format.
 
-Orchestration: MassFlow/workflow.py — Executes the pipeline defined by the config.
+```bash
+# Clean an MSP file and save as Pickle (default)
+massflow clean --input data/library.msp --output-dir processed_data/
 
-Configuration: MassFlow/config.py — Schema validation + dotted ConfigError handling.
+# Clean an MGF file and save as MSP
+massflow clean --input data/query.mgf --output-dir processed_data/ --format msp
+```
 
-Similarity & Storage:
+**Options:**
 
-MassFlow/similarity/library.py — LocalSpectralLibrary (JSON/SQLite storage).
+- `--input`: Path to input library (.mgf or .msp).
+- `--output-dir`: Directory to save the output.
+- `--format`: Output format (`pickle`, `msp`, `mgf`, `json`). Default: `pickle`.
 
-MassFlow/similarity/backends.py — Search backends (naive, annoy, faiss placeholders).
+#### 2. Similarity Search
 
-Networking: MassFlow/networking/* — Building and exporting similarity networks (GraphML).
+(Functionality available in library, CLI wrapper coming soon)
 
-Design Philosophy
+```bash
+massflow search ...
+```
 
-* Config‑First: Reproducible workflows are declared as YAML. We prefer changing configs over writing ad‑hoc scripts.
-* Practical ML/AI: We use learned representations (spec2vec via matchms) where they provide clear gains, but maintain non‑ML fallbacks (Cosine) for validation and debugging.
-* Lightweight, Local-First: Tools are optimized to build and search local spectral libraries, suitable for iterative development behind corporate firewalls.
+### Python Library
 
----
+You can use MassFlow modules directly in your Python scripts.
 
-## Roadmap
+#### Processing Spectra
 
-MassFlow is under active development to support advanced lead optimization workflows.
+```python
+from MassFlow import processing, io
 
-v0.1.0 (Current): Core processing pipeline, peak alignment, and CSV export.
+# Load and clean a library
+spectra = processing.clean_mgf_library("data/test.mgf")
 
-v0.2.0 (Coming Soon): Molecular Networking & GraphML Export for structural similarity analysis.
+# The cleaning pipeline automatically applies:
+# - Metadata repair (InChI/SMILES)
+# - Peak filtering (intensity > 0.01, relative > 0.08)
+# - Normalization
+```
 
-v0.3.0 (Planned): Direct integration with external spectral libraries (GNPS/MassBank).
+#### Similarity Calculations
 
----
+```python
+from MassFlow import similarity
+
+# Calculate Cosine scores
+scores = similarity.calculate_cosscores(reference_spectra, query_spectra)
+
+# Get top matches
+matches = scores.scores_by_query(query_spectra[0], sort=True)
+print(matches[:5])
+```
+
+## Testing
+
+Run the test suite using `pytest`:
+
+```bash
+pytest
+```
+
+## Development
+
+- **Style**: Codebase follows PEP8.
+- **Structure**:
+  - `MassFlow/cli.py`: CLI entry point.
+  - `MassFlow/processing.py`: Core cleaning logic using matchms.
+  - `MassFlow/io.py`: Input/Output handlers.
+  - `MassFlow/similarity.py`: Similarity scoring functions.
 
 ## License
 
 MIT License
-
----
-
-### ⚠️ Internal Development Rules (AI Assistants)
-
-Source of Truth: All core logic resides in MassFlow/ (formerly archive/original_source/).
-
-No Restructuring: Do not archive, move, or 'splinter' code without explicit user approval.
-
-Simplification: If asked to simplify, focus on removing unused dependencies, NOT deleting functional business logic.
-
-No Refactoring: Do not refactor code without explicit user approval.

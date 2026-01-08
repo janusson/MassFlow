@@ -12,28 +12,55 @@ import pandas as pd
 from matchms.importing import load_from_mgf, load_from_msp
 from matchms.exporting import save_as_mgf, save_as_msp, save_as_json
 
+
 # Configure basic logging
 import logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 
+
+
 def list_msp_libraries(directory: str) -> list[str]:
-    """List all .msp files in a directory."""
+    """
+    List all .msp files in a directory.
+
+    Args:
+        directory: Path to the directory to search.
+
+    Returns:
+        List of absolute file paths to .msp files.
+    """
     msp_libraries_list = glob.glob(os.path.join(directory, "*.msp"), recursive=True)
     logger.info(f"{len(msp_libraries_list)} MSP libraries found in {directory}.")
     return msp_libraries_list
 
 
 def list_mgf_libraries(directory: str) -> list[str]:
-    """List all .mgf files in a directory."""
+    """
+    List all .mgf files in a directory.
+
+    Args:
+        directory: Path to the directory to search.
+
+    Returns:
+        List of absolute file paths to .mgf files.
+    """
     mgf_libraries_list = glob.glob(os.path.join(directory, "*.mgf"), recursive=True)
     logger.info(f"{len(mgf_libraries_list)} MGF libraries found in {directory}.")
     return mgf_libraries_list
 
 
 def list_available_libraries(mgf_libraries_list: list[str], msp_libraries_list: list[str]) -> dict[str, list[str]]:
-    """Log available libraries and return a summary dict."""
+    """
+    Log available libraries and return a summary dict.
+
+    Args:
+        mgf_libraries_list: List of MGF file paths.
+        msp_libraries_list: List of MSP file paths.
+
+    Returns:
+        Dictionary with keys 'mgf' and 'msp' containing lists of filenames.
+    """
     summary = {
         "mgf": [Path(item).name for item in mgf_libraries_list],
         "msp": [Path(item).name for item in msp_libraries_list],
@@ -49,16 +76,32 @@ def list_available_libraries(mgf_libraries_list: list[str], msp_libraries_list: 
     return summary
 
 
-def fetch_mgflib_spectrum(library_filepath: str, spectrum_number: int):
+
+from itertools import islice
+
+def fetch_mgflib_spectrum(library_filepath: str, spectrum_number: int) -> tuple[pd.DataFrame, dict, str]:
     """
     Load MS spectrum peak and meta data from a library file.
-    Returns: spectrum_xy_data (DataFrame), spectrum_metadata, spectrum_chemical
-    """
-    spectra_list = list(load_from_mgf(library_filepath))
-    if spectrum_number >= len(spectra_list):
-        raise IndexError(f"Spectrum number {spectrum_number} out of range for library {library_filepath} (size: {len(spectra_list)})")
 
-    spectrum = spectra_list[spectrum_number]
+    Args:
+        library_filepath: Path to the MGF library file.
+        spectrum_number: Index of the spectrum to fetch (0-based).
+
+    Returns:
+        tuple: (spectrum_xy_data (DataFrame), spectrum_metadata (dict), spectrum_chemical (str))
+
+    Raises:
+        IndexError: If spectrum_number is out of range.
+    """
+    # Optimized to not load the full list
+    spectrum_generator = load_from_mgf(library_filepath)
+    
+    # Advance to the desired index
+    try:
+        spectrum = next(islice(spectrum_generator, spectrum_number, spectrum_number + 1))
+    except StopIteration:
+        raise IndexError(f"Spectrum number {spectrum_number} out of range for library {library_filepath}")
+
     spectrum_peaks = spectrum.peaks.mz
     spectrum_counts = spectrum.peaks.intensities
     
@@ -78,31 +121,38 @@ def fetch_mgflib_spectrum(library_filepath: str, spectrum_number: int):
     spectrum_xy_data.rename(columns={"index": "m/z"}, inplace=True)
     spectrum_xy_data.sort_values(by="m/z", inplace=True)
     
+
     spectrum_metadata = spectrum.metadata
-    spectrum_chemical = spectrum.metadata.get("name", "Unknown")
+    # matchms may standardize 'name' to 'compound_name'
+    spectrum_chemical = spectrum.get("compound_name") or spectrum.get("name") or "Unknown"
     
     return spectrum_xy_data, spectrum_metadata, spectrum_chemical
 
 
+
 def save_spectra_to_mgf(spectra_list: list, export_filepath: str, export_name: str) -> None:
+    """Save spectra to MGF format."""
     export_mgf_path = os.path.join(export_filepath, export_name + ".mgf")
     save_as_mgf(spectra_list, export_mgf_path)
     logger.info(f"{len(spectra_list)} spectra saved to MGF: {export_mgf_path}")
 
 
 def save_spectra_to_msp(spectra_list: list, export_filepath: str, export_name: str) -> None:
+    """Save spectra to MSP format."""
     export_msp_path = os.path.join(export_filepath, export_name + ".msp")
     save_as_msp(spectra_list, export_msp_path)
     logger.info(f"{len(spectra_list)} spectra saved to MSP: {export_msp_path}")
 
 
 def save_spectra_to_json(spectra_list: list, export_filepath: str, export_name: str) -> None:
+    """Save spectra to JSON format."""
     export_json_path = os.path.join(export_filepath, export_name + ".json")
     save_as_json(spectra_list, export_json_path)
     logger.info(f"{len(spectra_list)} spectra saved to JSON: {export_json_path}")
 
 
 def save_spectra_to_pickle(spectra_list: list, export_filepath: str, export_name: str) -> None:
+    """Save spectra to pickle format."""
     file_export_pickle = os.path.join(export_filepath, export_name + ".pickle")
     with open(file_export_pickle, "wb") as f:
         pickle.dump(spectra_list, f)

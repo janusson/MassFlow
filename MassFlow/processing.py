@@ -23,15 +23,25 @@ from matchms.filtering import (
     select_by_mz,
 )
 
+
+from typing import Any, Optional
+from matchms import Spectrum
+
 logger = logging.getLogger(__name__)
 
 # Interval for progress logging
 LOG_INTERVAL = 1000
 
 
-def metadata_processing(spectrum):
+def metadata_processing(spectrum: Spectrum) -> Optional[Spectrum]:
     """
-    Repairs spectrum metadata and return as new spectrum.
+    Repair spectrum metadata and return as new spectrum.
+    
+    Args:
+        spectrum: The input matchms Spectrum object.
+        
+    Returns:
+        The processed Spectrum, or None if input was None.
     """
     if spectrum is None:
         return None
@@ -57,9 +67,15 @@ def metadata_processing(spectrum):
     return spectrum
 
 
-def peak_processing(spectrum):
+def peak_processing(spectrum: Spectrum) -> Optional[Spectrum]:
     """
     Process mass spectrum peaks: filtering and normalization.
+    
+    Args:
+        spectrum: The input matchms Spectrum object.
+        
+    Returns:
+        The processed Spectrum, or None if input was None.
     """
     if spectrum is None:
         return None
@@ -72,46 +88,68 @@ def peak_processing(spectrum):
     return spectrum
 
 
-def clean_mgf_library(mgf_path: str) -> list:
+
+from typing import Any, Optional, Iterator, Iterable
+
+def process_spectra(spectra_iterable: Iterable[Spectrum]) -> Iterator[Spectrum]:
     """
-    Main data processing pipeline. Clean up spectra metadata and peaks for an MGF library.
-    """
-    logger.info(f"Cleaning {mgf_path} library spectra...")
-    library_list = list(load_from_mgf(mgf_path))
+    Apply metadata and peak processing to an iterable of spectra.
+    Yields processed spectra one by one.
     
-    # Apply filters sequentially
-    processed_spectra = []
-    for i, s in enumerate(library_list):
+    Args:
+        spectra_iterable: Iterable of matchms Spectrum objects.
+        
+    Yields:
+        Processed Spectrum objects.
+    """
+    for i, s in enumerate(spectra_iterable):
         if (i + 1) % LOG_INTERVAL == 0:
-            logger.info(f"Processed {i + 1} / {len(library_list)} spectra...")
+            logger.info(f"Processing spectrum {i + 1}...")
 
         meta_processed = metadata_processing(s)
         if meta_processed:
             peak_processed = peak_processing(meta_processed)
             if peak_processed:
-                processed_spectra.append(peak_processed)
+                yield peak_processed
+
+
+def clean_mgf_library(mgf_path: str) -> list[Spectrum]:
+    """
+    Main data processing pipeline. Clean up spectra metadata and peaks for an MGF library.
+    
+    Args:
+        mgf_path: Path to the MGF file.
+        
+    Returns:
+        List of processed Spectrum objects.
+    """
+    logger.info(f"Cleaning {mgf_path} library spectra...")
+    # matchms load_from_mgf returns a generator, do not cast to list immediately
+    library_iterable = load_from_mgf(mgf_path)
+    
+    # We consume the generator into a list here because the specific requirement 
+    # (e.g. CLI export) often expects a full list, esp. for pickle.
+    # If purely streaming export is needed, this can be adapted.
+    processed_spectra = list(process_spectra(library_iterable))
     
     logger.info(f"Retained {len(processed_spectra)} spectra after cleaning.")
     return processed_spectra
 
 
-def clean_msp_library(msp_path: str) -> list:
+def clean_msp_library(msp_path: str) -> list[Spectrum]:
     """
     Cleans an MSP library given its path using main data processing pipeline.
+    
+    Args:
+        msp_path: Path to the MSP file.
+        
+    Returns:
+        List of processed Spectrum objects.
     """
     logger.info(f"Cleaning {msp_path} library spectra...")
-    library_list = list(load_from_msp(msp_path))
+    library_iterable = load_from_msp(msp_path)
     
-    processed_spectra = []
-    for i, s in enumerate(library_list):
-        if (i + 1) % LOG_INTERVAL == 0:
-            logger.info(f"Processed {i + 1} / {len(library_list)} spectra...")
-
-        meta_processed = metadata_processing(s)
-        if meta_processed:
-            peak_processed = peak_processing(meta_processed)
-            if peak_processed:
-                processed_spectra.append(peak_processed)
+    processed_spectra = list(process_spectra(library_iterable))
                 
     logger.info(f"Retained {len(processed_spectra)} spectra after cleaning.")
     return processed_spectra

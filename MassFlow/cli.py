@@ -32,21 +32,22 @@ class ColoredFormatter(logging.Formatter):
         logging.CRITICAL: bold_red + format_str + reset
     }
 
-    def __init__(self):
+
+    def __init__(self) -> None:
         super().__init__()
         self.formatters = {
             level: logging.Formatter(fmt)
             for level, fmt in self.FORMATS.items()
         }
 
-    def format(self, record):
+    def format(self, record: logging.LogRecord) -> str:
         formatter = self.formatters.get(record.levelno)
         if formatter is None:
             return super().format(record)
         return formatter.format(record)
 
 
-def setup_logging():
+def setup_logging() -> None:
     """Set up logging configuration."""
     logger = logging.getLogger()
     logger.setLevel(logging.INFO)
@@ -66,8 +67,16 @@ def setup_logging():
 logger = logging.getLogger(__name__)
 
 
-def run_clean(args):
-    """Run library cleaning (similar to massflow_buildDB.py)."""
+def run_clean(args: argparse.Namespace) -> int:
+    """
+    Run library cleaning operation.
+    
+    Args:
+        args: Parsed command-line arguments containing input, output_dir, and format.
+        
+    Returns:
+        Exit code (0 for success, 1 for error).
+    """
     input_path = args.input
     output_dir = args.output_dir
     export_format = args.format
@@ -105,8 +114,16 @@ def run_clean(args):
     return 0
 
 
-def run_search(args):
-    """Run similarity search."""
+def run_search(args: argparse.Namespace) -> int:
+    """
+    Run similarity search.
+    
+    Args:
+        args: Parsed command-line arguments.
+        
+    Returns:
+        Exit code (0 for success, non-zero for error).
+    """
     # This is a placeholder for the pipeline search logic.
     # To implement this fully, we'd need to load a reference library and query spectra.
     logger.info("Search functionality is available in MassFlow.similarity but CLI wrapper is pending specific requirements.")
