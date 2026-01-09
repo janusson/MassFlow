@@ -217,3 +217,5 @@ __pycache__/
 .DS_Store
 AI_GUIDE.md
 Repo Analysis.md
+build/
+results/

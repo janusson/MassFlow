@@ -7,6 +7,7 @@ This document outlines the high-level architecture of `MassFlow` and the respons
 ### Core Modules
 
 * **`MassFlow.cli`**: The entry point for the command-line interface. Responsible for parsing arguments and dispatching commands to the workflow engine or other utilities.
+
 * **`MassFlow.workflow`**: The orchestration engine. It reads the configuration and executes the defined steps (ingestion, processing, similarity, etc.).
 * **`MassFlow.config`**: handles configuration loading (from YAML), validation, and schema definition. It provides the mechanism for "dotted" config error reporting.
 
@@ -53,4 +54,4 @@ The following modules and functions are considered the public API. All others ar
 
 ---
 
-**Note:** This architecture document is a living document and will be updated as the implementation evolves in Weeks 2 and 3.
+**Note:** This architecture document is a living document and will be updated frequently.

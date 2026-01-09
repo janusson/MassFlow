@@ -21,6 +21,8 @@ dependencies = [
     "matchms>=0.23",
     "numpy>=1.24",
     "PyYAML>=6.0",
+    "pandas",
+    "plotnine",
 ]
 
 [project.optional-dependencies]

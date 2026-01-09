@@ -8,6 +8,9 @@ import argparse
 import sys
 import os
 from MassFlow import io, processing, similarity, __version__
+import pandas as pd
+from plotnine import ggplot, geom_segment, aes, theme_bw, labs
+from matchms.importing import load_from_msp
 
 # Configure logging
 import logging
@@ -130,6 +133,69 @@ def run_search(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_plot(args: argparse.Namespace) -> int:
+    """
+    Plot a mass spectrum from an MSP file.
+    
+    Args:
+        args: Parsed command-line arguments.
+        
+    Returns:
+        Exit code (0 for success, non-zero for error).
+    """
+    msp_file = args.input
+    
+    logger.info(f"Loading spectra from {msp_file}... please wait.")
+    try:
+        spectra = list(load_from_msp(msp_file, metadata_harmonization=True))
+    except Exception as e:
+        logger.error(f"Failed to load spectra: {e}")
+        return 1
+    
+    if not spectra:
+        logger.warning("No spectra found in the file.")
+        return 0
+        
+    names = [spec.get('name', 'N/A') for spec in spectra]
+    
+    if args.more:
+        for name in names:
+            print(name)
+        return 0
+
+    if args.name is None:
+        logger.info("Top 20 compounds:")
+        for i, name in enumerate(names[:20]):
+            print(f"{i + 1}. {name}")
+        logger.info("\nTo plot a spectrum, run the command with the --name flag.")
+        logger.info("To see all compound names, run with the --more flag.")
+        return 0
+
+    # Find the selected spectrum
+    selected_spectrum = None
+    for spec in spectra:
+        if spec.get('name', '').lower() == args.name.lower():
+            selected_spectrum = spec
+            break
+    
+    if selected_spectrum:
+        mz = selected_spectrum.peaks.mz
+        intensity = selected_spectrum.peaks.intensities
+        intensity = intensity / intensity.max() * 100
+        df = pd.DataFrame({'mz': mz, 'intensity': intensity})
+        
+        p = (ggplot(df, aes(x='mz', y='intensity'))
+             + geom_segment(aes(x='mz', xend='mz', y=0, yend='intensity'))
+             + theme_bw()
+             + labs(title=selected_spectrum.get('name'), x='m/z', y='Relative Intensity'))
+        
+        print(p)
+        return 0
+    else:
+        logger.error(f"Spectrum with name '{args.name}' not found.")
+        return 1
+
+
 def main(argv: list[str] | None = None) -> int:
     setup_logging()
 
@@ -155,6 +221,17 @@ def main(argv: list[str] | None = None) -> int:
     # Search command
     search_parser = subparsers.add_parser("search", help="Run similarity search.")
     search_parser.set_defaults(func=run_search)
+
+    # Plot command
+    plot_parser = subparsers.add_parser(
+        "plot",
+        help="Plot a spectrum from a spectral library.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter
+    )
+    plot_parser.add_argument("--input", required=True, help="Input library file (.msp)")
+    plot_parser.add_argument("--name", help="Name of the spectrum to plot.")
+    plot_parser.add_argument("--more", action="store_true", help="List all spectrum names.")
+    plot_parser.set_defaults(func=run_plot)
 
     args = parser.parse_args(argv)
     
