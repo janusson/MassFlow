@@ -5,6 +5,7 @@ Ported from original_source/massflow_pipeline.py.
 from __future__ import annotations
 
 import logging
+from typing import Any, Optional, Iterator, Iterable
 from matchms.importing import load_from_mgf, load_from_msp
 from matchms.filtering import (
     default_filters,
@@ -22,9 +23,6 @@ from matchms.filtering import (
     select_by_relative_intensity,
     select_by_mz,
 )
-
-
-from typing import Any, Optional
 from matchms import Spectrum
 
 logger = logging.getLogger(__name__)
@@ -67,12 +65,24 @@ def metadata_processing(spectrum: Spectrum) -> Optional[Spectrum]:
     return spectrum
 
 
-def peak_processing(spectrum: Spectrum) -> Optional[Spectrum]:
+def peak_processing(
+    spectrum: Spectrum,
+    min_intensity: float = 0.01,
+    min_relative_intensity: float = 0.08,
+    mz_min: float = 10,
+    mz_max: float = 1000,
+    normalize: bool = True
+) -> Optional[Spectrum]:
     """
     Process mass spectrum peaks: filtering and normalization.
     
     Args:
         spectrum: The input matchms Spectrum object.
+        min_intensity: Minimum absolute intensity.
+        min_relative_intensity: Minimum relative intensity.
+        mz_min: Minimum m/z.
+        mz_max: Maximum m/z.
+        normalize: Whether to normalize intensities.
         
     Returns:
         The processed Spectrum, or None if input was None.
@@ -81,15 +91,16 @@ def peak_processing(spectrum: Spectrum) -> Optional[Spectrum]:
         return None
 
     spectrum = default_filters(spectrum)
-    spectrum = select_by_intensity(spectrum, intensity_from=0.01)
-    spectrum = select_by_relative_intensity(spectrum, intensity_from=0.08)
-    spectrum = normalize_intensities(spectrum)
-    spectrum = select_by_mz(spectrum, mz_from=10, mz_to=1000)
+    spectrum = select_by_intensity(spectrum, intensity_from=min_intensity)
+    spectrum = select_by_relative_intensity(spectrum, intensity_from=min_relative_intensity)
+    
+    if normalize:
+        spectrum = normalize_intensities(spectrum)
+        
+    spectrum = select_by_mz(spectrum, mz_from=mz_min, mz_to=mz_max)
     return spectrum
 
 
-
-from typing import Any, Optional, Iterator, Iterable
 
 def process_spectra(spectra_iterable: Iterable[Spectrum]) -> Iterator[Spectrum]:
     """
@@ -113,43 +124,33 @@ def process_spectra(spectra_iterable: Iterable[Spectrum]) -> Iterator[Spectrum]:
                 yield peak_processed
 
 
-def clean_mgf_library(mgf_path: str) -> list[Spectrum]:
+def clean_mgf_library(mgf_path: str) -> Iterator[Spectrum]:
     """
     Main data processing pipeline. Clean up spectra metadata and peaks for an MGF library.
     
     Args:
         mgf_path: Path to the MGF file.
         
-    Returns:
-        List of processed Spectrum objects.
+    Yields:
+        Processed Spectrum objects.
     """
     logger.info(f"Cleaning {mgf_path} library spectra...")
-    # matchms load_from_mgf returns a generator, do not cast to list immediately
     library_iterable = load_from_mgf(mgf_path)
     
-    # We consume the generator into a list here because the specific requirement 
-    # (e.g. CLI export) often expects a full list, esp. for pickle.
-    # If purely streaming export is needed, this can be adapted.
-    processed_spectra = list(process_spectra(library_iterable))
-    
-    logger.info(f"Retained {len(processed_spectra)} spectra after cleaning.")
-    return processed_spectra
+    yield from process_spectra(library_iterable)
 
 
-def clean_msp_library(msp_path: str) -> list[Spectrum]:
+def clean_msp_library(msp_path: str) -> Iterator[Spectrum]:
     """
     Cleans an MSP library given its path using main data processing pipeline.
     
     Args:
         msp_path: Path to the MSP file.
         
-    Returns:
-        List of processed Spectrum objects.
+    Yields:
+        Processed Spectrum objects.
     """
     logger.info(f"Cleaning {msp_path} library spectra...")
     library_iterable = load_from_msp(msp_path)
     
-    processed_spectra = list(process_spectra(library_iterable))
-                
-    logger.info(f"Retained {len(processed_spectra)} spectra after cleaning.")
-    return processed_spectra
+    yield from process_spectra(library_iterable)

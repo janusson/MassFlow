@@ -3,6 +3,7 @@ import pytest
 import numpy as np
 from matchms import Spectrum
 from MassFlow import processing
+from unittest.mock import patch, MagicMock
 
 @pytest.fixture
 def mock_spectrum():
@@ -70,3 +71,31 @@ def test_peak_processing_filtering(noisy_spectrum):
 
 def test_peak_processing_none():
     assert processing.peak_processing(None) is None
+
+def test_process_spectra(mock_spectrum):
+    """Test process_spectra generator."""
+    # Input is iterable
+    spectra_in = [mock_spectrum, None, mock_spectrum]
+    
+    # Mocking metadata/peak processing to track calls or return specific things
+    # But since we have integrated logic, let's just test that it filters Nones
+    # and processes valid ones.
+    
+    results = list(processing.process_spectra(spectra_in))
+    assert len(results) == 2 # The None should be skipped (metadata_processing returns None)
+
+def test_clean_mgf_library(mock_spectrum):
+    with patch("MassFlow.processing.load_from_mgf") as mock_load:
+        mock_load.return_value = [mock_spectrum]
+        
+        results = processing.clean_mgf_library("test.mgf")
+        assert len(results) == 1
+        mock_load.assert_called_with("test.mgf")
+
+def test_clean_msp_library(mock_spectrum):
+    with patch("MassFlow.processing.load_from_msp") as mock_load:
+        mock_load.return_value = [mock_spectrum]
+        
+        results = processing.clean_msp_library("test.msp")
+        assert len(results) == 1
+        mock_load.assert_called_with("test.msp")

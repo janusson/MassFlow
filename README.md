@@ -92,6 +92,34 @@ matches = scores.scores_by_query(query_spectra[0], sort=True)
 print(matches[:5])
 ```
 
+## Workflow
+
+The high-level workflow of MassFlow is as follows:
+
+```mermaid
+graph TD
+    subgraph Input
+        A[Raw Spectra (.mgf, .msp)]
+        B[Reference Library (Optional)]
+    end
+
+    subgraph "MassFlow Workflow"
+        C{Load & Clean Spectra}
+        D{Similarity Search}
+    end
+
+    subgraph Output
+        E[Processed Spectra]
+        F[Similarity Scores (.csv)]
+    end
+
+    A --> C
+    B --> D
+    C --> D
+    C --> E
+    D --> F
+```
+
 ## Testing
 
 Run the test suite using `pytest`:
@@ -105,9 +133,11 @@ pytest
 - **Style**: Codebase follows PEP8.
 - **Structure**:
   - `MassFlow/cli.py`: CLI entry point.
+  - `MassFlow/workflow.py`: Orchestrates the processing pipeline.
   - `MassFlow/processing.py`: Core cleaning logic using matchms.
   - `MassFlow/io.py`: Input/Output handlers.
   - `MassFlow/similarity.py`: Similarity scoring functions.
+  - `MassFlow/config.py`: Configuration management using Pydantic.
 
 ## License
 

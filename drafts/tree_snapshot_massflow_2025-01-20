@@ -1,0 +1,97 @@
+
+.
+├── CLI_design_guide.md
+├── LICENSE
+├── MassFlow
+│   ├── __init__.py
+│   ├── __pycache__
+│   │   ├── __init__.cpython-313.pyc
+│   │   ├── cli.cpython-313.pyc
+│   │   ├── config.cpython-313.pyc
+│   │   ├── io.cpython-313.pyc
+│   │   ├── processing.cpython-313.pyc
+│   │   ├── similarity.cpython-313.pyc
+│   │   └── workflow.cpython-313.pyc
+│   ├── cli.py
+│   ├── config.py
+│   ├── io.py
+│   ├── processing.py
+│   ├── similarity.py
+│   └── workflow.py
+├── README.md
+├── ai_guide.md
+├── architecture.md
+├── conformance_report.md
+├── contributing.md
+├── data
+│   ├── processed
+│   ├── raw
+│   │   ├── example_01.MSP
+│   │   └── example_spectrum.MSP
+│   └── reference
+│       └── eample_library.msp
+├── docs
+│   ├── Repo Analysis.md
+│   └── changes.md
+├── drafts
+│   └── data_reduction.py
+├── examples
+│   └── example_config.yaml
+├── executive_test_report.md
+├── gemini.md
+├── massflow_test.db
+├── out
+│   └── results.csv
+├── pyproject.toml
+├── requirements.txt
+├── results
+│   ├── batch_mgf
+│   │   ├── example_library_cleaned.json
+│   │   └── example_library_cleaned.mgf
+│   ├── batch_msp
+│   │   └── example_library_cleaned.msp
+│   ├── curation_example_curated.json
+│   ├── curation_example_library.json
+│   ├── curation_example_qc.json
+│   ├── example_library.json
+│   ├── example_library_cleaned.mgf
+│   ├── example_library_cleaned.msp
+│   ├── example_network.csv
+│   ├── example_network_summary.json
+│   ├── example_search.csv
+│   ├── figures
+│   ├── networks
+│   └── reports
+├── test.py
+├── tests
+│   ├── __pycache__
+│   │   ├── test_cli.cpython-313-pytest-8.4.2.pyc
+│   │   ├── test_cli.cpython-313-pytest-9.0.2.pyc
+│   │   ├── test_config.cpython-313-pytest-8.4.2.pyc
+│   │   ├── test_config.cpython-313-pytest-9.0.2.pyc
+│   │   ├── test_core.cpython-313-pytest-8.4.2.pyc
+│   │   ├── test_core.cpython-313-pytest-9.0.2.pyc
+│   │   ├── test_db.cpython-313-pytest-8.4.2.pyc
+│   │   ├── test_db.cpython-313-pytest-9.0.2.pyc
+│   │   ├── test_end_to_end_mvp.cpython-313-pytest-8.4.2.pyc
+│   │   ├── test_end_to_end_mvp.cpython-313-pytest-9.0.2.pyc
+│   │   ├── test_io.cpython-313-pytest-8.4.2.pyc
+│   │   ├── test_io.cpython-313-pytest-9.0.2.pyc
+│   │   ├── test_processing.cpython-313-pytest-8.4.2.pyc
+│   │   ├── test_processing.cpython-313-pytest-9.0.2.pyc
+│   │   ├── test_similarity.cpython-313-pytest-8.4.2.pyc
+│   │   ├── test_similarity.cpython-313-pytest-9.0.2.pyc
+│   │   ├── test_workflow.cpython-313-pytest-8.4.2.pyc
+│   │   └── test_workflow.cpython-313-pytest-9.0.2.pyc
+│   ├── data
+│   │   ├── config.yaml
+│   │   └── test.mgf
+│   ├── test_cli.py
+│   ├── test_config.py
+│   ├── test_core.py
+│   ├── test_end_to_end_mvp.py
+│   ├── test_io.py
+│   ├── test_processing.py
+│   ├── test_similarity.py
+│   └── test_workflow.py
+└── verify_msp.py

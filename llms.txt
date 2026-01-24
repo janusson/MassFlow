@@ -1,0 +1,81 @@
+# MassFlow: An Open-Source MSMS Search Engine
+
+MassFlow is a spectral similarity search engine and database manager designed for computational chemistry and mass spectrometry. It aggregates libraries like `matchms`, `spec2vec`, and `MS2DeepScore` into a unified, config-first pipeline for reproducible mass spectral annotation.
+
+## Project Metadata
+- **Role:** Data processing engine (Infrastructure Layer).
+- **License:** MIT (Open Source).
+- **Core Dependencies:** Python 3.13+, matchms, spec2vec, MS2DeepScore, pytest.
+
+## Getting Started
+
+### Install from Source
+```bash
+git clone https://github.com/yourusername/MassFlow.git
+cd MassFlow
+pip install .
+```
+
+### Development Setup
+For development, set up a virtual environment and install the required dependencies.
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+## Usage
+
+### Command Line Interface (CLI)
+The `massflow` CLI can be used to process spectral data files.
+```bash
+# Clean an MSP file and save as Pickle (default)
+massflow clean --input data/library.msp --output-dir processed_data/
+
+# Clean an MGF file and save as MSP
+massflow clean --input data/query.mgf --output-dir processed_data/ --format msp
+```
+
+### Python Library
+You can also import MassFlow modules directly into your Python scripts.
+
+#### Processing Spectra
+```python
+from MassFlow import processing, io
+
+# Load and clean a library
+spectra = processing.clean_mgf_library("data/test.mgf")
+```
+
+#### Similarity Calculations
+```python
+from MassFlow import similarity
+
+# Calculate Cosine scores
+scores = similarity.calculate_cosscores(reference_spectra, query_spectra)
+```
+
+## Architectural Constraints
+- **Generic Only:** No proprietary forensic logic or molecular networking should exist here. Those belong in VerticeMS.
+- **Config-First:** Users should interact primarily through `example_config.yaml` rather than writing new scripts.
+- **State Management:** Prioritize stateless functions or a unified `MassSpectrum` object to ensure interoperability between different similarity backends.
+
+## Contributing
+- **Process:** Fork the repository, create a feature branch from `main`.
+- **Testing:** Testing is a priority. Run `python3 -m pytest` before opening a PR. New features should be benchmarked against `tests/test_end_to_end_mvp.py`.
+- **Coding Standards:** Keep imports sorted and favor small, composable functions with clear logging where side-effects occur.
+- **Pull Requests:** Describe the motivation and any trade-offs clearly in the PR description. Reference relevant issues.
+
+## Repository Structure & Map
+- `MassFlow/`: Core package containing the library logic.
+    - `cli.py`: Entry point for command-line operations.
+    - `io.py`: Handling of MGF, MSP, and mzML file formats.
+    - `processing.py`: Spectral cleaning and peak filtering logic.
+    - `similarity.py`: Implementation of similarity metrics (Cosine, etc.).
+    - `workflow.py`: Orchestrator for YAML-driven pipelines.
+- `tests/`: Extensive test suite covering CLI, IO, and similarity modules.
+- `data/`: Contains `raw/` experimental spectra and `reference/` libraries for testing.
+- `examples/`: Reference YAML configurations for reproducibility.
+
+## Current Focus & Context
+- The project is currently transitioning from experimental "splinters" (found in `drafts/`) to a formalized package.

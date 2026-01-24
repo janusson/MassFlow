@@ -79,3 +79,25 @@ def test_save_spectra_to_mgf(mock_spectrum_list):
     with patch("MassFlow.io.save_as_mgf") as mock_save:
         io.save_spectra_to_mgf(mock_spectrum_list, "/out", "testlib")
         mock_save.assert_called_once_with(mock_spectrum_list, "/out/testlib.mgf")
+
+def test_save_spectra_to_msp(mock_spectrum_list):
+    with patch("MassFlow.io.save_as_msp") as mock_save:
+        io.save_spectra_to_msp(mock_spectrum_list, "/out", "testlib")
+        mock_save.assert_called_once_with(mock_spectrum_list, "/out/testlib.msp")
+
+def test_save_spectra_to_json(mock_spectrum_list):
+    with patch("MassFlow.io.save_as_json") as mock_save:
+        io.save_spectra_to_json(mock_spectrum_list, "/out", "testlib")
+        mock_save.assert_called_once_with(mock_spectrum_list, "/out/testlib.json")
+
+def test_fetch_mgflib_empty_spectrum():
+    with patch("MassFlow.io.load_from_mgf") as mock_load:
+        empty_spec = Spectrum(
+            mz=np.array([], dtype="float"),
+            intensities=np.array([], dtype="float"),
+            metadata={"name": "Empty"}
+        )
+        mock_load.return_value = [empty_spec]
+        
+        xy_data, meta, chem = io.fetch_mgflib_spectrum("dummy", 0)
+        assert len(xy_data) == 0

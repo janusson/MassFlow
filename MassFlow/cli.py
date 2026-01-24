@@ -1,5 +1,5 @@
 """
-Simple CLI for MassFlow.
+CLI for MassFlow.
 Replaces massflow_buildDB.py and massflow_pipeline.py entry points.
 """
 from __future__ import annotations
@@ -7,7 +7,7 @@ from __future__ import annotations
 import argparse
 import sys
 import os
-from MassFlow import io, processing, similarity, __version__
+from MassFlow import io, processing, __version__
 import pandas as pd
 from plotnine import ggplot, geom_segment, aes, theme_bw, labs
 from matchms.importing import load_from_msp
@@ -70,6 +70,22 @@ def setup_logging() -> None:
 logger = logging.getLogger(__name__)
 
 
+
+def run_process(args: argparse.Namespace) -> int:
+    """
+    Run the MassFlow processing pipeline from a config file.
+    """
+    from MassFlow.config import MassFlowConfig
+    from MassFlow.workflow import run_workflow
+    
+    try:
+        config = MassFlowConfig.from_yaml(args.config)
+        run_workflow(config)
+        return 0
+    except Exception as e:
+        logger.error(f"Process failed: {e}")
+        return 1
+
 def run_clean(args: argparse.Namespace) -> int:
     """
     Run library cleaning operation.
@@ -117,20 +133,6 @@ def run_clean(args: argparse.Namespace) -> int:
     return 0
 
 
-def run_search(args: argparse.Namespace) -> int:
-    """
-    Run similarity search.
-    
-    Args:
-        args: Parsed command-line arguments.
-        
-    Returns:
-        Exit code (0 for success, non-zero for error).
-    """
-    # This is a placeholder for the pipeline search logic.
-    # To implement this fully, we'd need to load a reference library and query spectra.
-    logger.info("Search functionality is available in MassFlow.similarity but CLI wrapper is pending specific requirements.")
-    return 0
 
 
 def run_plot(args: argparse.Namespace) -> int:
@@ -218,9 +220,6 @@ def main(argv: list[str] | None = None) -> int:
     clean_parser.add_argument("--format", choices=["pickle", "msp", "mgf", "json"], default="pickle", help="Output format")
     clean_parser.set_defaults(func=run_clean)
     
-    # Search command
-    search_parser = subparsers.add_parser("search", help="Run similarity search.")
-    search_parser.set_defaults(func=run_search)
 
     # Plot command
     plot_parser = subparsers.add_parser(
@@ -232,6 +231,15 @@ def main(argv: list[str] | None = None) -> int:
     plot_parser.add_argument("--name", help="Name of the spectrum to plot.")
     plot_parser.add_argument("--more", action="store_true", help="List all spectrum names.")
     plot_parser.set_defaults(func=run_plot)
+
+    # Process command
+    process_parser = subparsers.add_parser(
+        "process",
+        help="Run the MassFlow processing pipeline from a config file.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter
+    )
+    process_parser.add_argument("config", help="Path to config.yaml")
+    process_parser.set_defaults(func=run_process)
 
     args = parser.parse_args(argv)
     

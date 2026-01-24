@@ -11,6 +11,7 @@ from pathlib import Path
 import pandas as pd
 from matchms.importing import load_from_mgf, load_from_msp
 from matchms.exporting import save_as_mgf, save_as_msp, save_as_json
+from typing import Iterable, List
 
 
 # Configure basic logging
@@ -130,30 +131,62 @@ def fetch_mgflib_spectrum(library_filepath: str, spectrum_number: int) -> tuple[
 
 
 
-def save_spectra_to_mgf(spectra_list: list, export_filepath: str, export_name: str) -> None:
-    """Save spectra to MGF format."""
+def save_spectra_to_mgf(spectra_list: Iterable, export_filepath: str, export_name: str) -> None:
+    """
+    Save spectra to MGF format.
+
+    Args:
+        spectra_list: Iterable of spectrum objects to save.
+        export_filepath: Directory to save the file to.
+        export_name: Base name of the file (without extension).
+    """
     export_mgf_path = os.path.join(export_filepath, export_name + ".mgf")
     save_as_mgf(spectra_list, export_mgf_path)
-    logger.info(f"{len(spectra_list)} spectra saved to MGF: {export_mgf_path}")
+    logger.info(f"Spectra saved to MGF: {export_mgf_path}")
 
 
-def save_spectra_to_msp(spectra_list: list, export_filepath: str, export_name: str) -> None:
-    """Save spectra to MSP format."""
+def save_spectra_to_msp(spectra_list: Iterable, export_filepath: str, export_name: str) -> None:
+    """
+    Save spectra to MSP format.
+
+    Args:
+        spectra_list: Iterable of spectrum objects to save.
+        export_filepath: Directory to save the file to.
+        export_name: Base name of the file (without extension).
+    """
     export_msp_path = os.path.join(export_filepath, export_name + ".msp")
     save_as_msp(spectra_list, export_msp_path)
-    logger.info(f"{len(spectra_list)} spectra saved to MSP: {export_msp_path}")
+    logger.info(f"Spectra saved to MSP: {export_msp_path}")
 
 
-def save_spectra_to_json(spectra_list: list, export_filepath: str, export_name: str) -> None:
-    """Save spectra to JSON format."""
+def save_spectra_to_json(spectra_list: Iterable, export_filepath: str, export_name: str) -> None:
+    """
+    Save spectra to JSON format.
+
+    Args:
+        spectra_list: Iterable of spectrum objects to save.
+        export_filepath: Directory to save the file to.
+        export_name: Base name of the file (without extension).
+    """
     export_json_path = os.path.join(export_filepath, export_name + ".json")
     save_as_json(spectra_list, export_json_path)
-    logger.info(f"{len(spectra_list)} spectra saved to JSON: {export_json_path}")
+    logger.info(f"Spectra saved to JSON: {export_json_path}")
 
 
-def save_spectra_to_pickle(spectra_list: list, export_filepath: str, export_name: str) -> None:
-    """Save spectra to pickle format."""
+def save_spectra_to_pickle(spectra_list: Iterable, export_filepath: str, export_name: str) -> None:
+    """
+    Save spectra to pickle format.
+
+    Args:
+        spectra_list: Iterable of spectrum objects to save.
+        export_filepath: Directory to save the file to.
+        export_name: Base name of the file (without extension).
+    """
     file_export_pickle = os.path.join(export_filepath, export_name + ".pickle")
+    # Pickle requires full object, so we must materialize if it's a generator
+    if not isinstance(spectra_list, list):
+         spectra_list = list(spectra_list)
+         
     with open(file_export_pickle, "wb") as f:
         pickle.dump(spectra_list, f)
     logger.info(f"{len(spectra_list)} spectra saved to pickle: {file_export_pickle}")

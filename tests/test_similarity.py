@@ -59,3 +59,28 @@ def test_top10_cosine_matches(spectrum_a, spectrum_b, spectrum_c):
     # Check that B is the top match
     assert top_match[0].metadata["id"] == "B"
     assert top_match[1]["CosineGreedy_score"] > 0.99
+
+def test_threshold_matches(spectrum_a, spectrum_b):
+    # Match count threshold
+    # spectrum_b has 3 peaks matching A.
+    
+    matches, smiles = similarity.threshold_matches([spectrum_b], [spectrum_a], min_match=3)
+    assert len(matches) == 1
+    assert matches[0][1]["CosineGreedy_matches"] == 3
+    
+    # High threshold should return empty
+    matches_empty, _ = similarity.threshold_matches([spectrum_b], [spectrum_a], min_match=4)
+    assert len(matches_empty) == 0
+
+def test_modified_cosine_scores(spectrum_a, spectrum_b):
+    # Modified cosine considers precursor mz.
+    # Our mocks (A and B) don't have precursor_mz set in the fixture above?
+    # Actually matchms might require it for ModifiedCosine.
+    # Let's add it.
+    spectrum_a.set("precursor_mz", 100.0)
+    spectrum_b.set("precursor_mz", 100.0)
+    
+    scores = similarity.modified_cosine_scores([spectrum_b], [spectrum_a])
+    score_struct = scores.to_array()[0][0]
+    
+    assert score_struct['ModifiedCosine_score'] > 0.99

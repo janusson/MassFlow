@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "MassFlow"
 version = "0.1.0"
-description = "Config-first LC-MS/MS spectral similarity toolkit."
+description = "Config-first cheminformatics pipeline for LC-MS/MS annotation and spectral networking."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { file = "LICENSE" }
@@ -23,6 +23,7 @@ dependencies = [
     "PyYAML>=6.0",
     "pandas",
     "plotnine",
+    "pydantic>=2.0",
 ]
 
 [project.optional-dependencies]

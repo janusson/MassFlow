@@ -104,7 +104,7 @@ def threshold_matches(reference_library: List[Spectrum], check_spectra: List[Spe
     query = check_spectra[0]
     sorted_matches = scores.scores_by_query(query, "CosineGreedy_score", sort=True)
     
-    matches_over_limit = [x for x in sorted_matches if x[1]["matches"] >= min_match][:10]
+    matches_over_limit = [x for x in sorted_matches if x[1]["CosineGreedy_matches"] >= min_match][:10]
 
 
     matches_over_limit_smiles = [x[0].get("smiles") for x in matches_over_limit]
