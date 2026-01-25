@@ -1,0 +1,41 @@
+my-science-package/
+├── .github/
+│   └── workflows/
+│       └── tests.yml           # Automated testing actions
+│
+├── data/                       # Local data I/O folder (not for git)
+│   ├── raw/                    # Place raw data here
+│   │   └── .gitkeep            # KEEPS directory structure, IGNORES contents
+│   └── processed/              # Place intermediate/final data here
+│       └── .gitkeep
+│
+├── docs/                       # Documentation projects (e.g., Sphinx/MkDocs)
+│   ├── _static/
+│   ├── index.rst
+│   ├── conf.py
+│   └── Makefile
+│
+├── notebooks/                  # Jupyter notebooks for analysis/examples
+│   ├── exploratory_analysis.ipynb
+│   └── tutorial_example.ipynb
+│
+├── src/                        # Source code root
+│   └── my_science_package/     # Actual Python package importable name
+│       ├── __init__.py         # Exposes key public API functions
+│       ├── core.py             # Main logic/algorithms
+│       ├── io.py               # Data loading/saving functions
+│       └── utils.py            # Helper functions
+│
+├── tests/                      # Test suite (e.g., pytest)
+│   ├── __init__.py
+│   ├── conftest.py             # Fixtures for test data/config
+│   ├── test_core.py
+│   └── test_io.py
+│
+├── .gitignore                  # Crucial file for handling data directory
+├── .pre-commit-config.yaml     # Optional: Hooks for code quality (ruff, black)
+├── CONTRIBUTING.md             # Guidelines for contributors
+├── LICENSE                     # MIT, Apache 2.0, BSD-3, etc.
+├── pyproject.toml              # Modern project metadata & dependencies tool
+├── README.md                   # The project home page
+└── uv.lock                     # Lockfile (if using 'uv' package manager)
