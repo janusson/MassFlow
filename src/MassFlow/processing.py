@@ -1,63 +1,60 @@
 """
-Processing filter functions for cleaning library spectra metadata and peaks.
-Ported from original_source/massflow_pipeline.py.
+Processing module for spectral cleaning and filtering using matchms.
+Acts as a facade for matchms filtering operations with integrated logging.
 """
-from __future__ import annotations
 
 import logging
-from typing import Any, Optional, Iterator, Iterable
-from matchms.importing import load_from_mgf, load_from_msp
+from typing import Iterator, Optional
+
+from matchms import Spectrum
 from matchms.filtering import (
+    clean_compound_name,
     default_filters,
-    repair_inchi_inchikey_smiles,
     derive_adduct_from_name,
     derive_formula_from_name,
-    harmonize_undefined_smiles,
+    derive_ionmode,
     harmonize_undefined_inchi,
     harmonize_undefined_inchikey,
-    clean_compound_name,
-    derive_ionmode,
+    harmonize_undefined_smiles,
     make_charge_int,
     normalize_intensities,
+    repair_inchi_inchikey_smiles,
+    require_minimum_number_of_peaks,
     select_by_intensity,
-    select_by_relative_intensity,
-    select_by_mz,
 )
-from matchms import Spectrum
+
+from MassFlow.config import ProcessingConfig
 
 logger = logging.getLogger(__name__)
-
-# Interval for progress logging
-LOG_INTERVAL = 1000
 
 
 def metadata_processing(spectrum: Spectrum) -> Optional[Spectrum]:
     """
-    Repair spectrum metadata and return as new spectrum.
-    
+    Standardize and repair spectrum metadata using matchms filters.
+
     Args:
         spectrum: The input matchms Spectrum object.
-        
+
     Returns:
-        The processed Spectrum, or None if input was None.
+        The processed Spectrum, or None if the spectrum was invalidated.
     """
     if spectrum is None:
         return None
 
-    # Apply default filters
+    # Apply default filters (handles common metadata issues)
     spectrum = default_filters(spectrum)
-    
+
     # Metadata repairs and derivations
     spectrum = repair_inchi_inchikey_smiles(spectrum)
     spectrum = derive_adduct_from_name(spectrum)
     spectrum = derive_formula_from_name(spectrum)
 
-    # Harmonization
+    # Harmonization of missing values
     spectrum = harmonize_undefined_smiles(spectrum)
     spectrum = harmonize_undefined_inchi(spectrum)
     spectrum = harmonize_undefined_inchikey(spectrum)
 
-    # Standardization
+    # Final standardization
     spectrum = clean_compound_name(spectrum)
     spectrum = derive_ionmode(spectrum)
     spectrum = make_charge_int(spectrum)
@@ -65,92 +62,78 @@ def metadata_processing(spectrum: Spectrum) -> Optional[Spectrum]:
     return spectrum
 
 
-def peak_processing(
-    spectrum: Spectrum,
-    min_intensity: float = 0.01,
-    min_relative_intensity: float = 0.08,
-    mz_min: float = 10,
-    mz_max: float = 1000,
-    normalize: bool = True
-) -> Optional[Spectrum]:
+def peak_processing(spectrum: Spectrum, config: ProcessingConfig) -> Optional[Spectrum]:
     """
-    Process mass spectrum peaks: filtering and normalization.
-    
+    Apply peak-level filters and normalization based on configuration.
+    Follows the order: Filter Intensity -> Filter Peak Count -> Normalize.
+
     Args:
         spectrum: The input matchms Spectrum object.
-        min_intensity: Minimum absolute intensity.
-        min_relative_intensity: Minimum relative intensity.
-        mz_min: Minimum m/z.
-        mz_max: Maximum m/z.
-        normalize: Whether to normalize intensities.
-        
+        config: ProcessingConfig containing filter thresholds.
+
     Returns:
-        The processed Spectrum, or None if input was None.
+        The processed Spectrum, or None if it fails to meet criteria.
     """
     if spectrum is None:
         return None
 
-    spectrum = default_filters(spectrum)
-    spectrum = select_by_intensity(spectrum, intensity_from=min_intensity)
-    spectrum = select_by_relative_intensity(spectrum, intensity_from=min_relative_intensity)
-    
-    if normalize:
+    spec_id = spectrum.get("id", "Unknown ID")
+
+    # 1. Filter Noise (Absolute Intensity)
+    # Important: Do this before normalization to avoid scaling noise.
+    spectrum = select_by_intensity(spectrum, intensity_from=config.min_intensity)
+    if spectrum is None:
+        logger.debug(
+            f"Spectrum {spec_id} dropped: all peaks below min_intensity {config.min_intensity}"
+        )
+        return None
+
+    # 2. Filter Peak Count
+    spectrum = require_minimum_number_of_peaks(spectrum, n_min=config.min_peaks)
+    if spectrum is None:
+        logger.debug(f"Spectrum {spec_id} dropped: fewer than {config.min_peaks} peaks")
+        return None
+
+    # 3. Normalize Intensities
+    if config.normalize_intensity:
         spectrum = normalize_intensities(spectrum)
-        
-    spectrum = select_by_mz(spectrum, mz_from=mz_min, mz_to=mz_max)
+
     return spectrum
 
 
-
-def process_spectra(spectra_iterable: Iterable[Spectrum]) -> Iterator[Spectrum]:
+def process_spectra(
+    spectra: Iterator[Spectrum], config: ProcessingConfig
+) -> Iterator[Spectrum]:
     """
-    Apply metadata and peak processing to an iterable of spectra.
-    Yields processed spectra one by one.
-    
+    Orchestrate the spectral processing pipeline.
+    Iterates through input spectra, applies processing, and logs dropped items.
+
     Args:
-        spectra_iterable: Iterable of matchms Spectrum objects.
-        
+        spectra: Iterator of raw matchms Spectrum objects.
+        config: Processing configuration object.
+
     Yields:
-        Processed Spectrum objects.
+        Cleaned and filtered Spectrum objects.
     """
-    for i, s in enumerate(spectra_iterable):
-        if (i + 1) % LOG_INTERVAL == 0:
-            logger.info(f"Processing spectrum {i + 1}...")
+    for i, spectrum in enumerate(spectra):
+        if spectrum is None:
+            continue
 
-        meta_processed = metadata_processing(s)
-        if meta_processed:
-            peak_processed = peak_processing(meta_processed)
-            if peak_processed:
-                yield peak_processed
+        try:
+            # Step A: Metadata Processing
+            processed_spec = metadata_processing(spectrum)
+            if processed_spec is None:
+                continue
 
+            # Step B: Peak Processing
+            processed_spec = peak_processing(processed_spec, config)
+            if processed_spec is None:
+                continue
 
-def clean_mgf_library(mgf_path: str) -> Iterator[Spectrum]:
-    """
-    Main data processing pipeline. Clean up spectra metadata and peaks for an MGF library.
-    
-    Args:
-        mgf_path: Path to the MGF file.
-        
-    Yields:
-        Processed Spectrum objects.
-    """
-    logger.info(f"Cleaning {mgf_path} library spectra...")
-    library_iterable = load_from_mgf(mgf_path)
-    
-    yield from process_spectra(library_iterable)
+            yield processed_spec
 
-
-def clean_msp_library(msp_path: str) -> Iterator[Spectrum]:
-    """
-    Cleans an MSP library given its path using main data processing pipeline.
-    
-    Args:
-        msp_path: Path to the MSP file.
-        
-    Yields:
-        Processed Spectrum objects.
-    """
-    logger.info(f"Cleaning {msp_path} library spectra...")
-    library_iterable = load_from_msp(msp_path)
-    
-    yield from process_spectra(library_iterable)
+        except Exception as e:
+            spec_id = spectrum.get("id", f"index_{i}")
+            logger.error(f"Unexpected error processing spectrum {spec_id}: {str(e)}")
+            # Continue to next spectrum instead of crashing
+            continue

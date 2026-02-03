@@ -1,7 +1,7 @@
 # MassFlow Configuration Template
 # -----------------------------
-# This configuration drives the LC-MS analysis pipeline.
-# For reproducibility, keep this file with your raw data.
+# This configuration drives the MassFlow analysis pipeline.
+# For reproducibility, please keep this file with your raw data.
 
 project:
   name: "MassFlow_Example"
@@ -27,4 +27,4 @@ workflow:
   export_consensus: True
 
 export:
-  format: "pickle" # Options: pickle, msp, mgf, json
+  format: "csv" # Options: csv, pickle, msp, mgf, json, excel, parquet

@@ -1,192 +1,153 @@
 """
-I/O functions for MassFlow: import/export of libraries and spectra.
-Ported from original_source/io/mgf.py and massflow_pipeline.py.
+I/O functions for MassFlow: unified spectral loading and result export.
 """
+
 from __future__ import annotations
 
-import glob
-import os
+import csv
+import logging
 import pickle
 from pathlib import Path
-import pandas as pd
-from matchms.importing import load_from_mgf, load_from_msp
-from matchms.exporting import save_as_mgf, save_as_msp, save_as_json
-from typing import Iterable, List
+from typing import Any, Iterable, Iterator
 
+from matchms import Spectrum
+from matchms.exporting import save_as_json, save_as_mgf, save_as_msp
+from matchms.importing import load_from_mgf, load_from_msp, load_from_mzml
 
-# Configure basic logging
-import logging
 logger = logging.getLogger(__name__)
 
 
-
-
-def list_msp_libraries(directory: str) -> list[str]:
+def load_spectra(file_path: Path, file_format: str) -> Iterator[Spectrum]:
     """
-    List all .msp files in a directory.
+    Unified loader for spectral data files.
 
     Args:
-        directory: Path to the directory to search.
+        file_path: Path to the spectral data file.
+        file_format: String indicating the format ('mgf', 'msp', 'mzml').
 
     Returns:
-        List of absolute file paths to .msp files.
-    """
-    msp_libraries_list = glob.glob(os.path.join(directory, "*.msp"), recursive=True)
-    logger.info(f"{len(msp_libraries_list)} MSP libraries found in {directory}.")
-    return msp_libraries_list
-
-
-def list_mgf_libraries(directory: str) -> list[str]:
-    """
-    List all .mgf files in a directory.
-
-    Args:
-        directory: Path to the directory to search.
-
-    Returns:
-        List of absolute file paths to .mgf files.
-    """
-    mgf_libraries_list = glob.glob(os.path.join(directory, "*.mgf"), recursive=True)
-    logger.info(f"{len(mgf_libraries_list)} MGF libraries found in {directory}.")
-    return mgf_libraries_list
-
-
-def list_available_libraries(mgf_libraries_list: list[str], msp_libraries_list: list[str]) -> dict[str, list[str]]:
-    """
-    Log available libraries and return a summary dict.
-
-    Args:
-        mgf_libraries_list: List of MGF file paths.
-        msp_libraries_list: List of MSP file paths.
-
-    Returns:
-        Dictionary with keys 'mgf' and 'msp' containing lists of filenames.
-    """
-    summary = {
-        "mgf": [Path(item).name for item in mgf_libraries_list],
-        "msp": [Path(item).name for item in msp_libraries_list],
-    }
-    for library_type, library_names in summary.items():
-        header = library_type.upper()
-        logger.info(f"Available {header} libraries ({len(library_names)}):")
-        if library_names:
-            for library in library_names:
-                logger.info(f"  - {library}")
-        else:
-            logger.info("  (none found)")
-    return summary
-
-
-
-from itertools import islice
-
-def fetch_mgflib_spectrum(library_filepath: str, spectrum_number: int) -> tuple[pd.DataFrame, dict, str]:
-    """
-    Load MS spectrum peak and meta data from a library file.
-
-    Args:
-        library_filepath: Path to the MGF library file.
-        spectrum_number: Index of the spectrum to fetch (0-based).
-
-    Returns:
-        tuple: (spectrum_xy_data (DataFrame), spectrum_metadata (dict), spectrum_chemical (str))
+        Iterator of matchms Spectrum objects.
 
     Raises:
-        IndexError: If spectrum_number is out of range.
+        ValueError: If the format is not supported.
     """
-    # Optimized to not load the full list
-    spectrum_generator = load_from_mgf(library_filepath)
-    
-    # Advance to the desired index
-    try:
-        spectrum = next(islice(spectrum_generator, spectrum_number, spectrum_number + 1))
-    except StopIteration:
-        raise IndexError(f"Spectrum number {spectrum_number} out of range for library {library_filepath}")
+    fmt = file_format.lower().strip(".")
+    path_str = str(file_path)
 
-    spectrum_peaks = spectrum.peaks.mz
-    spectrum_counts = spectrum.peaks.intensities
-    
-    # Handle empty spectrum case to avoid division by zero
-    if len(spectrum_counts) > 0:
-        normalized_counts = spectrum_counts / max(spectrum_counts)
+    if fmt == "mgf":
+        return load_from_mgf(path_str)
+    elif fmt == "msp":
+        return load_from_msp(path_str)
+    elif fmt == "mzml":
+        return load_from_mzml(path_str)
     else:
-        normalized_counts = spectrum_counts
-
-    percent_abundance = normalized_counts * 100
-    spectrum_dict = dict(zip(spectrum_peaks, percent_abundance))
-    
-    spectrum_xy_data = pd.DataFrame.from_dict(
-        spectrum_dict, orient="index", columns=["Abundance (%)"]
-    )
-    spectrum_xy_data.reset_index(inplace=True)
-    spectrum_xy_data.rename(columns={"index": "m/z"}, inplace=True)
-    spectrum_xy_data.sort_values(by="m/z", inplace=True)
-    
-
-    spectrum_metadata = spectrum.metadata
-    # matchms may standardize 'name' to 'compound_name'
-    spectrum_chemical = spectrum.get("compound_name") or spectrum.get("name") or "Unknown"
-    
-    return spectrum_xy_data, spectrum_metadata, spectrum_chemical
+        raise ValueError(
+            f"Unsupported file format: {fmt}. Supported formats: 'mgf', 'msp', 'mzml'."
+        )
 
 
+def save_match_results(results: list[dict[str, Any]], output_path: Path) -> None:
+    """
+    Save similarity search results to a CSV file.
 
-def save_spectra_to_mgf(spectra_list: Iterable, export_filepath: str, export_name: str) -> None:
+    Args:
+        results: List of result dictionaries.
+        output_path: Full path to the output CSV file.
+    """
+    if not results:
+        logger.warning("No results to save.")
+        return
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Use keys from the first dictionary as headers
+    fieldnames = list(results[0].keys())
+
+    try:
+        with open(output_path, "w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(results)
+        logger.info(f"Results successfully saved to: {output_path}")
+    except IOError as e:
+        logger.error(f"Failed to save results to {output_path}: {e}")
+        raise
+
+
+def save_spectra_to_mgf(spectra: Iterable[Spectrum], export_path: Path) -> None:
     """
     Save spectra to MGF format.
 
     Args:
-        spectra_list: Iterable of spectrum objects to save.
-        export_filepath: Directory to save the file to.
-        export_name: Base name of the file (without extension).
+        spectra: Iterable of Spectrum objects.
+        export_path: Full path to the output .mgf file.
     """
-    export_mgf_path = os.path.join(export_filepath, export_name + ".mgf")
-    save_as_mgf(spectra_list, export_mgf_path)
-    logger.info(f"Spectra saved to MGF: {export_mgf_path}")
+    export_path.parent.mkdir(parents=True, exist_ok=True)
+    save_as_mgf(spectra, str(export_path))
+    logger.info(f"Spectra saved to MGF: {export_path}")
 
 
-def save_spectra_to_msp(spectra_list: Iterable, export_filepath: str, export_name: str) -> None:
+def save_spectra_to_msp(spectra: Iterable[Spectrum], export_path: Path) -> None:
     """
     Save spectra to MSP format.
 
     Args:
-        spectra_list: Iterable of spectrum objects to save.
-        export_filepath: Directory to save the file to.
-        export_name: Base name of the file (without extension).
+        spectra: Iterable of Spectrum objects.
+        export_path: Full path to the output .msp file.
     """
-    export_msp_path = os.path.join(export_filepath, export_name + ".msp")
-    save_as_msp(spectra_list, export_msp_path)
-    logger.info(f"Spectra saved to MSP: {export_msp_path}")
+    export_path.parent.mkdir(parents=True, exist_ok=True)
+    save_as_msp(spectra, str(export_path))
+    logger.info(f"Spectra saved to MSP: {export_path}")
 
 
-def save_spectra_to_json(spectra_list: Iterable, export_filepath: str, export_name: str) -> None:
+def save_spectra_to_json(spectra: Iterable[Spectrum], export_path: Path) -> None:
     """
     Save spectra to JSON format.
 
     Args:
-        spectra_list: Iterable of spectrum objects to save.
-        export_filepath: Directory to save the file to.
-        export_name: Base name of the file (without extension).
+        spectra: Iterable of Spectrum objects.
+        export_path: Full path to the output .json file.
     """
-    export_json_path = os.path.join(export_filepath, export_name + ".json")
-    save_as_json(spectra_list, export_json_path)
-    logger.info(f"Spectra saved to JSON: {export_json_path}")
+    export_path.parent.mkdir(parents=True, exist_ok=True)
+    save_as_json(spectra, str(export_path))
+    logger.info(f"Spectra saved to JSON: {export_path}")
 
 
-def save_spectra_to_pickle(spectra_list: Iterable, export_filepath: str, export_name: str) -> None:
+def save_spectra_to_pickle(spectra: Iterable[Spectrum], export_path: Path) -> None:
     """
     Save spectra to pickle format.
 
     Args:
-        spectra_list: Iterable of spectrum objects to save.
-        export_filepath: Directory to save the file to.
-        export_name: Base name of the file (without extension).
+        spectra: Iterable of Spectrum objects.
+        export_path: Full path to the output .pickle file.
     """
-    file_export_pickle = os.path.join(export_filepath, export_name + ".pickle")
-    # Pickle requires full object, so we must materialize if it's a generator
-    if not isinstance(spectra_list, list):
-         spectra_list = list(spectra_list)
-         
-    with open(file_export_pickle, "wb") as f:
+    export_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Pickle requires the full list to be materialized
+    spectra_list = list(spectra)
+
+    with open(export_path, "wb") as f:
         pickle.dump(spectra_list, f)
-    logger.info(f"{len(spectra_list)} spectra saved to pickle: {file_export_pickle}")
+    logger.info(f"{len(spectra_list)} spectra saved to pickle: {export_path}")
+
+
+def list_files_by_extension(directory: Path, extension: str) -> list[Path]:
+    """
+    Utility to list files in a directory with a specific extension.
+
+    Args:
+        directory: Directory to search.
+        extension: Extension to look for (e.g., 'mgf').
+
+    Returns:
+        List of Path objects.
+    """
+    if not directory.is_dir():
+        logger.warning(f"Directory not found: {directory}")
+        return []
+
+    ext = extension.lstrip(".")
+    pattern = f"*.{ext}"
+    files = list(directory.glob(pattern))
+    logger.info(f"Found {len(files)} .{ext} files in {directory}")
+    return files
