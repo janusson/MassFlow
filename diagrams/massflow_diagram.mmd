@@ -1,0 +1,29 @@
+graph TD
+    subgraph Entry Points
+        CLI["<b>CLI</b><br>cli.py"]
+        Script["<b>Python Script</b>"]
+    end
+
+    subgraph Core
+        Config["<b>Configuration</b><br>config.py<br>Pydantic Models"]
+        Workflow["<b>Orchestrator</b><br>workflow.py"]
+    end
+
+    subgraph Modules
+        IO["<b>I/O Layer</b><br>io.py<br>Loaders and Savers"]
+        Process["<b>Processing Facade</b><br>processing.py<br>Cleaning Pipeline"]
+        Sim["<b>Similarity Engine</b><br>similarity.py<br>Strategy Pattern"]
+    end
+
+    %% Flow Connections
+    CLI --> Workflow
+    Script --> Workflow
+    
+    Workflow --> Config
+    Workflow --> IO
+    Workflow --> Process
+    Workflow --> Sim
+
+    %% Data Dependencies
+    Process -.-> External((matchms))
+    Sim -.-> External

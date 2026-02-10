@@ -1,7 +1,7 @@
-"""
+'''
 Processing module for spectral cleaning and filtering using matchms.
 Acts as a facade for matchms filtering operations with integrated logging.
-"""
+'''
 
 import logging
 from typing import Iterator, Optional
@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 
 def metadata_processing(spectrum: Spectrum) -> Optional[Spectrum]:
-    """
+    '''
     Standardize and repair spectrum metadata using matchms filters.
 
     Args:
@@ -37,7 +37,7 @@ def metadata_processing(spectrum: Spectrum) -> Optional[Spectrum]:
 
     Returns:
         The processed Spectrum, or None if the spectrum was invalidated.
-    """
+    '''
     if spectrum is None:
         return None
 
@@ -63,7 +63,7 @@ def metadata_processing(spectrum: Spectrum) -> Optional[Spectrum]:
 
 
 def peak_processing(spectrum: Spectrum, config: ProcessingConfig) -> Optional[Spectrum]:
-    """
+    '''
     Apply peak-level filters and normalization based on configuration.
     Follows the order: Filter Intensity -> Filter Peak Count -> Normalize.
 
@@ -73,7 +73,7 @@ def peak_processing(spectrum: Spectrum, config: ProcessingConfig) -> Optional[Sp
 
     Returns:
         The processed Spectrum, or None if it fails to meet criteria.
-    """
+    '''
     if spectrum is None:
         return None
 
@@ -104,7 +104,7 @@ def peak_processing(spectrum: Spectrum, config: ProcessingConfig) -> Optional[Sp
 def process_spectra(
     spectra: Iterator[Spectrum], config: ProcessingConfig
 ) -> Iterator[Spectrum]:
-    """
+    '''
     Orchestrate the spectral processing pipeline.
     Iterates through input spectra, applies processing, and logs dropped items.
 
@@ -114,7 +114,7 @@ def process_spectra(
 
     Yields:
         Cleaned and filtered Spectrum objects.
-    """
+    '''
     for i, spectrum in enumerate(spectra):
         if spectrum is None:
             continue

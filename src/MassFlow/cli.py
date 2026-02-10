@@ -193,7 +193,7 @@ def run_plot(args: argparse.Namespace) -> int:
 
         p = (
             ggplot(df, aes(x="mz", y="intensity"))
-            + geom_segment(aes(x="mz", xend="mz", y=0, yend="intensity"))
+            + geom_segment(aes(x="mz", xend="mz", yend="intensity"), y=0)
             + theme_bw()
             + labs(
                 title=selected_spectrum.get("name")

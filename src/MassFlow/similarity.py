@@ -37,16 +37,14 @@ class SimilarityCalculator(ABC):
 class CosineSimilarity(SimilarityCalculator):
     """Strategy for Cosine Similarity (CosineGreedy)."""
 
-    def __init__(self, tolerance: float, min_matched_peaks: int):
+    def __init__(self, tolerance: float):
         """
         Initialize the Cosine Similarity calculator.
 
         Args:
             tolerance: Tolerance for m/z matching.
-            min_matched_peaks: Minimum number of matched peaks.
         """
         self.tolerance = tolerance
-        self.min_matched_peaks = min_matched_peaks
         self.similarity_measure = CosineGreedy(tolerance=self.tolerance)
 
     def calculate(self, references: list[Spectrum], queries: list[Spectrum]) -> Scores:
@@ -63,16 +61,14 @@ class CosineSimilarity(SimilarityCalculator):
 class ModifiedCosineSimilarity(SimilarityCalculator):
     """Strategy for Modified Cosine Similarity."""
 
-    def __init__(self, tolerance: float, min_matched_peaks: int):
+    def __init__(self, tolerance: float):
         """
         Initialize the Modified Cosine Similarity calculator.
 
         Args:
             tolerance: Tolerance for m/z matching.
-            min_matched_peaks: Minimum number of matched peaks.
         """
         self.tolerance = tolerance
-        self.min_matched_peaks = min_matched_peaks
         self.similarity_measure = ModifiedCosine(tolerance=self.tolerance)
 
     def calculate(self, references: list[Spectrum], queries: list[Spectrum]) -> Scores:
@@ -102,12 +98,10 @@ def get_similarity_calculator(config: SimilarityConfig) -> SimilarityCalculator:
     if config.algorithm == "cosine":
         return CosineSimilarity(
             tolerance=config.tolerance,
-            min_matched_peaks=config.min_matched_peaks,
         )
     elif config.algorithm == "modified_cosine":
         return ModifiedCosineSimilarity(
             tolerance=config.tolerance,
-            min_matched_peaks=config.min_matched_peaks,
         )
     else:
         # Pydantic validation should normally prevent this, but we raise for safety.

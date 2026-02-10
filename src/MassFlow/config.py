@@ -1,7 +1,7 @@
-"""
+'''
 Configuration schema for MassFlow.
 Uses Pydantic to validate the configuration YAML.
-"""
+'''
 
 from pathlib import Path
 from typing import Literal, Optional
@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field, field_validator
 
 
 class InputConfig(BaseModel):
-    """Configuration for input data."""
+    '''Configuration for input data.'''
 
     file_path: Path
     format: Literal["mgf", "msp", "mzml"] = "mgf"
@@ -19,7 +19,7 @@ class InputConfig(BaseModel):
 
 
 class ProcessingConfig(BaseModel):
-    """Configuration for spectral processing."""
+    '''Configuration for spectral processing.'''
 
     min_peaks: int = 5
     min_intensity: float = 0.0
@@ -46,7 +46,7 @@ class ProcessingConfig(BaseModel):
 
 
 class SimilarityConfig(BaseModel):
-    """Configuration for similarity search."""
+    '''Configuration for similarity search.'''
 
     algorithm: Literal["cosine", "modified_cosine"] = "cosine"
     tolerance: float = 0.005
@@ -68,7 +68,7 @@ class SimilarityConfig(BaseModel):
 
 
 class MassFlowConfig(BaseModel):
-    """Root configuration object."""
+    '''Root configuration object.'''
 
     input: InputConfig
     processing: ProcessingConfig = Field(default_factory=ProcessingConfig)
@@ -77,7 +77,7 @@ class MassFlowConfig(BaseModel):
 
     @classmethod
     def from_yaml(cls, path: str | Path) -> "MassFlowConfig":
-        """Load configuration from a YAML file."""
+        '''Load configuration from a YAML file.'''
         path = Path(path)
         if not path.exists():
             raise FileNotFoundError(f"Config file not found: {path}")

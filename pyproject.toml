@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "MassFlow"
-version = "0.5.0"
+version = "0.6.1"
 description = "Config-first cheminformatics pipeline for LC-MS/MS annotation and spectral networking."
 readme = "README.md"
 requires-python = ">=3.10"
