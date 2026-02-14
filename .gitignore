@@ -207,16 +207,8 @@ marimo/_lsp/
 __marimo__/
 
 # Development
-data/
 .DS_Store
-archive/
-out/
 __pycache__/
 *.pyc
 .DS_Store
-AI_GUIDE.md
-Repo Analysis.md
 build/
-results/
-conformance_report.md
-executive_test_report.md

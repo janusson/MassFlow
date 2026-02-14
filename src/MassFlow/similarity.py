@@ -1,108 +1,71 @@
 """
-Compute spectra similarities using Strategy pattern.
-Supports Cosine and Modified Cosine scores.
+Similarity search engine for MassFlow.
+Wraps matchms similarity measures for efficient querying.
 """
 
-from __future__ import annotations
+from typing import List, Any
+from matchms import Spectrum, calculate_scores
+from matchms.similarity import CosineGreedy
 
-import logging
-from abc import ABC, abstractmethod
-
-from matchms import Scores, Spectrum, calculate_scores
-from matchms.similarity import CosineGreedy, ModifiedCosine
-
-from MassFlow.config import SimilarityConfig
-
-logger = logging.getLogger(__name__)
-
-
-class SimilarityCalculator(ABC):
-    """Abstract base class for similarity calculation strategies."""
-
-    @abstractmethod
-    def calculate(self, references: list[Spectrum], queries: list[Spectrum]) -> Scores:
-        """
-        Calculate similarity scores between reference and query spectra.
-
-        Args:
-            references: List of reference Spectrum objects.
-            queries: List of query Spectrum objects.
-
-        Returns:
-            Scores: matchms Scores object containing the results.
-        """
-        pass
-
-
-class CosineSimilarity(SimilarityCalculator):
-    """Strategy for Cosine Similarity (CosineGreedy)."""
-
-    def __init__(self, tolerance: float):
-        """
-        Initialize the Cosine Similarity calculator.
-
-        Args:
-            tolerance: Tolerance for m/z matching.
-        """
-        self.tolerance = tolerance
-        self.similarity_measure = CosineGreedy(tolerance=self.tolerance)
-
-    def calculate(self, references: list[Spectrum], queries: list[Spectrum]) -> Scores:
-        """Execute calculation using CosineGreedy."""
-        is_symmetric = references is queries
-        return calculate_scores(
-            references,
-            queries,
-            self.similarity_measure,
-            is_symmetric=is_symmetric,
+class SimilarityEngine:
+    def __init__(self, tolerance: float = 0.01, mz_power: float = 0.0, intensity_power: float = 1.0):
+        self.similarity_function = CosineGreedy(
+            tolerance=tolerance, 
+            mz_power=mz_power, 
+            intensity_power=intensity_power
         )
 
-
-class ModifiedCosineSimilarity(SimilarityCalculator):
-    """Strategy for Modified Cosine Similarity."""
-
-    def __init__(self, tolerance: float):
+    def search(
+        self, 
+        query_spectra: List[Spectrum], 
+        reference_spectra: List[Spectrum], 
+        min_score: float = 0.7,
+        top_n: int = 5
+    ) -> List[dict]:
         """
-        Initialize the Modified Cosine Similarity calculator.
-
-        Args:
-            tolerance: Tolerance for m/z matching.
+        Run similarity search of Query vs Reference.
+        Returns a flat list of dictionaries suitable for CSV export.
         """
-        self.tolerance = tolerance
-        self.similarity_measure = ModifiedCosine(tolerance=self.tolerance)
+        if not query_spectra or not reference_spectra:
+            return []
 
-    def calculate(self, references: list[Spectrum], queries: list[Spectrum]) -> Scores:
-        """Execute calculation using ModifiedCosine."""
-        is_symmetric = references is queries
-        return calculate_scores(
-            references,
-            queries,
-            self.similarity_measure,
-            is_symmetric=is_symmetric,
+        scores = calculate_scores(
+            references=reference_spectra,
+            queries=query_spectra,
+            similarity_function=self.similarity_function,
+            is_symmetric=False
         )
 
+        results = []
 
-def get_similarity_calculator(config: SimilarityConfig) -> SimilarityCalculator:
-    """
-    Factory function to get the appropriate similarity calculator based on configuration.
+        for i, query in enumerate(query_spectra):
+            query_id = query.get("id") or f"query_{i}"
+            query_mz = query.get("precursor_mz")
+            
+            matches = scores.scores_by_query(query, sort=True)
+            
+            count = 0
+            for reference, score_data in matches:
+                score = score_data[0]
+                matches_count = score_data[1]
+                
+                if score < min_score:
+                    break
+                
+                if count >= top_n:
+                    break
 
-    Args:
-        config: SimilarityConfig object.
+                results.append({
+                    "query_id": query_id,
+                    "query_precursor_mz": query_mz,
+                    "reference_id": reference.get("id"),
+                    "reference_name": reference.get("compound_name") or reference.get("name"),
+                    "reference_precursor_mz": reference.get("precursor_mz"),
+                    "score": round(float(score), 4),
+                    "matched_peaks": int(matches_count),
+                    "smiles": reference.get("smiles"),
+                    "inchikey": reference.get("inchikey")
+                })
+                count += 1
 
-    Returns:
-        SimilarityCalculator: An instance of a concrete SimilarityCalculator strategy.
-
-    Raises:
-        ValueError: If the algorithm specified in config is unknown.
-    """
-    if config.algorithm == "cosine":
-        return CosineSimilarity(
-            tolerance=config.tolerance,
-        )
-    elif config.algorithm == "modified_cosine":
-        return ModifiedCosineSimilarity(
-            tolerance=config.tolerance,
-        )
-    else:
-        # Pydantic validation should normally prevent this, but we raise for safety.
-        raise ValueError(f"Unknown similarity algorithm: {config.algorithm}")
+        return results

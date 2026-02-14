@@ -1,8 +1,43 @@
 # MassFlow Configuration Template
 # -----------------------------
-# This configuration drives the MassFlow analysis pipeline.
-# For reproducibility, please keep this file with your raw data.
-
+# This file defines how MassFlow processes your data.
+# To accurately identify MSMS spectral matches, set the following parameters
+# based on your mass spectrometer settings and experimental setup.
+#
+# For example, if you are using a Q-TOF mass spectrometer with a resolution of 60,000 at m/z 400,
+# you can set the ms1_tolerance to 10 ppm and the ms2_tolerance to 0.02 Da,
+# depending on the instrument's resolution and the desired level of accuracy, based on your instrument's calibration.
+# you can add additional parameters such as the instrument type, resolution, and calibration settings which will help MassFlow to better understand and inteprret your data accurately.
+#
+# Suppose you have LCMS data of an unknwon run on an agilenht HPLC, and a waters  micromass QTOF Micro with an LC-ESI-MS/MS configuration.
+#
+# You have an unknown sample, which is a mixture of a botanical extract in ethanol and water.
+#
+# You can say to massflow, I have an unknown sample, which is a mixture of a botanical extract in ethanol and water and I want to identify the components of the mixture. I ran and LCMSMS on an Agilent HPLC and Waters QTOF Micro using untargeted analysis on the sample in the positive ion mode with a cone voltage sweep from 20 to 40 V, and a resolution of 60,000 at m/z 400, calibrated with NaICs mixture. Or in amu, 0.02 Da accuracy.
+#
+# These are entered into the configuration file as parameters.
+#
+# This information is optional, but it will help MassFlow to better understand and interpret your data accurately.
+#
+#
+# for example:
+# ms1_tolerance: 10.0
+# ms2_tolerance: 0.02
+# instrument: QTOF Micro (Waters/Micromass)
+# mode: positive (+)
+# solvents: ethanol (EtOH, m/z= 46.0688), water (H2O, m/z= 18.0106)
+#
+#
+# The database you have in the reference is a custom database created by the user. It is a database of known compounds that are relevant to the sample being analyzed. You may use any format that is supported by MassFlow (see https://github.com/cheminfo/massflow/blob/main/docs/source/formats.rst). Most formats are supported by MassFlow and converted into MassFlow's internal format, mzML, via proteowizard for speed and convenience.
+#
+# You can import and export spectral data which are processed based on your setup and addede to the your database to MassFlow's internal format using the command line tool `massflow-export`.
+#
+#
+#
+#  It is used to identify the components of the sample by comparing the mass spectra of the sample to the mass spectra of the known compounds in the database. When MassFlow knows your instrumentation setup it allows it to customize the search parameters to optimize the identification process. It "learns" from the data and improves its accuracy over time. The more reference data you have, the better the identification process will be. It is like a pokedex for mass spectrometry, or a library of known compounds that can be used to identify the components of a sample. Your mass spectra are stored in the database and can be used to identify the components of a sample. The database is stored in the output directory for visualization and analysis. It is your mass spectrometrist in a box!
+#
+# in development: Molecular Networking, GUI, Visualization
+#
 project:
   name: "MassFlow_Example"
   output_directory: "./results"
