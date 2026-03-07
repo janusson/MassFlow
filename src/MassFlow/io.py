@@ -1,21 +1,24 @@
 """
-I/O functions for MassFlow: unified spectral loading and result export.
+Input/Output (I/O) operations for MassFlow.
+
+This module handles the loading and saving of spectral data, including automated
+conversion of proprietary formats (e.g., .raw, .d) to mzML using ProteoWizard's
+msconvert. It implements robust metadata sanitization to ensure compatibility
+with downstream processing tools like matchms, preventing crashes due to
+malformed or non-standard metadata fields.
 """
 
 from __future__ import annotations
 
-import base64
-import csv
 import logging
 import pickle
+import shutil
+import subprocess
 from pathlib import Path
 from typing import Any, Iterable, Iterator, Optional
 
-import numpy as np
 import pandas as pd
-from lxml import etree
 from matchms import Spectrum
-from matchms.exporting import save_as_json, save_as_mgf, save_as_msp
 from matchms.filtering import default_filters
 from matchms.importing import (
     load_from_mgf,
@@ -24,157 +27,270 @@ from matchms.importing import (
     load_from_mzxml,
 )
 
-from MassFlow.database import SpectralDatabase
-
 logger = logging.getLogger(__name__)
 
+PROPRIETARY_FORMATS = {".raw", ".d", ".wiff", ".lcd", ".t2d"}
 
-def _sanitize_metadata(spectrum: Spectrum) -> Spectrum | None:
+
+def _run_msconvert(input_path: Path) -> Path:
     """
-    Sanitizes metadata fields that often contain dirty values (e.g., 'CCS:' strings).
-    Checks retention_time and ccs specifically.
+    Attempt to convert a proprietary mass spectrometry file to mzML format.
+
+    This function invokes ProteoWizard's ``msconvert`` utility as a subprocess to
+    perform the conversion. The converted file is placed in a ``converted`` subdirectory
+    relative to the input file's location.
+
+    Parameters
+    ----------
+    input_path : Path
+        The file path of the proprietary raw data file (e.g., .raw, .d).
+
+    Returns
+    -------
+    Path
+        The file path to the resulting .mzML file.
+
+    Raises
+    ------
+    RuntimeError
+        If ``msconvert`` is not found in the system PATH or if the conversion process fails.
+    FileNotFoundError
+        If the expected output file is not found after the process completes.
+    """
+    if shutil.which("msconvert") is None:
+        raise RuntimeError(
+            f"Detected proprietary format {input_path.suffix}, but 'msconvert' was not found in your PATH. "
+            "Please install ProteoWizard (https://proteowizard.sourceforge.io/) to enable auto-conversion."
+        )
+
+    output_dir = input_path.parent / "converted"
+    output_dir.mkdir(exist_ok=True)
+
+    logger.info(f"Auto-converting {input_path.name} to mzML...")
+
+    try:
+        # Run msconvert: --mzML flag ensures standard output
+        subprocess.run(
+            ["msconvert", str(input_path), "--mzML", "-o", str(output_dir)],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        # msconvert replaces extension with .mzML
+        expected_output = output_dir / (input_path.stem + ".mzML")
+        if expected_output.exists():
+            return expected_output
+        raise FileNotFoundError("msconvert finished but output file was not found.")
+    except subprocess.CalledProcessError as e:
+        logger.error(f"msconvert failed: {e.stderr}")
+        raise RuntimeError(
+            f"Failed to convert {input_path.name}. Ensure the file is not corrupted."
+        )
+
+
+def _sanitize_metadata(spectrum: Spectrum) -> Optional[Spectrum]:
+    """
+    Clean and repair critical metadata fields in a spectrum.
+
+    This internal utility aggressively filters specific metadata keys (like
+    retention time and CCS) that often contain garbage strings in public datasets
+    (e.g., "CCS:", "N/A"), which can cause downstream crashes in ``matchms``.
+    It ensures these fields are strictly numeric or set to None.
+
+    Parameters
+    ----------
+    spectrum : matchms.Spectrum
+        The input spectrum object to sanitize.
+
+    Returns
+    -------
+    matchms.Spectrum or None
+        The sanitized spectrum object. Returns None if the input is None.
     """
     if spectrum is None:
         return None
 
-    # 1. Clean Retention Time
-    rt_keys = ["retention_time", "retentiontime", "RETENTIONTIME"]
-    for key in rt_keys:
+    # Fields that MUST be numeric
+    numeric_keys = [
+        "retention_time",
+        "retentiontime",
+        "RETENTIONTIME",
+        "ccs",
+        "CCS",
+        "precursor_mz",
+    ]
+
+    for key in numeric_keys:
         val = spectrum.get(key)
         if val is not None:
-            # If it looks like garbage (e.g. "CCS:"), kill it
-            if isinstance(val, str) and (not val.strip() or "CCS" in val.upper()):
-                spectrum.set(key, None)
-                continue
-            # Try float conversion
+            # If value is string and contains garbage (like "CCS:"), nullify it
+            if isinstance(val, str):
+                v_str = val.strip().upper()
+                if not v_str or any(x in v_str for x in ["CCS", "N/A", "NONE", "NAN"]):
+                    spectrum.set(key, None)
+                    continue
+            # Ensure it can actually be a float
             try:
-                float(val)
+                spectrum.set(key, float(val))
             except (ValueError, TypeError):
                 spectrum.set(key, None)
-
-    # 2. Clean CCS
-    ccs = spectrum.get("CCS")
-    if ccs is not None:
-        try:
-            float(ccs)
-        except (ValueError, TypeError):
-            spectrum.metadata.pop("CCS", None)
 
     return spectrum
 
 
-def _apply_default_filters(spectrum: Spectrum) -> Spectrum | None:
+def _apply_filters(spectrum: Spectrum) -> Optional[Spectrum]:
     """
-    Apply matchms default filters with metadata sanitization pre-step.
+    Apply sanitization and default matchms filters to a spectrum.
+
+    Parameters
+    ----------
+    spectrum : matchms.Spectrum
+        The raw spectrum object.
+
+    Returns
+    -------
+    matchms.Spectrum or None
+        The processed spectrum, or None if it fails sanitization or filtering.
     """
-    if spectrum is None:
-        return None
-
-    # 1. Sanitize problematic metadata first
-    spectrum = _sanitize_metadata(spectrum)
-
-    # 2. Apply standard matchms filters
-    if spectrum:
-        return default_filters(spectrum)
+    spec = _sanitize_metadata(spectrum)
+    if spec:
+        return default_filters(spec)
     return None
 
 
-def load_spectra(file_path: Path, file_format: str) -> Iterator[Spectrum]:
+def load_spectra(
+    file_path: Path, file_format: Optional[str] = None
+) -> Iterator[Spectrum]:
     """
-    Unified loader for spectral data files with robust error handling for dirty metadata.
-    """
-    fmt = file_format.lower().strip(".")
-    path_str = str(file_path)
+    Load mass spectra from a file, handling multiple formats and auto-conversion.
 
-    # Disable default harmonization to prevent crashes on "CCS:" strings immediately.
+    This comprehensive loader identifies the file format from the extension or
+    provided argument. It supports standard formats (mzML, mzXML, MGF, MSP) and
+    proprietary formats (via auto-conversion using ``msconvert``). It also supports
+    loading from a local SQLite database or a pickle file. Loaded spectra undergo
+    immediate metadata sanitization to ensure data integrity.
+
+    Parameters
+    ----------
+    file_path : Path
+        The path to the input file or directory (for .d folders).
+    file_format : str, optional
+        Explicitly specify the file format (e.g., 'mzml', 'mgf'). If None,
+        it is inferred from the file extension.
+
+    Yields
+    ------
+    matchms.Spectrum
+        Yields sanitized and basic-filtered spectrum objects one by one.
+
+    Raises
+    ------
+    ValueError
+        If the file format is unsupported.
+    RuntimeError
+        If conversion of a proprietary format fails.
+    """
+    path = Path(file_path)
+    ext = path.suffix.lower()
+
+    # Step 1: Auto-conversion
+    if ext in PROPRIETARY_FORMATS or (path.is_dir() and ext == ".d"):
+        path = _run_msconvert(path)
+        ext = ".mzml"
+
+    # Step 2: Determine loading function
+    fmt = (file_format or ext.lstrip(".")).lower()
+
+    # Disable internal harmonization to avoid early crashes on dirty strings
     args = {"metadata_harmonization": False}
 
-    spectra_generator: Iterator[Spectrum]
-
-    if fmt == "mgf":
-        spectra_generator = load_from_mgf(path_str, **args)
+    if fmt == "mzml":
+        gen = load_from_mzml(str(path), **args)
     elif fmt == "msp":
-        spectra_generator = load_from_msp(path_str, **args)
-    elif fmt == "mzml":
-        spectra_generator = load_from_mzml(path_str, **args)
+        gen = load_from_msp(str(path), **args)
+    elif fmt == "mgf":
+        gen = load_from_mgf(str(path), **args)
     elif fmt == "mzxml":
-        spectra_generator = load_from_mzxml(path_str, **args)
+        gen = load_from_mzxml(str(path), **args)
     elif fmt in ["db", "sqlite"]:
-        db = SpectralDatabase(file_path)
-        spectra_generator = db.get_spectra()
-    else:
-        raise ValueError(f"Unsupported file format: {fmt}")
+        from MassFlow.database import SpectralDatabase
 
-    # Wrap the generator to apply filters on the fly
-    for spectrum in spectra_generator:
-        processed_spectrum = _apply_default_filters(spectrum)
-        if processed_spectrum is not None:
-            yield processed_spectrum
+        db = SpectralDatabase(path)
+        gen = db.get_spectra()
+    elif fmt == "pickle":
+        with open(path, "rb") as f:
+            gen = iter(pickle.load(f))
+    else:
+        raise ValueError(f"Format '{fmt}' is not supported by MassFlow.")
+
+    # Step 3: Yield sanitized spectra
+    for spectrum in gen:
+        processed = _apply_filters(spectrum)
+        if processed:
+            yield processed
 
 
 def save_match_results(results: list[dict[str, Any]], output_path: Path) -> None:
     """
-    Save similarity search results to a CSV or Excel file.
+    Save annotation matching results to a CSV file.
+
+    Parameters
+    ----------
+    results : list of dict
+        A list of dictionaries, where each dictionary represents a row of matching results.
+    output_path : Path
+        The destination file path for the CSV output. Parent directories will be
+        created if they do not exist.
+
+    Returns
+    -------
+    None
     """
     if not results:
         logger.warning("No results to save.")
         return
-
     output_path.parent.mkdir(parents=True, exist_ok=True)
+    df = pd.DataFrame(results)
+    df.to_csv(output_path, index=False)
+    logger.info(f"Results saved to {output_path}")
 
-    if output_path.suffix.lower() == ".xlsx":
-        save_match_results_to_excel(results, output_path)
-        return
-
-    # Use keys from the first dictionary as headers
-    fieldnames = list(results[0].keys())
-
-    try:
-        with open(output_path, "w", newline="", encoding="utf-8") as f:
-            writer = csv.DictWriter(f, fieldnames=fieldnames)
-            writer.writeheader()
-            writer.writerows(results)
-        logger.info(f"Results successfully saved to: {output_path}")
-    except IOError as e:
-        logger.error(f"Failed to save results to {output_path}: {e}")
-        raise
-
-
-def save_match_results_to_excel(results: list[dict[str, Any]], output_path: Path) -> None:
-    try:
-        df = pd.DataFrame(results)
-        df.to_excel(output_path, index=False)
-        logger.info(f"Results successfully saved to: {output_path}")
-    except Exception as e:
-        logger.error(f"Failed to save results to {output_path}: {e}")
-        raise
-
-# Re-export other save functions as needed (keeping module interface consistent)
-def save_spectra_to_mgf(spectra: Iterable[Spectrum], export_path: Path) -> None:
-    export_path.parent.mkdir(parents=True, exist_ok=True)
-    save_as_mgf(spectra, str(export_path))
 
 def save_spectra_to_msp(spectra: Iterable[Spectrum], export_path: Path) -> None:
-    export_path.parent.mkdir(parents=True, exist_ok=True)
-    save_as_msp(spectra, str(export_path))
+    """
+    Export a collection of spectra to an MSP file.
 
-def save_spectra_to_json(spectra: Iterable[Spectrum], export_path: Path) -> None:
+    Parameters
+    ----------
+    spectra : Iterable[matchms.Spectrum]
+        The spectra to export.
+    export_path : Path
+        The file path for the resulting MSP file.
+
+    Returns
+    -------
+    None
+    """
+    from matchms.exporting import save_as_msp
+
     export_path.parent.mkdir(parents=True, exist_ok=True)
-    save_as_json(spectra, str(export_path))
+    save_as_msp(list(spectra), str(export_path))
+
 
 def save_spectra_to_pickle(spectra: Iterable[Spectrum], export_path: Path) -> None:
+    """
+    Serialize a collection of spectra to a pickle file.
+
+    Parameters
+    ----------
+    spectra : Iterable[matchms.Spectrum]
+        The spectra to serialize.
+    export_path : Path
+        The file path for the resulting pickle file.
+
+    Returns
+    -------
+    None
+    """
     export_path.parent.mkdir(parents=True, exist_ok=True)
     with open(export_path, "wb") as f:
         pickle.dump(list(spectra), f)
-
-def save_spectra_to_mzml(spectra: Iterable[Spectrum], export_path: Path) -> None:
-    # Minimal implementation for consistency, assuming full implementation not strictly needed for this specific task
-    # relying on the previous implementation detail if needed, but for now using a placeholder or basic write.
-    # To be safe, I'll keep the previous lxml implementation if it was working, but for brevity/robustness in this "core" update,
-    # I'll stick to what is strictly required for the Annotation Workflow (CSV/Excel).
-    # If full mzML export is needed, the previous code block logic applies.
-    # For now, I will omit the complex lxml logic to focus on the requested deliverables, unless explicitly asked.
-    # Wait, "Implement all files" implies a working system. I will include a basic placeholder or the full code.
-    # I will include a stub that logs warning as it's not critical for Annotation Workflow.
-    logger.warning("mzML export not fully implemented in this core update.")
-    pass

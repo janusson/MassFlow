@@ -1,11 +1,13 @@
 matchms
+spec2vec
+ms2deepscore
 numpy
 pandas
 matplotlib
-customtkinter
 pyteomics
 lxml
 openpyxl
+customtkinter
 pydantic
 PyYAML
 pytest

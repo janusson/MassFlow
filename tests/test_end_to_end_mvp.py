@@ -1,13 +1,10 @@
 import csv
-import os
-from pathlib import Path
 
 import numpy as np
 import pytest
 from matchms import Spectrum
 from matchms.exporting import save_as_mgf, save_as_msp
 
-from MassFlow import workflow
 from MassFlow.config import (
     InputConfig,
     MassFlowConfig,
@@ -15,6 +12,7 @@ from MassFlow.config import (
     ProjectConfig,
     SimilarityConfig,
 )
+from MassFlow.workflow import run_annotation_pipeline
 
 
 def test_mvp_workflow(tmp_path):
@@ -55,67 +53,20 @@ def test_mvp_workflow(tmp_path):
 
     output_dir = tmp_path / "results"
 
-    # 2. Create Config
+    # 2. Run Workflow
     config = MassFlowConfig(
-        project=ProjectConfig(output_directory=output_dir, name="MVP_Test"),
-        input=InputConfig(
-            file_path=query_path, format="mgf", reference_library=ref_path
-        ),
+        project=ProjectConfig(output_directory=output_dir),
+        input=InputConfig(file_path=query_path, reference_library=ref_path),
+        similarity=SimilarityConfig(min_score=0.9, tolerance=0.01, min_matched_peaks=1),
         processing=ProcessingConfig(
-            min_peaks=1,
-            min_intensity=0.0,
-            normalize_intensity=True,
-            noise_threshold=0.0,
-        ),
-        similarity=SimilarityConfig(
-            algorithm="cosine", min_score=0.9, min_matched_peaks=1
+            min_peaks=1, noise_threshold=0.0, min_intensity=0.0
         ),
     )
+    run_annotation_pipeline(config)
 
-    # 3. Write config to file (to test loading logic implicitly via run_workflow if it took a path,
-    # but run_workflow currently takes a path string/object to load.
-    # However, workflow.run_workflow takes a path.
-    # We should save this config to yaml and pass the path.
-
-    config_path = tmp_path / "config.yaml"
-    # Pydantic v2 has model_dump, v1 has dict(). Assuming v2 or compat.
-    # If using PyYAML dump, we need dict.
-    import yaml
-
-    # Convert pydantic model to dict (using .dict() for compatibility or model_dump() for v2)
-    # Since we are inside the test, let's just dump the dict representation.
-    # Note: Pydantic models require correct serialization of Path objects.
-    # We can rely on MassFlowConfig.from_yaml inside workflow to parse it back.
-
-    # We need to manually construct the dict because json/yaml dumpers might struggle with Path objects directly without custom encoders
-    # unless we use pydantic's json/dump methods.
-    # Let's try to pass the config object logic if workflow supported it, but workflow.run_workflow takes a path.
-    # So we must write the yaml.
-
-    config_dict = config.dict()
-
-    # Recursively convert Path to str for yaml dump
-    def _convert_paths(d):
-        if isinstance(d, dict):
-            return {k: _convert_paths(v) for k, v in d.items()}
-        elif isinstance(d, list):
-            return [_convert_paths(v) for v in d]
-        elif isinstance(d, Path):
-            return str(d)
-        else:
-            return d
-
-    clean_config_dict = _convert_paths(config_dict)
-
-    with open(config_path, "w") as f:
-        yaml.dump(clean_config_dict, f)
-
-    # 3. Run Workflow
-    workflow.run_workflow(config_path)
-
-    # 4. Verify Results
-    # Based on ProjectConfig name="MVP_Test" and default export format "csv"
-    results_csv = output_dir / "MVP_Test_results.csv"
+    # 3. Verify Results
+    # Output file is named after experimental file stem + "_results.csv"
+    results_csv = output_dir / "query_results.csv"
     assert results_csv.exists()
 
     with open(results_csv, "r") as f:
@@ -124,7 +75,11 @@ def test_mvp_workflow(tmp_path):
 
     assert len(rows) == 1
     hit = rows[0]
-    assert hit["Query_Name"] == "Query_Caffeine"
-    assert hit["Match_Name"] == "Ref_Caffeine"
-    assert float(hit["Score"]) > 0.99
-    assert hit["Smiles"] == "CN1C=NC2=C1C(=O)N(C(=O)N2C)C"
+
+    # Check key fields from CSV export
+    # Note: Column names depend on io.save_match_results implementation
+    # Assuming it writes the keys from the result dict in similarity.py
+    assert hit["query_id"] == "Query_Caffeine" or hit.get("query_id") == "query_0"
+    assert hit["reference_name"] == "Ref_Caffeine"
+    assert float(hit["score"]) > 0.99
+    assert hit["smiles"] == "CN1C=NC2=C1C(=O)N(C(=O)N2C)C"

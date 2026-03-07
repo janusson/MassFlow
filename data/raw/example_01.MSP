@@ -1,0 +1,14 @@
+REMARK: This file is for MassFlow example purposes only.
+REMARK: Data has been obfuscated for privacy/testing.
+
+Name: Example Compound 01
+MW: 194
+Formula: C8H10N4O2
+InChIKey: OBYQEDJLBWRANR-UHFFFAOYSA-N
+Comment: Generated for MassFlow project testing
+Num Peaks: 5
+50.1234 150.0
+75.4567 300.5
+110.0000 999.0
+150.9876 45.2
+194.1111 250.0

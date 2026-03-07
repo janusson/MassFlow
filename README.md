@@ -1,180 +1,82 @@
 # MassFlow
 
-**MassFlow** is a lightweight Python toolkit for processing, cleaning, and analyzing tandem mass spectrometry (MS/MS) data. It leverages the [matchms](https://github.com/matchms/matchms) ecosystem to provide efficient spectral data handling and similarity calculations.
+MassFlow is an open-source, config-first spectral similarity search engine designed for mass spectrometry.
 
-## Features
+It functions as a lightweight, local-first orchestration layer, optimized for untargeted MS/MS annotation and cheminformatics.  Unlike closed-source databases and web-based molecular networking platforms, MassFlow empowers users to run reproducible, version-controlled pipelines entirely locally. This is accomplished by integrating classical metrics (Cosine) with modern machine learning models (`MS2DeepScore`, `spec2vec`) through a unified YAML configuration.
 
-- **Pydantic Configuration**: Robust configuration management and validation for complex workflows.
-- **Spectral Cleaning**: Automated metadata repair, peak filtering, and normalization using a configurable pipeline.
-- **Unified I/O**: Seamless loading and saving of spectra in MGF, MSP, mzML, JSON, and Pickle formats.
-- **High-Performance Database**: SQLite-based storage with batch insertion for managing large spectral libraries.
-- **Vectorized Similarity Search**: Optimized similarity calculations using matrix operations for high throughput.
-- **Modern GUI**: A sleek, dark-themed graphical user interface built with CustomTkinter and Matplotlib.
-- **CLI & Library**: Use as a command-line tool or import as a Python library.
+## Key Features
+
+* **YAML-Driven Orchestration:** Define complex "Ingest -> Match -> Report" workflows entirely in configuration files.
+* **Unified Algorithm API:** Switch between classical (`matchms` cosine) and deep learning (`MS2DeepScore`, `spec2vec`) backends without altering ingestion logic.
+* **Vectorized Similarity:** High-throughput matrix operations for rapid spectral matching against large custom databases.
+* **Robust I/O:** Aggressive metadata sanitization to handle malformed retention times and dirty input files without silent failures.
+* **Stateless Processing:** Relies on the standard `matchms.Spectrum` object for seamless interoperability across modules.
 
 ## Installation
 
-### Prerequisites
-
-- Python 3.10+
-
-### Install from Source
+MassFlow v1.0 requires **Python 3.13+**. Dependency management via `uv` is strictly recommended for environment reproducibility.
 
 ```bash
-git clone https://github.com/yourusername/MassFlow.git
+git clone [https://github.com/yourusername/MassFlow.git](https://github.com/yourusername/MassFlow.git)
 cd MassFlow
-pip install .
+uv python pin 3.13
+uv sync
+
 ```
 
-### Development Setup
+## Usage: Config-First Pipeline
 
-```bash
-pip install -r requirements.txt
-```
+MassFlow prioritizes reproducible pipelines over manual scripting. Avoid writing custom Python ingestion scripts unless extending the core algorithmic functionality.
 
-### Installation with uv
+### 1. Define the Workflow (`config.yaml`)
 
-If you prefer using [uv](https://github.com/astral-sh/uv) for dependency management:
-
-1.  **Sync dependencies** (using `uv.lock`):
-    ```bash
-    uv sync
-    ```
-
-2.  **Add dependencies manually** (if needed):
-    ```bash
-    uv add numpy pandas matchms spec2vec ms2deepscore matplotlib customtkinter
-    ```
-
-3.  **Run MassFlow**:
-    ```bash
-    # Run GUI
-    uv run python -m MassFlow.gui
-
-    # Run CLI
-    uv run python -m MassFlow.cli --help
-    ```
-
-## Usage
-
-MassFlow provides a CLI entry point `massflow` (or `python -m MassFlow.cli`).
-
-### Graphical User Interface (GUI)
-
-Launch the modern GUI for viewing spectra and running workflows:
-
-```bash
-python -m MassFlow.gui
-```
-
-### Command Line Interface (CLI)
-
-#### 1. Run the Full Processing Pipeline
-
-Execute a complete MassFlow pipeline (ingestion, processing, similarity search, result saving) using a YAML configuration file.
-
-```bash
-massflow process config.yaml
-```
-
-Example `config.yaml`:
 ```yaml
-# MassFlow Configuration Example
-project:
-  name: MyAnalysis
-  output_directory: results
-
-input:
-  file_path: data/query_spectra.mgf
-  format: mgf
-  reference_library: data/reference_library.msp
-
-processing:
-  min_peaks: 6
-  min_intensity: 0.001
-  normalize_intensity: true
-  clean_metadata: true
-
-similarity:
-  algorithm: cosine # or modified_cosine
-  tolerance: 0.01
-  tolerance_unit: Da
-  min_score: 0.7
-  min_matched_peaks: 3
-
-export:
-  format: csv
+pipeline:
+  query_data: "data/experiment.mgf"
+  reference_library: "data/library.msp"
+  output_dir: "results/"
+  similarity_metric:
+    type: "cosine"
+    tolerance: 0.1
+    min_score: 0.7
+    top_n: 5
 ```
 
-#### 2. Clean and Convert a Library
+### 2. Execution via CLI
 
-Process an input spectral file to apply default filters and save it in a new format.
+Pass the configuration file directly to the workflow orchestrator.
 
 ```bash
-# Clean an MSP file and save as Pickle
-massflow clean --input data/library.msp --output-dir processed_data/
-
-# Convert MGF to MSP
-massflow clean --input data/query.mgf --output-dir processed_data/ --format msp
+uv run massflow execute --config config.yaml
 ```
 
-#### 3. Plot a Spectrum
+## Python API
 
-Visualize a single spectrum from a library file using Matplotlib.
-
-```bash
-# List top 20 compound names
-massflow plot --input data/library.msp
-
-# Plot a specific spectrum by name
-massflow plot --input data/library.msp --name "Caffeine"
-```
-
-#### 4. Database Management
-
-Manage SQLite spectral databases.
-
-```bash
-# Initialize a new database
-massflow database init --db library.db
-
-# Add spectra to database
-massflow database add --db library.db --input new_data.msp --category standards
-
-# Export from database
-massflow database export --db library.db --output exported.mgf --category standards
-```
-
-## Python Library
-
-You can use MassFlow modules directly in your Python scripts.
+For integration into larger automated systems or custom CI/CD data pipelines, import the core modules. Side-effects (I/O) are strictly isolated from processing logic.
 
 ```python
 from pathlib import Path
-from MassFlow import io, processing
-from MassFlow.config import ProcessingConfig
+from MassFlow import io, workflow
+from MassFlow.similarity import SimilarityEngine
 
-# Load
-spectra = io.load_spectra(Path("data/test.mgf"), "mgf")
+# 1. Load Data
+query_spectra = list(io.load_spectra(Path("data/experiment.mgf"), "mgf"))
+ref_spectra = list(io.load_spectra(Path("data/library.msp"), "msp"))
 
-# Process
-config = ProcessingConfig(min_peaks=5)
-cleaned = list(processing.process_spectra(spectra, config))
+# 2. Execute Search
+engine = SimilarityEngine(tolerance=0.1, min_score=0.7)
+results = engine.search(query_spectra, ref_spectra, top_n=5)
 
-# Save
-io.save_spectra_to_msp(cleaned, Path("output/cleaned.msp"))
+# 3. Export
+io.save_match_results(results, Path("results.csv"))
+
 ```
 
-## Architecture
+## Architecture & Constraints
 
-MassFlow uses a modular architecture:
-
-- **`MassFlow.gui`**: CustomTkinter-based GUI for visualization and workflow management.
-- **`MassFlow.cli`**: Command-line interface.
-- **`MassFlow.workflow`**: Orchestrates loading, processing, and vectorized similarity search.
-- **`MassFlow.database`**: Optimized SQLite storage with batch operations.
-- **`MassFlow.processing`**: Facade for `matchms` filtering pipelines.
-- **`MassFlow.similarity`**: Strategy pattern for scoring algorithms.
+* **Scope:** MassFlow is an infrastructure layer. Proprietary substructure elucidation or molecular networking logic is out of scope.
+* **Performance:** Spectral arrays (m/z and intensities) are processed using vectorized `numpy` operations. Standard Python `for` loops are prohibited for peak iteration.
+* **Error Handling:** The library is designed to fail fast on malformed data, raising explicit `ValueError` or `TypeError` exceptions rather than issuing warnings.
 
 ## License
 

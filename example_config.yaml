@@ -1,0 +1,24 @@
+project:
+  name: "Cocaine_Test_Run"
+  output_directory: "results"
+
+input:
+  file_path: "data/raw/example_spectrum.MSP"
+  reference_library: "data/reference/example_library.msp"
+
+processing:
+  min_peaks: 5
+  normalize_intensity: true
+  mz_min: 0.0
+  mz_max: 1000.0
+  noise_threshold: 0.0
+
+similarity:
+  algorithm: "cosine"
+  tolerance: 0.1
+  tolerance_unit: "Da"
+  min_score: 0.6
+  min_matched_peaks: 3
+
+export:
+  format: "csv"

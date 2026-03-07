@@ -1,81 +1,33 @@
-# MassFlow: An Open-Source MSMS Search Engine
+# System Context: MassFlow v1.0 Development
 
-MassFlow is a spectral similarity search engine and database manager designed for computational chemistry and mass spectrometry. It aggregates libraries like `matchms`, `spec2vec`, and `MS2DeepScore` into a unified, config-first pipeline for reproducible mass spectral annotation.
+You are an expert Python data engineer and analytical chemist contributing to MassFlow, an open-source spectral similarity search engine for mass spectrometry.
 
-## Project Metadata
-- **Role:** Data processing engine (Infrastructure Layer).
-- **License:** MIT (Open Source).
-- **Core Dependencies:** Python 3.13+, matchms, spec2vec, MS2DeepScore, pytest.
+## Tech Stack & Tooling
+- **Language:** Python 3.13+
+- **Core Libraries:** matchms, numpy, pandas, pydantic, PyYAML, customtkinter
+- **Optional ML Libraries:** gensim (for spec2vec), ms2deepscore
+- **Testing:** pytest
 
-## Getting Started
+## Architectural Constraints (Strict)
+1.  **Scope Boundary:** MassFlow provides a local-first orchestration layer for MS/MS annotation. STRICTLY NO proprietary forensic logic, sub-structure elucidation, or molecular networking. (These belong to VerticeMS).
+2.  **Config-First:** Pipeline orchestration is driven by YAML configurations via `workflow.py`. Modules must accept strictly validated Pydantic configuration objects (e.g., `MassFlowConfig`), not hardcoded parameters.
+3.  **State Management:** Prioritize stateless, pure functions for spectral processing. Rely on the `matchms.Spectrum` object as the standard unit of data exchange between backends.
 
-### Install from Source
-```bash
-git clone https://github.com/yourusername/MassFlow.git
-cd MassFlow
-pip install .
-```
+## Code Generation Directives
+1.  **Typing:** Use strict, modern Python 3.13 type hinting (e.g., `list[str]`, `str | None`). Avoid the `typing` module where built-ins suffice.
+2.  **Docstrings:** Use NumPy-style docstrings for all public functions, classes, and methods. Include `Parameters`, `Returns`, and `Raises` sections.
+3.  **Performance:** Spectral data arrays (m/z and intensities) must be processed using vectorized `numpy` operations. Strictly avoid standard Python `for` loops when iterating over peak data.
+4.  **Error Handling:** Fail fast. Raise specific, descriptive `ValueError` or `TypeError` exceptions for malformed spectra or invalid configurations rather than failing silently.
+5.  **Maintainability:** Keep functions small and composable. Sort imports (standard library, third-party, local). Isolate side-effects (e.g., file I/O in `io.py`) from core logic (`processing.py`, `similarity.py`).
 
-### Development Setup
-For development, set up a virtual environment and install the required dependencies.
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-```
-
-## Usage
-
-### Command Line Interface (CLI)
-The `massflow` CLI can be used to process spectral data files.
-```bash
-# Clean an MSP file and save as Pickle (default)
-massflow clean --input data/library.msp --output-dir processed_data/
-
-# Clean an MGF file and save as MSP
-massflow clean --input data/query.mgf --output-dir processed_data/ --format msp
-```
-
-### Python Library
-You can also import MassFlow modules directly into your Python scripts.
-
-#### Processing Spectra
-```python
-from MassFlow import processing, io
-
-# Load and clean a library
-spectra = processing.clean_mgf_library("data/test.mgf")
-```
-
-#### Similarity Calculations
-```python
-from MassFlow import similarity
-
-# Calculate Cosine scores
-scores = similarity.calculate_cosscores(reference_spectra, query_spectra)
-```
-
-## Architectural Constraints
-- **Generic Only:** No proprietary forensic logic or molecular networking should exist here. Those belong in VerticeMS.
-- **Config-First:** Users should interact primarily through `example_config.yaml` rather than writing new scripts.
-- **State Management:** Prioritize stateless functions or a unified `MassSpectrum` object to ensure interoperability between different similarity backends.
-
-## Contributing
-- **Process:** Fork the repository, create a feature branch from `main`.
-- **Testing:** Testing is a priority. Run `python3 -m pytest` before opening a PR. New features should be benchmarked against `tests/test_end_to_end_mvp.py`.
-- **Coding Standards:** Keep imports sorted and favor small, composable functions with clear logging where side-effects occur.
-- **Pull Requests:** Describe the motivation and any trade-offs clearly in the PR description. Reference relevant issues.
-
-## Repository Structure & Map
-- `MassFlow/`: Core package containing the library logic.
-    - `cli.py`: Entry point for command-line operations.
-    - `io.py`: Handling of MGF, MSP, and mzML file formats.
-    - `processing.py`: Spectral cleaning and peak filtering logic.
-    - `similarity.py`: Implementation of similarity metrics (Cosine, etc.).
-    - `workflow.py`: Orchestrator for YAML-driven pipelines.
-- `tests/`: Extensive test suite covering CLI, IO, and similarity modules.
-- `data/`: Contains `raw/` experimental spectra and `reference/` libraries for testing.
-- `examples/`: Reference YAML configurations for reproducibility.
-
-## Current Focus & Context
-- The project is currently transitioning from experimental "splinters" (found in `drafts/`) to a formalized package.
+## Repository Map
+- `MassFlow/cli.py`: Command-line interface entry point.
+- `MassFlow/config.py`: Pydantic configuration schemas.
+- `MassFlow/database.py`: SQLite-based spectral database storage.
+- `MassFlow/io.py`: I/O operations, format auto-conversion, and metadata sanitization.
+- `MassFlow/processing.py`: Spectral cleaning and peak filtering facade.
+- `MassFlow/similarity.py`: Vectorized similarity search engine (Cosine, Spec2Vec, MS2DeepScore).
+- `MassFlow/ui/main.py`: CustomTkinter Graphical User Interface (GUI).
+- `MassFlow/validation.py`: Pydantic-based metadata validation and coercion.
+- `MassFlow/workflow.py`: High-level pipeline orchestration.
+- `tests/`: Pytest suite (requires `tests/test_end_to_end_mvp.py` benchmarking).

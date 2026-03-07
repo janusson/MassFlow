@@ -1,10 +1,9 @@
 """
-Tests for MassFlow io module.
+Tests for MassFlow I/O module.
 """
 
-import pickle
 from pathlib import Path
-from unittest.mock import MagicMock, mock_open, patch
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
@@ -14,216 +13,123 @@ from MassFlow import io
 
 
 @pytest.fixture
-def mock_spectra():
-    return [
-        Spectrum(
-            mz=np.array([100.0, 200.0], dtype="float"),
-            intensities=np.array([0.5, 1.0], dtype="float"),
-            metadata={"name": "C1", "spectrum_id": "1"},
-        )
-    ]
+def mock_spectrum():
+    return Spectrum(
+        mz=np.array([100.0, 200.0], dtype="float"),
+        intensities=np.array([0.5, 1.0], dtype="float"),
+        metadata={"precursor_mz": 150.0, "id": "spec1"},
+    )
 
 
-# --- load_spectra tests ---
-
-
-def test_load_spectra_mgf():
+def test_load_spectra_mgf(mock_spectrum):
     with patch("MassFlow.io.load_from_mgf") as mock_load:
-        mock_load.return_value = iter(["spec"])
-        result = io.load_spectra(Path("test.mgf"), "mgf")
-        assert list(result) == ["spec"]
-        mock_load.assert_called_once_with("test.mgf")
+        # Mock load_from_mgf to return an iterator of spectra
+        mock_load.return_value = iter([mock_spectrum])
+
+        # io.load_spectra returns a generator yielding processed spectra
+        # load_spectra calls _apply_filters which calls _sanitize_metadata
+        # _sanitize_metadata expects a Spectrum object (has .get())
+        result = list(io.load_spectra(Path("test.mgf"), "mgf"))
+
+        assert len(result) == 1
+        assert result[0].get("id") == "spec1"
 
 
-def test_load_spectra_msp():
+def test_load_spectra_msp(mock_spectrum):
     with patch("MassFlow.io.load_from_msp") as mock_load:
-        mock_load.return_value = iter(["spec"])
-        result = io.load_spectra(Path("test.msp"), "msp")
-        assert list(result) == ["spec"]
-        mock_load.assert_called_once_with("test.msp")
+        mock_load.return_value = iter([mock_spectrum])
+        result = list(io.load_spectra(Path("test.msp"), "msp"))
+        assert len(result) == 1
+        assert result[0].get("id") == "spec1"
 
 
-def test_load_spectra_mzml():
+def test_load_spectra_mzml(mock_spectrum):
     with patch("MassFlow.io.load_from_mzml") as mock_load:
-        mock_load.return_value = iter(["spec"])
-        result = io.load_spectra(Path("test.mzml"), "mzml")
-        assert list(result) == ["spec"]
-        mock_load.assert_called_once_with("test.mzml")
+        mock_load.return_value = iter([mock_spectrum])
+        result = list(io.load_spectra(Path("test.mzml"), "mzml"))
+        assert len(result) == 1
+        assert result[0].get("id") == "spec1"
 
 
-def test_load_spectra_mzxml():
+def test_load_spectra_mzxml(mock_spectrum):
     with patch("MassFlow.io.load_from_mzxml") as mock_load:
-        mock_load.return_value = iter(["spec"])
-        result = io.load_spectra(Path("test.mzxml"), "mzxml")
-        assert list(result) == ["spec"]
-        mock_load.assert_called_once_with("test.mzxml")
+        mock_load.return_value = iter([mock_spectrum])
+        result = list(io.load_spectra(Path("test.mzxml"), "mzxml"))
+        assert len(result) == 1
+        assert result[0].get("id") == "spec1"
 
 
-def test_load_spectra_db():
-    with patch("MassFlow.io.SpectralDatabase") as MockDB:
+def test_load_spectra_db(mock_spectrum):
+    # SpectralDatabase is imported inside the function, so we patch where it is defined
+    with patch("MassFlow.database.SpectralDatabase") as MockDB:
         mock_instance = MockDB.return_value
-        mock_instance.get_spectra.return_value = iter(["spec"])
+        mock_instance.get_spectra.return_value = iter([mock_spectrum])
 
-        result = io.load_spectra(Path("test.db"), "db")
-        assert list(result) == ["spec"]
-        MockDB.assert_called_once_with(Path("test.db"))
-        mock_instance.get_spectra.assert_called_once()
+        result = list(io.load_spectra(Path("test.db"), "db"))
 
-
-def test_load_spectra_raw_error():
-    with pytest.raises(
-        ValueError, match="Direct loading of raw files is not supported"
-    ):
-        io.load_spectra(Path("test.raw"), "raw")
+        assert len(result) == 1
+        assert result[0].get("id") == "spec1"
+        MockDB.assert_called_with(Path("test.db"))
 
 
-def test_load_spectra_invalid_format():
-    with pytest.raises(ValueError, match="Unsupported file format"):
-        io.load_spectra(Path("test.txt"), "txt")
+def test_load_spectra_proprietary_error():
+    # Test that it raises error if msconvert is not found
+    with patch("shutil.which", return_value=None):
+        with pytest.raises(RuntimeError, match="msconvert' was not found"):
+            list(io.load_spectra(Path("test.raw")))
 
 
-# --- save_match_results tests ---
+def test_load_spectra_unsupported_format():
+    with pytest.raises(ValueError, match="is not supported"):
+        list(io.load_spectra(Path("test.xyz"), "xyz"))
 
 
 def test_save_match_results(tmp_path):
-    results = [{"id": "1", "score": 0.9}]
+    results = [{"query_id": "q1", "reference_id": "r1", "score": 0.95}]
     out_path = tmp_path / "results.csv"
 
     io.save_match_results(results, out_path)
 
     assert out_path.exists()
-    content = out_path.read_text(encoding="utf-8")
-    assert "id,score" in content
-    assert "1,0.9" in content
+    with open(out_path, "r") as f:
+        content = f.read()
+        assert "query_id,reference_id,score" in content
+        assert "q1,r1,0.95" in content
 
 
-def test_save_match_results_excel(tmp_path):
-    import pandas as pd
+def test_save_spectra_to_msp(tmp_path, mock_spectrum):
+    out_path = tmp_path / "test.msp"
 
-    results = [{"id": 1, "score": 0.9}]
-    out_path = tmp_path / "results.xlsx"
+    with patch("matchms.exporting.save_as_msp") as mock_save:
+        io.save_spectra_to_msp([mock_spectrum], out_path)
 
-    io.save_match_results(results, out_path)
-    assert out_path.exists()
-
-    df = pd.read_excel(out_path)
-    assert len(df) == 1
-    assert df.iloc[0]["id"] == 1
-    assert df.iloc[0]["score"] == 0.9
+        mock_save.assert_called_once()
+        args, _ = mock_save.call_args
+        assert args[0] == [mock_spectrum]
+        assert args[1] == str(out_path)
 
 
-def test_save_match_results_empty(tmp_path):
-    out_path = tmp_path / "results.csv"
-    io.save_match_results([], out_path)
-    assert not out_path.exists()
-
-
-def test_save_match_results_io_error(tmp_path):
-    results = [{"id": "1"}]
-    # directory that can't be written to or invalid path logic is hard to force with tmp_path fixture
-    # without permissions manipulation, so we mock open.
-
-    with patch("builtins.open", mock_open()) as mock_file:
-        mock_file.side_effect = IOError("Boom")
-        with pytest.raises(IOError):
-            io.save_match_results(results, Path("dummy.csv"))
-
-
-# --- save_spectra_* tests ---
-
-
-def test_save_spectra_to_mgf(mock_spectra):
-    with patch("MassFlow.io.save_as_mgf") as mock_save:
-        path = Path("/out/test.mgf")
-        with patch.object(Path, "mkdir"):
-            io.save_spectra_to_mgf(mock_spectra, path)
-        mock_save.assert_called_once_with(mock_spectra, str(path))
-
-
-def test_save_spectra_to_msp(mock_spectra):
-    with patch("MassFlow.io.save_as_msp") as mock_save:
-        path = Path("/out/test.msp")
-        with patch.object(Path, "mkdir"):
-            io.save_spectra_to_msp(mock_spectra, path)
-        mock_save.assert_called_once_with(mock_spectra, str(path))
-
-
-def test_save_spectra_to_json(mock_spectra):
-    with patch("MassFlow.io.save_as_json") as mock_save:
-        path = Path("/out/test.json")
-        with patch.object(Path, "mkdir"):
-            io.save_spectra_to_json(mock_spectra, path)
-        mock_save.assert_called_once_with(mock_spectra, str(path))
-
-
-def test_save_spectra_to_pickle(mock_spectra):
-    with patch("builtins.open", mock_open()) as mock_file:
-        with patch("pickle.dump") as mock_dump:
-            path = Path("/out/test.pickle")
-            with patch.object(Path, "mkdir"):
-                io.save_spectra_to_pickle(mock_spectra, path)
-
-            mock_file.assert_called_with(path, "wb")
-            mock_dump.assert_called_once()
-            args, _ = mock_dump.call_args
-            # Verify list conversion happened if iterable passed
-            assert args[0] == mock_spectra
-
-
-def test_save_spectra_to_mzml(mock_spectra, tmp_path):
-    # Ensure spectrum has an ID for this test (matchms Spectrum is immutable, so replace in list)
-    mock_spectra[0] = mock_spectra[0].set("id", "1")
-    mock_spectra[0] = mock_spectra[0].set("precursor_mz", 150.0)
-    mock_spectra[0] = mock_spectra[0].set("charge", 1)
-    mock_spectra[0] = mock_spectra[0].set("precursor_intensity", 1000.0)
-
-    path = tmp_path / "test.mzml"
-    io.save_spectra_to_mzml(mock_spectra, path)
-
-    assert path.exists()
-    content = path.read_text(encoding="utf-8")
-
-    assert "mzML" in content
-    assert 'id="1"' in content
-    assert 'defaultArrayLength="2"' in content
-    assert "binaryDataArray" in content
-    # Check for precursor info presence
-    assert 'name="selected ion m/z"' in content
-    assert 'value="150.0"' in content
-    assert 'name="charge state"' in content
-    assert 'value="1"' in content
-    assert 'name="peak intensity"' in content
-    assert 'value="1000.0"' in content
-
-
-def test_save_spectra_to_mzml_empty_peaks(tmp_path):
-    empty_spec = Spectrum(
-        mz=np.array([], dtype="float"),
-        intensities=np.array([], dtype="float"),
-        metadata={"id": "empty"},
+def test_sanitize_metadata_clean():
+    # Test that valid numeric metadata is kept
+    spec = Spectrum(
+        mz=np.array([100.0]),
+        intensities=np.array([1.0]),
+        metadata={"precursor_mz": 100.0, "retention_time": 10.5},
     )
-    path = tmp_path / "empty.mzml"
-    io.save_spectra_to_mzml([empty_spec], path)
-    assert path.exists()
-    content = path.read_text(encoding="utf-8")
-    assert 'encodedLength="0"' in content
+
+    cleaned = io._sanitize_metadata(spec)
+    assert cleaned.get("precursor_mz") == 100.0
+    assert cleaned.get("retention_time") == 10.5
 
 
-# --- list_files_by_extension tests ---
+def test_sanitize_metadata_dirty():
+    # Test that dirty string metadata in numeric fields is removed
+    spec = Spectrum(
+        mz=np.array([100.0]),
+        intensities=np.array([1.0]),
+        metadata={"precursor_mz": "100.0", "retention_time": "CCS: 123"},
+    )
 
-
-def test_list_files_by_extension(tmp_path):
-    (tmp_path / "test1.mgf").touch()
-    (tmp_path / "test2.mgf").touch()
-    (tmp_path / "other.txt").touch()
-
-    files = io.list_files_by_extension(tmp_path, "mgf")
-    assert len(files) == 2
-    names = [f.name for f in files]
-    assert "test1.mgf" in names
-    assert "test2.mgf" in names
-
-
-def test_list_files_by_extension_not_dir():
-    files = io.list_files_by_extension(Path("nonexistent"), "mgf")
-    assert files == []
+    cleaned = io._sanitize_metadata(spec)
+    assert cleaned.get("precursor_mz") == 100.0
+    assert cleaned.get("retention_time") is None  # Should be None because of "CCS"

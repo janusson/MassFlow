@@ -1,102 +1,98 @@
 """
-Tests for MassFlow workflow module.
+Tests for MassFlow annotation workflow.
 """
 
 from pathlib import Path
-from unittest.mock import ANY, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-from MassFlow import workflow
-from MassFlow.config import (
-    ExportConfig,
-    InputConfig,
-    MassFlowConfig,
-    ProcessingConfig,
-    ProjectConfig,
-)
+from MassFlow.config import InputConfig, MassFlowConfig, ProjectConfig
+from MassFlow.workflow import run_annotation_pipeline
 
 
-@pytest.fixture
-def mock_config():
-    return MassFlowConfig(
-        project=ProjectConfig(output_directory=Path("out"), name="TestProject"),
-        input=InputConfig(
-            file_path=Path("test.mgf"), reference_library=Path("ref.msp")
-        ),
-        processing=ProcessingConfig(),
-        export=ExportConfig(format="csv"),
-    )
-
-
-@patch("MassFlow.workflow.io.load_spectra")
 @patch("MassFlow.workflow.processing.process_spectra")
-@patch("MassFlow.workflow.get_similarity_calculator")
 @patch("MassFlow.workflow.io.save_match_results")
-def test_run_workflow_file_path(
-    mock_save, mock_calc, mock_proc, mock_load, mock_config
-):
-    """Test run_workflow with file_path input."""
-    # Setup mocks
-    mock_spectrum = MagicMock()
-    mock_spectrum.get.return_value = "TestSpec"
-    mock_load.return_value = [mock_spectrum]
-    mock_proc.return_value = [mock_spectrum]
-
-    # Mock calculator
-    mock_scores = MagicMock()
-    mock_scores.scores_by_query.return_value = [
-        (mock_spectrum, {"CosineGreedy_score": 0.9, "CosineGreedy_matches": 5})
-    ]
-    mock_calc_instance = MagicMock()
-    mock_calc_instance.calculate.return_value = mock_scores
-    mock_calc.return_value = mock_calc_instance
-
-    # Mock Config loading
-    with patch("MassFlow.config.MassFlowConfig.from_yaml", return_value=mock_config):
-        workflow.run_workflow("dummy_config.yaml")
-
-    mock_load.assert_called_with(Path("test.mgf"), "mgf")
-    mock_proc.assert_called()
-    mock_save.assert_called_once()
-
-    # Verify save path
-    args, _ = mock_save.call_args
-    # output directory is "out", project name is "TestProject", format is "csv"
-    # Expected: out/TestProject_results.csv
-    assert args[1] == Path("out/TestProject_results.csv")
-
-
+@patch("MassFlow.workflow.SimilarityEngine")
 @patch("MassFlow.workflow.io.load_spectra")
+def test_run_annotation_pipeline_success(
+    mock_load, mock_engine_cls, mock_save, mock_process, tmp_path
+):
+    """Test successful execution of the annotation pipeline."""
+
+    # Setup Config
+    exp_path = Path("experimental.mgf")
+    ref_path = Path("reference.msp")
+    out_dir = tmp_path / "results"
+
+    config = MassFlowConfig(
+        project=ProjectConfig(output_directory=out_dir),
+        input=InputConfig(file_path=exp_path, reference_library=ref_path),
+    )
+
+    # Mock Data
+    mock_query = MagicMock()
+    mock_query.get.return_value = "Query1"
+
+    mock_ref = MagicMock()
+    mock_ref.get.return_value = "Ref1"
+
+    # Mock load_spectra to return iterables
+    # First call for reference (workflow logic change), second for query
+    mock_load.side_effect = [[mock_ref], [mock_query]]
+
+    # Mock process_spectra to pass through
+    mock_process.side_effect = lambda s, c: s
+
+    # Mock Engine
+    mock_engine_instance = mock_engine_cls.return_value
+    mock_results = [{"query_id": "Query1", "score": 0.9}]
+    mock_engine_instance.search.return_value = mock_results
+
+    # Run
+    run_annotation_pipeline(config)
+
+    # Verify
+    assert mock_load.call_count == 2
+    mock_engine_cls.assert_called_with(config.similarity)
+    mock_engine_instance.search.assert_called_with([mock_query], [mock_ref])
+
+    expected_out_file = out_dir / "experimental_results.csv"
+    mock_save.assert_called_with(mock_results, expected_out_file)
+
+
 @patch("MassFlow.workflow.processing.process_spectra")
-@patch("MassFlow.workflow.get_similarity_calculator")
-def test_run_workflow_directory_input(mock_calc, mock_proc, mock_load):
-    """Test run_workflow with data_directory input."""
+@patch("MassFlow.workflow.io.load_spectra")
+def test_run_annotation_pipeline_no_query_spectra(mock_load, mock_process, tmp_path):
+    """Test warning when no query spectra are found (should not raise)."""
+    # Ref loaded first (valid), Query loaded second (empty)
+    mock_ref = MagicMock()
+    mock_load.side_effect = [[mock_ref], []]
+    mock_process.side_effect = lambda s, c: s
+
     config = MassFlowConfig(
-        input=InputConfig(data_directory=Path("data_dir"), format="mgf")
+        project=ProjectConfig(output_directory=tmp_path),
+        input=InputConfig(file_path=Path("exp.mgf"), reference_library=Path("ref.msp")),
     )
 
-    with (
-        patch("MassFlow.config.MassFlowConfig.from_yaml", return_value=config),
-        patch("pathlib.Path.glob") as mock_glob,
-    ):
-        # Mock glob to return a file
-        mock_glob.return_value = [Path("data_dir/file1.mgf")]
-
-        # We need mock_load to return something to avoid iteration error in process_spectra
-        mock_load.return_value = []
-
-        workflow.run_workflow("dummy.yaml")
-
-        mock_load.assert_called_with(Path("data_dir/file1.mgf"), "mgf")
+    # Should not raise exception, just log warning
+    run_annotation_pipeline(config)
 
 
-def test_run_workflow_no_input():
-    """Test run_workflow raises error when no input specified."""
+@patch("MassFlow.workflow.processing.process_spectra")
+@patch("MassFlow.workflow.io.load_spectra")
+def test_run_annotation_pipeline_no_reference_spectra(
+    mock_load, mock_process, tmp_path
+):
+    """Test error when no reference spectra are found."""
+    # First call returns empty (ref)
+    mock_load.side_effect = [[]]
+    mock_process.side_effect = lambda s, c: s
+
     config = MassFlowConfig(
-        input=InputConfig()  # No file_path or data_directory
+        project=ProjectConfig(output_directory=tmp_path),
+        input=InputConfig(file_path=Path("exp.mgf"), reference_library=Path("ref.msp")),
     )
 
-    with patch("MassFlow.config.MassFlowConfig.from_yaml", return_value=config):
-        with pytest.raises(ValueError, match="No input file or directory"):
-            workflow.run_workflow("dummy.yaml")
+    with pytest.raises(ValueError, match="No valid spectra found in reference library"):
+        run_annotation_pipeline(config)

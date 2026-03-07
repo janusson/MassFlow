@@ -169,7 +169,7 @@ def test_peak_processing_noise_threshold(noisy_spectrum):
     """Test peak filtering with explicit noise_threshold."""
     # intensities: 1.0, 10.0, 50.0, 100.0, 50.0
     # Set threshold to 15.0
-    config = ProcessingConfig(noise_threshold=15.0, min_peaks=1)
+    config = ProcessingConfig(noise_threshold=15.0, min_peaks=1, mz_max=2000.0)
     processed = processing.peak_processing(noisy_spectrum, config)
 
     # Should keep 50.0, 100.0, 50.0 (indices 2, 3, 4) -> m/z 200, 300, 1500
@@ -181,7 +181,9 @@ def test_peak_processing_fallback_min_intensity(noisy_spectrum):
     """Test peak filtering falling back to min_intensity if noise_threshold is 0."""
     # intensities: 1.0, 10.0, 50.0, 100.0, 50.0
     # Set noise_threshold to 0, min_intensity to 40.0
-    config = ProcessingConfig(noise_threshold=0.0, min_intensity=40.0, min_peaks=1)
+    config = ProcessingConfig(
+        noise_threshold=0.0, min_intensity=40.0, min_peaks=1, mz_max=2000.0
+    )
     processed = processing.peak_processing(noisy_spectrum, config)
 
     # Should keep 50.0, 100.0, 50.0

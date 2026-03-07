@@ -212,3 +212,7 @@ __pycache__/
 *.pyc
 .DS_Store
 build/
+
+# Data and Results
+results/
+config.yaml
