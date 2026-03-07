@@ -212,6 +212,9 @@ __pycache__/
 *.pyc
 .DS_Store
 build/
+debugging/
+docs/
+data/
 
 # Data and Results
 results/
