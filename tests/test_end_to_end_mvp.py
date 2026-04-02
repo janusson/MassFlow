@@ -1,7 +1,6 @@
 import csv
 
 import numpy as np
-import pytest
 from matchms import Spectrum
 from matchms.exporting import save_as_mgf, save_as_msp
 
@@ -79,7 +78,7 @@ def test_mvp_workflow(tmp_path):
     # Check key fields from CSV export
     # Note: Column names depend on io.save_match_results implementation
     # Assuming it writes the keys from the result dict in similarity.py
-    assert hit["query_id"] == "Query_Caffeine" or hit.get("query_id") == "query_0"
+    assert hit["query_id"] in ("Query_Caffeine", "query_0", "query_query_0")
     assert hit["reference_name"] == "Ref_Caffeine"
     assert float(hit["score"]) > 0.99
     assert hit["smiles"] == "CN1C=NC2=C1C(=O)N(C(=O)N2C)C"

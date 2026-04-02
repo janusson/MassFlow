@@ -9,14 +9,8 @@ import yaml
 from pydantic import ValidationError
 
 from MassFlow.config import (
-    ExportConfig,
     InputConfig,
     MassFlowConfig,
-    ProcessingConfig,
-    ProjectConfig,
-    SimilarityConfig,
-    SolventConfig,
-    WorkflowConfig,
 )
 
 
@@ -30,8 +24,11 @@ def test_default_config():
     # Check Processing defaults
     assert config.processing.min_intensity == 0.0
     assert config.processing.min_peaks == 5
-    assert config.processing.ms1_tolerance == 10.0
-    assert config.processing.ms2_tolerance == 0.02
+
+    # Check Similarity defaults
+    assert config.similarity.ms1_tolerance == 10.0
+    assert config.similarity.ms2_tolerance == 0.02
+
     assert config.processing.noise_threshold == 1000.0
     assert config.processing.instrument is None
 
@@ -64,7 +61,6 @@ def test_load_from_yaml(tmp_path):
             ],
         },
         "similarity": {"algorithm": "modified_cosine", "min_score": 0.8},
-        "workflow": {"perform_networking": True},
         "export": {"format": "json"},
     }
 
@@ -87,7 +83,6 @@ def test_load_from_yaml(tmp_path):
     assert config.processing.solvents[0].mz == 18.01
 
     assert config.similarity.algorithm == "modified_cosine"
-    assert config.workflow.perform_networking is True
     assert config.export.format == "json"
 
 

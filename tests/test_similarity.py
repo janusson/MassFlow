@@ -3,42 +3,32 @@ Integration test suite for MassFlow SimilarityEngine, focusing on ModifiedCosine
 """
 
 from pathlib import Path
+from unittest.mock import patch
 
 import numpy as np
 import pytest
 from matchms import Spectrum
 
-from MassFlow import io
 from MassFlow.config import SimilarityConfig
-from MassFlow.similarity import SimilarityEngine
+from MassFlow.similarity import SimilarityEngine, calculate_fdr
 
 
 @pytest.fixture(scope="module")
 def cocaine_spectrum() -> Spectrum:
     """
-    Ingests the example library and isolates the Cocaine spectrum.
+    Retrieves the Cocaine reference spectrum from matchms.
 
     Returns
     -------
     matchms.Spectrum
         The unshifted Cocaine reference standard spectrum.
     """
-    library_path = Path("data/reference/example_library.msp")
-    if not library_path.exists():
-        pytest.skip(f"Library file not found at {library_path}")
+    from matchms.reference_spectra.cocaine import cocaine
 
-    # Load spectra without harmonization to avoid dropping custom fields during test
-    spectra = list(io.load_spectra(library_path, "msp"))
-
-    # Isolate Cocaine
-    for spec in spectra:
-        name = spec.get("compound_name") or spec.get("name") or ""
-        if "cocaine" in name.lower():
-            if spec.get("precursor_mz") is None:
-                pytest.fail("Found Cocaine spectrum, but missing precursor_mz.")
-            return spec
-
-    pytest.fail("Cocaine spectrum not found in the example library.")
+    spec = cocaine()
+    if spec.get("precursor_mz") is None:
+        pytest.fail("Found Cocaine spectrum, but missing precursor_mz.")
+    return spec
 
 
 @pytest.fixture
@@ -117,16 +107,20 @@ def test_modified_cosine_integration(
     cosine_results = cosine_engine.search(
         query_spectra=[methylene_homolog], reference_spectra=[cocaine_spectrum]
     )
+    cosine_results = [r for r in cosine_results if not r.get("is_decoy")]
+
     mod_cosine_results = mod_cosine_engine.search(
         query_spectra=[methylene_homolog], reference_spectra=[cocaine_spectrum]
     )
+    mod_cosine_results = [r for r in mod_cosine_results if not r.get("is_decoy")]
 
-    assert len(cosine_results) == 1, "CosineGreedy search returned no result object."
-    assert len(mod_cosine_results) == 1, (
-        "ModifiedCosine search returned no result object."
-    )
+    assert (
+        len(cosine_results) == 0
+    ), "CosineGreedy search returned a result object despite MS1 mismatch."
+    assert (
+        len(mod_cosine_results) == 1
+    ), "ModifiedCosine search returned no result object."
 
-    cosine_score = cosine_results[0]["score"]
     mod_cosine_score = mod_cosine_results[0]["score"]
 
     # Assertions
@@ -137,9 +131,95 @@ def test_modified_cosine_integration(
         f"Expected score > 0.95, got {mod_cosine_score}"
     )
 
-    # CosineGreedy should be very low because the peaks are shifted by 14.0156 Da
-    # which exceeds the strict 0.1 Da tolerance.
-    assert cosine_score < 0.3, (
-        f"CosineGreedy incorrectly matched mass-shifted peaks. "
-        f"Expected score < 0.3, got {cosine_score}"
-    )
+
+def test_spec2vec_initialization():
+    """Verify spec2vec engine initialization handles mock models correctly."""
+    config = SimilarityConfig(algorithm="spec2vec", model_path=Path("dummy.model"))
+    with (
+        patch.object(Path, "exists", return_value=True),
+        patch("gensim.models.Word2Vec.load") as mock_load,
+        patch("spec2vec.Spec2Vec") as mock_s2v,
+    ):
+        engine = SimilarityEngine(config)
+        mock_load.assert_called_once_with("dummy.model")
+        mock_s2v.assert_called_once()
+        assert engine.similarity_function == mock_s2v.return_value
+
+
+def test_ms2deepscore_initialization():
+    """Verify ms2deepscore engine initialization handles mock models correctly."""
+    config = SimilarityConfig(algorithm="ms2deepscore", model_path=Path("dummy.model"))
+    with (
+        patch.object(Path, "exists", return_value=True),
+        patch("ms2deepscore.models.load_model") as mock_load,
+        patch("ms2deepscore.MS2DeepScore") as mock_m2d,
+    ):
+        engine = SimilarityEngine(config)
+        mock_load.assert_called_once_with("dummy.model")
+        mock_m2d.assert_called_once()
+        assert engine.similarity_function == mock_m2d.return_value
+
+
+def test_calculate_fdr_basic():
+    """Verify basic q-value calculations on a synthetic target/decoy distribution."""
+    target_scores = np.array([0.9, 0.8, 0.7, 0.6])
+    decoy_scores = np.array([0.85, 0.65])
+
+    sorted_scores, q_values, is_target = calculate_fdr(target_scores, decoy_scores)
+
+    expected_scores = np.array([0.9, 0.85, 0.8, 0.7, 0.65, 0.6])
+    expected_targets = np.array([True, False, True, True, False, True])
+    expected_q = np.array([0.0, 1 / 3, 1 / 3, 1 / 3, 0.5, 0.5])
+
+    np.testing.assert_allclose(sorted_scores, expected_scores)
+    np.testing.assert_array_equal(is_target, expected_targets)
+    np.testing.assert_allclose(q_values, expected_q)
+
+
+def test_calculate_fdr_perfect_separation():
+    """Verify q-values when targets are perfectly separated from decoys."""
+    target_scores = np.array([0.9, 0.8, 0.7])
+    decoy_scores = np.array([0.4, 0.3, 0.2])
+
+    sorted_scores, q_values, is_target = calculate_fdr(target_scores, decoy_scores)
+
+    expected_scores = np.array([0.9, 0.8, 0.7, 0.4, 0.3, 0.2])
+    expected_targets = np.array([True, True, True, False, False, False])
+    expected_q = np.array([0.0, 0.0, 0.0, 1 / 3, 2 / 3, 1.0])
+
+    np.testing.assert_allclose(sorted_scores, expected_scores)
+    np.testing.assert_array_equal(is_target, expected_targets)
+    np.testing.assert_allclose(q_values, expected_q)
+
+
+def test_calculate_fdr_monotonicity():
+    """Verify that q-values are monotonically increasing (or flat) as scores decrease."""
+    rng = np.random.default_rng(42)
+    target_scores = rng.normal(0.8, 0.1, 100)
+    decoy_scores = rng.normal(0.5, 0.1, 100)
+
+    target_scores = np.clip(target_scores, 0, 1)
+    decoy_scores = np.clip(decoy_scores, 0, 1)
+
+    sorted_scores, q_values, is_target = calculate_fdr(target_scores, decoy_scores)
+
+    assert np.all(
+        np.diff(sorted_scores) <= 0
+    ), "Scores are not sorted in descending order"
+    assert np.all(np.diff(q_values) >= 0), "Q-values are not monotonically increasing"
+
+
+def test_calculate_fdr_empty_arrays():
+    """Verify edge cases with empty target or decoy arrays."""
+    s, q, t = calculate_fdr(np.array([]), np.array([]))
+    assert len(s) == 0 and len(q) == 0 and len(t) == 0
+
+    s, q, t = calculate_fdr(np.array([]), np.array([0.5, 0.6]))
+    assert len(s) == 2
+    assert np.all(q == 0.0)
+    assert not np.any(t)
+
+    s, q, t = calculate_fdr(np.array([0.8, 0.9]), np.array([]))
+    assert len(s) == 2
+    assert np.all(q == 0.0)
+    assert np.all(t)

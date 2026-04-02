@@ -3,7 +3,7 @@ Tests for MassFlow I/O module.
 """
 
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import numpy as np
 import pytest
@@ -73,15 +73,35 @@ def test_load_spectra_db(mock_spectrum):
 
 
 def test_load_spectra_proprietary_error():
-    # Test that it raises error if msconvert is not found
-    with patch("shutil.which", return_value=None):
-        with pytest.raises(RuntimeError, match="msconvert' was not found"):
-            list(io.load_spectra(Path("test.raw")))
+    # Test that it raises error if vendor format is passed
+    with pytest.raises(
+        io.UnsupportedVendorFormatError,
+        match="MassFlow requires open data formats. Please convert vendor files to .mzML or .mgf using ProteoWizard or MS-DIAL prior to pipeline ingestion.",
+    ):
+        list(io.load_spectra(Path("test.raw")))
 
 
 def test_load_spectra_unsupported_format():
     with pytest.raises(ValueError, match="is not supported"):
         list(io.load_spectra(Path("test.xyz"), "xyz"))
+
+
+@pytest.mark.parametrize(
+    ("file_name", "loader_name"),
+    [
+        ("bad.mgf", "load_from_mgf"),
+        ("bad.msp", "load_from_msp"),
+        ("bad.mzml", "load_from_mzml"),
+        ("bad.mzxml", "load_from_mzxml"),
+    ],
+)
+def test_load_spectra_propagates_malformed_loader_errors(file_name, loader_name):
+    with patch(
+        f"MassFlow.io.{loader_name}",
+        side_effect=ValueError("Malformed spectral file"),
+    ):
+        with pytest.raises(ValueError, match="Malformed spectral file"):
+            list(io.load_spectra(Path(file_name)))
 
 
 def test_save_match_results(tmp_path):
@@ -107,29 +127,3 @@ def test_save_spectra_to_msp(tmp_path, mock_spectrum):
         args, _ = mock_save.call_args
         assert args[0] == [mock_spectrum]
         assert args[1] == str(out_path)
-
-
-def test_sanitize_metadata_clean():
-    # Test that valid numeric metadata is kept
-    spec = Spectrum(
-        mz=np.array([100.0]),
-        intensities=np.array([1.0]),
-        metadata={"precursor_mz": 100.0, "retention_time": 10.5},
-    )
-
-    cleaned = io._sanitize_metadata(spec)
-    assert cleaned.get("precursor_mz") == 100.0
-    assert cleaned.get("retention_time") == 10.5
-
-
-def test_sanitize_metadata_dirty():
-    # Test that dirty string metadata in numeric fields is removed
-    spec = Spectrum(
-        mz=np.array([100.0]),
-        intensities=np.array([1.0]),
-        metadata={"precursor_mz": "100.0", "retention_time": "CCS: 123"},
-    )
-
-    cleaned = io._sanitize_metadata(spec)
-    assert cleaned.get("precursor_mz") == 100.0
-    assert cleaned.get("retention_time") is None  # Should be None because of "CCS"

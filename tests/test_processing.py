@@ -17,10 +17,6 @@ def processing_config():
     return ProcessingConfig()
 
 
-def test_metadata_processing_none():
-    assert processing.metadata_processing(None) is None
-
-
 def test_peak_processing_none(processing_config):
     assert processing.peak_processing(None, processing_config) is None
 
@@ -103,9 +99,6 @@ def test_process_spectra_drops_none(processing_config):
 
     results = list(processing.process_spectra(spectra, processing_config))
     assert len(results) == 1
-
-
-from MassFlow.config import ProcessingConfig
 
 
 @pytest.fixture
@@ -191,11 +184,6 @@ def test_peak_processing_fallback_min_intensity(noisy_spectrum):
     assert np.allclose(processed.peaks.mz, expected_mzs)
 
 
-def test_peak_processing_none():
-    config = ProcessingConfig()
-    assert processing.peak_processing(None, config) is None
-
-
 def test_process_spectra(mock_spectrum):
     """Test process_spectra generator."""
     spectra_in = [mock_spectrum, None, mock_spectrum]
@@ -203,3 +191,104 @@ def test_process_spectra(mock_spectrum):
 
     results = list(processing.process_spectra(spectra_in, config))
     assert len(results) == 2
+
+
+def test_peak_processing_mz_range():
+    """Test peak filtering by mz_min and mz_max."""
+    spectrum = Spectrum(
+        mz=np.array([50.0, 100.0, 500.0, 1200.0], dtype="float"),
+        intensities=np.array([100.0, 100.0, 100.0, 100.0], dtype="float"),
+        metadata={"id": "range_spec"},
+    )
+    config = ProcessingConfig(
+        mz_min=75.0, mz_max=1000.0, noise_threshold=0.0, min_peaks=1
+    )
+    processed = processing.peak_processing(spectrum, config)
+    assert processed is not None
+    # Should keep 100.0 and 500.0
+    expected_mzs = [100.0, 500.0]
+    assert np.allclose(processed.peaks.mz, expected_mzs)
+
+
+def test_peak_processing_normalize_intensity():
+    """Test peak intensity normalization."""
+    spectrum = Spectrum(
+        mz=np.array([100.0, 200.0], dtype="float"),
+        intensities=np.array([500.0, 1000.0], dtype="float"),
+        metadata={"id": "norm_spec"},
+    )
+    # With normalization
+    config_norm = ProcessingConfig(
+        normalize_intensity=True, noise_threshold=0.0, min_peaks=1
+    )
+    processed_norm = processing.peak_processing(spectrum.clone(), config_norm)
+    assert processed_norm is not None
+    assert np.max(processed_norm.peaks.intensities) == 1.0
+    assert np.allclose(processed_norm.peaks.intensities, [0.5, 1.0])
+
+    # Without normalization
+    config_no_norm = ProcessingConfig(
+        normalize_intensity=False, noise_threshold=0.0, min_peaks=1
+    )
+    processed_no_norm = processing.peak_processing(spectrum.clone(), config_no_norm)
+    assert processed_no_norm is not None
+    assert np.max(processed_no_norm.peaks.intensities) == 1000.0
+
+
+def test_metadata_processing_toggles_disabled():
+    """Test that when metadata toggles are disabled, the filters are bypassed."""
+    # A spectrum with uncleaned names and list-based RT
+    spec = Spectrum(
+        mz=np.array([100.0]),
+        intensities=np.array([100.0]),
+        metadata={
+            "name": "   MESSY NAME [M+H]+  ",
+            "retention_time": [0.017],  # mzML style list
+            "adduct": "[M+H]+",
+        },
+    )
+
+    config = ProcessingConfig(
+        clean_metadata=False,
+        add_retention_time=False,
+        clean_compound_name=False,
+        derive_adduct_from_name=False,
+        derive_formula_from_name=False,
+        derive_ionmode=False,
+        make_charge_int=False,
+        repair_inchi_inchikey_smiles=False,
+    )
+
+    processed = processing.metadata_processing(spec, config)
+
+    # Assertions to ensure it was NOT cleaned
+    assert processed.get("compound_name") == "   MESSY NAME [M+H]+  "
+    assert processed.get("charge") is None  # Never derived
+
+
+def test_peak_processing_toggles_disabled():
+    """Test that when peak toggles are disabled, the spectrum remains untouched."""
+    spec = Spectrum(
+        mz=np.array([10.0, 100.0, 2000.0]),
+        intensities=np.array([1.0, 10.0, 100.0]),
+        metadata={"id": "test"},
+    )
+
+    config = ProcessingConfig(
+        filter_by_intensity=False,
+        noise_threshold=50.0,  # Should be ignored
+        filter_min_peaks=False,
+        min_peaks=10,  # Should be ignored
+        filter_by_mz=False,
+        mz_max=1000.0,  # Should be ignored
+        reduce_to_top_n_peaks=False,
+        n_max=1,  # Should be ignored
+        normalize_intensity=False,
+    )
+
+    processed = processing.peak_processing(spec, config)
+
+    # Assertions to ensure peaks were untouched
+    assert len(processed.peaks.mz) == 3
+    assert np.allclose(processed.peaks.mz, [10.0, 100.0, 2000.0])
+    assert np.allclose(processed.peaks.intensities, [1.0, 10.0, 100.0])

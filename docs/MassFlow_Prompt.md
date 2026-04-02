@@ -15,7 +15,7 @@ You are an expert Python data engineer and analytical chemist acting as a post-d
 
 ### Known Vulnerabilities to Mitigate
 * **Structural Fragility:** The current `similarity.py` extraction logic assumes `matchms` returns structured arrays with `.dtype.names`. Machine learning backends (Spec2Vec/MS2DeepScore) return primitive arrays. You must implement defensive extraction logic that dynamically handles both structured arrays (for Cosine/ModifiedCosine) and primitive arrays without throwing an `AttributeError` or hardcoding metric string names.
-* **Adduct Mass Bias:** Do not hardcode a protonated positive ionization assumption ($[M+H]^+$) as a fallback for missing precursor masses. This invalidates the `ModifiedCosine` $\Delta M$ mass-shift logic for spectra acquired as sodium adducts ($[M+Na]^+$) or in negative mode ($[M-H]^-$). 
+* **Adduct Mass Bias:** Do not hardcode a protonated positive ionization assumption ($[M+H]^+$) as a fallback for missing precursor masses. This invalidates the `ModifiedCosine` $\Delta M$ mass-shift logic for spectra acquired as sodium adducts ($[M+Na]^+$) or in negative mode ($[M-H]^-$).
 
 ### Task Directives
 
@@ -24,7 +24,7 @@ Audit and refactor `src/MassFlow/similarity.py` to mitigate the structural fragi
 
 **Part 2: Modified Cosine Integration Testing**
 Generate the integration test suite for `ModifiedCosine`.
-* **Objective:** Verify correct neutral loss handling against known reference standard pairs. 
+* **Objective:** Verify correct neutral loss handling against known reference standard pairs.
 * **Mathematical Constraint:** The tests must explicitly validate that the underlying approximation holds for the mass-shifted tolerance condition:
 $$|m/z_{A_i} - m/z_{B_j} - \Delta M| \le \delta$$
 * **Fixture Integration:** Ingest `data/reference/example_library.msp`. Create a mass-shifted test fixture by modifying the precursor M/Z and fragment peaks of the Cocaine spectrum by exactly $+14.0156$ Da (simulating a methylene homolog/analog).

@@ -1,29 +1,40 @@
 graph TD
-    subgraph Entry Points
-        CLI["<b>CLI</b><br>cli.py"]
-        Script["<b>Python Script</b>"]
+    subgraph User Interfaces
+        CLI["<b>CLI</b><br>(src/MassFlow/cli.py)"]
+        API["<b>Python API</b>"]
+        TUI["<b>Terminal UI Browser</b><br>(src/MassFlow/tui.py)"]
     end
 
-    subgraph Core
-        Config["<b>Configuration</b><br>config.py<br>Pydantic Models"]
-        Workflow["<b>Orchestrator</b><br>workflow.py"]
+    subgraph Orchestration
+        Workflow["<b>Workflow Orchestrator</b><br>(src/MassFlow/workflow.py)"]
+        Config["<b>Configuration Manager</b><br>(src/MassFlow/config.py)<br><i>Pydantic</i>"]
     end
 
-    subgraph Modules
-        IO["<b>I/O Layer</b><br>io.py<br>Loaders and Savers"]
-        Process["<b>Processing Facade</b><br>processing.py<br>Cleaning Pipeline"]
-        Sim["<b>Similarity Engine</b><br>similarity.py<br>Strategy Pattern"]
+    subgraph Data Ingestion & Storage
+        IO["<b>I/O Layer</b><br>(src/MassFlow/io.py)"]
+        DB["<b>Spectral Database</b><br>(src/MassFlow/database.py)<br><i>SQLite</i>"]
+    end
+
+    subgraph Data Processing & Filtering
+        Process["<b>Processing Facade</b><br>(src/MassFlow/processing.py)<br><i>matchms Native Filters</i>"]
+    end
+
+    subgraph Similarity Engine
+        Sim["<b>Similarity Engine</b><br>(src/MassFlow/similarity.py)<br><i>Strategy & Consensus Pattern</i>"]
+        Algorithms["CosineGreedy<br>ModifiedCosine<br>Spec2Vec<br>MS2DeepScore<br>ConsensusEngine<br>CascadeEngine"]
     end
 
     %% Flow Connections
-    CLI --> Workflow
-    Script --> Workflow
-    
+    CLI -->|annotate| Workflow
+    CLI -->|browse| TUI
+    API --> Workflow
+
     Workflow --> Config
     Workflow --> IO
     Workflow --> Process
     Workflow --> Sim
 
-    %% Data Dependencies
-    Process -.-> External((matchms))
-    Sim -.-> External
+    TUI --> IO
+
+    IO <--> DB
+    Sim --> Algorithms

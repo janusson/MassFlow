@@ -1,113 +1,102 @@
 # MassFlow: Architectural Overview & Project Summary
 
-## 1. Project Vision & Identity
+## 1. Project Description
 
-**MassFlow** is an open-source, config-first Python toolkit and orchestration layer designed for the processing, annotation, and similarity searching of tandem mass spectrometry (MS/MS) data. 
+**MassFlow** is a pre-1.0, config-first Python toolkit for local tandem mass
+spectrometry (MS/MS) annotation workflows.
 
-Built as a local-first alternative to web-based molecular networking platforms, MassFlow empowers users to run reproducible, version-controlled pipelines entirely on their own hardware. It combines classical cheminformatics metrics (like Cosine similarity) and modern machine learning models (`MS2DeepScore`, `spec2vec`) through a unified, YAML-driven configuration interface. 
+The project is centered on a reproducible CLI pipeline: load open spectral
+formats, apply configurable `matchms` processing, run similarity search against
+reference libraries, and export structured results. Supporting utilities
+include an optional terminal browser, SQLite-backed library storage, and
+optional GraphML network export.
 
-The project is structured to serve as both a lightweight CLI/GUI tool for researchers and a robust, modular Python library for integration into larger CI/CD data pipelines.
+## 2. Core Capabilities
 
-## 2. Core Architectural Layers
+### A. Open-format ingestion (`io.py`, `database.py`)
+* Supports mzML, mzXML, MGF, MSP, SQLite (`.db` / `.sqlite`), and pickle.
+* Rejects vendor-specific raw formats instead of attempting implicit
+  conversion.
+* Streams spectra from SQLite libraries for larger repeated analyses.
 
-The MassFlow codebase is strictly modular, separating I/O side-effects from stateless processing logic. The architecture is divided into four primary layers:
+### B. Configurable processing (`processing.py`, `config.py`)
+* Uses Pydantic models for YAML-driven configuration.
+* Applies optional metadata harmonization, retention-time extraction,
+  intensity filtering, m/z truncation, minimum-peak enforcement, Top-N peak
+  reduction, and normalization.
 
-### A. Ingestion & Normalization Layer (`io.py`, `database.py`)
-**Objective:** Standardize fragmented experimental inputs into a unified computational structure.
-* **Capabilities:** Parses diverse formats (mzML, mzXML, MGF, MSP, JSON, Pickle) and automatically triggers `msconvert` (ProteoWizard) for proprietary vendor formats (.raw, .d, .wiff).
-* **Sanitization:** Aggressively cleans malformed metadata (e.g., stripping garbage text like "CCS: N/A" from numeric fields) to prevent silent failures in downstream dependencies.
-* **Edge Cases:** Importer stability relies heavily on vendor-agnostic file compliance. Poorly formatted files or missing precursor M/Z values are handled via strict Pydantic schemas to avoid silent drops.
-* **Storage:** Utilizes a local SQLite database (`database.py`) for efficient, batched caching and retrieval of massive spectral reference libraries.
+### C. Similarity search (`similarity.py`)
+* Supports `CosineGreedy`, `ModifiedCosine`, `Spec2Vec`, and `MS2DeepScore`.
+* Adds higher-level `ConsensusEngine` and `CascadeEngine` paths for larger or
+  more selective search workflows.
+* Applies vectorized score processing plus workflow-level filtering and FDR
+  handling.
 
-### B. Pre-Processing Pipeline (`processing.py`, `validation.py`, `config.py`)
-**Objective:** Validate schemas, remove noise, and compress data prior to scoring to reduce matrix dimensions and computational overhead.
-* **Validation:** Employs Pydantic (`validation.py`, `config.py`) to strictly enforce configuration schemas and metadata types (e.g., ensuring precursor M/Z is a positive float).
-* **Filtering:** Acts as a facade for `matchms.filtering`, performing sequence operations such as:
-  * Intensity thresholding (removing noise below strict baselines).
-  * M/Z range truncation.
-  * Max-peak restriction (reducing high-density spectra to the Top-N peaks).
+### D. Workflow and export (`workflow.py`, `cli.py`, `networking.py`, `tui.py`)
+* Runs end-to-end annotation from validated config files.
+* Exports CSV search results and can optionally generate GraphML networks.
+* Provides `massflow browse` and `massflow db` as supporting CLI utilities.
 
-### C. Similarity Computation Engine (`similarity.py`)
-**Objective:** Construct an $N \times M$ dense or sparse matrix of similarity scores between $N$ queries and $M$ references.
-* **Vectorized Execution:** Uses highly optimized `numpy` arrays to calculate scores, strictly avoiding standard Python `for` loops for peak iteration.
-* **Algorithm Matrix:** Provides a unified API to swap between multiple backends:
-  * **Cosine (Greedy):** Bipartite peak matching heuristic for direct spectral overlap.
-  * **Modified Cosine:** Mass-shift incorporated peak matching for analogue/derivative overlap.
-  * **Spec2Vec:** Unsupervised Word2Vec word embeddings for contextual sub-structural similarity.
-  * **MS2DeepScore:** Supervised Siamese neural network acting as a Tanimoto structural similarity proxy.
+## 3. Technology Stack & Constraints
 
-### D. Orchestration & Export Layer (`workflow.py`, `cli.py`, `ui/`)
-**Objective:** Manage the high-level execution flow and output structured analytical data.
-* **Thresholding:** Filters the computed $N \times M$ score matrix against tunable configuration parameters (`min_score`, `min_matched_peaks`, `top_n`).
-* **Export:** Maps indices back to spectrum metadata (SMILES, InChIKey) and exports to a flattened CSV structure using `pandas`.
-* **Interfaces:** Executable via a unified Command-Line Interface (`cli.py`), a CustomTkinter Graphical User Interface (`ui/main.py`), or programmatically via the Python API.
+* **Language:** Python 3.13+
+* **Core Dependencies:** `matchms`, `numpy`, `pandas`, `pydantic`, `PyYAML`,
+  `pyteomics`
+* **Optional Interface/Analysis Dependencies:** `textual`, `plotext`,
+  `networkx`
+* **Optional ML Dependencies:** `spec2vec`, `ms2deepscore`
+* **Design Philosophy:** fail fast on malformed inputs, keep workflow behavior
+  reproducible, and separate I/O side effects from processing and scoring
+  logic
 
----
+## 4. Current Scope Boundaries
 
-## 3. Mathematical Implementation: Modified Cosine
+* MassFlow is CLI-first and local-first.
+* Terminal browsing is in scope; the legacy desktop GUI is not.
+* Open-format ingestion is in scope; vendor raw conversion is not.
+* Structured annotation outputs and optional GraphML export are in scope.
+* Proprietary structure elucidation workflows are out of scope.
 
-To identify structurally related analogues, MassFlow implements a Modified Cosine score that computes the normalized dot product of matched peak intensities while natively incorporating neutral losses.
+## 5. Typical Usage
 
-A peak pair $(A_i, B_j)$ is defined as a valid match if it satisfies either a direct M/Z tolerance or a mass-shifted tolerance:
-
-$$|m/z_{A_i} - m/z_{B_j}| \le \delta \quad \text{OR} \quad |m/z_{A_i} - m/z_{B_j} - \Delta M| \le \delta$$
-
-Where:
-* $\delta$ = Defined M/Z error tolerance.
-* $\Delta M = \text{precursor } m/z_A - \text{precursor } m/z_B$.
-
-The final score for the matched peaks $k$ is calculated as the cosine of the angle between the intensity vectors:
-
-$$\text{Score} = \frac{\sum (I_{A,k} \cdot I_{B,k})}{\sqrt{\sum I_{A}^2} \sqrt{\sum I_{B}^2}}$$
-
-* **Algorithmic Constraint:** The standard `matchms` implementation utilizes a greedy heuristic to solve the peak assignment problem rather than the exact but computationally expensive Hungarian algorithm. Peak assignment error margins may increase slightly in highly congested spectra with loose mass tolerances ($\delta > 0.1$ Da).
-
----
-
-## 4. Technology Stack & Constraints
-
-* **Language:** Python 3.10+ (Python 3.13+ recommended; dependency management strictly via `uv`).
-* **Core Dependencies:** `matchms` (spectral logic), `numpy` & `pandas` (vectorized matrix math and data manipulation), `pydantic` & `PyYAML` (configuration), `customtkinter` (GUI).
-* **Development & Testing:** `pytest` is utilized for test-driven validation of the processing logic.
-* **Optional ML Dependencies:** `gensim` (for Spec2Vec), `ms2deepscore`.
-* **Design Philosophy (Fail-Fast):** MassFlow operates as an infrastructure layer. It is designed to fail fast on malformed data, raising explicit `ValueError` or `TypeError` exceptions rather than issuing silent warnings, ensuring data integrity across high-throughput runs.
-
-## 5. Usage Paradigms
-
-MassFlow prioritizes reproducible pipelines over manual scripting. Workflows should be defined in a `config.yaml` file:
+MassFlow workflows are expected to be defined in YAML:
 
 ```yaml
-# config.yaml
 project:
   output_directory: "results/"
 input:
-  file_path: "data/experiment.mgf"
-  reference_library: "data/library.msp"
+  file_path: "~/MassFlow_Data/experiments/example.mzML"
+  reference_library: "~/MassFlow_Data/libraries/library.msp"
+  format: "mzml"
 similarity:
   algorithm: "cosine"
-  tolerance: 0.1
+  tolerance: 0.02
   min_score: 0.7
 ```
 
-**CLI Execution:**
+**CLI execution:**
+
 ```bash
-uv run massflow annotate --config config.yaml
+uv run massflow annotate --config standard_config.yaml
 ```
 
-**Python API Execution:**
+**Python API execution:**
+
 ```python
 from pathlib import Path
-from MassFlow import io, workflow
+
+from MassFlow import io
+from MassFlow.config import MassFlowConfig
 from MassFlow.similarity import SimilarityEngine
 
-# 1. Load Data
-query_spectra = list(io.load_spectra(Path("data/experiment.mgf"), "mgf"))
-ref_spectra = list(io.load_spectra(Path("data/library.msp"), "msp"))
+query_spectra = list(
+    io.load_spectra(Path("~/MassFlow_Data/experiments/example.mgf").expanduser(), "mgf")
+)
+ref_spectra = list(
+    io.load_spectra(Path("~/MassFlow_Data/libraries/library.msp").expanduser(), "msp")
+)
 
-# 2. Execute Search
-engine = SimilarityEngine(config_object)
+config = MassFlowConfig.from_yaml("standard_config.yaml")
+engine = SimilarityEngine(config.similarity)
 results = engine.search(query_spectra, ref_spectra)
-
-# 3. Export
-io.save_match_results(results, Path("results.csv"))
 ```

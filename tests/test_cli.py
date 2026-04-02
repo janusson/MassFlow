@@ -3,12 +3,12 @@ Tests for MassFlow CLI module.
 """
 
 import argparse
-from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
 from MassFlow import cli
+from MassFlow.config import MassFlowConfig
 
 
 def test_run_annotate_success():
@@ -42,6 +42,57 @@ def test_run_annotate_failure():
 
             assert ret == 1
             mock_logger.error.assert_called_once()
+
+
+def test_run_init_success(tmp_path):
+    """Test successful execution of run_init."""
+    output_file = tmp_path / "test_config.yaml"
+    args = argparse.Namespace(output=str(output_file), force=False)
+
+    with patch("MassFlow.cli.logger") as mock_logger:
+        ret = cli.run_init(args)
+
+        assert ret == 0
+        assert output_file.exists()
+        content = output_file.read_text()
+        assert "project:" in content
+        assert "My_Annotation_Project" in content
+        mock_logger.info.assert_called_once()
+
+        # Verify the generated template is a valid MassFlowConfig
+        config = MassFlowConfig.from_yaml(output_file)
+        assert config.project.name == "My_Annotation_Project"
+
+
+def test_run_init_exists_no_force(tmp_path):
+    """Test run_init when file exists and force is False."""
+    output_file = tmp_path / "test_config.yaml"
+    output_file.touch()
+    args = argparse.Namespace(output=str(output_file), force=False)
+
+    with patch("MassFlow.cli.logger") as mock_logger:
+        ret = cli.run_init(args)
+
+        assert ret == 1
+        mock_logger.error.assert_called_once()
+
+
+def test_run_init_exists_with_force(tmp_path):
+    """Test run_init when file exists and force is True."""
+    output_file = tmp_path / "test_config.yaml"
+    output_file.write_text("old content")
+    args = argparse.Namespace(output=str(output_file), force=True)
+
+    with patch("MassFlow.cli.logger") as mock_logger:
+        ret = cli.run_init(args)
+
+        assert ret == 0
+        assert "project:" in output_file.read_text()
+        mock_logger.info.assert_called_once()
+
+        # Verify the generated template is a valid MassFlowConfig
+        config = MassFlowConfig.from_yaml(output_file)
+        assert config.project.name == "My_Annotation_Project"
 
 
 def test_main_annotate():
