@@ -9,7 +9,7 @@ package version and handles sub-module imports for convenient access.
 
 from __future__ import annotations
 
-__version__ = "0.4.0"
+__version__ = "0.9.0.dev0"
 
 from . import cli, config, io, processing, similarity, workflow
 

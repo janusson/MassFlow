@@ -1,25 +1,26 @@
 """
-Input/Output (I/O) operations for MassFlow.
+I/O helpers for MassFlow spectral data.
 
-This module handles the loading and saving of spectral data, including automated
-conversion of proprietary formats (e.g., .raw, .d) to mzML using ProteoWizard's
-msconvert. It implements robust metadata sanitization to ensure compatibility
-with downstream processing tools like matchms, preventing crashes due to
-malformed or non-standard metadata fields.
+This module is the file-system boundary for MassFlow. It loads spectra from
+open interchange formats such as mzML, mzXML, MGF, and MSP, as well as
+MassFlow-native serialized stores such as SQLite databases and pickle files. It
+also exports search results and spectra to flat-file formats for downstream use.
+
+The loader is intentionally narrow in scope: it does not auto-convert
+proprietary vendor files and it does not sanitize metadata during import.
+Vendor raw formats are rejected with an actionable error, and metadata
+harmonization is deferred to :mod:`MassFlow.processing` after import.
 """
 
 from __future__ import annotations
 
 import logging
 import pickle
-import shutil
-import subprocess
 from pathlib import Path
 from typing import Any, Iterable, Iterator, Optional
 
 import pandas as pd
 from matchms import Spectrum
-from matchms.filtering import default_filters
 from matchms.importing import (
     load_from_mgf,
     load_from_msp,
@@ -29,246 +30,219 @@ from matchms.importing import (
 
 logger = logging.getLogger(__name__)
 
-PROPRIETARY_FORMATS = {".raw", ".d", ".wiff", ".lcd", ".t2d"}
+PROPRIETARY_FORMATS = {".raw", ".d", ".wiff", ".lcd", ".t2d", ".baf"}
 
 
-def _run_msconvert(input_path: Path) -> Path:
-    """
-    Attempt to convert a proprietary mass spectrometry file to mzML format.
+class UnsupportedVendorFormatError(Exception):
+    """Raised when ``load_spectra`` receives a vendor-specific raw data format."""
 
-    This function invokes ProteoWizard's ``msconvert`` utility as a subprocess to
-    perform the conversion. The converted file is placed in a ``converted`` subdirectory
-    relative to the input file's location.
-
-    Parameters
-    ----------
-    input_path : Path
-        The file path of the proprietary raw data file (e.g., .raw, .d).
-
-    Returns
-    -------
-    Path
-        The file path to the resulting .mzML file.
-
-    Raises
-    ------
-    RuntimeError
-        If ``msconvert`` is not found in the system PATH or if the conversion process fails.
-    FileNotFoundError
-        If the expected output file is not found after the process completes.
-    """
-    if shutil.which("msconvert") is None:
-        raise RuntimeError(
-            f"Detected proprietary format {input_path.suffix}, but 'msconvert' was not found in your PATH. "
-            "Please install ProteoWizard (https://proteowizard.sourceforge.io/) to enable auto-conversion."
-        )
-
-    output_dir = input_path.parent / "converted"
-    output_dir.mkdir(exist_ok=True)
-
-    logger.info(f"Auto-converting {input_path.name} to mzML...")
-
-    try:
-        # Run msconvert: --mzML flag ensures standard output
-        subprocess.run(
-            ["msconvert", str(input_path), "--mzML", "-o", str(output_dir)],
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-        # msconvert replaces extension with .mzML
-        expected_output = output_dir / (input_path.stem + ".mzML")
-        if expected_output.exists():
-            return expected_output
-        raise FileNotFoundError("msconvert finished but output file was not found.")
-    except subprocess.CalledProcessError as e:
-        logger.error(f"msconvert failed: {e.stderr}")
-        raise RuntimeError(
-            f"Failed to convert {input_path.name}. Ensure the file is not corrupted."
-        )
-
-
-def _sanitize_metadata(spectrum: Spectrum) -> Optional[Spectrum]:
-    """
-    Clean and repair critical metadata fields in a spectrum.
-
-    This internal utility aggressively filters specific metadata keys (like
-    retention time and CCS) that often contain garbage strings in public datasets
-    (e.g., "CCS:", "N/A"), which can cause downstream crashes in ``matchms``.
-    It ensures these fields are strictly numeric or set to None.
-
-    Parameters
-    ----------
-    spectrum : matchms.Spectrum
-        The input spectrum object to sanitize.
-
-    Returns
-    -------
-    matchms.Spectrum or None
-        The sanitized spectrum object. Returns None if the input is None.
-    """
-    if spectrum is None:
-        return None
-
-    # Fields that MUST be numeric
-    numeric_keys = [
-        "retention_time",
-        "retentiontime",
-        "RETENTIONTIME",
-        "ccs",
-        "CCS",
-        "precursor_mz",
-    ]
-
-    for key in numeric_keys:
-        val = spectrum.get(key)
-        if val is not None:
-            # If value is string and contains garbage (like "CCS:"), nullify it
-            if isinstance(val, str):
-                v_str = val.strip().upper()
-                if not v_str or any(x in v_str for x in ["CCS", "N/A", "NONE", "NAN"]):
-                    spectrum.set(key, None)
-                    continue
-            # Ensure it can actually be a float
-            try:
-                spectrum.set(key, float(val))
-            except (ValueError, TypeError):
-                spectrum.set(key, None)
-
-    return spectrum
-
-
-def _apply_filters(spectrum: Spectrum) -> Optional[Spectrum]:
-    """
-    Apply sanitization and default matchms filters to a spectrum.
-
-    Parameters
-    ----------
-    spectrum : matchms.Spectrum
-        The raw spectrum object.
-
-    Returns
-    -------
-    matchms.Spectrum or None
-        The processed spectrum, or None if it fails sanitization or filtering.
-    """
-    spec = _sanitize_metadata(spectrum)
-    if spec:
-        return default_filters(spec)
-    return None
+    pass
 
 
 def load_spectra(
     file_path: Path, file_format: Optional[str] = None
 ) -> Iterator[Spectrum]:
     """
-    Load mass spectra from a file, handling multiple formats and auto-conversion.
+    Load spectra from an open spectral file or a MassFlow-native store.
 
-    This comprehensive loader identifies the file format from the extension or
-    provided argument. It supports standard formats (mzML, mzXML, MGF, MSP) and
-    proprietary formats (via auto-conversion using ``msconvert``). It also supports
-    loading from a local SQLite database or a pickle file. Loaded spectra undergo
-    immediate metadata sanitization to ensure data integrity.
+    The loader infers the format from ``file_path`` unless ``file_format`` is
+    provided explicitly. Supported formats are mzML, mzXML, MGF, MSP, SQLite
+    (``db``/``sqlite``), and pickle. Imported spectra are yielded exactly as the
+    backend loader returns them; MassFlow's metadata cleaning and peak filtering
+    happen later in :func:`MassFlow.processing.process_spectra`.
 
     Parameters
     ----------
     file_path : Path
-        The path to the input file or directory (for .d folders).
+        Path to the input file or directory. Bruker ``.d`` directories are
+        treated as vendor raw inputs and rejected unless pre-converted.
     file_format : str, optional
-        Explicitly specify the file format (e.g., 'mzml', 'mgf'). If None,
-        it is inferred from the file extension.
+        Explicit format override. Accepted values are ``mzml``, ``mzxml``,
+        ``mgf``, ``msp``, ``db``, ``sqlite``, and ``pickle``. If omitted, the
+        format is inferred from the file extension.
 
     Yields
     ------
     matchms.Spectrum
-        Yields sanitized and basic-filtered spectrum objects one by one.
+        Raw spectrum objects yielded one at a time.
 
     Raises
     ------
+    UnsupportedVendorFormatError
+        If ``file_path`` points to a vendor-specific raw format that must be
+        converted to an open format before MassFlow ingestion.
     ValueError
         If the file format is unsupported.
-    RuntimeError
-        If conversion of a proprietary format fails.
+
+    Notes
+    -----
+    ``matchms`` importers are called with ``metadata_harmonization=False`` so
+    that MassFlow can apply its own processing pipeline in
+    :mod:`MassFlow.processing`.
     """
     path = Path(file_path)
     ext = path.suffix.lower()
 
-    # Step 1: Auto-conversion
+    # Step 1: Check for unsupported vendor formats
     if ext in PROPRIETARY_FORMATS or (path.is_dir() and ext == ".d"):
-        path = _run_msconvert(path)
-        ext = ".mzml"
+        raise UnsupportedVendorFormatError(
+            "MassFlow requires open data formats. Please convert vendor files to .mzML or .mgf using ProteoWizard or MS-DIAL prior to pipeline ingestion."
+        )
 
     # Step 2: Determine loading function
     fmt = (file_format or ext.lstrip(".")).lower()
 
-    # Disable internal harmonization to avoid early crashes on dirty strings
+    # Disable matchms internal harmonization to allow MassFlow's processing module to handle it
     args = {"metadata_harmonization": False}
 
     if fmt == "mzml":
-        gen = load_from_mzml(str(path), **args)
+        loader = load_from_mzml
     elif fmt == "msp":
-        gen = load_from_msp(str(path), **args)
+        loader = load_from_msp
     elif fmt == "mgf":
-        gen = load_from_mgf(str(path), **args)
+        loader = load_from_mgf
     elif fmt == "mzxml":
-        gen = load_from_mzxml(str(path), **args)
+        loader = load_from_mzxml
     elif fmt in ["db", "sqlite"]:
         from MassFlow.database import SpectralDatabase
 
         db = SpectralDatabase(path)
-        gen = db.get_spectra()
+        yield from db.get_spectra()
+        return
     elif fmt == "pickle":
         with open(path, "rb") as f:
-            gen = iter(pickle.load(f))
+            yield from iter(pickle.load(f))
+        return
     else:
         raise ValueError(f"Format '{fmt}' is not supported by MassFlow.")
 
-    # Step 3: Yield sanitized spectra
-    for spectrum in gen:
-        processed = _apply_filters(spectrum)
-        if processed:
-            yield processed
+    # Step 3: Yield spectra using the selected loader
+    yield from loader(str(path), **args)
 
 
-def save_match_results(results: list[dict[str, Any]], output_path: Path) -> None:
+def save_match_results(
+    results: list[dict[str, Any]],
+    output_path: Path,
+    query_spectra: Optional[Iterable[Spectrum]] = None,
+) -> None:
     """
-    Save annotation matching results to a CSV file.
+    Save annotation results to a CSV report.
+
+    If ``query_spectra`` is provided, the output contains one row per query
+    spectrum, including unmatched queries. Match rows are left-joined onto that
+    base table using ``query_id``. An ``Annotation_Status`` column is added with
+    the values ``Matched`` for scores of at least 0.9, ``Putative`` for lower
+    non-null scores, and ``Unknown`` when no score is available.
 
     Parameters
     ----------
     results : list of dict
-        A list of dictionaries, where each dictionary represents a row of matching results.
+        Match result rows to export. Each row is expected to contain at least a
+        ``query_id`` key when ``query_spectra`` is provided.
     output_path : Path
         The destination file path for the CSV output. Parent directories will be
         created if they do not exist.
+    query_spectra : Optional[Iterable[Spectrum]]
+        Full set of experimental query spectra. When provided, unmatched queries
+        are still represented in the CSV output.
 
     Returns
     -------
     None
+
+    Raises
+    ------
+    OSError
+        If the output directory cannot be created or the CSV file cannot be
+        written.
+
+    Notes
+    -----
+    If both ``results`` is empty and ``query_spectra`` is ``None``, the
+    function logs a warning and returns without writing a file.
     """
-    if not results:
-        logger.warning("No results to save.")
-        return
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    df = pd.DataFrame(results)
+
+    if query_spectra is not None:
+        # Build base dataframe from all queries
+        base_rows = []
+        for q in query_spectra:
+            q_id = str(q.get("id"))
+            q_mz = q.get("precursor_mz")
+            q_rt = q.get("retention_time")
+            base_rows.append(
+                {
+                    "query_id": q_id,
+                    "query_precursor_mz": float(q_mz) if q_mz is not None else None,
+                    "query_retention_time": float(q_rt) if q_rt is not None else None,
+                }
+            )
+        base_df = pd.DataFrame(base_rows)
+
+        if results:
+            results_df = pd.DataFrame(results)
+            # Left join results onto the base query dataframe
+            df = pd.merge(
+                base_df,
+                results_df,
+                on="query_id",
+                how="left",
+                suffixes=("", "_matched"),
+            )
+            # Drop duplicated columns if any exist from the merge
+            if "query_precursor_mz_matched" in df.columns:
+                df = df.drop(columns=["query_precursor_mz_matched"])
+        else:
+            df = base_df
+
+        # Add Annotation_Status
+        if "score" in df.columns:
+            df["Annotation_Status"] = df["score"].apply(
+                lambda x: (
+                    "Unknown" if pd.isna(x) else ("Matched" if x >= 0.9 else "Putative")
+                )
+            )
+        else:
+            df["Annotation_Status"] = "Unknown"
+    else:
+        if not results:
+            logger.warning("No results to save and no query_spectra provided.")
+            return
+        df = pd.DataFrame(results)
+        if "score" in df.columns:
+            df["Annotation_Status"] = df["score"].apply(
+                lambda x: (
+                    "Unknown" if pd.isna(x) else ("Matched" if x >= 0.9 else "Putative")
+                )
+            )
+        else:
+            df["Annotation_Status"] = "Unknown"
+
     df.to_csv(output_path, index=False)
     logger.info(f"Results saved to {output_path}")
 
 
 def save_spectra_to_msp(spectra: Iterable[Spectrum], export_path: Path) -> None:
     """
-    Export a collection of spectra to an MSP file.
+    Export spectra to an MSP file.
 
     Parameters
     ----------
     spectra : Iterable[matchms.Spectrum]
-        The spectra to export.
+        Spectra to export. The iterable is materialized into memory before
+        passing it to the MSP writer.
     export_path : Path
         The file path for the resulting MSP file.
 
     Returns
     -------
     None
+
+    Raises
+    ------
+    OSError
+        If the output directory cannot be created or the MSP file cannot be
+        written.
     """
     from matchms.exporting import save_as_msp
 
@@ -278,18 +252,25 @@ def save_spectra_to_msp(spectra: Iterable[Spectrum], export_path: Path) -> None:
 
 def save_spectra_to_pickle(spectra: Iterable[Spectrum], export_path: Path) -> None:
     """
-    Serialize a collection of spectra to a pickle file.
+    Serialize spectra to a pickle file.
 
     Parameters
     ----------
     spectra : Iterable[matchms.Spectrum]
-        The spectra to serialize.
+        Spectra to serialize. The iterable is materialized into memory before
+        serialization.
     export_path : Path
         The file path for the resulting pickle file.
 
     Returns
     -------
     None
+
+    Raises
+    ------
+    OSError
+        If the output directory cannot be created or the pickle file cannot be
+        written.
     """
     export_path.parent.mkdir(parents=True, exist_ok=True)
     with open(export_path, "wb") as f:

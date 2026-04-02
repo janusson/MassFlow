@@ -1,13 +1,16 @@
 """
-Configuration schema definitions for MassFlow.
+Pydantic configuration models for YAML-driven MassFlow execution.
 
-This module employs Pydantic models to validate and structure configuration data
-loaded from YAML files. It defines a hierarchy of configuration classes including
-``ProjectConfig``, ``InputConfig``, ``ProcessingConfig``, ``SimilarityConfig``,
-``WorkflowConfig``, and ``ExportConfig``, culminating in the root ``MassFlowConfig``
-object. These classes enforce strict type hints, default values, and logical
-validations (e.g., m/z ranges, tolerance units) to ensure the integrity of the
-analysis pipeline settings.
+This module defines the nested schema used by the CLI and workflow layers to
+validate pipeline configuration loaded from YAML. The models capture project
+paths, input sources, processing toggles, similarity-engine settings, optional
+workflow features, and declared export preferences.
+
+Validation in this layer is intentionally focused on local structural
+correctness such as field types and simple physical constraints. Broader runtime
+assumptions, such as whether a reference library is present for annotation or
+whether certain workflow toggles are currently implemented, are enforced in the
+orchestrating modules.
 """
 
 from pathlib import Path
@@ -18,14 +21,20 @@ from pydantic import BaseModel, Field, ValidationInfo, field_validator
 
 
 class ProjectConfig(BaseModel):
-    """General project metadata."""
+    """Project metadata and output locations shared across a MassFlow run."""
 
     name: str = "MassFlow_Project"
     output_directory: Path = Path("results")
 
 
 class InputConfig(BaseModel):
-    """Configuration for input data."""
+    """
+    Input paths and format hints for annotation or browsing.
+
+    ``workflow.run_annotation_pipeline`` expects a reference library plus either
+    ``file_path`` or ``data_directory``. That relationship is not enforced here
+    so the same model can also be reused in narrower contexts.
+    """
 
     file_path: Optional[Path] = None
     data_directory: Optional[Path] = None
@@ -36,12 +45,11 @@ class InputConfig(BaseModel):
     @classmethod
     def validate_data_directory(cls, v: Optional[Path]) -> Optional[Path]:
         """
-        Validate that the data directory exists if provided.
+        Preserve an optional data directory path without eager existence checks.
 
-        This validator checks if the provided path for ``data_directory`` exists.
-        Currently, it allows non-existent directories to pass without raising an
-        error, permitting creation at a later stage or tolerating user error
-        during configuration loading.
+        The validator currently acts as a normalization hook rather than strict
+        validation. Non-existent directories are allowed to pass so the calling
+        workflow can decide how and when to fail.
 
         Parameters
         ----------
@@ -60,7 +68,13 @@ class InputConfig(BaseModel):
 
 
 class SolventConfig(BaseModel):
-    """Configuration for a specific solvent."""
+    """
+    Named solvent/adduct mass used as optional contextual processing metadata.
+
+    These values are stored in the configuration schema for downstream
+    extensions and user metadata, but they are not currently consumed directly
+    by the core annotation workflow in this repository snapshot.
+    """
 
     name: str
     formula: Optional[str] = None
@@ -68,15 +82,61 @@ class SolventConfig(BaseModel):
 
 
 class ProcessingConfig(BaseModel):
-    """Configuration for spectral processing."""
+    """
+    Parameters for metadata harmonization and peak-level processing.
 
-    # Standard filters
+    The fields in this model map onto the operations implemented in
+    :mod:`MassFlow.processing`, including optional ``matchms`` metadata repairs,
+    m/z truncation, intensity filtering, top-N peak reduction, normalization,
+    and injection of instrument context into spectra.
+    """
+
+    # Standard peak filters
     min_peaks: int = 5
     min_intensity: float = 0.0
     normalize_intensity: bool = True
-    clean_metadata: bool = True
 
-    # HLD v1.0 Pre-Processing
+    # Metadata filtering toggles
+    clean_metadata: bool = Field(
+        default=True, description="Apply matchms default metadata cleaning."
+    )
+    add_retention_time: bool = Field(
+        default=True, description="Extract and format retention time."
+    )
+    repair_inchi_inchikey_smiles: bool = Field(
+        default=True, description="Repair structural identifiers."
+    )
+    derive_adduct_from_name: bool = Field(
+        default=True, description="Derive adducts from compound names."
+    )
+    derive_formula_from_name: bool = Field(
+        default=True, description="Derive formulas from compound names."
+    )
+    clean_compound_name: bool = Field(
+        default=True, description="Standardize compound names."
+    )
+    derive_ionmode: bool = Field(
+        default=True, description="Derive ion mode from metadata."
+    )
+    make_charge_int: bool = Field(
+        default=True, description="Ensure charge is an integer."
+    )
+
+    # Peak filtering toggles
+    filter_by_intensity: bool = Field(
+        default=True, description="Filter peaks by minimum intensity/noise threshold."
+    )
+    filter_min_peaks: bool = Field(
+        default=True, description="Require a minimum number of peaks."
+    )
+    filter_by_mz: bool = Field(
+        default=True, description="Truncate peaks outside of an m/z range."
+    )
+    reduce_to_top_n_peaks: bool = Field(
+        default=False, description="Reduce spectrum to top N most intense peaks."
+    )
+
+    # HLD v0.9 Pre-Processing
     mz_min: float = Field(default=0.0, ge=0.0, description="Minimum m/z")
     mz_max: float = Field(default=1000.0, description="Maximum m/z")
     n_max: int | None = Field(default=None, gt=0, description="Top N peaks")
@@ -113,13 +173,6 @@ class ProcessingConfig(BaseModel):
             )
         return v
 
-    # New instrument-specific parameters
-    ms1_tolerance: float = Field(
-        default=10.0, description="Precursor mass tolerance in ppm"
-    )
-    ms2_tolerance: float = Field(
-        default=0.02, description="Fragment mass tolerance in Da"
-    )
     noise_threshold: float = Field(
         default=1000.0, description="Minimum intensity threshold"
     )
@@ -160,13 +213,40 @@ class ProcessingConfig(BaseModel):
 
 
 class SimilarityConfig(BaseModel):
-    """Configuration for similarity search."""
+    """
+    Settings for similarity scoring, ML model loading, and advanced engines.
 
-    algorithm: Literal["cosine", "modified_cosine", "spec2vec", "ms2deepscore"] = (
-        "cosine"
+    Not every field applies to every algorithm. For example,
+    ``consensus_weights`` is only meaningful for the ``consensus`` engine,
+    cascade tier settings are only used for ``cascade``, and ``model_path`` is
+    required by ML-backed engines such as ``spec2vec`` and ``ms2deepscore``.
+    Legacy ``tolerance`` is retained for compatibility with existing configs.
+    """
+
+    algorithm: Literal[
+        "cosine", "modified_cosine", "spec2vec", "ms2deepscore", "consensus", "cascade"
+    ] = "cosine"
+    consensus_weights: Optional[dict[str, float]] = Field(
+        default=None,
+        description="Dictionary mapping algorithm names to their weights for consensus search.",
     )
+
+    # Cascade Routing Parameters
+    cascade_tier1: Literal["cosine", "modified_cosine"] = "cosine"
+    cascade_tier2: Literal["spec2vec", "ms2deepscore"] = "ms2deepscore"
+    cascade_lower_bound: float = 0.4
+    cascade_upper_bound: float = 0.85
     model_path: Optional[Path] = None
-    tolerance: float = 0.005
+
+    # Tolerances
+    ms1_tolerance: float = Field(
+        default=10.0, description="Precursor mass tolerance in ppm"
+    )
+    ms2_tolerance: float = Field(
+        default=0.02, description="Fragment mass tolerance in Da"
+    )
+
+    tolerance: float = 0.005  # Legacy field for fragment tolerance, superceded by ms2_tolerance where applicable
     tolerance_unit: Literal["Da", "ppm"] = "Da"
     min_score: float = 0.6
     analog_search: bool = False
@@ -203,7 +283,13 @@ class SimilarityConfig(BaseModel):
 
 
 class WorkflowConfig(BaseModel):
-    """Configuration for workflow steps."""
+    """
+    High-level workflow feature flags.
+
+    In the current workflow implementation, ``perform_networking`` is the main
+    toggle consumed directly by :mod:`MassFlow.workflow`. The remaining fields
+    are schema-level placeholders for adjacent orchestration features.
+    """
 
     perform_peak_picking: bool = True
     perform_alignment: bool = True
@@ -212,13 +298,24 @@ class WorkflowConfig(BaseModel):
 
 
 class ExportConfig(BaseModel):
-    """Configuration for data export."""
+    """
+    Declared export preferences for downstream result handling.
+
+    The current annotation workflow writes per-file CSV result reports and, when
+    enabled, a GraphML molecular network. This model preserves a broader output
+    schema for future exporters and configuration compatibility.
+    """
 
     format: Literal["csv", "pickle", "msp", "mgf", "json", "xlsx", "parquet"] = "csv"
 
 
 class MassFlowConfig(BaseModel):
-    """Root configuration object."""
+    """
+    Root configuration object loaded from MassFlow YAML files.
+
+    This model is the contract passed between the CLI, workflow, processing,
+    similarity, and optional networking layers.
+    """
 
     project: ProjectConfig = Field(default_factory=ProjectConfig)
     input: InputConfig
@@ -246,11 +343,10 @@ class MassFlowConfig(BaseModel):
     @classmethod
     def from_yaml(cls, path: Union[str, Path]) -> "MassFlowConfig":
         """
-        Load configuration from a YAML file.
+        Load and validate a ``MassFlowConfig`` from a YAML file.
 
-        This factory method reads a YAML file from the specified path, parses
-        its content, and instantiates a ``MassFlowConfig`` object using the
-        loaded data.
+        The file is parsed with :func:`yaml.safe_load` and then validated by
+        Pydantic against the nested configuration models defined in this module.
 
         Parameters
         ----------
@@ -260,12 +356,16 @@ class MassFlowConfig(BaseModel):
         Returns
         -------
         MassFlowConfig
-            An instance of the configuration object populated with data from the YAML file.
+            Validated configuration populated from the YAML document.
 
         Raises
         ------
         FileNotFoundError
             If the specified file path does not exist.
+        pydantic.ValidationError
+            If the YAML content does not conform to the MassFlow schema.
+        yaml.YAMLError
+            If the YAML document cannot be parsed.
         """
         path = Path(path)
         if not path.exists():
@@ -273,5 +373,26 @@ class MassFlowConfig(BaseModel):
 
         with open(path, "r") as f:
             data = yaml.safe_load(f)
+        config_instance = cls(**data)
 
-        return cls(**data)
+        # Expand user for relevant Path fields in InputConfig
+        if config_instance.input.file_path:
+            config_instance.input.file_path = (
+                config_instance.input.file_path.expanduser()
+            )
+        if config_instance.input.data_directory:
+            config_instance.input.data_directory = (
+                config_instance.input.data_directory.expanduser()
+            )
+        if config_instance.input.reference_library:
+            config_instance.input.reference_library = (
+                config_instance.input.reference_library.expanduser()
+            )
+
+        # Expand user for relevant Path fields in SimilarityConfig
+        if config_instance.similarity.model_path:
+            config_instance.similarity.model_path = (
+                config_instance.similarity.model_path.expanduser()
+            )
+
+        return config_instance

@@ -20,12 +20,7 @@ from matchms import Spectrum
 
 class SpectralDatabase:
     """
-    SQLite-based database for mass spectra.
-
-    This class provides an interface to a local SQLite database designed to store
-    mass spectral data. It handles the serialization of spectral peaks (m/z and
-    intensity arrays) and metadata into database tables, allowing for persistent
-    storage and efficient retrieval of large spectral libraries.
+    Manages a local SQLite database for persistent, efficient storage of mass spectra.
     """
 
     def __init__(self, db_path: Union[str, Path]):
@@ -81,7 +76,7 @@ class SpectralDatabase:
 
         cursor = self.conn.cursor()
 
-        # Check for legacy schema and drop if necessary to upgrade to v1.0
+        # Check for legacy schema and drop if necessary to upgrade to v0.9
         cursor.execute("PRAGMA table_info(spectra)")
         columns = [info[1] for info in cursor.fetchall()]
         if columns and "peaks" in columns:
@@ -274,6 +269,55 @@ class SpectralDatabase:
         intensities = np.frombuffer(row["intensity_array"], dtype=np.float64).copy()
 
         return Spectrum(mz=mz, intensities=intensities, metadata=metadata)
+
+    def get_total_spectra_count(self) -> int:
+        """
+        Get the total number of spectra stored in the database.
+
+        Returns
+        -------
+        int
+            The total count of spectra.
+        """
+        if not self.conn:
+            raise ConnectionError("Database not connected.")
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM spectra")
+        return int(cursor.fetchone()[0])
+
+    def get_category_counts(self) -> dict[str, int]:
+        """
+        Get the count of spectra per category in the database.
+
+        Returns
+        -------
+        dict
+            A dictionary mapping category names to their respective counts.
+        """
+        if not self.conn:
+            raise ConnectionError("Database not connected.")
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT category, COUNT(*) FROM spectra GROUP BY category")
+        return {row[0]: int(row[1]) for row in cursor.fetchall()}
+
+    def get_precursor_mz_range(self) -> tuple[float, float]:
+        """
+        Get the minimum and maximum precursor m/z values stored in the database.
+
+        Returns
+        -------
+        tuple
+            A tuple of (min_mz, max_mz).
+        """
+        if not self.conn:
+            raise ConnectionError("Database not connected.")
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT MIN(precursor_mz), MAX(precursor_mz) FROM spectra")
+        row = cursor.fetchone()
+        return (
+            float(row[0]) if row[0] is not None else 0.0,
+            float(row[1]) if row[1] is not None else 0.0,
+        )
 
     def close(self) -> None:
         """

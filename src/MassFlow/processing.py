@@ -13,6 +13,7 @@ from typing import Iterator, Optional
 
 from matchms import Spectrum
 from matchms.filtering import (
+    add_retention_time,
     clean_compound_name,
     default_filters,
     derive_adduct_from_name,
@@ -64,53 +65,61 @@ def metadata_processing(
     if spectrum is None:
         return None
 
+    s: Optional[Spectrum] = spectrum
+
     # Apply default filters (handles common metadata issues)
-    # Explicit casting or assignment to handle Optional[Spectrum] return types
-    s: Optional[Spectrum] = default_filters(spectrum)
-    if s is None:
-        return None
+    if config is None or getattr(config, "clean_metadata", True):
+        s = default_filters(s)
+        if s is None:
+            return None
+
+    if config is None or getattr(config, "add_retention_time", True):
+        s = add_retention_time(s)
+        if s is None:
+            return None
 
     # Metadata repairs and derivations
-    s = repair_inchi_inchikey_smiles(s)
-    if s is None:
-        return None
+    if config is None or getattr(config, "repair_inchi_inchikey_smiles", True):
+        s = repair_inchi_inchikey_smiles(s)
+        if s is None:
+            return None
+        s = harmonize_undefined_smiles(s)
+        if s is None:
+            return None
+        s = harmonize_undefined_inchi(s)
+        if s is None:
+            return None
+        s = harmonize_undefined_inchikey(s)
+        if s is None:
+            return None
 
-    s = derive_adduct_from_name(s)
-    if s is None:
-        return None
+    if config is None or getattr(config, "derive_adduct_from_name", True):
+        s = derive_adduct_from_name(s)
+        if s is None:
+            return None
 
-    s = derive_formula_from_name(s)
-    if s is None:
-        return None
+    if config is None or getattr(config, "derive_formula_from_name", True):
+        s = derive_formula_from_name(s)
+        if s is None:
+            return None
 
-    # Harmonization of missing values
-    s = harmonize_undefined_smiles(s)
-    if s is None:
-        return None
+    if config is None or getattr(config, "clean_compound_name", True):
+        s = clean_compound_name(s)
+        if s is None:
+            return None
 
-    s = harmonize_undefined_inchi(s)
-    if s is None:
-        return None
+    if config is None or getattr(config, "derive_ionmode", True):
+        s = derive_ionmode(s)
+        if s is None:
+            return None
 
-    s = harmonize_undefined_inchikey(s)
-    if s is None:
-        return None
-
-    # Final standardization
-    s = clean_compound_name(s)
-    if s is None:
-        return None
-
-    s = derive_ionmode(s)
-    if s is None:
-        return None
-
-    s = make_charge_int(s)
-    if s is None:
-        return None
+    if config is None or getattr(config, "make_charge_int", True):
+        s = make_charge_int(s)
+        if s is None:
+            return None
 
     # Inject instrument metadata if provided in config
-    if config:
+    if config and s is not None:
         if config.instrument:
             s.set("instrument", config.instrument)
         if config.mode:
@@ -151,48 +160,54 @@ def peak_processing(spectrum: Spectrum, config: ProcessingConfig) -> Optional[Sp
         return None
 
     spec_id = spectrum.get("id", "Unknown ID")
+    s: Optional[Spectrum] = spectrum
 
     # 1. Filter Noise (Absolute Intensity)
-    # Use noise_threshold from config if available (and positive), otherwise fallback to min_intensity
-    threshold = (
-        config.noise_threshold if config.noise_threshold > 0 else config.min_intensity
-    )
-
-    s: Optional[Spectrum] = select_by_intensity(
-        spectrum, intensity_from=threshold, intensity_to=float("inf")
-    )
-    if s is None:
-        logger.debug(
-            f"Spectrum {spec_id} dropped: all peaks below noise threshold {threshold}"
+    if getattr(config, "filter_by_intensity", True):
+        # Use noise_threshold from config if available (and positive), otherwise fallback to min_intensity
+        threshold = (
+            config.noise_threshold
+            if getattr(config, "noise_threshold", 0) > 0
+            else getattr(config, "min_intensity", 0.0)
         )
-        return None
-
-    # 2. Filter Peak Count
-    s = require_minimum_number_of_peaks(s, n_required=config.min_peaks)
-    if s is None:
-        logger.debug(f"Spectrum {spec_id} dropped: fewer than {config.min_peaks} peaks")
-        return None
-
-    # 3. M/Z Range Truncation
-    # Defaults to 0-1000 Da if not specified in config
-    mz_from = getattr(config, "mz_min", 0.0)
-    mz_to = getattr(config, "mz_max", 1000.0)
-    s = select_by_mz(s, mz_from=mz_from, mz_to=mz_to)
-    if s is None:
-        logger.debug(
-            f"Spectrum {spec_id} dropped: no peaks in m/z range {mz_from}-{mz_to}"
-        )
-        return None
-
-    # 4. Max-Peak Restriction (Top-N)
-    n_max = getattr(config, "n_max", 0)
-    if n_max and n_max > 0:
-        s = reduce_to_number_of_peaks(s, n_max=n_max)
+        s = select_by_intensity(s, intensity_from=threshold, intensity_to=float("inf"))
         if s is None:
+            logger.debug(
+                f"Spectrum {spec_id} dropped: all peaks below noise threshold {threshold}"
+            )
             return None
 
+    # 2. Filter Peak Count
+    if getattr(config, "filter_min_peaks", True):
+        s = require_minimum_number_of_peaks(s, n_required=config.min_peaks)
+        if s is None:
+            logger.debug(
+                f"Spectrum {spec_id} dropped: fewer than {config.min_peaks} peaks"
+            )
+            return None
+
+    # 3. M/Z Range Truncation
+    if getattr(config, "filter_by_mz", True):
+        # Defaults to 0-1000 Da if not specified in config
+        mz_from = getattr(config, "mz_min", 0.0)
+        mz_to = getattr(config, "mz_max", 1000.0)
+        s = select_by_mz(s, mz_from=mz_from, mz_to=mz_to)
+        if s is None:
+            logger.debug(
+                f"Spectrum {spec_id} dropped: no peaks in m/z range {mz_from}-{mz_to}"
+            )
+            return None
+
+    # 4. Max-Peak Restriction (Top-N)
+    if getattr(config, "reduce_to_top_n_peaks", False):
+        n_max = getattr(config, "n_max", 0)
+        if n_max and n_max > 0:
+            s = reduce_to_number_of_peaks(s, n_max=n_max)
+            if s is None:
+                return None
+
     # 5. Normalize Intensities
-    if config.normalize_intensity:
+    if getattr(config, "normalize_intensity", True):
         s = normalize_intensities(s)
         if s is None:
             return None
@@ -227,14 +242,18 @@ def process_spectra(
         if spectrum is None:
             continue
 
-        # Step A: Metadata Processing
-        processed_spec = metadata_processing(spectrum, config)
-        if processed_spec is None:
-            continue
+        try:
+            # Step A: Metadata Processing
+            processed_spec = metadata_processing(spectrum, config)
+            if processed_spec is None:
+                continue
 
-        # Step B: Peak Processing
-        processed_spec = peak_processing(processed_spec, config)
-        if processed_spec is None:
-            continue
+            # Step B: Peak Processing
+            processed_spec = peak_processing(processed_spec, config)
+            if processed_spec is None:
+                continue
 
-        yield processed_spec
+            yield processed_spec
+        except Exception as e:
+            logger.warning(f"Skipping spectrum due to processing error: {e}")
+            continue

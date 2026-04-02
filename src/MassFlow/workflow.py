@@ -1,10 +1,17 @@
 """
-Workflow orchestration for the MassFlow pipeline.
+High-level orchestration for MassFlow annotation runs.
 
-This module manages the high-level execution flow of the MassFlow application.
-It coordinates the loading of reference libraries and experimental spectra,
-applies processing steps defined in the configuration, initializes the
-similarity search engine, and manages the output of results.
+This module coordinates the end-to-end execution path used by the CLI: loading
+and validating the reference library, discovering experimental inputs,
+processing spectra, dispatching per-file similarity searches across worker
+processes, exporting result tables, and optionally generating a molecular
+network. It is the integration layer that turns the config, I/O, processing,
+similarity, and networking modules into a reproducible pipeline.
+
+The workflow is designed to stay memory-aware. Worker processes build their own
+similarity engines, reference libraries are searched in chunks rather than as a
+single monolithic matrix, and false discovery rate filtering is applied after
+aggregating all chunk results for each experimental file.
 """
 
 import logging
@@ -12,33 +19,63 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 from typing import List, Tuple
 
-import networkx as nx
 import numpy as np
-import scipy.sparse as sp
-from matchms import Spectrum, calculate_scores
+from matchms import Spectrum
 
 from MassFlow import io, processing
 from MassFlow.config import MassFlowConfig
-from MassFlow.similarity import SearchResult, SimilarityEngine, calculate_fdr
+from MassFlow.similarity import (
+    CascadeEngine,
+    ConsensusEngine,
+    SearchResult,
+    SimilarityEngine,
+    calculate_fdr,
+    get_similarity_engine,
+)
 
 logger = logging.getLogger(__name__)
 
-_worker_engine: SimilarityEngine | None = None
+_worker_engine: SimilarityEngine | ConsensusEngine | CascadeEngine | None = None
 
 
 def _init_worker(config: MassFlowConfig) -> None:
     """
-    Initialize worker processes by independently loading the engine to avoid IPC memory duplication.
+    Initialize a worker-local similarity engine.
+
+    Each subprocess instantiates its own engine from the shared configuration so
+    large model state is not serialized or copied through inter-process
+    communication.
     """
     global _worker_engine
-    _worker_engine = SimilarityEngine(config.similarity)
+    _worker_engine = get_similarity_engine(config.similarity)
 
 
 def _process_single_file(
     query_file: Path,
     config: MassFlowConfig,
 ) -> Tuple[Path, List[Spectrum], List[SearchResult]]:
-    """Process a single experimental file."""
+    """
+    Process one experimental file against the configured reference library.
+
+    The worker loads and processes the query spectra, ensures query IDs are
+    stable, streams the reference library in chunks, runs similarity search on
+    each chunk, and then applies FDR filtering across the aggregated results for
+    that one file.
+
+    Parameters
+    ----------
+    query_file : Path
+        Experimental spectral file to process.
+    config : MassFlowConfig
+        Full pipeline configuration used for loading, processing, and scoring.
+
+    Returns
+    -------
+    tuple[Path, list[matchms.Spectrum], list[SearchResult]]
+        The input file path, processed query spectra, and the final filtered
+        matches for that file. On failure, the function logs the exception and
+        returns the file path with empty lists.
+    """
     try:
         query_gen = io.load_spectra(query_file, file_format=config.input.format)
         query_spectra = list(processing.process_spectra(query_gen, config.processing))
@@ -46,7 +83,7 @@ def _process_single_file(
         if not query_spectra:
             return query_file, [], []
 
-        # Ensure unique IDs for network nodes
+        # Ensure unique IDs for nodes
         for i, q in enumerate(query_spectra):
             if q.get("id") is None:
                 q.set("id", f"{query_file.stem}_query_{i}")
@@ -54,9 +91,11 @@ def _process_single_file(
         global _worker_engine
         if _worker_engine is None:
             # Fallback in case process wasn't initialized correctly
-            _worker_engine = SimilarityEngine(config.similarity)
+            _worker_engine = get_similarity_engine(config.similarity)
 
         all_results = []
+        if config.input.reference_library is None:
+            raise ValueError("Reference library is not configured.")
         ref_gen = io.load_spectra(config.input.reference_library)
         ref_iterator = processing.process_spectra(ref_gen, config.processing)
 
@@ -118,7 +157,7 @@ def _process_single_file(
 
         if top_n is not None:
             final_results = []
-            query_counts = {}
+            query_counts: dict[str, int] = {}
             for res in fdr_filtered_results:
                 qid = res["query_id"]
                 query_counts[qid] = query_counts.get(qid, 0) + 1
@@ -134,108 +173,19 @@ def _process_single_file(
         return query_file, [], []
 
 
-def generate_molecular_network(
-    all_queries: List[Spectrum],
-    all_references: List[Spectrum],
-    all_results: List[SearchResult],
-    config: MassFlowConfig,
-    output_path: Path,
-) -> None:
-    """Generate a molecular network (GraphML) from query and reference spectra."""
-    logger.info("Generating molecular network...")
-
-    if not all_queries:
-        logger.warning("No query spectra available for networking.")
-        return
-
-    engine = SimilarityEngine(config.similarity)
-
-    # Calculate query-to-query similarity
-    scores_obj = calculate_scores(
-        references=all_queries,
-        queries=all_queries,
-        similarity_function=engine.similarity_function,
-        is_symmetric=True,
-    )
-
-    scores_data = scores_obj.scores
-    if hasattr(scores_data, "to_array"):
-        scores_array = scores_data.to_array()
-    else:
-        scores_array = np.asarray(scores_data)
-
-    if hasattr(scores_array.dtype, "names") and scores_array.dtype.names is not None:
-        score_cols = [c for c in scores_array.dtype.names if "score" in c.lower()]
-        numeric_scores = scores_array[score_cols[0]]
-    else:
-        numeric_scores = scores_array
-
-    G = nx.Graph()
-
-    # Add nodes
-    for i, q in enumerate(all_queries):
-        node_id = str(q.get("id", f"query_{i}"))
-        mz = q.get("precursor_mz")
-        G.add_node(
-            node_id,
-            node_type="query",
-            precursor_mz=float(mz) if mz is not None else 0.0,
-        )
-
-    for r in all_references:
-        node_id = str(r.get("id"))
-        mz = r.get("precursor_mz")
-        name = str(r.get("compound_name") or r.get("name") or "Unknown")
-        G.add_node(
-            node_id,
-            node_type="reference",
-            name=name,
-            precursor_mz=float(mz) if mz is not None else 0.0,
-        )
-
-    # Add query-to-reference edges
-    for res in all_results:
-        if res["score"] >= config.similarity.min_score and not res.get(
-            "is_decoy", False
-        ):
-            if res.get("q_value", 1.0) <= config.similarity.fdr_threshold:
-                G.add_edge(
-                    res["query_id"],
-                    res["reference_id"],
-                    weight=float(res["score"]),
-                    edge_type="query_to_ref",
-                )
-
-    # Add query-to-query edges using sparse matrix
-    min_score = config.similarity.min_score
-    adj_matrix = np.triu(numeric_scores, k=1)
-    adj_matrix[adj_matrix < min_score] = 0.0
-
-    sparse_adj = sp.coo_matrix(adj_matrix)
-
-    for i, j, v in zip(sparse_adj.row, sparse_adj.col, sparse_adj.data):
-        q1_id = str(all_queries[i].get("id", f"query_{i}"))
-        q2_id = str(all_queries[j].get("id", f"query_{j}"))
-        G.add_edge(q1_id, q2_id, weight=float(v), edge_type="query_to_query")
-
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    nx.write_graphml(G, str(output_path))
-    logger.info(f"Molecular network saved to {output_path}")
-
-
 def run_annotation_pipeline(config: MassFlowConfig) -> None:
     """
     Execute the full MassFlow annotation analysis pipeline.
 
-    This function orchestrates the end-to-end workflow:
-    1. Loads and processes the reference spectral library.
-    2. Identifies input experimental files (single file or directory).
-    3. Initializes the similarity search engine.
-    4. Iterates through each experimental file:
-       - Loads and sanitizes spectra.
-       - Processes spectra (filtering, normalization).
-       - Performs similarity searching against the reference library.
-       - Exports the results to a CSV file.
+    The workflow performs these major stages:
+
+    1. Load and process the reference library in the parent process.
+    2. Discover query inputs from either a single file or a data directory.
+    3. Dispatch one task per experimental file to a process pool.
+    4. Within each worker, search the processed queries against chunked
+       reference spectra and apply per-file FDR filtering.
+    5. Save a CSV result file for each processed experimental input.
+    6. Optionally generate a GraphML molecular network from the aggregate run.
 
     Parameters
     ----------
@@ -254,8 +204,15 @@ def run_annotation_pipeline(config: MassFlowConfig) -> None:
     ValueError
         If the reference library path is missing, no valid reference spectra are found,
         or no supported input files are found.
+
+    Notes
+    -----
+    Per-file worker failures are logged and skipped so that one problematic
+    experimental file does not necessarily abort the full batch. The
+    ``export`` configuration section is not used directly here; result tables
+    are currently written as CSV files via :func:`MassFlow.io.save_match_results`.
     """
-    # 1. Load Reference for main process (needed strictly for downstream networking export)
+    # 1. Load Reference for main process
     if not config.input.reference_library:
         raise ValueError("Reference library path not specified in configuration.")
 
@@ -267,6 +224,23 @@ def run_annotation_pipeline(config: MassFlowConfig) -> None:
         raise ValueError("No valid spectra found in reference library.")
 
     logger.info(f"Loaded {len(reference_spectra)} reference spectra.")
+
+    if len(reference_spectra) < 2000:
+        logger.warning(
+            f"\n"
+            f"================================================================================\n"
+            f"CRITICAL SCIENTIFIC WARNING: SMALL REFERENCE LIBRARY DETECTED\n"
+            f"The reference library contains only {len(reference_spectra)} spectra. \n"
+            f"Target-Decoy False Discovery Rate (FDR) statistics are fundamentally invalid on \n"
+            f"small sample sizes because the decoy null-distribution will be too sparse. \n"
+            f"A strict FDR threshold (currently set to {getattr(config.similarity, 'fdr_threshold', 0.01)}) will "
+            f"likely eliminate all true and putative matches as false positives.\n\n"
+            f"Recommendation:\n"
+            f"1. Use a comprehensive library (e.g., GNPS, MoNA, NIST) for FDR validation.\n"
+            f"2. Or, if using a small specialized library, relax the `fdr_threshold` \n"
+            f"   (e.g., 0.1 or 1.0) in your config to evaluate raw Cosine scores directly.\n"
+            f"================================================================================\n"
+        )
 
     # 2. Determine Input Files
     input_files = []
@@ -329,22 +303,27 @@ def run_annotation_pipeline(config: MassFlowConfig) -> None:
                     out_file = config.output_directory / (
                         processed_file.stem + "_results.csv"
                     )
-                    io.save_match_results(results, out_file)
+                    io.save_match_results(results, out_file, query_spectra=q_spectra)  # type: ignore
                     logger.info(f"Results saved to {out_file}")
                 else:
                     logger.warning(f"No valid spectra extracted from {processed_file}.")
             except Exception as e:
                 logger.error(f"Process failed for {qf}: {e}")
 
-    # 4. Generate Molecular Network
+    # 4. Perform Molecular Networking
     if config.workflow.perform_networking:
-        network_out = config.output_directory / "molecular_network.graphml"
-        generate_molecular_network(
-            all_queries=all_queries,
-            all_references=reference_spectra,
-            all_results=all_results,
-            config=config,
-            output_path=network_out,
-        )
+        try:
+            from MassFlow.networking import generate_molecular_network
+
+            network_out = config.output_directory / "molecular_network.graphml"
+            generate_molecular_network(
+                all_queries=all_queries,
+                all_references=reference_spectra,
+                all_results=all_results,
+                config=config,
+                output_path=network_out,
+            )
+        except Exception as e:
+            logger.error(f"Networking failed: {e}", exc_info=True)
 
     logger.info("Pipeline Finished.")
