@@ -16,10 +16,12 @@ from __future__ import annotations
 
 import logging
 import pickle
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Iterator, Optional
 
 import pandas as pd
+import yaml
 from matchms import Spectrum
 from matchms.importing import (
     load_from_mgf,
@@ -220,6 +222,53 @@ def save_match_results(
 
     df.to_csv(output_path, index=False)
     logger.info(f"Results saved to {output_path}")
+
+
+def save_analysis_report(
+    output_path: Path,
+    report_data: dict[str, Any],
+) -> None:
+    """
+    Save a YAML sidecar report describing the provenance of an analysis output.
+
+    The report is intended to accompany a CSV results file and capture the
+    configuration and runtime context that produced it. This helps keep result
+    tables lightweight while preserving the scientific and procedural details
+    needed to reproduce or interpret a run.
+
+    Parameters
+    ----------
+    output_path : Path
+        Destination path for the YAML report file.
+    report_data : dict[str, Any]
+        Serializable report content describing the analysis provenance.
+
+    Returns
+    -------
+    None
+
+    Raises
+    ------
+    OSError
+        If the output directory cannot be created or the file cannot be
+        written.
+    """
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    report_payload = {
+        "report_created_at": datetime.now(timezone.utc).isoformat(),
+        **report_data,
+    }
+
+    with open(output_path, "w") as file_handle:
+        yaml.safe_dump(
+            report_payload,
+            file_handle,
+            sort_keys=False,
+            allow_unicode=True,
+        )
+
+    logger.info(f"Analysis report saved to {output_path}")
 
 
 def save_spectra_to_msp(spectra: Iterable[Spectrum], export_path: Path) -> None:

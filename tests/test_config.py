@@ -113,3 +113,48 @@ def test_data_directory_validation():
     # Non-existing directory (should pass but might log warning in real usage, validator currently allows it)
     config = MassFlowConfig(input=InputConfig(data_directory=Path("nonexistent")))
     assert config.input.data_directory == Path("nonexistent")
+
+
+def test_input_config_accepts_library_path_keyword():
+    """Preferred library_path keyword should populate the library field."""
+    config = InputConfig(
+        file_path=Path("query.mgf"),
+        library_path=Path("library.msp"),
+        format="mgf",
+    )
+
+    assert config.library_path == Path("library.msp")
+
+
+def test_input_config_accepts_reference_library_keyword_for_backward_compatibility():
+    """Legacy reference_library keyword should still populate the library field."""
+    config = InputConfig.model_validate(
+        {
+            "file_path": Path("query.mgf"),
+            "reference_library": Path("library.msp"),
+            "format": "mgf",
+        }
+    )
+
+    assert config.library_path == Path("library.msp")
+
+
+def test_load_from_yaml_accepts_library_path_alias(tmp_path):
+    """YAML using library_path should load into the same input field."""
+    config_data = {
+        "project": {"name": "Alias_Test", "output_directory": "/tmp/results"},
+        "input": {
+            "file_path": "/path/to/data.mgf",
+            "library_path": "/path/to/library.msp",
+            "format": "mgf",
+        },
+    }
+
+    config_file = tmp_path / "config_with_library_path.yaml"
+    with open(config_file, "w") as f:
+        yaml.dump(config_data, f)
+
+    config = MassFlowConfig.from_yaml(config_file)
+
+    assert str(config.input.file_path) == "/path/to/data.mgf"
+    assert str(config.input.library_path) == "/path/to/library.msp"

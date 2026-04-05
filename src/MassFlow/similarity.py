@@ -737,13 +737,28 @@ def get_similarity_engine(
     if config.algorithm == "cascade":
         return CascadeEngine(config)
     elif config.algorithm == "consensus":
+        # If consensus_weights are missing, either fall back or raise depending
+        # on the SimilarityConfig.allow_consensus_fallback flag. Falling back
+        # provides a sensible runtime default (single cosine engine) for legacy
+        # or minimal configs, while disabling the fallback enforces strict config.
         if not config.consensus_weights:
-            raise ValueError(
-                "consensus_weights must be provided for consensus algorithm."
-            )
+            # Default to permissive fallback when the config field is absent
+            allow_fallback = getattr(config, "allow_consensus_fallback", True)
+            if allow_fallback:
+                logger.warning(
+                    "consensus_weights not provided; allow_consensus_fallback is True -> falling back to a single 'cosine' engine for consensus."
+                )
+                # Use a single cosine engine with weight 1.0 as a sensible default
+                weights_items = {"cosine": 1.0}.items()
+            else:
+                raise ValueError(
+                    "consensus_weights must be provided for consensus algorithm. Set similarity.allow_consensus_fallback=True to enable an automatic fallback."
+                )
+        else:
+            weights_items = config.consensus_weights.items()
 
         engines = []
-        for algo, weight in config.consensus_weights.items():
+        for algo, weight in weights_items:
             algo_config = config.model_copy(update={"algorithm": algo})
             engines.append((SimilarityEngine(algo_config), weight))
 

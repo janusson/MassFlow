@@ -206,16 +206,15 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 
-# Development
+# Development and Local Files
 .DS_Store
-__pycache__/
-*.pyc
-.DS_Store
-build/
 debugging/
-docs/
-data/
+llms.txt
+diagrams/massflow_diagram.png
+test_data/
 
 # Data and Results
 results/
-config.yaml
+
+# RepoMix
+repomix-output.xml

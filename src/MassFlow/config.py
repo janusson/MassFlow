@@ -17,7 +17,14 @@ from pathlib import Path
 from typing import List, Literal, Optional, Union
 
 import yaml
-from pydantic import BaseModel, Field, ValidationInfo, field_validator
+from pydantic import (
+    AliasChoices,
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationInfo,
+    field_validator,
+)
 
 
 class ProjectConfig(BaseModel):
@@ -31,15 +38,53 @@ class InputConfig(BaseModel):
     """
     Input paths and format hints for annotation or browsing.
 
-    ``workflow.run_annotation_pipeline`` expects a reference library plus either
+    ``workflow.run_annotation_pipeline`` expects a library path plus either
     ``file_path`` or ``data_directory``. That relationship is not enforced here
     so the same model can also be reused in narrower contexts.
+
+    Notes
+    -----
+    ``library_path`` is the preferred field name for new configurations.
+    ``reference_library`` remains accepted as a backward-compatible alias.
     """
+
+    model_config = ConfigDict(populate_by_name=True)
 
     file_path: Optional[Path] = None
     data_directory: Optional[Path] = None
     format: Optional[Literal["mgf", "msp", "mzml", "mzxml", "db", "sqlite"]] = None
-    reference_library: Optional[Path] = None
+    library_path: Optional[Path] = Field(
+        default=None,
+        validation_alias=AliasChoices("library_path", "reference_library"),
+    )
+
+    @property
+    def reference_library(self) -> Optional[Path]:
+        """
+        Backward-compatible alias for ``library_path``.
+
+        Returns
+        -------
+        Path or None
+            The configured library path.
+        """
+        return self.library_path
+
+    @reference_library.setter
+    def reference_library(self, value: Optional[Path]) -> None:
+        """
+        Backward-compatible setter for ``library_path``.
+
+        Parameters
+        ----------
+        value : Path or None
+            Library path to assign.
+
+        Returns
+        -------
+        None
+        """
+        self.library_path = value
 
     @field_validator("data_directory")
     @classmethod
@@ -221,6 +266,12 @@ class SimilarityConfig(BaseModel):
     cascade tier settings are only used for ``cascade``, and ``model_path`` is
     required by ML-backed engines such as ``spec2vec`` and ``ms2deepscore``.
     Legacy ``tolerance`` is retained for compatibility with existing configs.
+
+    New in this version:
+    - ``allow_consensus_fallback``: when True, the system will gracefully fall
+      back to a single 'cosine' engine if ``algorithm == "consensus"`` but no
+      ``consensus_weights`` are provided. When False, the factory will raise a
+      ValueError to enforce strict configuration.
     """
 
     algorithm: Literal[
@@ -229,6 +280,13 @@ class SimilarityConfig(BaseModel):
     consensus_weights: Optional[dict[str, float]] = Field(
         default=None,
         description="Dictionary mapping algorithm names to their weights for consensus search.",
+    )
+
+    # Allow graceful fallback when consensus_weights is omitted. If set to False,
+    # requesting 'consensus' without weights will surface an explicit error.
+    allow_consensus_fallback: bool = Field(
+        default=True,
+        description="If True, fallback to a single 'cosine' engine when consensus_weights is None. If False, require explicit consensus_weights.",
     )
 
     # Cascade Routing Parameters
@@ -384,9 +442,9 @@ class MassFlowConfig(BaseModel):
             config_instance.input.data_directory = (
                 config_instance.input.data_directory.expanduser()
             )
-        if config_instance.input.reference_library:
-            config_instance.input.reference_library = (
-                config_instance.input.reference_library.expanduser()
+        if config_instance.input.library_path:
+            config_instance.input.library_path = (
+                config_instance.input.library_path.expanduser()
             )
 
         # Expand user for relevant Path fields in SimilarityConfig

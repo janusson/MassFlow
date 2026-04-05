@@ -76,7 +76,7 @@ def run_annotate(args: argparse.Namespace) -> int:
     """
     try:
         config = MassFlowConfig.from_yaml(args.config)
-        run_annotation_pipeline(config)
+        run_annotation_pipeline(config, config_path=args.config)
         return 0
     except Exception as e:
         logger.error(f"Annotation failed: {e}")
@@ -126,7 +126,7 @@ input:
   # Mandatory paths to your spectral data
   file_path: "data/raw/experiment.mzML"
   # data_directory: "data/raw/" # Alternatively, use a directory of files
-  reference_library: "data/reference/library.msp"
+  library_path: "data/libraries/library.msp"
   format: "mzml" # mgf, msp, mzml, mzxml, db, sqlite
 
 processing:
@@ -234,6 +234,52 @@ def run_browse(args: argparse.Namespace) -> int:
         return 1
     except Exception as e:
         logger.error(f"Browser failed: {e}")
+        return 1
+
+
+def run_browse_cas(args: argparse.Namespace) -> int:
+    """
+    Launch the CAS-driven experimental terminal inspector.
+
+    This command imports the optional experimental TUI module lazily so the
+    core CLI remains usable even if the interactive utility is unavailable.
+    It translates the parsed argparse namespace into a small argv list to call
+    the CAS-driven inspector entry point.
+    """
+    try:
+        from MassFlow.tui import browse_cas_main as clitui_main
+    except ImportError:
+        logger.error(
+            "Optional experimental TUI interface is not available. Ensure MassFlow.tui is importable."
+        )
+        return 1
+    except Exception as e:
+        logger.error(f"Failed to import clitui: {e}")
+        return 1
+
+    # Build argv for the clitui.main call from parsed args
+    argv = [args.library, "--cas", args.cas]
+    if getattr(args, "top_k", None) is not None:
+        argv += ["--top-k", str(args.top_k)]
+    if getattr(args, "chem_weight", None) is not None:
+        argv += ["--chem-weight", str(args.chem_weight)]
+    if getattr(args, "spec_weight", None) is not None:
+        argv += ["--spec-weight", str(args.spec_weight)]
+    # Pass-through for optional mz tolerance if provided
+    if getattr(args, "mz_tol", None) is not None:
+        argv += ["--mz-tol", str(args.mz_tol)]
+
+    try:
+        # clitui.main returns an exit code integer
+        return int(clitui_main(argv))
+    except SystemExit as se:
+        # clitui may raise SystemExit; honor its code where possible
+        try:
+            return int(se.code or 0)
+        except Exception:
+            return 0
+    except Exception as e:
+        logger.error(f"clitui execution failed: {e}", exc_info=True)
         return 1
 
 
@@ -456,6 +502,45 @@ def main(argv: list[str] | None = None) -> int:
         "file", help="Path to the spectral file or database to browse."
     )
     browse_parser.set_defaults(func=run_browse)
+
+    # Browse-by-CAS command (CAS-driven chemical + spectral similarity inspector)
+    browse_cas_parser = subparsers.add_parser(
+        "browse-cas",
+        help="Interactive CAS-driven chemical+spectral similarity inspector in the terminal.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    browse_cas_parser.add_argument(
+        "library",
+        help="Path to the reference library (msp/mgf/sqlite) to search and inspect.",
+    )
+    browse_cas_parser.add_argument(
+        "--cas", required=True, help="CAS identifier to query (e.g. 50-00-0)"
+    )
+    browse_cas_parser.add_argument(
+        "--top-k",
+        type=int,
+        default=10,
+        help="Number of top candidates to present for selection (default: 10)",
+    )
+    browse_cas_parser.add_argument(
+        "--chem-weight",
+        type=float,
+        default=0.5,
+        help="Weight for chemical similarity in combined ranking (default: 0.5)",
+    )
+    browse_cas_parser.add_argument(
+        "--spec-weight",
+        type=float,
+        default=0.5,
+        help="Weight for spectral similarity in combined ranking (default: 0.5)",
+    )
+    browse_cas_parser.add_argument(
+        "--mz-tol",
+        type=float,
+        default=0.2,
+        help="m/z tolerance (Da) for lightweight spectral cosine matching (default: 0.2)",
+    )
+    browse_cas_parser.set_defaults(func=run_browse_cas)
 
     # Database Subcommands
     db_parser = subparsers.add_parser(

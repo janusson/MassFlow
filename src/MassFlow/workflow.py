@@ -94,9 +94,9 @@ def _process_single_file(
             _worker_engine = get_similarity_engine(config.similarity)
 
         all_results = []
-        if config.input.reference_library is None:
-            raise ValueError("Reference library is not configured.")
-        ref_gen = io.load_spectra(config.input.reference_library)
+        if config.input.library_path is None:
+            raise ValueError("Library path is not configured.")
+        ref_gen = io.load_spectra(config.input.library_path)
         ref_iterator = processing.process_spectra(ref_gen, config.processing)
 
         chunk_size = 2000
@@ -173,7 +173,70 @@ def _process_single_file(
         return query_file, [], []
 
 
-def run_annotation_pipeline(config: MassFlowConfig) -> None:
+def _write_analysis_report(
+    report_path: Path,
+    config: MassFlowConfig,
+    query_file: Path,
+    results_file: Path,
+    query_spectra: List[Spectrum],
+    results: List[SearchResult],
+    config_path: Path | str | None = None,
+) -> None:
+    """
+    Write a provenance report alongside an annotation results file.
+
+    Parameters
+    ----------
+    report_path : Path
+        Destination path for the provenance report.
+    config : MassFlowConfig
+        Full configuration used for the annotation run.
+    query_file : Path
+        Experimental input file processed for this result set.
+    results_file : Path
+        CSV results file written for this query file.
+    query_spectra : list[matchms.Spectrum]
+        Processed query spectra used in the search.
+    results : list[SearchResult]
+        Final filtered search results written to the CSV file.
+    config_path : Path or str or None, optional
+        Original YAML configuration path when available.
+
+    Returns
+    -------
+    None
+    """
+    original_config_yaml = None
+    if config_path is not None and Path(config_path).exists():
+        original_config_yaml = Path(config_path).read_text()
+
+    report_data = {
+        "config_path": str(config_path) if config_path is not None else None,
+        "original_config_yaml": original_config_yaml,
+        "query_file": str(query_file),
+        "results_csv": str(results_file),
+        "library_path": (
+            str(config.input.library_path)
+            if config.input.library_path is not None
+            else None
+        ),
+        "input_format": config.input.format,
+        "query_spectra_count": len(query_spectra),
+        "retained_result_count": len(results),
+        "project": config.project.model_dump(mode="json"),
+        "input": config.input.model_dump(mode="json"),
+        "processing": config.processing.model_dump(mode="json"),
+        "similarity": config.similarity.model_dump(mode="json"),
+        "workflow": config.workflow.model_dump(mode="json"),
+        "export": config.export.model_dump(mode="json"),
+    }
+
+    io.save_analysis_report(report_path, report_data)
+
+
+def run_annotation_pipeline(
+    config: MassFlowConfig, config_path: Path | str | None = None
+) -> None:
     """
     Execute the full MassFlow annotation analysis pipeline.
 
@@ -192,6 +255,9 @@ def run_annotation_pipeline(config: MassFlowConfig) -> None:
     config : MassFlowConfig
         The configuration object containing all settings for input/output paths,
         processing parameters, and similarity search options.
+    config_path : Path or str or None, optional
+        Original YAML configuration path used to create ``config``. When
+        provided, it is written into the per-results provenance report.
 
     Returns
     -------
@@ -212,16 +278,16 @@ def run_annotation_pipeline(config: MassFlowConfig) -> None:
     ``export`` configuration section is not used directly here; result tables
     are currently written as CSV files via :func:`MassFlow.io.save_match_results`.
     """
-    # 1. Load Reference for main process
-    if not config.input.reference_library:
-        raise ValueError("Reference library path not specified in configuration.")
+    # 1. Load Library for main process
+    if not config.input.library_path:
+        raise ValueError("Library path not specified in configuration.")
 
-    logger.info(f"Loading reference library: {config.input.reference_library}")
-    ref_gen = io.load_spectra(config.input.reference_library)
+    logger.info(f"Loading library: {config.input.library_path}")
+    ref_gen = io.load_spectra(config.input.library_path)
     reference_spectra = list(processing.process_spectra(ref_gen, config.processing))
 
     if not reference_spectra:
-        raise ValueError("No valid spectra found in reference library.")
+        raise ValueError("No valid spectra found in library.")
 
     logger.info(f"Loaded {len(reference_spectra)} reference spectra.")
 
@@ -229,8 +295,8 @@ def run_annotation_pipeline(config: MassFlowConfig) -> None:
         logger.warning(
             f"\n"
             f"================================================================================\n"
-            f"CRITICAL SCIENTIFIC WARNING: SMALL REFERENCE LIBRARY DETECTED\n"
-            f"The reference library contains only {len(reference_spectra)} spectra. \n"
+            f"CRITICAL SCIENTIFIC WARNING: SMALL LIBRARY DETECTED\n"
+            f"The library contains only {len(reference_spectra)} spectra. \n"
             f"Target-Decoy False Discovery Rate (FDR) statistics are fundamentally invalid on \n"
             f"small sample sizes because the decoy null-distribution will be too sparse. \n"
             f"A strict FDR threshold (currently set to {getattr(config.similarity, 'fdr_threshold', 0.01)}) will "
@@ -304,6 +370,20 @@ def run_annotation_pipeline(config: MassFlowConfig) -> None:
                         processed_file.stem + "_results.csv"
                     )
                     io.save_match_results(results, out_file, query_spectra=q_spectra)  # type: ignore
+
+                    report_file = config.output_directory / (
+                        processed_file.stem + "_results.report.yaml"
+                    )
+                    _write_analysis_report(
+                        report_path=report_file,
+                        config=config,
+                        query_file=processed_file,
+                        results_file=out_file,
+                        query_spectra=q_spectra,
+                        results=results,
+                        config_path=config_path,
+                    )
+
                     logger.info(f"Results saved to {out_file}")
                 else:
                     logger.warning(f"No valid spectra extracted from {processed_file}.")

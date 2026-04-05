@@ -1,20 +1,26 @@
 [project]
 name = "massflow"
-version = "0.7.0"
+version = "0.9.0.dev0"
 description = "A scientific Python package for mass spectrometry processing and analysis."
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.13"
 dependencies = [
+    "lxml",
     "matchms>=0.27.0",
+    "matplotlib>=3.8.3",
     "ms2deepscore>=2.5.1",
+    "networkx>=3.2.1",
     "numpy>=1.26.4",
+    "openpyxl",
     "packaging>=26.0",
     "pandas>=2.3.3",
-    "pydantic>=2.12.5",
-    "spec2vec>=0.8.0",
-    "customtkinter>=5.2.2",
-    "matplotlib>=3.8.3",
     "pillow>=10.2.0",
+    "plotext>=5.3.2",
+    "pydantic>=2.12.5",
+    "pyteomics",
+    "PyYAML",
+    "spec2vec>=0.8.0",
+    "textual>=8.1.1",
 ]
 
 [project.optional-dependencies]
@@ -25,7 +31,6 @@ dev = [
 
 [project.scripts]
 massflow = "MassFlow.cli:main"
-massflow-gui = "MassFlow.ui.main:main"
 
 [build-system]
 requires = ["hatchling"]

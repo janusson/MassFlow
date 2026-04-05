@@ -29,11 +29,18 @@ def make_spectrum(spec_id: str, precursor_mz: float = 100.0) -> Spectrum:
 
 @patch("MassFlow.workflow.ProcessPoolExecutor")
 @patch("MassFlow.workflow.processing.process_spectra")
+@patch("MassFlow.workflow.io.save_analysis_report")
 @patch("MassFlow.workflow.io.save_match_results")
 @patch("MassFlow.workflow.get_similarity_engine")
 @patch("MassFlow.workflow.io.load_spectra")
 def test_run_annotation_pipeline_success(
-    mock_load, mock_engine_cls, mock_save, mock_process, mock_executor, tmp_path
+    mock_load,
+    mock_engine_cls,
+    mock_save,
+    mock_save_report,
+    mock_process,
+    mock_executor,
+    tmp_path,
 ):
     """Test successful execution of the annotation pipeline."""
 
@@ -50,7 +57,7 @@ def test_run_annotation_pipeline_success(
 
     config = MassFlowConfig(
         project=ProjectConfig(output_directory=out_dir),
-        input=InputConfig(file_path=exp_path, reference_library=ref_path),
+        input=InputConfig(file_path=exp_path, library_path=ref_path),
     )
 
     # Mock Data
@@ -83,9 +90,20 @@ def test_run_annotation_pipeline_success(
     mock_engine_instance.search.assert_called_with([mock_query], [mock_ref], top_n=None)
 
     expected_out_file = out_dir / "experimental_results.csv"
+    expected_report_file = out_dir / "experimental_results.report.yaml"
     mock_save.assert_called_with(
         mock_results, expected_out_file, query_spectra=[mock_query]
     )
+    mock_save_report.assert_called_once()
+    report_args, report_kwargs = mock_save_report.call_args
+    assert report_args[0] == expected_report_file
+    assert report_kwargs == {}
+    report_payload = report_args[1]
+    assert report_payload["query_file"] == "experimental.mgf"
+    assert report_payload["results_csv"] == str(expected_out_file)
+    assert report_payload["library_path"] == "reference.msp"
+    assert report_payload["processing"] == config.processing.model_dump(mode="json")
+    assert report_payload["similarity"] == config.similarity.model_dump(mode="json")
 
 
 @patch("MassFlow.workflow.ProcessPoolExecutor")
@@ -108,7 +126,7 @@ def test_run_annotation_pipeline_no_query_spectra(
 
     config = MassFlowConfig(
         project=ProjectConfig(output_directory=tmp_path),
-        input=InputConfig(file_path=Path("exp.mgf"), reference_library=Path("ref.msp")),
+        input=InputConfig(file_path=Path("exp.mgf"), library_path=Path("ref.msp")),
     )
 
     # Should not raise exception, just log warning
@@ -127,10 +145,10 @@ def test_run_annotation_pipeline_no_reference_spectra(
 
     config = MassFlowConfig(
         project=ProjectConfig(output_directory=tmp_path),
-        input=InputConfig(file_path=Path("exp.mgf"), reference_library=Path("ref.msp")),
+        input=InputConfig(file_path=Path("exp.mgf"), library_path=Path("ref.msp")),
     )
 
-    with pytest.raises(ValueError, match="No valid spectra found in reference library"):
+    with pytest.raises(ValueError, match="No valid spectra found in library"):
         run_annotation_pipeline(config)
 
 
@@ -139,6 +157,7 @@ def test_run_annotation_pipeline_no_reference_spectra(
 )
 @patch("MassFlow.workflow.ProcessPoolExecutor")
 @patch("MassFlow.workflow._process_single_file")
+@patch("MassFlow.workflow.io.save_analysis_report")
 @patch("MassFlow.workflow.io.save_match_results")
 @patch("MassFlow.workflow.processing.process_spectra")
 @patch("MassFlow.workflow.io.load_spectra")
@@ -146,6 +165,7 @@ def test_run_annotation_pipeline_small_library_warning_threshold(
     mock_load,
     mock_process,
     mock_save,
+    mock_save_report,
     mock_process_single_file,
     mock_executor,
     reference_count,
@@ -178,7 +198,7 @@ def test_run_annotation_pipeline_small_library_warning_threshold(
         project=ProjectConfig(output_directory=tmp_path / "results"),
         input=InputConfig(
             file_path=Path("experimental.mgf"),
-            reference_library=Path("reference.msp"),
+            library_path=Path("reference.msp"),
         ),
     )
 
@@ -186,12 +206,12 @@ def test_run_annotation_pipeline_small_library_warning_threshold(
         run_annotation_pipeline(config)
 
     found_warning = any(
-        "CRITICAL SCIENTIFIC WARNING: SMALL REFERENCE LIBRARY DETECTED"
-        in record.message
+        "CRITICAL SCIENTIFIC WARNING: SMALL LIBRARY DETECTED" in record.message
         for record in caplog.records
     )
     assert found_warning is should_warn
     mock_save.assert_called_once()
+    mock_save_report.assert_called_once()
 
 
 @patch("MassFlow.workflow.processing.process_spectra")
@@ -210,7 +230,7 @@ def test_run_annotation_pipeline_empty_data_directory(
         project=ProjectConfig(output_directory=tmp_path / "results"),
         input=InputConfig(
             data_directory=input_dir,
-            reference_library=Path("reference.msp"),
+            library_path=Path("reference.msp"),
         ),
     )
 
@@ -236,7 +256,7 @@ def test_run_annotation_pipeline_non_spectral_files_only(
         project=ProjectConfig(output_directory=tmp_path / "results"),
         input=InputConfig(
             data_directory=input_dir,
-            reference_library=Path("reference.msp"),
+            library_path=Path("reference.msp"),
         ),
     )
 
@@ -257,7 +277,7 @@ def test_process_single_file_logs_and_returns_empty_on_malformed_input(
         project=ProjectConfig(output_directory=tmp_path),
         input=InputConfig(
             file_path=Path("bad.mgf"),
-            reference_library=Path("reference.msp"),
+            library_path=Path("reference.msp"),
             format="mgf",
         ),
     )
@@ -330,7 +350,7 @@ def test_process_single_file_tiny_library_fdr_sensitivity(
         project=ProjectConfig(output_directory=tmp_path),
         input=InputConfig(
             file_path=Path("query.mgf"),
-            reference_library=Path("reference.msp"),
+            library_path=Path("reference.msp"),
             format="mgf",
         ),
         similarity=SimilarityConfig(fdr_threshold=fdr_threshold),
