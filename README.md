@@ -10,7 +10,7 @@ Its core workflow is simple:
 4. score query spectra against the library
 5. write per-file CSV results
 
-The project is currently being stabilized for a `v1.0.0` release. The stable product surface is intentionally narrow: CLI annotation, YAML configuration, open-format ingestion, SQLite-backed library workflows, and predictable CSV output.
+The project is currently being stabilized for a `v1.0.0` release including CLI annotation, standard YAML configuration, vendor-agnostic ingestion, SQLite-backed library workflows, and predictable CSV output.
 
 ## Stable vs experimental at a glance
 
