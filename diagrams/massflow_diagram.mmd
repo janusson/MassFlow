@@ -24,17 +24,46 @@ graph TD
         Algorithms["CosineGreedy<br>ModifiedCosine<br>Spec2Vec<br>MS2DeepScore<br>ConsensusEngine<br>CascadeEngine"]
     end
 
+    subgraph Optional Utilities
+        Networking["<b>GraphML Export</b><br>(src/MassFlow/networking.py)<br><i>NetworkX</i>"]
+    end
+
     %% Flow Connections
-    CLI -->|annotate| Workflow
-    CLI -->|browse| TUI
-    API --> Workflow
 
-    Workflow --> Config
-    Workflow --> IO
-    Workflow --> Process
-    Workflow --> Sim
+    %% User Interface to Orchestration
+    CLI -- "Run Workflow (annotate)" --> Workflow
+    CLI -- "Browse Library" --> TUI
+    API -- "Integrate into Script" --> Workflow
 
-    TUI --> IO
+    %% Workflow Orchestration
+    Workflow -- "Loads/Saves Config" --> Config
+    Config -- "Provides Settings" --> Workflow
 
-    IO <--> DB
-    Sim --> Algorithms
+    Workflow -- "Reads Spectral Data" --> IO
+    IO -- "Reads mzML/MGF/etc." --> Workflow
+    IO -- "Writes Output Files" --> Workflow
+
+    Workflow -- "Applies Filters" --> Process
+    Process -- "Processed Spectra (matchms.Spectrum)" --> Workflow
+
+    Workflow -- "Calculates Similarities" --> Sim
+    Sim -- "Similarity Scores" --> Workflow
+    Sim -- "Uses" --> Algorithms
+
+    %% Data Storage and Retrieval
+    IO -- "Loads/Saves Spectra" <--> DB
+    DB -- "Stores Libraries" --> IO
+
+    %% TUI interactions
+    TUI -- "Queries/Displays Data" --> IO
+
+    %% Optional Features
+    Workflow -- "Exports Network" --> Networking
+    Networking -- "GraphML File" --> CLI
+
+
+    %% Data Flow Labels (more specific)
+    IO -- "Raw Spectra" --> Workflow
+    Process -- "Cleaned Spectra" --> Sim
+    Sim -- "Annotation Results" --> Workflow
+    Workflow -- "Structured Outputs" --> IO

@@ -15,12 +15,10 @@ dependencies = [
     "packaging>=26.0",
     "pandas>=2.3.3",
     "pillow>=10.2.0",
-    "plotext>=5.3.2",
     "pydantic>=2.12.5",
     "pyteomics",
     "PyYAML",
     "spec2vec>=0.8.0",
-    "textual>=8.1.1",
 ]
 
 [project.optional-dependencies]

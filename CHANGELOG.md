@@ -23,8 +23,6 @@ as experimental.
 - SQLite library management through `massflow db build`, `inspect`, and `merge`
 
 **Experimental or not yet part of the stable promise:**
-- Terminal browsing via `massflow browse`
-- CAS-driven browsing via `massflow browse-cas`
 - GraphML molecular-network export
 - Advanced engines and orchestration paths:
   - `spec2vec`
@@ -36,20 +34,6 @@ as experimental.
 
 **Recent documentation and release-surface cleanup:**
 - Simplified the release history to a smaller, more maintainable changelog
-- Repositioned MassFlow as a CLI-first local annotation tool rather than a
-  broad exploratory platform
-- Clarified the distinction between stable core workflows and experimental
-  features
-- Tightened the docs around open-format ingestion and SQLite-backed libraries
-- Reduced drift between top-level docs, package metadata, and the current code
-  layout
-- Consolidated the experimental terminal interfaces into a single
-  `MassFlow.tui` module so the Textual browser and CAS-driven inspector now
-  share one import surface
-- Added a short experimental-features guide to document non-core interfaces in
-  one place
-- Renamed the CAS-driven experimental TUI entry point from a generic
-  `main()` wrapper to the clearer `browse_cas_main()`
 
 **Known pre-1.0 constraints:**
 - Vendor raw formats are not converted inside MassFlow and should be converted

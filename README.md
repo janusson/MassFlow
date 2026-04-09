@@ -22,7 +22,6 @@ The project is currently being stabilized for a `v1.0.0` release including CLI a
 | SQLite library workflows (`massflow db ...`) | Stable target | Recommended for reusable local libraries |
 | `cosine` and `modified_cosine` | Stable target | Best-supported scoring paths |
 | CSV result export | Stable target | Main reporting surface |
-| `MassFlow.tui` / `massflow browse` / `massflow browse-cas` | Experimental | Useful for exploration, not part of the stable annotation contract |
 | GraphML networking | Experimental | Optional and non-core |
 | `spec2vec`, `ms2deepscore`, `consensus`, `cascade` | Experimental | Higher setup and less stable support promise |
 
@@ -52,9 +51,6 @@ These are the parts to rely on first:
 ### Experimental features
 These exist in the codebase, but should not be treated as part of the stable `v1.0` contract yet:
 
-- the consolidated experimental `MassFlow.tui` interface
-  - `massflow browse`
-  - `massflow browse-cas`
 - GraphML molecular networking export
 - `spec2vec`
 - `ms2deepscore`
@@ -313,31 +309,6 @@ These require more caution and are not part of the stable release promise yet:
 - `cascade`
 
 If you need the broadest compatibility and simplest behavior, start with `cosine`.
-
-## Browser and networking
-
-MassFlow also includes an experimental consolidated terminal interface in `MassFlow.tui`.
-
-This surface currently provides two CLI entry points:
-
-- `massflow browse` for interactive inspection of spectral files and SQLite libraries
-- `massflow browse-cas` for an experimental CAS-driven inspector that ranks candidates and plots selected spectra in the terminal
-
-It also includes optional GraphML export when networking is enabled.
-
-These tools are useful for local exploration, but they are still considered experimental and are not part of the stable annotation contract.
-
-You can also launch the experimental TUI entry points from Python:
-
-```/dev/null/tui_python_api.py#L1-8
-from MassFlow.tui import browse_cas_main, browse_file
-
-browse_file("data/libraries/example_library.msp")
-
-browse_cas_main(
-    ["data/libraries/example_library.msp", "--cas", "50-00-0", "--top-k", "5"]
-)
-```
 
 ## Python API
 

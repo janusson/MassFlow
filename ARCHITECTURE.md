@@ -41,8 +41,6 @@ advanced ML-backed engines remain outside the core support promise.
   - Defines the CLI commands:
     - `annotate`
     - `init`
-    - `browse` *(experimental)*
-    - `browse-cas` *(experimental)*
     - `db build`
     - `db inspect`
     - `db merge`
@@ -95,17 +93,6 @@ advanced ML-backed engines remain outside the core support promise.
     - `consensus`
     - `cascade`
 
-### Optional export and inspection utilities
-
-- `src/MassFlow/networking.py`
-  - Generates GraphML molecular-network output when enabled.
-  - Experimental for `v1.0`.
-
-- `src/MassFlow/tui/__init__.py`
-  - Provides the unified experimental terminal interface used by both
-    `massflow browse` and `massflow browse-cas`.
-  - Experimental for `v1.0`.
-
 ---
 
 ## Component Diagram
@@ -115,8 +102,6 @@ graph TD
     subgraph User_Surfaces
         CLI["CLI<br/>src/MassFlow/cli.py"]
         API["Python API"]
-        BROWSE["Terminal Browser<br/>Experimental"]
-        BROWSECAS["CAS Inspector<br/>Experimental"]
     end
 
     subgraph Core
@@ -134,8 +119,6 @@ graph TD
 
     CLI --> WORKFLOW
     API --> WORKFLOW
-    BROWSE --> IO
-    BROWSECAS --> IO
 
     WORKFLOW --> CONFIG
     WORKFLOW --> IO
@@ -329,8 +312,6 @@ These are the features the docs should treat as the main supported path:
 
 These features exist in the repository but should be treated more cautiously:
 
-- `massflow browse`
-- `massflow browse-cas`
 - `spec2vec`
 - `ms2deepscore`
 - `consensus`
@@ -376,10 +357,6 @@ result structures used during FDR calculation.
 ### `MassFlow.networking`
 Builds GraphML molecular-network output from workflow results when networking
 is enabled.
-
-### `MassFlow.tui`
-Implements the unified experimental terminal interface, including both the
-interactive spectral browser and the CAS-driven interactive inspector.
 
 ---
 

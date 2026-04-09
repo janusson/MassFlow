@@ -7,12 +7,11 @@ dispatch for the major operational surfaces in the package:
 
 - ``annotate`` for the end-to-end annotation workflow.
 - ``init`` for generating a starter YAML configuration.
-- ``browse`` for the optional terminal spectrum browser.
 - ``db`` subcommands for building, inspecting, and merging SQLite libraries.
 
 The CLI intentionally keeps domain logic out of this layer. It validates the
 requested command shape, translates arguments into configuration objects or file
-paths, and delegates the substantive work to workflow, database, and TUI
+paths, and delegates the substantive work to workflow and database
 modules.
 """
 
@@ -199,90 +198,6 @@ export:
         return 1
 
 
-def run_browse(args: argparse.Namespace) -> int:
-    """
-    Launch the interactive terminal browser for spectral files.
-
-    This command imports the optional Textual-based browser lazily so the core
-    CLI remains usable without TUI dependencies installed.
-
-    Parameters
-    ----------
-    args : argparse.Namespace
-        Parsed CLI arguments. Must include ``file``, the path to a supported
-        spectral file or database.
-
-    Returns
-    -------
-    int
-        ``0`` if the browser launches and exits cleanly, otherwise ``1``.
-
-    Notes
-    -----
-    Missing optional browser dependencies are reported as a user-facing error
-    rather than an uncaught import failure.
-    """
-    try:
-        from MassFlow.tui import browse_file
-
-        browse_file(args.file)
-        return 0
-    except ImportError:
-        logger.error(
-            "Dependencies 'textual' and 'plotext' are required for the browser. Install with 'uv add textual plotext'."
-        )
-        return 1
-    except Exception as e:
-        logger.error(f"Browser failed: {e}")
-        return 1
-
-
-def run_browse_cas(args: argparse.Namespace) -> int:
-    """
-    Launch the CAS-driven experimental terminal inspector.
-
-    This command imports the optional experimental TUI module lazily so the
-    core CLI remains usable even if the interactive utility is unavailable.
-    It translates the parsed argparse namespace into a small argv list to call
-    the CAS-driven inspector entry point.
-    """
-    try:
-        from MassFlow.tui import browse_cas_main as clitui_main
-    except ImportError:
-        logger.error(
-            "Optional experimental TUI interface is not available. Ensure MassFlow.tui is importable."
-        )
-        return 1
-    except Exception as e:
-        logger.error(f"Failed to import clitui: {e}")
-        return 1
-
-    # Build argv for the clitui.main call from parsed args
-    argv = [args.library, "--cas", args.cas]
-    if getattr(args, "top_k", None) is not None:
-        argv += ["--top-k", str(args.top_k)]
-    if getattr(args, "chem_weight", None) is not None:
-        argv += ["--chem-weight", str(args.chem_weight)]
-    if getattr(args, "spec_weight", None) is not None:
-        argv += ["--spec-weight", str(args.spec_weight)]
-    # Pass-through for optional mz tolerance if provided
-    if getattr(args, "mz_tol", None) is not None:
-        argv += ["--mz-tol", str(args.mz_tol)]
-
-    try:
-        # clitui.main returns an exit code integer
-        return int(clitui_main(argv))
-    except SystemExit as se:
-        # clitui may raise SystemExit; honor its code where possible
-        try:
-            return int(se.code or 0)
-        except Exception:
-            return 0
-    except Exception as e:
-        logger.error(f"clitui execution failed: {e}", exc_info=True)
-        return 1
-
-
 def run_db_build(args: argparse.Namespace) -> int:
     """
     Build a SQLite spectral library from an input file.
@@ -455,7 +370,7 @@ def main(argv: list[str] | None = None) -> int:
 
     parser = argparse.ArgumentParser(
         prog="MassFlow",
-        description="MassFlow: Tandem MS/MS data analysis pipeline.",
+        description="""MassFlow: A robust, config-first Python toolkit for local tandem mass spectrometry (MS/MS) annotation. It streamlines the process of loading experimental spectral data, applying matchms filters, scoring against reference libraries, and generating reproducible CSV results, all managed through a comprehensive YAML configuration.""",
     )
     parser.add_argument(
         "--version", action="version", version=f"%(prog)s {__version__}"
@@ -484,7 +399,7 @@ def main(argv: list[str] | None = None) -> int:
     # Annotate command
     annotate_parser = subparsers.add_parser(
         "annotate",
-        help="Annotate experimental spectra against a reference library.",
+        help="Run the core MassFlow annotation pipeline using a YAML configuration file. This is the primary command for reproducible MS/MS data analysis.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     annotate_parser.add_argument(
@@ -492,60 +407,10 @@ def main(argv: list[str] | None = None) -> int:
     )
     annotate_parser.set_defaults(func=run_annotate)
 
-    # Browse command
-    browse_parser = subparsers.add_parser(
-        "browse",
-        help="Interactively browse spectral files (.msp, .mgf, .mzML, .db) in the terminal.",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-    )
-    browse_parser.add_argument(
-        "file", help="Path to the spectral file or database to browse."
-    )
-    browse_parser.set_defaults(func=run_browse)
-
-    # Browse-by-CAS command (CAS-driven chemical + spectral similarity inspector)
-    browse_cas_parser = subparsers.add_parser(
-        "browse-cas",
-        help="Interactive CAS-driven chemical+spectral similarity inspector in the terminal.",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-    )
-    browse_cas_parser.add_argument(
-        "library",
-        help="Path to the reference library (msp/mgf/sqlite) to search and inspect.",
-    )
-    browse_cas_parser.add_argument(
-        "--cas", required=True, help="CAS identifier to query (e.g. 50-00-0)"
-    )
-    browse_cas_parser.add_argument(
-        "--top-k",
-        type=int,
-        default=10,
-        help="Number of top candidates to present for selection (default: 10)",
-    )
-    browse_cas_parser.add_argument(
-        "--chem-weight",
-        type=float,
-        default=0.5,
-        help="Weight for chemical similarity in combined ranking (default: 0.5)",
-    )
-    browse_cas_parser.add_argument(
-        "--spec-weight",
-        type=float,
-        default=0.5,
-        help="Weight for spectral similarity in combined ranking (default: 0.5)",
-    )
-    browse_cas_parser.add_argument(
-        "--mz-tol",
-        type=float,
-        default=0.2,
-        help="m/z tolerance (Da) for lightweight spectral cosine matching (default: 0.2)",
-    )
-    browse_cas_parser.set_defaults(func=run_browse_cas)
-
     # Database Subcommands
     db_parser = subparsers.add_parser(
         "db",
-        help="Manage local spectral databases.",
+        help="Manage local SQLite spectral libraries: build, inspect, or merge databases for efficient reuse.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     db_subparsers = db_parser.add_subparsers(
