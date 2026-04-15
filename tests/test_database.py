@@ -100,3 +100,23 @@ def test_add_spectra_handling_none(temp_db, sample_spectrum):
     count = db.add_spectra([sample_spectrum, None], category="mixed")
     db.close()
     assert count == 1
+
+
+def test_operations_on_closed_db(temp_db, sample_spectrum):
+    db = SpectralDatabase(temp_db)
+    db.close()
+
+    with pytest.raises(ConnectionError, match="Database not connected"):
+        db.add_spectra([sample_spectrum])
+
+    with pytest.raises(ConnectionError, match="Database not connected"):
+        list(db.get_spectra())
+
+    with pytest.raises(ConnectionError, match="Database not connected"):
+        db.get_total_spectra_count()
+
+    with pytest.raises(ConnectionError, match="Database not connected"):
+        db.get_category_counts()
+
+    with pytest.raises(ConnectionError, match="Database not connected"):
+        db.get_precursor_mz_range()

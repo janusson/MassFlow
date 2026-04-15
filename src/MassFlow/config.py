@@ -52,7 +52,10 @@ class InputConfig(BaseModel):
 
     file_path: Optional[Path] = None
     data_directory: Optional[Path] = None
-    format: Optional[Literal["mgf", "msp", "mzml", "mzxml", "db", "sqlite"]] = None
+    format: Optional[Literal["mgf", "msp", "mzml", "mzxml", "db", "sqlite"]] = Field(
+        default=None,
+        description="Optional explicit format hint. If omitted, MassFlow infers the format from the file extension. When using data_directory, this should typically be left null to allow per-file inference.",
+    )
     library_path: Optional[Path] = Field(
         default=None,
         validation_alias=AliasChoices("library_path", "reference_library"),
@@ -276,10 +279,13 @@ class SimilarityConfig(BaseModel):
 
     algorithm: Literal[
         "cosine", "modified_cosine", "spec2vec", "ms2deepscore", "consensus", "cascade"
-    ] = "cosine"
+    ] = Field(
+        default="cosine",
+        description="Core: 'cosine', 'modified_cosine'. Experimental: 'spec2vec', 'ms2deepscore', 'consensus', 'cascade'.",
+    )
     consensus_weights: Optional[dict[str, float]] = Field(
         default=None,
-        description="Dictionary mapping algorithm names to their weights for consensus search.",
+        description="Experimental: Dictionary mapping algorithm names to their weights for consensus search.",
     )
 
     # Allow graceful fallback when consensus_weights is omitted. If set to False,
@@ -289,12 +295,15 @@ class SimilarityConfig(BaseModel):
         description="If True, fallback to a single 'cosine' engine when consensus_weights is None. If False, require explicit consensus_weights.",
     )
 
-    # Cascade Routing Parameters
+    # Cascade Routing Parameters (Experimental)
     cascade_tier1: Literal["cosine", "modified_cosine"] = "cosine"
     cascade_tier2: Literal["spec2vec", "ms2deepscore"] = "ms2deepscore"
     cascade_lower_bound: float = 0.4
     cascade_upper_bound: float = 0.85
-    model_path: Optional[Path] = None
+    model_path: Optional[Path] = Field(
+        default=None,
+        description="Experimental: Path to model weights for spec2vec or ms2deepscore.",
+    )
 
     # Tolerances
     ms1_tolerance: float = Field(
@@ -342,17 +351,25 @@ class SimilarityConfig(BaseModel):
 
 class WorkflowConfig(BaseModel):
     """
-    High-level workflow feature flags.
+    High-level workflow feature flags (All current fields are Experimental).
 
     In the current workflow implementation, ``perform_networking`` is the main
     toggle consumed directly by :mod:`MassFlow.workflow`. The remaining fields
     are schema-level placeholders for adjacent orchestration features.
     """
 
-    perform_peak_picking: bool = True
-    perform_alignment: bool = True
-    perform_networking: bool = False
-    export_consensus: bool = True
+    perform_peak_picking: bool = Field(
+        default=True, description="Experimental placeholder."
+    )
+    perform_alignment: bool = Field(
+        default=True, description="Experimental placeholder."
+    )
+    perform_networking: bool = Field(
+        default=False, description="Experimental: Generate GraphML molecular network."
+    )
+    export_consensus: bool = Field(
+        default=True, description="Experimental placeholder."
+    )
 
 
 class ExportConfig(BaseModel):
@@ -361,10 +378,14 @@ class ExportConfig(BaseModel):
 
     The current annotation workflow writes per-file CSV result reports and, when
     enabled, a GraphML molecular network. This model preserves a broader output
-    schema for future exporters and configuration compatibility.
+    schema for future exporters and configuration compatibility. Note that only 'csv'
+    is currently part of the stable v1.0 contract; other formats are experimental.
     """
 
-    format: Literal["csv", "pickle", "msp", "mgf", "json", "xlsx", "parquet"] = "csv"
+    format: Literal["csv", "pickle", "msp", "mgf", "json", "xlsx", "parquet"] = Field(
+        default="csv",
+        description="Stable: 'csv'. Experimental: 'pickle', 'msp', 'mgf', 'json', 'xlsx', 'parquet'.",
+    )
 
 
 class MassFlowConfig(BaseModel):

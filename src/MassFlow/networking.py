@@ -1,11 +1,14 @@
 """
-Graph construction utilities for MassFlow molecular networking.
+EXPERIMENTAL: Graph construction utilities for MassFlow molecular networking.
 
 This module converts annotation outputs into a GraphML network suitable for
 downstream visualization in tools such as Cytoscape or Gephi. The resulting
 graph contains query nodes, reference nodes, query-to-reference annotation
 edges from prior search results, and query-to-query similarity edges computed
 on demand from the processed query spectra.
+
+Note: Molecular networking is currently an experimental feature and is not
+part of the stable v1.0 contract.
 """
 
 import logging

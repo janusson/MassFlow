@@ -61,6 +61,7 @@ CURRENT_SPECTRA_COLUMNS = {
     "metadata",
     "mz_array",
     "intensity_array",
+    "triage_flags",
 }
 LEGACY_PEAKS_COLUMN = "peaks"
 
@@ -287,10 +288,16 @@ def create_current_spectra_table(connection: sqlite3.Connection) -> None:
             category TEXT,
             metadata TEXT,
             mz_array BLOB,
-            intensity_array BLOB
+            intensity_array BLOB,
+            triage_flags TEXT
         )
         """
     )
+
+    columns = get_spectra_table_columns(connection)
+    if columns and "triage_flags" not in columns:
+        cursor.execute("ALTER TABLE spectra ADD COLUMN triage_flags TEXT")
+
     connection.commit()
 
 
@@ -605,13 +612,15 @@ def create_migrated_spectra_table(connection: sqlite3.Connection) -> None:
             category TEXT,
             metadata TEXT,
             mz_array BLOB,
-            intensity_array BLOB
+            intensity_array BLOB,
+            triage_flags TEXT
         )
         """
     )
+    connection.commit()
 
 
-def _fetch_legacy_rows(connection: sqlite3.Connection) -> list[sqlite3.Row]:
+def _fetch_legacy_rows(connection: sqlite3.Connection) -> Iterator[sqlite3.Row]:
     """
     Fetch all legacy rows from the ``spectra`` table.
 
@@ -631,7 +640,7 @@ def _fetch_legacy_rows(connection: sqlite3.Connection) -> list[sqlite3.Row]:
     """
     cursor = connection.cursor()
     cursor.execute("SELECT * FROM spectra")
-    return list(cursor.fetchall())
+    return iter(cursor.fetchall())
 
 
 def migrate_legacy_peaks_database(
@@ -702,8 +711,9 @@ def migrate_legacy_peaks_database(
                 category,
                 metadata,
                 mz_array,
-                intensity_array
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                intensity_array,
+                triage_flags
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
 
         migrated_sample_checks: list[dict[str, Any]] = []
@@ -711,6 +721,25 @@ def migrate_legacy_peaks_database(
             mz_array, intensity_array = _decode_legacy_peaks_payload(row["peaks"])
             _validate_decoded_legacy_arrays(mz_array, intensity_array)
             mz_blob, intensity_blob = _serialize_peak_arrays(mz_array, intensity_array)
+
+            # Fast scan for Tyrosine immonium ion (136.076 Da)
+            triage_flags = {}
+            target_mz = 136.076
+            mz_tolerance = 0.05
+
+            idx = np.searchsorted(mz_array, target_mz)
+            has_tyrosine = False
+            for i in [idx - 1, idx]:
+                if 0 <= i < len(mz_array):
+                    if abs(mz_array[i] - target_mz) <= mz_tolerance:
+                        if intensity_array[i] > 0:
+                            has_tyrosine = True
+                            break
+
+            if has_tyrosine:
+                triage_flags["has_tyrosine_fragment"] = True
+
+            triage_json = json.dumps(triage_flags)
 
             cursor.execute(
                 insert_query,
@@ -725,6 +754,7 @@ def migrate_legacy_peaks_database(
                     row["metadata"] if "metadata" in row.keys() else "{}",
                     mz_blob,
                     intensity_blob,
+                    triage_json,
                 ),
             )
 
@@ -935,17 +965,41 @@ class SpectralDatabase:
 
         insert_query = """
             INSERT INTO spectra (
-                original_id, name, precursor_mz, charge, ionmode, adduct, category, metadata, mz_array, intensity_array
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                original_id, name, precursor_mz, charge, ionmode, adduct, category, metadata, mz_array, intensity_array, triage_flags
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
 
         for spectrum in spectra:
             if spectrum is None:
                 continue
 
+            mz_array_raw = np.asarray(spectrum.peaks.mz, dtype=np.float64)
+            intensity_array_raw = np.asarray(
+                spectrum.peaks.intensities, dtype=np.float64
+            )
+
+            # Fast scan for Tyrosine immonium ion (136.076 Da)
+            triage_flags = {}
+            target_mz = 136.076
+            mz_tolerance = 0.05
+
+            idx = np.searchsorted(mz_array_raw, target_mz)
+            has_tyrosine = False
+            for i in [idx - 1, idx]:
+                if 0 <= i < len(mz_array_raw):
+                    if abs(mz_array_raw[i] - target_mz) <= mz_tolerance:
+                        if intensity_array_raw[i] > 0:
+                            has_tyrosine = True
+                            break
+
+            if has_tyrosine:
+                triage_flags["has_tyrosine_fragment"] = True
+
+            triage_json = json.dumps(triage_flags)
+
             mz_blob, intensity_blob = _serialize_peak_arrays(
-                np.asarray(spectrum.peaks.mz, dtype=np.float64),
-                np.asarray(spectrum.peaks.intensities, dtype=np.float64),
+                mz_array_raw,
+                intensity_array_raw,
             )
             metadata_json = _json_serialize_metadata(spectrum.metadata.copy())
 
@@ -960,6 +1014,7 @@ class SpectralDatabase:
                 metadata_json,
                 mz_blob,
                 intensity_blob,
+                triage_json,
             )
             batch.append(row)
             count += 1
@@ -1050,6 +1105,9 @@ class SpectralDatabase:
         >>> spectrum = db._row_to_spectrum(row)
         """
         metadata = json.loads(row["metadata"])
+        if "triage_flags" in row.keys() and row["triage_flags"]:
+            triage = json.loads(row["triage_flags"])
+            metadata.update(triage)
         mz_array = np.frombuffer(row["mz_array"], dtype=np.float64).copy()
         intensity_array = np.frombuffer(row["intensity_array"], dtype=np.float64).copy()
         return Spectrum(mz=mz_array, intensities=intensity_array, metadata=metadata)

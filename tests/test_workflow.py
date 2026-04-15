@@ -51,8 +51,10 @@ def test_run_annotation_pipeline_success(
     )
 
     # Setup Config
-    exp_path = Path("experimental.mgf")
-    ref_path = Path("reference.msp")
+    exp_path = tmp_path / "experimental.mgf"
+    exp_path.touch()
+    ref_path = tmp_path / "reference.msp"
+    ref_path.touch()
     out_dir = tmp_path / "results"
 
     config = MassFlowConfig(
@@ -87,7 +89,7 @@ def test_run_annotation_pipeline_success(
     # Verify
     assert mock_load.call_count == 3
     mock_engine_cls.assert_called_with(config.similarity)
-    mock_engine_instance.search.assert_called_with([mock_query], [mock_ref], top_n=None)
+    mock_engine_instance.search.assert_called_with([mock_query], [mock_ref])
 
     expected_out_file = out_dir / "experimental_results.csv"
     expected_report_file = out_dir / "experimental_results.report.yaml"
@@ -99,9 +101,9 @@ def test_run_annotation_pipeline_success(
     assert report_args[0] == expected_report_file
     assert report_kwargs == {}
     report_payload = report_args[1]
-    assert report_payload["query_file"] == "experimental.mgf"
+    assert report_payload["query_file"] == str(exp_path)
     assert report_payload["results_csv"] == str(expected_out_file)
-    assert report_payload["library_path"] == "reference.msp"
+    assert report_payload["library_path"] == str(ref_path)
     assert report_payload["processing"] == config.processing.model_dump(mode="json")
     assert report_payload["similarity"] == config.similarity.model_dump(mode="json")
 
@@ -124,9 +126,14 @@ def test_run_annotation_pipeline_no_query_spectra(
     mock_load.side_effect = [[mock_ref], []]
     mock_process.side_effect = lambda s, c: s
 
+    exp_path = tmp_path / "exp.mgf"
+    exp_path.touch()
+    ref_path = tmp_path / "ref.msp"
+    ref_path.touch()
+
     config = MassFlowConfig(
         project=ProjectConfig(output_directory=tmp_path),
-        input=InputConfig(file_path=Path("exp.mgf"), library_path=Path("ref.msp")),
+        input=InputConfig(file_path=exp_path, library_path=ref_path),
     )
 
     # Should not raise exception, just log warning
@@ -143,9 +150,14 @@ def test_run_annotation_pipeline_no_reference_spectra(
     mock_load.side_effect = [[]]
     mock_process.side_effect = lambda s, c: s
 
+    exp_path = tmp_path / "exp.mgf"
+    exp_path.touch()
+    ref_path = tmp_path / "ref.msp"
+    ref_path.touch()
+
     config = MassFlowConfig(
         project=ProjectConfig(output_directory=tmp_path),
-        input=InputConfig(file_path=Path("exp.mgf"), library_path=Path("ref.msp")),
+        input=InputConfig(file_path=exp_path, library_path=ref_path),
     )
 
     with pytest.raises(ValueError, match="No valid spectra found in library"):
@@ -188,8 +200,13 @@ def test_run_annotation_pipeline_small_library_warning_threshold(
 
     mock_load.return_value = reference_spectra
     mock_process.side_effect = lambda spectra, config: spectra
+    exp_path = tmp_path / "experimental.mgf"
+    exp_path.touch()
+    ref_path = tmp_path / "reference.msp"
+    ref_path.touch()
+
     mock_process_single_file.return_value = (
-        Path("experimental.mgf"),
+        exp_path,
         [query_spectrum],
         [],
     )
@@ -197,8 +214,8 @@ def test_run_annotation_pipeline_small_library_warning_threshold(
     config = MassFlowConfig(
         project=ProjectConfig(output_directory=tmp_path / "results"),
         input=InputConfig(
-            file_path=Path("experimental.mgf"),
-            library_path=Path("reference.msp"),
+            file_path=exp_path,
+            library_path=ref_path,
         ),
     )
 
@@ -226,11 +243,14 @@ def test_run_annotation_pipeline_empty_data_directory(
     mock_load.return_value = [make_spectrum("ref_1")]
     mock_process.side_effect = lambda spectra, config: spectra
 
+    ref_path = tmp_path / "reference.msp"
+    ref_path.touch()
+
     config = MassFlowConfig(
         project=ProjectConfig(output_directory=tmp_path / "results"),
         input=InputConfig(
             data_directory=input_dir,
-            library_path=Path("reference.msp"),
+            library_path=ref_path,
         ),
     )
 
@@ -252,11 +272,14 @@ def test_run_annotation_pipeline_non_spectral_files_only(
     mock_load.return_value = [make_spectrum("ref_1")]
     mock_process.side_effect = lambda spectra, config: spectra
 
+    ref_path = tmp_path / "reference.msp"
+    ref_path.touch()
+
     config = MassFlowConfig(
         project=ProjectConfig(output_directory=tmp_path / "results"),
         input=InputConfig(
             data_directory=input_dir,
-            library_path=Path("reference.msp"),
+            library_path=ref_path,
         ),
     )
 

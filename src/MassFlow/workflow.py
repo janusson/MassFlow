@@ -102,20 +102,15 @@ def _process_single_file(
         chunk_size = 2000
         ref_chunk = []
 
-        # We extract top_n if the user added it to similarity config, otherwise None
-        top_n = getattr(config.similarity, "top_n", None)
-
         for ref_spec in ref_iterator:
             ref_chunk.append(ref_spec)
             if len(ref_chunk) >= chunk_size:
-                chunk_results = _worker_engine.search(
-                    query_spectra, ref_chunk, top_n=top_n
-                )
+                chunk_results = _worker_engine.search(query_spectra, ref_chunk)
                 all_results.extend(chunk_results)
                 ref_chunk = []
 
         if ref_chunk:
-            chunk_results = _worker_engine.search(query_spectra, ref_chunk, top_n=top_n)
+            chunk_results = _worker_engine.search(query_spectra, ref_chunk)
             all_results.extend(chunk_results)
 
         # Global FDR calculation across all chunks for this experimental file
@@ -152,21 +147,10 @@ def _process_single_file(
             if q_val <= fdr_threshold and not res.get("is_decoy", False):
                 fdr_filtered_results.append(res)
 
-        # Aggregate Top-N results across all chunks per query_id
+        # Sort results descending by score
         fdr_filtered_results.sort(key=lambda x: x["score"], reverse=True)
 
-        if top_n is not None:
-            final_results = []
-            query_counts: dict[str, int] = {}
-            for res in fdr_filtered_results:
-                qid = res["query_id"]
-                query_counts[qid] = query_counts.get(qid, 0) + 1
-                if query_counts[qid] <= top_n:
-                    final_results.append(res)
-        else:
-            final_results = fdr_filtered_results
-
-        return query_file, query_spectra, final_results
+        return query_file, query_spectra, fdr_filtered_results
 
     except Exception as e:
         logger.error(f"Failed to process {query_file}: {e}", exc_info=True)
@@ -281,6 +265,8 @@ def run_annotation_pipeline(
     # 1. Load Library for main process
     if not config.input.library_path:
         raise ValueError("Library path not specified in configuration.")
+    if not Path(config.input.library_path).exists():
+        raise ValueError(f"Library path does not exist: {config.input.library_path}")
 
     logger.info(f"Loading library: {config.input.library_path}")
     ref_gen = io.load_spectra(config.input.library_path)
@@ -311,8 +297,16 @@ def run_annotation_pipeline(
     # 2. Determine Input Files
     input_files = []
     if config.input.file_path:
+        if not Path(config.input.file_path).exists():
+            raise ValueError(
+                f"Input file path does not exist: {config.input.file_path}"
+            )
         input_files.append(config.input.file_path)
     elif config.input.data_directory:
+        if not Path(config.input.data_directory).exists():
+            raise ValueError(
+                f"Data directory does not exist: {config.input.data_directory}"
+            )
         # Recursively find all supported spectral files
         supported_exts = {
             ".mzml",

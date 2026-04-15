@@ -2,7 +2,6 @@
 Tests for MassFlow I/O module.
 """
 
-from pathlib import Path
 from unittest.mock import patch
 
 import numpy as np
@@ -21,69 +20,85 @@ def mock_spectrum():
     )
 
 
-def test_load_spectra_mgf(mock_spectrum):
+def test_load_spectra_mgf(mock_spectrum, tmp_path):
     with patch("MassFlow.io.load_from_mgf") as mock_load:
         # Mock load_from_mgf to return an iterator of spectra
         mock_load.return_value = iter([mock_spectrum])
 
+        p = tmp_path / "test.mgf"
+        p.touch()
+
         # io.load_spectra returns a generator yielding processed spectra
         # load_spectra calls _apply_filters which calls _sanitize_metadata
         # _sanitize_metadata expects a Spectrum object (has .get())
-        result = list(io.load_spectra(Path("test.mgf"), "mgf"))
+        result = list(io.load_spectra(p, "mgf"))
 
         assert len(result) == 1
         assert result[0].get("id") == "spec1"
 
 
-def test_load_spectra_msp(mock_spectrum):
+def test_load_spectra_msp(mock_spectrum, tmp_path):
     with patch("MassFlow.io.load_from_msp") as mock_load:
         mock_load.return_value = iter([mock_spectrum])
-        result = list(io.load_spectra(Path("test.msp"), "msp"))
+        p = tmp_path / "test.msp"
+        p.touch()
+        result = list(io.load_spectra(p, "msp"))
         assert len(result) == 1
         assert result[0].get("id") == "spec1"
 
 
-def test_load_spectra_mzml(mock_spectrum):
+def test_load_spectra_mzml(mock_spectrum, tmp_path):
     with patch("MassFlow.io.load_from_mzml") as mock_load:
         mock_load.return_value = iter([mock_spectrum])
-        result = list(io.load_spectra(Path("test.mzml"), "mzml"))
+        p = tmp_path / "test.mzml"
+        p.touch()
+        result = list(io.load_spectra(p, "mzml"))
         assert len(result) == 1
         assert result[0].get("id") == "spec1"
 
 
-def test_load_spectra_mzxml(mock_spectrum):
+def test_load_spectra_mzxml(mock_spectrum, tmp_path):
     with patch("MassFlow.io.load_from_mzxml") as mock_load:
         mock_load.return_value = iter([mock_spectrum])
-        result = list(io.load_spectra(Path("test.mzxml"), "mzxml"))
+        p = tmp_path / "test.mzxml"
+        p.touch()
+        result = list(io.load_spectra(p, "mzxml"))
         assert len(result) == 1
         assert result[0].get("id") == "spec1"
 
 
-def test_load_spectra_db(mock_spectrum):
+def test_load_spectra_db(mock_spectrum, tmp_path):
     # SpectralDatabase is imported inside the function, so we patch where it is defined
     with patch("MassFlow.database.SpectralDatabase") as MockDB:
         mock_instance = MockDB.return_value
         mock_instance.get_spectra.return_value = iter([mock_spectrum])
 
-        result = list(io.load_spectra(Path("test.db"), "db"))
+        p = tmp_path / "test.db"
+        p.touch()
+
+        result = list(io.load_spectra(p, "db"))
 
         assert len(result) == 1
         assert result[0].get("id") == "spec1"
-        MockDB.assert_called_with(Path("test.db"))
+        MockDB.assert_called_with(p)
 
 
-def test_load_spectra_proprietary_error():
+def test_load_spectra_proprietary_error(tmp_path):
     # Test that it raises error if vendor format is passed
+    p = tmp_path / "test.raw"
+    p.touch()
     with pytest.raises(
         io.UnsupportedVendorFormatError,
         match="MassFlow requires open data formats. Please convert vendor files to .mzML or .mgf using ProteoWizard or MS-DIAL prior to pipeline ingestion.",
     ):
-        list(io.load_spectra(Path("test.raw")))
+        list(io.load_spectra(p))
 
 
-def test_load_spectra_unsupported_format():
+def test_load_spectra_unsupported_format(tmp_path):
+    p = tmp_path / "test.xyz"
+    p.touch()
     with pytest.raises(ValueError, match="is not supported"):
-        list(io.load_spectra(Path("test.xyz"), "xyz"))
+        list(io.load_spectra(p, "xyz"))
 
 
 @pytest.mark.parametrize(
@@ -95,13 +110,17 @@ def test_load_spectra_unsupported_format():
         ("bad.mzxml", "load_from_mzxml"),
     ],
 )
-def test_load_spectra_propagates_malformed_loader_errors(file_name, loader_name):
+def test_load_spectra_propagates_malformed_loader_errors(
+    file_name, loader_name, tmp_path
+):
+    p = tmp_path / file_name
+    p.touch()
     with patch(
         f"MassFlow.io.{loader_name}",
         side_effect=ValueError("Malformed spectral file"),
     ):
         with pytest.raises(ValueError, match="Malformed spectral file"):
-            list(io.load_spectra(Path(file_name)))
+            list(io.load_spectra(p))
 
 
 def test_save_match_results(tmp_path):

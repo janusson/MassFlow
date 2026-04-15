@@ -58,12 +58,12 @@ def test_run_init_success(tmp_path):
         assert output_file.exists()
         content = output_file.read_text()
         assert "project:" in content
-        assert "My_Annotation_Project" in content
+        assert "Standard_Annotation_Project" in content
         mock_logger.info.assert_called_once()
 
         # Verify the generated template is a valid MassFlowConfig
         config = MassFlowConfig.from_yaml(output_file)
-        assert config.project.name == "My_Annotation_Project"
+        assert config.project.name == "Standard_Annotation_Project"
 
 
 def test_run_init_exists_no_force(tmp_path):
@@ -94,7 +94,7 @@ def test_run_init_exists_with_force(tmp_path):
 
         # Verify the generated template is a valid MassFlowConfig
         config = MassFlowConfig.from_yaml(output_file)
-        assert config.project.name == "My_Annotation_Project"
+        assert config.project.name == "Standard_Annotation_Project"
 
 
 def test_main_annotate():

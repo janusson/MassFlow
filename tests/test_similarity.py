@@ -132,6 +132,93 @@ def test_modified_cosine_integration(
     )
 
 
+def test_ms1_tolerance_filtering(cocaine_spectrum: Spectrum) -> None:
+    """Verify that queries outside the MS1 tolerance are rejected."""
+    # Create a query with a precursor mz shifted by 20 ppm
+    shift_ppm = 20.0
+    orig_precursor = float(cocaine_spectrum.get("precursor_mz"))
+    shift_da = orig_precursor * (shift_ppm / 1e6)
+
+    new_metadata = cocaine_spectrum.metadata.copy()
+    new_metadata["precursor_mz"] = orig_precursor + shift_da
+    new_metadata["id"] = "shifted_ms1"
+
+    query_spectrum = Spectrum(
+        mz=cocaine_spectrum.peaks.mz,
+        intensities=cocaine_spectrum.peaks.intensities,
+        metadata=new_metadata,
+    )
+
+    # Config with 10 ppm tolerance (should reject)
+    strict_config = SimilarityConfig(
+        algorithm="cosine", ms1_tolerance=10.0, min_score=0.0
+    )
+    strict_engine = SimilarityEngine(strict_config)
+
+    strict_results = strict_engine.search(
+        query_spectra=[query_spectrum], reference_spectra=[cocaine_spectrum]
+    )
+    strict_results = [r for r in strict_results if not r.get("is_decoy")]
+
+    assert len(strict_results) == 0, "Query outside MS1 tolerance was not rejected."
+
+    # Config with 30 ppm tolerance (should accept)
+    relaxed_config = SimilarityConfig(
+        algorithm="cosine", ms1_tolerance=30.0, min_score=0.0
+    )
+    relaxed_engine = SimilarityEngine(relaxed_config)
+
+    relaxed_results = relaxed_engine.search(
+        query_spectra=[query_spectrum], reference_spectra=[cocaine_spectrum]
+    )
+    relaxed_results = [r for r in relaxed_results if not r.get("is_decoy")]
+
+    assert len(relaxed_results) == 1, "Query inside MS1 tolerance was rejected."
+
+
+def test_min_matched_peaks_filtering() -> None:
+    """Verify that matches with fewer than min_matched_peaks are rejected."""
+    query = Spectrum(
+        mz=np.array([100.0, 200.0, 300.0], dtype="float"),
+        intensities=np.array([1.0, 1.0, 1.0], dtype="float"),
+        metadata={"id": "query1", "precursor_mz": 400.0},
+    )
+
+    # Ref matches 2 peaks exactly
+    ref = Spectrum(
+        mz=np.array([100.0, 200.0, 400.0], dtype="float"),
+        intensities=np.array([1.0, 1.0, 1.0], dtype="float"),
+        metadata={"id": "ref1", "precursor_mz": 400.0},
+    )
+
+    strict_config = SimilarityConfig(
+        algorithm="cosine", ms1_tolerance=10.0, min_matched_peaks=3, min_score=0.0
+    )
+    strict_engine = SimilarityEngine(strict_config)
+
+    strict_results = strict_engine.search(
+        query_spectra=[query], reference_spectra=[ref]
+    )
+    strict_results = [r for r in strict_results if not r.get("is_decoy")]
+
+    assert (
+        len(strict_results) == 0
+    ), "Result with too few matched peaks was not rejected."
+
+    relaxed_config = SimilarityConfig(
+        algorithm="cosine", ms1_tolerance=10.0, min_matched_peaks=2, min_score=0.0
+    )
+    relaxed_engine = SimilarityEngine(relaxed_config)
+
+    relaxed_results = relaxed_engine.search(
+        query_spectra=[query], reference_spectra=[ref]
+    )
+    relaxed_results = [r for r in relaxed_results if not r.get("is_decoy")]
+
+    assert len(relaxed_results) == 1, "Result with enough matched peaks was rejected."
+
+
+@pytest.mark.experimental
 def test_spec2vec_initialization():
     """Verify spec2vec engine initialization handles mock models correctly."""
     config = SimilarityConfig(algorithm="spec2vec", model_path=Path("dummy.model"))
@@ -146,6 +233,7 @@ def test_spec2vec_initialization():
         assert engine.similarity_function == mock_s2v.return_value
 
 
+@pytest.mark.experimental
 def test_ms2deepscore_initialization():
     """Verify ms2deepscore engine initialization handles mock models correctly."""
     config = SimilarityConfig(algorithm="ms2deepscore", model_path=Path("dummy.model"))

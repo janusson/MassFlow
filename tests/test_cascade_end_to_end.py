@@ -16,6 +16,8 @@ from MassFlow.config import (
 )
 from MassFlow.workflow import run_annotation_pipeline
 
+pytestmark = pytest.mark.experimental
+
 
 @pytest.fixture(autouse=True)
 def reset_worker_engine(monkeypatch):

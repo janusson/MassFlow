@@ -83,6 +83,9 @@ def load_spectra(
     :mod:`MassFlow.processing`.
     """
     path = Path(file_path)
+    if not path.exists():
+        raise FileNotFoundError(f"Input path does not exist: {path}")
+
     ext = path.suffix.lower()
 
     # Step 1: Check for unsupported vendor formats

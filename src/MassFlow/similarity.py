@@ -389,6 +389,7 @@ class SimilarityEngine:
         return results
 
 
+# EXPERIMENTAL: CascadeEngine is not part of the stable v1.0 contract.
 class CascadeEngine:
     """
     Smart routing similarity engine that probabilistically routes queries to save compute.
@@ -484,6 +485,7 @@ class CascadeEngine:
         return final_results
 
 
+# EXPERIMENTAL: ConsensusEngine is not part of the stable v1.0 contract.
 class ConsensusEngine:
     """
     Similarity search engine that aggregates scores from multiple metric algorithms.
@@ -718,6 +720,9 @@ def get_similarity_engine(
     Depending on the configured algorithm ('cosine', 'ms2deepscore', 'consensus', or 'cascade'),
     this function returns either a standard `SimilarityEngine` or a composite
     `ConsensusEngine` or `CascadeEngine` containing multiple initialized sub-engines.
+
+    Note: 'ms2deepscore', 'spec2vec', 'consensus', and 'cascade' engines are
+    considered experimental and are not part of the stable v1.0 contract.
 
     Parameters
     ----------

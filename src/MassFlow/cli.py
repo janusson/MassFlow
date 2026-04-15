@@ -116,20 +116,23 @@ def run_init(args: argparse.Namespace) -> int:
             )
             return 1
 
-        # Basic template content based on standard_config.yaml but commented
+        # Basic template content based on standard_config.yaml
         template = """project:
-  name: "My_Annotation_Project"
-  output_directory: "results"
+  name: "Standard_Annotation_Project"
+  output_directory: "results/standard_analysis"
 
 input:
   # Mandatory paths to your spectral data
-  file_path: "data/raw/experiment.mzML"
-  # data_directory: "data/raw/" # Alternatively, use a directory of files
+  file_path: "data/experiments/experiment.mzML"
+  # data_directory: "data/experiments/" # Alternatively, use a directory of files
   library_path: "data/libraries/library.msp"
-  format: "mzml" # mgf, msp, mzml, mzxml, db, sqlite
+  format: "mzml"
 
 processing:
-  # Metadata cleaning toggles (matchms native)
+  # ------------------------------------------------------------------
+  # METADATA PROCESSING
+  # These toggles map to matchms metadata filters.
+  # ------------------------------------------------------------------
   clean_metadata: true
   add_retention_time: true
   repair_inchi_inchikey_smiles: true
@@ -139,54 +142,42 @@ processing:
   derive_ionmode: true
   make_charge_int: true
 
-  # Peak filtering settings
+  # ------------------------------------------------------------------
+  # PEAK PROCESSING
+  # These settings are applied to both query and reference spectra.
+  # ------------------------------------------------------------------
   filter_by_intensity: true
   noise_threshold: 1000.0
   min_intensity: 0.0
+
   filter_min_peaks: true
   min_peaks: 5
+
   filter_by_mz: true
   mz_min: 0.0
   mz_max: 1000.0
+
   reduce_to_top_n_peaks: true
   n_max: 100
+
   normalize_intensity: true
 
-  # Metadata context
-  # instrument: "Orbitrap"
-  # mode: "positive"
-
 similarity:
-  # "cosine", "modified_cosine", "spec2vec", "ms2deepscore", "consensus", "cascade"
+  # ------------------------------------------------------------------
+  # CORE SEARCH SETTINGS
+  # Stable options: "cosine", "modified_cosine"
+  # ------------------------------------------------------------------
   algorithm: "cosine"
-
-  # Tolerances and Thresholds
   ms1_tolerance: 10.0
   ms2_tolerance: 0.02
-  tolerance: 0.02  # Legacy, superceded by ms2_tolerance where applicable
-  tolerance_unit: "Da" # Da or ppm
+  tolerance_unit: "Da"
   min_score: 0.6
   min_matched_peaks: 3
   fdr_threshold: 0.05
-  analog_search: false
-
-  # Advanced Engine Settings (used if algorithm is 'cascade')
-  cascade_tier1: "cosine"
-  cascade_tier2: "ms2deepscore"
-  cascade_lower_bound: 0.4
-  cascade_upper_bound: 0.85
-
-  # Model path for spec2vec or ms2deepscore
-  # model_path: "models/ms2deepscore_model.pt"
-
-workflow:
-  perform_peak_picking: true
-  perform_alignment: true
-  perform_networking: false
-  export_consensus: true
 
 export:
-  format: "csv" # csv, pickle, msp, mgf, json, xlsx, parquet
+  # The current stable annotation workflow writes CSV result tables.
+  format: "csv"
 """
         with open(output_path, "w") as f:
             f.write(template)
@@ -239,6 +230,10 @@ def run_db_build(args: argparse.Namespace) -> int:
         cleaned_spectra = processing.process_spectra(raw_spectra, config.processing)
 
         added = db.add_spectra(cleaned_spectra, category=args.category)
+
+        if added == 0:
+            raise ValueError(f"No valid spectra were extracted from {args.input}.")
+
         logger.info(
             f"Successfully processed and added {added} spectra to the database."
         )
@@ -273,6 +268,14 @@ def run_db_inspect(args: argparse.Namespace) -> int:
         db = SpectralDatabase(args.file)
 
         total = db.get_total_spectra_count()
+        if total == 0:
+            print("\n" + "=" * 50)
+            print(f"DATABASE INSPECTION: {args.file}")
+            print("=" * 50)
+            print("Database is empty (0 spectra).")
+            print("=" * 50 + "\n")
+            return 0
+
         cat_counts = db.get_category_counts()
         mz_min, mz_max = db.get_precursor_mz_range()
 
@@ -331,9 +334,16 @@ def run_db_merge(args: argparse.Namespace) -> int:
             # Since get_spectra returns an iterator, add_spectra will batch insert smoothly
             added = out_db.add_spectra(in_db.get_spectra(), category="merged")
             total_added += added
-            logger.info(f"Added {added} spectra from {input_db_path}")
+
+            if added == 0:
+                logger.warning(f"No valid spectra were found in {input_db_path}")
+            else:
+                logger.info(f"Added {added} spectra from {input_db_path}")
 
             in_db.close()
+
+        if total_added == 0:
+            raise ValueError("No valid spectra were merged from the input databases.")
 
         logger.info(
             f"Successfully merged {total_added} total spectra into {args.output}."
@@ -370,7 +380,7 @@ def main(argv: list[str] | None = None) -> int:
 
     parser = argparse.ArgumentParser(
         prog="MassFlow",
-        description="""MassFlow: A robust, config-first Python toolkit for local tandem mass spectrometry (MS/MS) annotation. It streamlines the process of loading experimental spectral data, applying matchms filters, scoring against reference libraries, and generating reproducible CSV results, all managed through a comprehensive YAML configuration.""",
+        description="""MassFlow: A robust, config-first Python toolkit for local tandem mass spectrometry (MS/MS) annotation. It streamlines the process of loading experimental spectral data, applying matchms filters, scoring against reference libraries, and generating reproducible CSV results, all managed through a comprehensive YAML configuration. Some advanced features (e.g., ML engines, networking) are considered experimental.""",
     )
     parser.add_argument(
         "--version", action="version", version=f"%(prog)s {__version__}"
@@ -381,7 +391,7 @@ def main(argv: list[str] | None = None) -> int:
     # Init command
     init_parser = subparsers.add_parser(
         "init",
-        help="Generate a standardized MassFlow configuration template.",
+        help="Generate a standardized MassFlow configuration template. (Includes experimental flags)",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     init_parser.add_argument(
@@ -399,7 +409,7 @@ def main(argv: list[str] | None = None) -> int:
     # Annotate command
     annotate_parser = subparsers.add_parser(
         "annotate",
-        help="Run the core MassFlow annotation pipeline using a YAML configuration file. This is the primary command for reproducible MS/MS data analysis.",
+        help="Run the stable MassFlow annotation pipeline using a YAML configuration file. This is the primary command for reproducible MS/MS data analysis.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     annotate_parser.add_argument(

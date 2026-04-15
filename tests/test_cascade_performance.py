@@ -5,10 +5,13 @@ from __future__ import annotations
 import time
 
 import numpy as np
+import pytest
 from matchms import Spectrum
 
 from MassFlow.config import SimilarityConfig
 from MassFlow.similarity import CascadeEngine
+
+pytestmark = pytest.mark.experimental
 
 
 def make_spectrum(spec_id: str, precursor_mz: float = 100.0) -> Spectrum:

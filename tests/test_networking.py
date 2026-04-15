@@ -9,6 +9,9 @@ from matchms import Spectrum
 
 from MassFlow.config import MassFlowConfig
 from MassFlow.networking import generate_molecular_network
+from MassFlow.similarity import get_similarity_engine
+
+pytestmark = pytest.mark.experimental
 
 
 @pytest.fixture
@@ -150,7 +153,7 @@ def test_consensus_fallback_returns_cosine_engine(caplog):
     import logging
 
     from MassFlow.config import InputConfig
-    from MassFlow.similarity import SimilarityEngine, get_similarity_engine
+    from MassFlow.similarity import SimilarityEngine
 
     config = MassFlowConfig(input=InputConfig())
     config.similarity.algorithm = "consensus"

@@ -9,7 +9,12 @@ package version and handles sub-module imports for convenient access.
 
 from __future__ import annotations
 
-__version__ = "0.9.0.dev0"
+import importlib.metadata
+
+try:
+    __version__ = importlib.metadata.version("massflow")
+except importlib.metadata.PackageNotFoundError:
+    __version__ = "unknown"
 
 from . import cli, config, io, processing, similarity, workflow
 
