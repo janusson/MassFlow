@@ -24,6 +24,7 @@ The project is currently being stabilized for a `v1.0.0` release including CLI a
 | CSV result export | Stable target | Main reporting surface |
 | GraphML networking | Experimental | Optional and non-core |
 | `spec2vec`, `ms2deepscore`, `consensus`, `cascade` | Experimental | Higher setup and less stable support promise |
+| Orchestrator API | Experimental | Engine-agnostic data contracts and consensus routing for v1.1 ML integration |
 
 ## What MassFlow is for
 
@@ -56,14 +57,15 @@ These exist in the codebase, but should not be treated as part of the stable `v1
 - `ms2deepscore`
 - `consensus`
 - `cascade`
+- Orchestrator API (`MassFlow.models`, `MassFlow.consensus`) for engine-agnostic consensus routing
 
-## Installation
+## Installation and Dependency Policy
 
 MassFlow requires **Python 3.13+**.
 
-Using `uv` is recommended:
+The project uses `pyproject.toml` and `uv.lock` as the single source of truth for packaging, versioning, and dependencies. Using `uv` is strictly recommended to ensure reproducible environments.
 
-```/dev/null/install.sh#L1-4
+```shell
 git clone https://github.com/yourusername/MassFlow.git
 cd MassFlow
 uv python pin 3.13
@@ -94,41 +96,44 @@ SQLite libraries are also supported for explicit file inputs such as a reference
 
 You can generate a starter config:
 
-```/dev/null/init.sh#L1-1
-uv run massflow init --output standard_config.yaml
+```shell
+uv run massflow init --output massflow_config.yaml
 ```
 
 Then edit the key fields:
 
-```/dev/null/config.yaml#L1-18
+```yaml
 project:
-  name: "My_Annotation_Run"
+  name: "Standard_Annotation_Project"
   output_directory: "results/standard_analysis"
 
 input:
-  file_path: "data/experiments/example.mzML"
-  library_path: "data/libraries/example_library.msp"
+  file_path: "data/experiments/experiment.mzML"
+  library_path: "data/libraries/library.msp"
   format: "mzml"
 
 processing:
   clean_metadata: true
-  add_retention_time: true
   filter_by_intensity: true
   noise_threshold: 1000.0
+  min_intensity: 0.0
   filter_min_peaks: true
   min_peaks: 5
 
 similarity:
   algorithm: "cosine"
-  tolerance: 0.02
+  ms1_tolerance: 10.0
+  ms2_tolerance: 0.02
+  tolerance_unit: "Da"
   min_score: 0.6
+  min_matched_peaks: 3
   fdr_threshold: 0.05
 ```
 
 ### 3. Run annotation
 
-```/dev/null/annotate.sh#L1-1
-uv run massflow annotate --config standard_config.yaml
+```shell
+uv run massflow annotate --config massflow_config.yaml
 ```
 
 ### 4. Check the results
@@ -157,7 +162,7 @@ If a query spectrum has no retained match after score and FDR filtering, the row
 
 A simplified no-match example looks like this:
 
-```/dev/null/no_match_example.csv#L1-3
+```csv
 query_id,query_precursor_mz,reference_id,reference_name,score,Annotation_Status
 example_query_0,304.0,,,,Unknown
 ```
@@ -189,7 +194,7 @@ If your project contains:
 
 then a minimal config would look like:
 
-```/dev/null/example_config.yaml#L1-11
+```yaml
 project:
   output_directory: "results/standard_analysis"
 
@@ -204,8 +209,8 @@ similarity:
 
 and you would run:
 
-```/dev/null/example_run.sh#L1-1
-uv run massflow annotate --config standard_config.yaml
+```shell
+uv run massflow annotate --config massflow_config.yaml
 ```
 
 ## Database workflows
@@ -214,19 +219,19 @@ For repeated analyses, you can preprocess a library into SQLite.
 
 ### Build a database
 
-```/dev/null/db_build.sh#L1-1
-uv run massflow db build --input data/libraries/example_library.msp --output results/example_library.db --config standard_config.yaml --category library
+```shell
+uv run massflow db build --input data/libraries/example_library.msp --output results/example_library.db --config massflow_config.yaml --category library
 ```
 
 ### Inspect a database
 
-```/dev/null/db_inspect.sh#L1-1
+```shell
 uv run massflow db inspect results/example_library.db
 ```
 
 ### Merge databases
 
-```/dev/null/db_merge.sh#L1-1
+```shell
 uv run massflow db merge --inputs results/lib1.db results/lib2.db --output results/merged.db
 ```
 
@@ -258,22 +263,22 @@ For example, you might keep:
 
 Then merge them into one search library when appropriate:
 
-```/dev/null/user_db_workflow.sh#L1-3
-uv run massflow db build --input data/libraries/example_library.msp --output results/user_library.db --config standard_config.yaml --category personal
+```shell
+uv run massflow db build --input data/libraries/example_library.msp --output results/user_library.db --config massflow_config.yaml --category personal
 uv run massflow db inspect results/user_library.db
 uv run massflow db merge --inputs results/user_library.db results/standards.db --output results/master_user_library.db
 ```
 
 After that, set your config to use the merged library:
 
-```/dev/null/user_db_config.yaml#L1-4
+```yaml
 input:
   file_path: "data/experiments/COE001_16ppm_5uL.mzML"
   library_path: "results/master_user_library.db"
   format: "mzml"
 ```
 
-The database layer stores spectra plus metadata and a category label, so categories such as `reference`, `personal`, `standards`, or `project_x` can help you keep local libraries organized.
+The database layer stores spectra plus metadata and a category label, so categories such as `reference`, `personal`, `standards`, or `project_x` can help you keep local libraries organized. During database construction, MassFlow also performs a fast scan of the spectra to generate a `triage_flags` bitmask (e.g., flagging Tyrosine immonium ions) to optimize routing for future machine learning models.
 
 ## Processing controls
 
@@ -316,7 +321,7 @@ MassFlow can also be used from Python.
 
 For core engines such as `cosine` and `modified_cosine`:
 
-```/dev/null/python_api.py#L1-15
+```python
 from pathlib import Path
 
 from MassFlow import io
@@ -326,7 +331,7 @@ from MassFlow.similarity import SimilarityEngine
 query_spectra = list(io.load_spectra(Path("data/experiments/example.mgf"), "mgf"))
 reference_spectra = list(io.load_spectra(Path("data/libraries/example_library.msp"), "msp"))
 
-config = MassFlowConfig.from_yaml("standard_config.yaml")
+config = MassFlowConfig.from_yaml("massflow_config.yaml")
 engine = SimilarityEngine(config.similarity)
 results = engine.search(query_spectra, reference_spectra)
 ```
@@ -337,7 +342,7 @@ For advanced algorithms such as `consensus` or `cascade`, use the configured eng
 
 Run the test suite with:
 
-```/dev/null/test.sh#L1-1
+```shell
 uv run pytest
 ```
 
@@ -354,8 +359,6 @@ MassFlow is intentionally conservative at the I/O boundary.
 
 - `README.md`: quickstart and user-facing overview
 - `ARCHITECTURE.md`: module responsibilities and data flow
-- `docs/MassFlow_Overview.md`: short project summary
-- `docs/EXPERIMENTAL.md`: experimental features and non-core interfaces
 - `TODO.md`: release blockers and implementation prompts
 - `V1_0_DEVELOPMENT_PLAN.md`: staged path to a stable `v1.0.0`
 

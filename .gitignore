@@ -220,3 +220,4 @@ results/
 requirements-dev.txt
 scripts/
 repomix-output.xml
+uv.lock

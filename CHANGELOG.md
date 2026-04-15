@@ -1,49 +1,36 @@
 # CHANGELOG
 
-## Unreleased
+## v1.0.0
 
-**Status:**
-MassFlow remains pre-1.0 software and is still being aligned toward a narrower,
-more reliable `v1.0` release surface.
+**Summary:**
+MassFlow v1.0.0 is the first stable release, locking down a narrow, reliable, config-first Python toolkit for local MS/MS annotation workflows. This release focuses on stability, predictability, and reproducible tabular outputs, clearly separating the core pipeline from experimental features.
 
-**Current focus:**
-Current work is centered on making the documented CLI workflow match the actual
-code: a config-first local annotation pipeline, predictable CSV outputs, and
-SQLite-backed library workflows, while clearly classifying more advanced paths
-as experimental.
-
-**Core workflow currently surfaced:**
-- `massflow annotate --config ...` for end-to-end annotation runs
+**Included in this release (Stable Contract):**
+- Config-driven CLI workflow (`massflow annotate --config ...`) and starter template generation (`massflow init`)
 - YAML configuration loading and validation via `MassFlowConfig`
 - Open-format ingestion for `mzML`, `mzXML`, `MGF`, and `MSP`
-- Optional SQLite library usage through `.db` / `.sqlite` inputs
-- Configurable `matchms`-based metadata cleaning and peak filtering
-- Similarity search with `cosine` and `modified_cosine`
-- Per-file CSV result export
+- Strict IO boundaries that explicitly reject vendor raw formats (requiring pre-conversion)
 - SQLite library management through `massflow db build`, `inspect`, and `merge`
+- Configurable `matchms`-based metadata cleaning and peak filtering
+- Classical similarity search with `cosine` and `modified_cosine`
+- Per-file CSV result export accompanied by YAML provenance sidecar reports
+- Automated FDR (False Discovery Rate) estimation with strict target-decoy warnings for under-powered libraries
 
-**Experimental or not yet part of the stable promise:**
+**Experimental (Not part of the stable promise):**
+- Advanced ML engines (`spec2vec`, `ms2deepscore`)
+- Complex routing and orchestration (`consensus`, `cascade`)
 - GraphML molecular-network export
-- Advanced engines and orchestration paths:
-  - `spec2vec`
-  - `ms2deepscore`
-  - `consensus`
-  - `cascade`
-- Broader config fields that are present in the schema but not yet central to
-  the stable annotation contract
+- Terminal User Interfaces (TUI)
+- Alternative export formats (`pickle`, `json`, `xlsx`, `parquet`)
 
-**Recent documentation and release-surface cleanup:**
-- Simplified the release history to a smaller, more maintainable changelog
+**Architectural Foundations (v1.1 Prep):**
+- Established strict Pydantic data contracts (`AnnotationHit`, `ConsensusInput`, `ConsensusResult`) to standardize communication with future ML satellite modules.
+- Implemented a pure-Python, dependency-free `ConsensusEngine` for configurable weighted scoring, tie-breaking, and scientific credibility checks.
+- Added a fast `numpy`-based triage scan during SQLite `massflow db build` to flag spectra of interest (e.g., Tyrosine immonium ion) without heavy ML compute.
 
-**Known pre-1.0 constraints:**
-- Vendor raw formats are not converted inside MassFlow and should be converted
-  to open formats before use
-- The main workflow currently writes CSV outputs directly even though the config
-  schema exposes a broader export surface
-- Some configuration fields are placeholders for future or experimental
-  workflows and are not fully wired into the main `annotate` path
-- Advanced similarity engines exist in the codebase but should not yet be
-  treated as equally mature or equally supported
+**Known constraints:**
+- Vendor raw formats must be converted to open formats before use
+- The main workflow currently writes CSV outputs directly even though the config schema exposes a broader export surface
 
 ## v0.1.0
 

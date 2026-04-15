@@ -97,7 +97,7 @@ advanced ML-backed engines remain outside the core support promise.
 
 ## Component Diagram
 
-```/dev/null/architecture.mmd#L1-34
+```mermaid
 graph TD
     subgraph User_Surfaces
         CLI["CLI<br/>src/MassFlow/cli.py"]
@@ -196,7 +196,7 @@ The CLI loads the config and calls `run_annotation_pipeline()`.
 
 ## Sequence Diagram
 
-```/dev/null/annotation-sequence.mmd#L1-41
+```mermaid
 sequenceDiagram
     autonumber
     participant User
@@ -209,7 +209,7 @@ sequenceDiagram
     participant DB as database.py
     participant Network as networking.py
 
-    User->>CLI: massflow annotate --config standard_config.yaml
+    User->>CLI: massflow annotate --config massflow_config.yaml
     CLI->>Config: MassFlowConfig.from_yaml(...)
     Config-->>CLI: validated config
     CLI->>Workflow: run_annotation_pipeline(config)
@@ -319,7 +319,7 @@ These features exist in the repository but should be treated more cautiously:
 - GraphML networking
 - pickle-oriented utility paths
 
-See `docs/EXPERIMENTAL.md` for the user-facing guide to what is currently experimental, why it is classified that way, and how to approach those features safely.
+See `README.md` for the user-facing guide to what is currently experimental, why it is classified that way, and how to approach those features safely.
 
 ---
 
@@ -379,26 +379,29 @@ MassFlow follows a few simple design rules:
 
 A typical config-driven run looks like this:
 
-```/dev/null/example.yaml#L1-15
+```yaml
 project:
   output_directory: "results/standard_analysis"
 
 input:
-  file_path: "data/experiments/COE001_16ppm_5uL.mzML"
-  library_path: "data/libraries/example_library.msp"
+  file_path: "data/experiments/experiment.mzML"
+  library_path: "data/libraries/library.msp"
   format: "mzml"
 
 similarity:
   algorithm: "cosine"
-  tolerance: 0.02
+  ms1_tolerance: 10.0
+  ms2_tolerance: 0.02
+  tolerance_unit: "Da"
   min_score: 0.6
+  min_matched_peaks: 3
   fdr_threshold: 0.05
 ```
 
 Run it with:
 
-```/dev/null/command.sh#L1-1
-uv run massflow annotate --config standard_config.yaml
+```shell
+uv run massflow annotate --config massflow_config.yaml
 ```
 
 This will process the experimental file, search it against the reference

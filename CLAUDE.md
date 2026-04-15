@@ -55,8 +55,8 @@ The core application logic resides in `src/MassFlow/`:
 
 ## Current v1.0 Release Stabilization Focus
 - [x] Lock the v1.0 Product Contract (Step 1 of V1_0_DEVELOPMENT_PLAN.md).
-- [ ] Clean the Release Surface and remove packaging/docs drift (Step 2).
-- [ ] Classify Core vs. Experimental features in CLI and documentation (Step 3).
-- [ ] Harden the `massflow annotate` workflow and SQLite library paths (Step 4 & 5).
-- [ ] Reduce documentation debt and finalize the v1.0 test gate (Step 6 & 7).
-- [ ] Prepare the v1.0.0 release candidate (Step 8).
+- [x] Clean the Release Surface and remove packaging/docs drift (Step 2).
+- [x] Classify Core vs. Experimental features in CLI and documentation (Step 3).
+- [x] Harden the `massflow annotate` workflow and SQLite library paths (Step 4 & 5).
+- [x] Reduce documentation debt and finalize the v1.0 test gate (Step 6 & 7).
+- [x] Prepare the v1.0.0 release candidate (Step 8).
