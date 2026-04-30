@@ -53,7 +53,14 @@ def mock_similarity_engines():
         def __init__(self, config):
             self.config = config
 
-        def search(self, query_spectra, reference_spectra, min_score=None, top_n=None):
+        def search(
+            self,
+            query_spectra,
+            reference_spectra,
+            min_score=None,
+            top_n=None,
+            include_decoys=True,
+        ):
             def find_reference(label: str) -> Spectrum:
                 for ref in reference_spectra:
                     candidates = {
@@ -195,8 +202,8 @@ def test_cascade_e2e_workflow(mock_executor, tmp_path):
     config = MassFlowConfig(
         project=ProjectConfig(output_directory=output_dir),
         input=InputConfig(
-            file_path=query_path,
-            reference_library=ref_path,
+            input_path=query_path,
+            library_path=ref_path,
             format="mgf",  # Assuming MGF for queries
         ),
         processing=ProcessingConfig(

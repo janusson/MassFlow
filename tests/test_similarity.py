@@ -151,7 +151,7 @@ def test_ms1_tolerance_filtering(cocaine_spectrum: Spectrum) -> None:
 
     # Config with 10 ppm tolerance (should reject)
     strict_config = SimilarityConfig(
-        algorithm="cosine", ms1_tolerance=10.0, min_score=0.0
+        algorithm="cosine", resolution_ppm=10.0, ms1_tolerance=0.0, min_score=0.0
     )
     strict_engine = SimilarityEngine(strict_config)
 
@@ -192,7 +192,11 @@ def test_min_matched_peaks_filtering() -> None:
     )
 
     strict_config = SimilarityConfig(
-        algorithm="cosine", ms1_tolerance=10.0, min_matched_peaks=3, min_score=0.0
+        algorithm="cosine",
+        resolution_ppm=10.0,
+        ms1_tolerance=0.0,
+        min_matched_peaks=3,
+        min_score=0.0,
     )
     strict_engine = SimilarityEngine(strict_config)
 
@@ -206,7 +210,11 @@ def test_min_matched_peaks_filtering() -> None:
     ), "Result with too few matched peaks was not rejected."
 
     relaxed_config = SimilarityConfig(
-        algorithm="cosine", ms1_tolerance=10.0, min_matched_peaks=2, min_score=0.0
+        algorithm="cosine",
+        resolution_ppm=10.0,
+        ms1_tolerance=0.0,
+        min_matched_peaks=2,
+        min_score=0.0,
     )
     relaxed_engine = SimilarityEngine(relaxed_config)
 
@@ -221,31 +229,53 @@ def test_min_matched_peaks_filtering() -> None:
 @pytest.mark.experimental
 def test_spec2vec_initialization():
     """Verify spec2vec engine initialization handles mock models correctly."""
+    import sys
+    from unittest.mock import MagicMock
+
+    mock_gensim = MagicMock()
+    mock_spec2vec = MagicMock()
+
     config = SimilarityConfig(algorithm="spec2vec", model_path=Path("dummy.model"))
     with (
+        patch.dict(
+            sys.modules,
+            {
+                "gensim": mock_gensim,
+                "gensim.models": mock_gensim.models,
+                "spec2vec": mock_spec2vec,
+            },
+        ),
         patch.object(Path, "exists", return_value=True),
-        patch("gensim.models.Word2Vec.load") as mock_load,
-        patch("spec2vec.Spec2Vec") as mock_s2v,
     ):
         engine = SimilarityEngine(config)
-        mock_load.assert_called_once_with("dummy.model")
-        mock_s2v.assert_called_once()
-        assert engine.similarity_function == mock_s2v.return_value
+        mock_gensim.models.Word2Vec.load.assert_called_once_with("dummy.model")
+        mock_spec2vec.Spec2Vec.assert_called_once()
+        assert engine.similarity_function == mock_spec2vec.Spec2Vec.return_value
 
 
 @pytest.mark.experimental
 def test_ms2deepscore_initialization():
     """Verify ms2deepscore engine initialization handles mock models correctly."""
+    import sys
+    from unittest.mock import MagicMock
+
+    mock_ms2deepscore = MagicMock()
+
     config = SimilarityConfig(algorithm="ms2deepscore", model_path=Path("dummy.model"))
     with (
+        patch.dict(
+            sys.modules,
+            {
+                "ms2deepscore": mock_ms2deepscore,
+                "ms2deepscore.models": mock_ms2deepscore.models,
+            },
+        ),
         patch.object(Path, "exists", return_value=True),
-        patch("ms2deepscore.models.load_model") as mock_load,
-        patch("ms2deepscore.MS2DeepScore") as mock_m2d,
     ):
         engine = SimilarityEngine(config)
-        mock_load.assert_called_once_with("dummy.model")
-        mock_m2d.assert_called_once()
-        assert engine.similarity_function == mock_m2d.return_value
+        mock_ms2deepscore.models.load_model.assert_called_once_with("dummy.model")
+        mock_ms2deepscore.MS2DeepScore.assert_called_once()
+        assert engine.similarity_function == mock_ms2deepscore.MS2DeepScore.return_value
 
 
 def test_calculate_fdr_basic():
@@ -257,7 +287,8 @@ def test_calculate_fdr_basic():
 
     expected_scores = np.array([0.9, 0.85, 0.8, 0.7, 0.65, 0.6])
     expected_targets = np.array([True, False, True, True, False, True])
-    expected_q = np.array([0.0, 1 / 3, 1 / 3, 1 / 3, 0.5, 0.5])
+    # Conservative +1 pseudo-count formula q-values
+    expected_q = np.array([2 / 3, 2 / 3, 2 / 3, 2 / 3, 0.75, 0.75])
 
     np.testing.assert_allclose(sorted_scores, expected_scores)
     np.testing.assert_array_equal(is_target, expected_targets)
@@ -273,7 +304,8 @@ def test_calculate_fdr_perfect_separation():
 
     expected_scores = np.array([0.9, 0.8, 0.7, 0.4, 0.3, 0.2])
     expected_targets = np.array([True, True, True, False, False, False])
-    expected_q = np.array([0.0, 0.0, 0.0, 1 / 3, 2 / 3, 1.0])
+    # Conservative +1 pseudo-count formula q-values
+    expected_q = np.array([1 / 3, 1 / 3, 1 / 3, 2 / 3, 1.0, 1.0])
 
     np.testing.assert_allclose(sorted_scores, expected_scores)
     np.testing.assert_array_equal(is_target, expected_targets)
@@ -304,10 +336,12 @@ def test_calculate_fdr_empty_arrays():
 
     s, q, t = calculate_fdr(np.array([]), np.array([0.5, 0.6]))
     assert len(s) == 2
-    assert np.all(q == 0.0)
+    assert np.all(q == 1.0)
     assert not np.any(t)
 
     s, q, t = calculate_fdr(np.array([0.8, 0.9]), np.array([]))
     assert len(s) == 2
-    assert np.all(q == 0.0)
+    # Conservative +1 pseudo-count formula: FDR=1/targets
+    # With monotonicity enforced by minimum.accumulate, q-values for both are 0.5
+    np.testing.assert_allclose(q, np.array([0.5, 0.5]))
     assert np.all(t)

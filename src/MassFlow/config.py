@@ -22,9 +22,25 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    ValidationError,
     ValidationInfo,
     field_validator,
 )
+
+
+class LineNumberLoader(yaml.SafeLoader):
+    """Custom YAML loader that extracts line numbers for configuration keys."""
+
+    def construct_mapping(self, node, deep=False):
+        mapping = {}
+        lines = {}
+        for key_node, value_node in node.value:
+            key = self.construct_object(key_node, deep=deep)
+            value = self.construct_object(value_node, deep=deep)
+            mapping[key] = value
+            lines[key] = key_node.start_mark.line + 1
+        mapping["__lines__"] = lines
+        return mapping
 
 
 class ProjectConfig(BaseModel):
@@ -36,25 +52,21 @@ class ProjectConfig(BaseModel):
 
 class InputConfig(BaseModel):
     """
-    Input paths and format hints for annotation or browsing.
+    Input path and format hints for annotation.
 
-    ``workflow.run_annotation_pipeline`` expects a library path plus either
-    ``file_path`` or ``data_directory``. That relationship is not enforced here
-    so the same model can also be reused in narrower contexts.
-
-    Notes
-    -----
-    ``library_path`` is the preferred field name for new configurations.
-    ``reference_library`` remains accepted as a backward-compatible alias.
+    The ``input_path`` can point to either a single spectral file or a
+    directory containing multiple files.
     """
 
     model_config = ConfigDict(populate_by_name=True)
 
-    file_path: Optional[Path] = None
-    data_directory: Optional[Path] = None
+    input_path: Path = Field(
+        ...,
+        description="Path to the input spectral file or directory of files.",
+    )
     format: Optional[Literal["mgf", "msp", "mzml", "mzxml", "db", "sqlite"]] = Field(
         default=None,
-        description="Optional explicit format hint. If omitted, MassFlow infers the format from the file extension. When using data_directory, this should typically be left null to allow per-file inference.",
+        description="Optional explicit format hint. If omitted, MassFlow infers the format from the file extension.",
     )
     library_path: Optional[Path] = Field(
         default=None,
@@ -63,56 +75,11 @@ class InputConfig(BaseModel):
 
     @property
     def reference_library(self) -> Optional[Path]:
-        """
-        Backward-compatible alias for ``library_path``.
-
-        Returns
-        -------
-        Path or None
-            The configured library path.
-        """
         return self.library_path
 
     @reference_library.setter
     def reference_library(self, value: Optional[Path]) -> None:
-        """
-        Backward-compatible setter for ``library_path``.
-
-        Parameters
-        ----------
-        value : Path or None
-            Library path to assign.
-
-        Returns
-        -------
-        None
-        """
         self.library_path = value
-
-    @field_validator("data_directory")
-    @classmethod
-    def validate_data_directory(cls, v: Optional[Path]) -> Optional[Path]:
-        """
-        Preserve an optional data directory path without eager existence checks.
-
-        The validator currently acts as a normalization hook rather than strict
-        validation. Non-existent directories are allowed to pass so the calling
-        workflow can decide how and when to fail.
-
-        Parameters
-        ----------
-        v : Path or None
-            The path to the data directory to validate.
-
-        Returns
-        -------
-        Path or None
-            The validated path object, or None if not provided.
-        """
-        if v and not v.exists():
-            # Start warning but allow it (could be created later or user error)
-            pass
-        return v
 
 
 class SolventConfig(BaseModel):
@@ -127,6 +94,14 @@ class SolventConfig(BaseModel):
     name: str
     formula: Optional[str] = None
     mz: float
+
+    @field_validator("mz")
+    @classmethod
+    def validate_mz(cls, v: float) -> float:
+        """Ensure solvent m/z is not negative."""
+        if v < 0:
+            raise ValueError(f"Solvent m/z cannot be negative. Received: {v}")
+        return v
 
 
 class ProcessingConfig(BaseModel):
@@ -172,13 +147,13 @@ class ProcessingConfig(BaseModel):
 
     # Peak filtering toggles
     filter_by_intensity: bool = Field(
-        default=True, description="Filter peaks by minimum intensity/noise threshold."
+        default=False, description="Filter peaks by minimum intensity/noise threshold."
     )
     filter_min_peaks: bool = Field(
-        default=True, description="Require a minimum number of peaks."
+        default=False, description="Require a minimum number of peaks."
     )
     filter_by_mz: bool = Field(
-        default=True, description="Truncate peaks outside of an m/z range."
+        default=False, description="Truncate peaks outside of an m/z range."
     )
     reduce_to_top_n_peaks: bool = Field(
         default=False, description="Reduce spectrum to top N most intense peaks."
@@ -224,6 +199,22 @@ class ProcessingConfig(BaseModel):
     noise_threshold: float = Field(
         default=1000.0, description="Minimum intensity threshold"
     )
+
+    @field_validator("min_intensity", "noise_threshold")
+    @classmethod
+    def validate_non_negative_intensities(cls, v: float, info: ValidationInfo) -> float:
+        """Ensure intensity thresholds are non-negative."""
+        if v < 0:
+            raise ValueError(f"{info.field_name} cannot be negative. Received: {v}")
+        return v
+
+    @field_validator("min_peaks")
+    @classmethod
+    def validate_non_negative_peaks(cls, v: int, info: ValidationInfo) -> int:
+        """Ensure min_peaks is non-negative."""
+        if v < 0:
+            raise ValueError(f"{info.field_name} cannot be negative. Received: {v}")
+        return v
 
     # Metadata context
     instrument: Optional[str] = None
@@ -305,47 +296,59 @@ class SimilarityConfig(BaseModel):
         description="Experimental: Path to model weights for spec2vec or ms2deepscore.",
     )
 
-    # Tolerances
+    # Fixed-unit Tolerances
     ms1_tolerance: float = Field(
-        default=10.0, description="Precursor mass tolerance in ppm"
+        default=0.02, description="Precursor mass tolerance in Da"
+    )
+    resolution_ppm: Optional[float] = Field(
+        default=None,
+        description="Optional: Precursor mass resolution in ppm. If set, this overrides ms1_tolerance for MS1 filtering.",
     )
     ms2_tolerance: float = Field(
         default=0.02, description="Fragment mass tolerance in Da"
     )
 
-    tolerance: float = 0.005  # Legacy field for fragment tolerance, superceded by ms2_tolerance where applicable
-    tolerance_unit: Literal["Da", "ppm"] = "Da"
     min_score: float = 0.6
     analog_search: bool = False
     min_matched_peaks: int = 3
     fdr_threshold: float = 0.01
 
-    @field_validator("tolerance_unit")
+    @field_validator("ms1_tolerance", "ms2_tolerance")
     @classmethod
-    def validate_tolerance_unit(cls, v: str) -> str:
-        """
-        Validate that the tolerance unit is either 'Da' or 'ppm'.
+    def validate_mass_tolerances(cls, v: float, info: ValidationInfo) -> float:
+        """Ensure mass tolerances are not negative."""
+        if v < 0:
+            raise ValueError(f"{info.field_name} cannot be negative. Received: {v}")
+        return v
 
-        Parameters
-        ----------
-        v : str
-            The tolerance unit string to validate.
-
-        Returns
-        -------
-        str
-            The validated tolerance unit.
-
-        Raises
-        ------
-        ValueError
-            If ``tolerance_unit`` is not 'Da' or 'ppm'.
-        """
-        valid_units = {"Da", "ppm"}
-        if v not in valid_units:
+    @field_validator(
+        "min_score", "fdr_threshold", "cascade_lower_bound", "cascade_upper_bound"
+    )
+    @classmethod
+    def validate_score_ranges(cls, v: float, info: ValidationInfo) -> float:
+        """Ensure scores and thresholds are within [0.0, 1.0]."""
+        if not (0.0 <= v <= 1.0):
             raise ValueError(
-                f"tolerance_unit must be one of {valid_units}. Received: {v}"
+                f"{info.field_name} must be between 0.0 and 1.0. Received: {v}"
             )
+        return v
+
+    @field_validator("cascade_upper_bound")
+    @classmethod
+    def validate_cascade_range(cls, v: float, info: ValidationInfo) -> float:
+        """Ensure cascade upper bound is greater than lower bound."""
+        if "cascade_lower_bound" in info.data and v <= info.data["cascade_lower_bound"]:
+            raise ValueError(
+                f"cascade_upper_bound ({v}) must be greater than cascade_lower_bound ({info.data['cascade_lower_bound']})"
+            )
+        return v
+
+    @field_validator("min_matched_peaks")
+    @classmethod
+    def validate_min_matched_peaks(cls, v: int, info: ValidationInfo) -> int:
+        """Ensure minimum matched peaks is not negative."""
+        if v < 0:
+            raise ValueError(f"{info.field_name} cannot be negative. Received: {v}")
         return v
 
 
@@ -424,8 +427,10 @@ class MassFlowConfig(BaseModel):
         """
         Load and validate a ``MassFlowConfig`` from a YAML file.
 
-        The file is parsed with :func:`yaml.safe_load` and then validated by
-        Pydantic against the nested configuration models defined in this module.
+        The file is parsed using a custom YAML loader that tracks line numbers,
+        and then validated by Pydantic against the nested configuration models
+        defined in this module. Human-readable error messages with exact line
+        numbers are provided when validation fails.
 
         Parameters
         ----------
@@ -441,7 +446,7 @@ class MassFlowConfig(BaseModel):
         ------
         FileNotFoundError
             If the specified file path does not exist.
-        pydantic.ValidationError
+        ValueError
             If the YAML content does not conform to the MassFlow schema.
         yaml.YAMLError
             If the YAML document cannot be parsed.
@@ -451,17 +456,46 @@ class MassFlowConfig(BaseModel):
             raise FileNotFoundError(f"Config file not found: {path}")
 
         with open(path, "r") as f:
-            data = yaml.safe_load(f)
-        config_instance = cls(**data)
+            data = yaml.load(f, Loader=LineNumberLoader)
+
+        if data is None:
+            data = {}
+
+        try:
+            config_instance = cls(**data)
+        except ValidationError as e:
+            error_messages = []
+            for err in e.errors():
+                loc = err["loc"]
+                msg = err["msg"].replace("Value error, ", "")
+
+                current = data
+                line_num = "Unknown"
+                for i, part in enumerate(loc):
+                    if (
+                        isinstance(current, dict)
+                        and "__lines__" in current
+                        and part in current["__lines__"]
+                    ):
+                        if i == len(loc) - 1:
+                            line_num = current["__lines__"][part]
+                        current = current.get(part)
+                    elif isinstance(current, list) and isinstance(part, int):
+                        current = current[part]
+                    else:
+                        break
+
+                key_path = " -> ".join(str(k) for k in loc)
+                error_messages.append(f"Line {line_num}, Key '{key_path}': {msg}")
+
+            raise ValueError(
+                "Configuration validation failed:\n" + "\n".join(error_messages)
+            ) from e
 
         # Expand user for relevant Path fields in InputConfig
-        if config_instance.input.file_path:
-            config_instance.input.file_path = (
-                config_instance.input.file_path.expanduser()
-            )
-        if config_instance.input.data_directory:
-            config_instance.input.data_directory = (
-                config_instance.input.data_directory.expanduser()
+        if config_instance.input.input_path:
+            config_instance.input.input_path = (
+                config_instance.input.input_path.expanduser()
             )
         if config_instance.input.library_path:
             config_instance.input.library_path = (

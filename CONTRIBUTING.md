@@ -131,7 +131,7 @@ If your change affects how users run the program, update the relevant docs:
 - `README.md` for quickstart and user-facing workflow changes
 - `ARCHITECTURE.md` for structural or boundary changes
 - `CHANGELOG.md` for release-facing summaries
-- `V1_0_DEVELOPMENT_PLAN.md` or `TODO.md` if the work changes release planning
+- `V1_0_DEVELOPMENT_PLAN.md` if the work changes release planning
 
 Keep examples short and realistic. Prefer one clear example over many stale
 ones.

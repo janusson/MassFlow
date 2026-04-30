@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict
-from typing import List, TypedDict
+from typing import List, Optional, TypedDict
 
 import numpy as np
 from matchms import Spectrum, calculate_scores
@@ -45,6 +45,45 @@ class SearchResult(TypedDict):
     annotation_tier: str | None
 
 
+def _ms1_prefilter(
+    all_references: List[Spectrum],
+    query_spectra: List[Spectrum],
+    ms1_tolerance: float,
+    resolution_ppm: Optional[float] = None,
+) -> tuple[np.ndarray, ...]:
+    """Perform MS1 precursor m/z pre-filtering using Da tolerance or optionally PPM resolution."""
+    ref_mzs_raw = [s.get("precursor_mz") for s in all_references]
+    query_mzs_raw = [q.get("precursor_mz") for q in query_spectra]
+
+    # Track missing precursors to allow them to bypass the MS1 filter
+    ref_missing = np.array([r is None for r in ref_mzs_raw], dtype=bool)
+    query_missing = np.array([q is None for q in query_mzs_raw], dtype=bool)
+
+    ref_mzs = np.array([float(r) if r is not None else 0.0 for r in ref_mzs_raw])
+    query_mzs = np.array([float(q) if q is not None else 0.0 for q in query_mzs_raw])
+
+    # Avoid division by zero
+    safe_query_mzs = np.where(query_mzs == 0, np.nan, query_mzs)
+
+    if resolution_ppm is not None:
+        with np.errstate(divide="ignore", invalid="ignore"):
+            diff = (
+                np.abs(ref_mzs[:, None] - safe_query_mzs[None, :])
+                / safe_query_mzs[None, :]
+                * 1e6
+            )
+        mask = diff <= resolution_ppm
+    else:
+        diff = np.abs(ref_mzs[:, None] - query_mzs[None, :])
+        mask = diff <= ms1_tolerance
+
+    # Bypass MS1 filter if either query or reference is missing a precursor m/z
+    missing_mask = ref_missing[:, None] | query_missing[None, :]
+    mask = mask | missing_mask
+
+    return np.where(mask)
+
+
 def generate_decoys(spectra: List[Spectrum], random_seed: int = 42) -> List[Spectrum]:
     """
     Generate a decoy library by shuffling fragment intensities.
@@ -64,7 +103,18 @@ def generate_decoys(spectra: List[Spectrum], random_seed: int = 42) -> List[Spec
             decoy_metadata["compound_name"] = f"{name}_decoy"
 
         shuffled_intensities = spec.peaks.intensities.copy()
-        rng.shuffle(shuffled_intensities)
+        # If there are fewer than 2 unique intensity values, shuffling is ineffective.
+        # Instead, taper the array to break structural correlation.
+        if len(np.unique(shuffled_intensities)) < 2 and len(shuffled_intensities) > 1:
+            shuffled_intensities = shuffled_intensities * np.linspace(
+                1.0, 0.1, len(shuffled_intensities)
+            )
+        else:
+            original_intensities = shuffled_intensities.copy()
+            rng.shuffle(shuffled_intensities)
+            # Post-shuffle check to ensure it's not identical (for low peak counts)
+            if np.array_equal(shuffled_intensities, original_intensities):
+                shuffled_intensities = np.roll(shuffled_intensities, 1)
 
         decoy_spec = Spectrum(
             mz=spec.peaks.mz.copy(),
@@ -79,11 +129,44 @@ def calculate_fdr(
     target_scores: np.ndarray, decoy_scores: np.ndarray
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
-    Calculate q-values (FDR) for target scores.
-    Returns (sorted_scores, q_values, is_target)
+    Calculate q-values (False Discovery Rate) for target scores.
+    Uses the conservative target-decoy pseudo-count formula: FDR = (decoys + 1) / targets
+    to prevent overly optimistic 0.0 FDR values, particularly for small libraries.
+
+    Parameters
+    ----------
+    target_scores : np.ndarray
+        Array of scores from the target library search. Shape: (N,), dtype: float.
+    decoy_scores : np.ndarray
+        Array of scores from the decoy library search. Shape: (M,), dtype: float.
+
+    Returns
+    -------
+    tuple[np.ndarray, np.ndarray, np.ndarray]
+        A tuple containing:
+        - sorted_scores: Combined target and decoy scores sorted in descending order. Shape: (N+M,), dtype: float.
+        - q_values: Calculated q-values corresponding to each score. Shape: (N+M,), dtype: float.
+        - is_target: Boolean mask indicating if the score belongs to a target (True) or decoy (False). Shape: (N+M,), dtype: bool.
     """
     if len(target_scores) == 0 and len(decoy_scores) == 0:
         return np.array([]), np.array([]), np.array([], dtype=bool)
+
+    if len(decoy_scores) == 0:
+        sort_idx = np.argsort(target_scores)[::-1]
+        sorted_scores = target_scores[sort_idx]
+        # Conservative pseudo-count when no decoys exist: FDR = 1 / cum_targets
+        cum_targets = np.arange(1, len(sorted_scores) + 1)
+        fdr = np.minimum(1.0 / cum_targets, 1.0)
+        q_values = np.minimum.accumulate(fdr[::-1])[::-1]
+        is_target = np.ones_like(sorted_scores, dtype=bool)
+        return sorted_scores, q_values, is_target
+
+    if len(target_scores) == 0:
+        sort_idx = np.argsort(decoy_scores)[::-1]
+        sorted_scores = decoy_scores[sort_idx]
+        q_values = np.ones_like(sorted_scores, dtype=float)
+        is_target = np.zeros_like(sorted_scores, dtype=bool)
+        return sorted_scores, q_values, is_target
 
     all_scores = np.concatenate([target_scores, decoy_scores])
     is_target = np.concatenate(
@@ -103,9 +186,11 @@ def calculate_fdr(
 
     fdr = np.zeros_like(cum_targets, dtype=float)
     valid = cum_targets > 0
-    fdr[valid] = cum_decoys[valid] / cum_targets[valid]
+    # Conservative target-decoy formula (+1 pseudo-count)
+    fdr[valid] = (cum_decoys[valid] + 1) / cum_targets[valid]
+    fdr = np.minimum(fdr, 1.0)
 
-    # Q-value is the minimum FDR for all lower scores (which appear after in the descending array)
+    # Q-value is the minimum FDR for all lower scores
     q_values = np.minimum.accumulate(fdr[::-1])[::-1]
 
     return sorted_scores, q_values, sorted_is_target
@@ -140,16 +225,18 @@ class SimilarityEngine:
         self.config = config
 
         if self.config.algorithm == "cosine":
-            self.similarity_function = CosineGreedy(tolerance=self.config.tolerance)
+            self.similarity_function = CosineGreedy(tolerance=self.config.ms2_tolerance)
         elif self.config.algorithm == "modified_cosine":
-            self.similarity_function = ModifiedCosine(tolerance=self.config.tolerance)
+            self.similarity_function = ModifiedCosine(
+                tolerance=self.config.ms2_tolerance
+            )
         elif self.config.algorithm == "spec2vec":
             try:
                 import gensim
                 from spec2vec import Spec2Vec
             except ImportError:
                 raise ImportError(
-                    "spec2vec is required for Spec2Vec similarity. Install it with 'pip install spec2vec'."
+                    "spec2vec is required for Spec2Vec similarity. Install it with 'pip install massflow[ml]'."
                 )
 
             if not self.config.model_path or not self.config.model_path.exists():
@@ -170,7 +257,7 @@ class SimilarityEngine:
                 from ms2deepscore.models import load_model
             except ImportError:
                 raise ImportError(
-                    "ms2deepscore is required for MS2DeepScore similarity. Install it with 'pip install ms2deepscore'."
+                    "ms2deepscore is required for MS2DeepScore similarity. Install it with 'pip install massflow[ml]'."
                 )
 
             if not self.config.model_path or not self.config.model_path.exists():
@@ -190,6 +277,7 @@ class SimilarityEngine:
         reference_spectra: List[Spectrum],
         min_score: float | None = None,
         top_n: int | None = None,
+        include_decoys: bool = True,
     ) -> List[SearchResult]:
         """
         Run a similarity search of query spectra against a reference library.
@@ -213,6 +301,9 @@ class SimilarityEngine:
         top_n : int or None, optional
             An optional override for the maximum number of results to return per
             query spectrum. If None, all matches exceeding the thresholds are returned.
+        include_decoys : bool, optional
+            If True, generate and search against decoy spectra for FDR calculation.
+            If False, search only against the provided reference_spectra. Default is True.
 
         Returns
         -------
@@ -225,36 +316,27 @@ class SimilarityEngine:
 
         cutoff = min_score if min_score is not None else self.config.min_score
 
-        # Generate decoys and combine
-        decoy_spectra = generate_decoys(reference_spectra)
-        all_references = reference_spectra + decoy_spectra
-        n_targets = len(reference_spectra)
+        if include_decoys:
+            # Generate decoys and combine
+            decoy_spectra = generate_decoys(reference_spectra)
+            all_references = reference_spectra + decoy_spectra
+            n_targets = len(reference_spectra)
+        else:
+            all_references = reference_spectra
+            # If decoys are handled externally, we assume the first half of all_references are targets
+            n_targets = len(reference_spectra) // 2
+
         n_queries = len(query_spectra)
 
         # MS1 Pre-filtering for standard cosine
         if self.config.algorithm == "cosine" and hasattr(
             self.similarity_function, "sparse_array"
         ):
-            ref_mzs = np.array(
-                [float(s.get("precursor_mz") or 0.0) for s in all_references]
+            ms1_tol = getattr(self.config, "ms1_tolerance", 0.02)
+            res_ppm = getattr(self.config, "resolution_ppm", None)
+            idx_row, idx_col = _ms1_prefilter(
+                all_references, query_spectra, ms1_tol, res_ppm
             )
-            query_mzs = np.array(
-                [float(q.get("precursor_mz") or 0.0) for q in query_spectra]
-            )
-
-            # Avoid division by zero
-            safe_query_mzs = np.where(query_mzs == 0, np.nan, query_mzs)
-
-            with np.errstate(divide="ignore", invalid="ignore"):
-                ppm_diff = (
-                    np.abs(ref_mzs[:, None] - safe_query_mzs[None, :])
-                    / safe_query_mzs[None, :]
-                    * 1e6
-                )
-
-            ms1_tol = getattr(self.config, "ms1_tolerance", 10.0)
-            mask = ppm_diff <= ms1_tol
-            idx_row, idx_col = np.where(mask)
 
             if len(idx_row) > 0:
                 sparse_results = self.similarity_function.sparse_array(
@@ -274,12 +356,25 @@ class SimilarityEngine:
         else:
             # Calculate Scores natively (for Modified Cosine and ML models)
             # matchms types are invariant, so we ignore type checking for list covariance here
-            scores_obj = calculate_scores(
-                references=all_references,  # type: ignore
-                queries=query_spectra,  # type: ignore
-                similarity_function=self.similarity_function,
-                is_symmetric=False,
-            )
+            try:
+                scores_obj = calculate_scores(
+                    references=all_references,  # type: ignore
+                    queries=query_spectra,  # type: ignore
+                    similarity_function=self.similarity_function,
+                    is_symmetric=False,
+                )
+            except Exception as e:
+                logger.error(
+                    f"Vectorized similarity calculation failed: {e}",
+                    extra={
+                        "step": "calculate_scores",
+                        "num_queries": len(query_spectra),
+                        "num_references": len(all_references),
+                        "algorithm": self.config.algorithm,
+                    },
+                    exc_info=True,
+                )
+                raise
 
             # Safely extract numpy array (handles matchms >= 0.24 StackedSparseArray)
             scores_data = scores_obj.scores
@@ -374,7 +469,7 @@ class SimilarityEngine:
                             ref.get("compound_name") or ref.get("name")
                         ),
                         "reference_precursor_mz": ref_mz_val,
-                        "score": round(score_val, 4),
+                        "score": score_val,
                         "matched_peaks": match_val,
                         "smiles": str(ref.get("smiles")) if ref.get("smiles") else None,
                         "inchikey": (
@@ -419,6 +514,7 @@ class CascadeEngine:
         reference_spectra: List[Spectrum],
         min_score: float | None = None,
         top_n: int | None = None,
+        include_decoys: bool = True,
     ) -> List[SearchResult]:
         if not query_spectra or not reference_spectra:
             return []
@@ -429,7 +525,11 @@ class CascadeEngine:
         original_min = self.tier1_engine.config.min_score
         self.tier1_engine.config.min_score = 0.0
         tier1_raw_results = self.tier1_engine.search(
-            query_spectra, reference_spectra, min_score=0.0, top_n=None
+            query_spectra,
+            reference_spectra,
+            min_score=0.0,
+            top_n=None,
+            include_decoys=include_decoys,
         )
         self.tier1_engine.config.min_score = original_min
 
@@ -442,8 +542,8 @@ class CascadeEngine:
         gray_zone_queries = []
 
         # Route queries based on their MAX score in Tier 1
-        for q in query_spectra:
-            q_id = str(q.get("id"))
+        for i, q in enumerate(query_spectra):
+            q_id = str(q.get("id", f"query_{i}"))
             q_results = t1_grouped.get(q_id, [])
 
             if not q_results:
@@ -472,7 +572,11 @@ class CascadeEngine:
                 f"Routing {len(gray_zone_queries)} queries to Tier 2 Cascade: {self.config.cascade_tier2}"
             )
             tier2_results = self.tier2_engine.search(
-                gray_zone_queries, reference_spectra, min_score=min_score, top_n=top_n
+                gray_zone_queries,
+                reference_spectra,
+                min_score=min_score,
+                top_n=top_n,
+                include_decoys=include_decoys,
             )
             for res in tier2_results:
                 res["annotation_tier"] = f"Tier 2 ({self.config.cascade_tier2})"
@@ -518,43 +622,42 @@ class ConsensusEngine:
         reference_spectra: List[Spectrum],
         min_score: float | None = None,
         top_n: int | None = None,
+        include_decoys: bool = True,
     ) -> List[SearchResult]:
         """
         Run a consensus similarity search.
 
         This method aggregates similarity scores from multiple underlying engines
-        according to their predefined weights. For standard cosine algorithms, it
-        uses MS1 precursor pre-filtering to optimize execution. Decoys are generated
-        once and processed across all algorithms.
-
-        Parameters
-        ----------
-        query_spectra : List[matchms.Spectrum]
-            A list of experimental spectrum objects to be annotated.
-        reference_spectra : List[matchms.Spectrum]
-            A list of reference spectrum objects forming the library.
-        min_score : float or None, optional
-            An optional override for the minimum consensus score threshold.
-        top_n : int or None, optional
-            An optional override for the maximum number of results to return per
-            query spectrum.
-
-        Returns
-        -------
-        List[SearchResult]
-            A list of structured search results containing the aggregated score
-            and maximum matched peaks across the configured engines.
+        according to their predefined weights.
         """
         if not query_spectra or not reference_spectra:
             return []
 
         cutoff = min_score if min_score is not None else self.min_score
 
-        # Generate decoys and combine
-        decoy_spectra = generate_decoys(reference_spectra)
-        all_references = reference_spectra + decoy_spectra
-        n_targets = len(reference_spectra)
+        if include_decoys:
+            # Generate decoys and combine
+            decoy_spectra = generate_decoys(reference_spectra)
+            all_references = reference_spectra + decoy_spectra
+            n_targets = len(reference_spectra)
+        else:
+            all_references = reference_spectra
+            n_targets = len(reference_spectra) // 2
+
         n_queries = len(query_spectra)
+
+        # Run all engines and gather results
+        for engine, weight in self.engines:
+            logger.info(f"Running consensus component: {engine.config.algorithm}")
+            # Run without strict filtering to ensure we have matches to aggregate
+            engine.config.min_score = 0.0
+            engine.search(
+                query_spectra,
+                reference_spectra,
+                min_score=0.0,
+                top_n=None,
+                include_decoys=include_decoys,
+            )
         n_refs = len(all_references)
 
         consensus_scores = np.zeros((n_refs, n_queries), dtype=float)
@@ -565,24 +668,11 @@ class ConsensusEngine:
             if engine.config.algorithm == "cosine" and hasattr(
                 engine.similarity_function, "sparse_array"
             ):
-                ref_mzs = np.array(
-                    [float(s.get("precursor_mz") or 0.0) for s in all_references]
+                ms1_tol = getattr(engine.config, "ms1_tolerance", 0.02)
+                res_ppm = getattr(engine.config, "resolution_ppm", None)
+                idx_row, idx_col = _ms1_prefilter(
+                    all_references, query_spectra, ms1_tol, res_ppm
                 )
-                query_mzs = np.array(
-                    [float(q.get("precursor_mz") or 0.0) for q in query_spectra]
-                )
-                safe_query_mzs = np.where(query_mzs == 0, np.nan, query_mzs)
-
-                with np.errstate(divide="ignore", invalid="ignore"):
-                    ppm_diff = (
-                        np.abs(ref_mzs[:, None] - safe_query_mzs[None, :])
-                        / safe_query_mzs[None, :]
-                        * 1e6
-                    )
-
-                ms1_tol = getattr(engine.config, "ms1_tolerance", 10.0)
-                mask = ppm_diff <= ms1_tol
-                idx_row, idx_col = np.where(mask)
 
                 if len(idx_row) > 0:
                     sparse_results = engine.similarity_function.sparse_array(
@@ -604,12 +694,25 @@ class ConsensusEngine:
                     )
             else:
                 # Calculate Scores natively
-                scores_obj = calculate_scores(
-                    references=all_references,  # type: ignore
-                    queries=query_spectra,  # type: ignore
-                    similarity_function=engine.similarity_function,
-                    is_symmetric=False,
-                )
+                try:
+                    scores_obj = calculate_scores(
+                        references=all_references,  # type: ignore
+                        queries=query_spectra,  # type: ignore
+                        similarity_function=engine.similarity_function,
+                        is_symmetric=False,
+                    )
+                except Exception as e:
+                    logger.error(
+                        f"Consensus vectorized similarity calculation failed: {e}",
+                        extra={
+                            "step": "calculate_scores_consensus",
+                            "num_queries": len(query_spectra),
+                            "num_references": len(all_references),
+                            "engine_algorithm": engine.config.algorithm,
+                        },
+                        exc_info=True,
+                    )
+                    raise
 
                 scores_data = scores_obj.scores
                 if hasattr(scores_data, "to_array"):
@@ -696,7 +799,7 @@ class ConsensusEngine:
                             ref.get("compound_name") or ref.get("name")
                         ),
                         "reference_precursor_mz": ref_mz_val,
-                        "score": round(score_val, 4),
+                        "score": score_val,
                         "matched_peaks": match_val,
                         "smiles": str(ref.get("smiles")) if ref.get("smiles") else None,
                         "inchikey": (

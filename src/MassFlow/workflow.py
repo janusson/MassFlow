@@ -17,7 +17,7 @@ aggregating all chunk results for each experimental file.
 import logging
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
-from typing import List, Tuple
+from typing import Any, Dict, List, Tuple, cast
 
 import numpy as np
 from matchms import Spectrum
@@ -36,18 +36,39 @@ from MassFlow.similarity import (
 logger = logging.getLogger(__name__)
 
 _worker_engine: SimilarityEngine | ConsensusEngine | CascadeEngine | None = None
+_worker_references: List[Spectrum] | None = None
+_worker_decoys: List[Spectrum] | None = None
+_worker_tier2_engine: SimilarityEngine | None = None
 
 
-def _init_worker(config: MassFlowConfig) -> None:
+def _get_tier2_engine(config: MassFlowConfig) -> SimilarityEngine:
+    global _worker_tier2_engine
+    if _worker_tier2_engine is not None:
+        return _worker_tier2_engine
+
+    tier2_config = config.similarity.model_copy(
+        update={"algorithm": config.similarity.cascade_tier2}
+    )
+    _worker_tier2_engine = SimilarityEngine(tier2_config)
+    return _worker_tier2_engine
+
+
+def _init_worker(
+    config: MassFlowConfig,
+    references: List[Spectrum] | None,
+    decoys: List[Spectrum] | None,
+) -> None:
     """
-    Initialize a worker-local similarity engine.
+    Initialize a worker-local similarity engine and share pre-processed libraries.
 
     Each subprocess instantiates its own engine from the shared configuration so
-    large model state is not serialized or copied through inter-process
-    communication.
+    large model state is not serialized. References and decoys are passed once
+    at initialization to avoid repetitive disk I/O.
     """
-    global _worker_engine
+    global _worker_engine, _worker_references, _worker_decoys
     _worker_engine = get_similarity_engine(config.similarity)
+    _worker_references = references
+    _worker_decoys = decoys
 
 
 def _process_single_file(
@@ -84,34 +105,105 @@ def _process_single_file(
             return query_file, [], []
 
         # Ensure unique IDs for nodes
+        seen_ids = set()
         for i, q in enumerate(query_spectra):
-            if q.get("id") is None:
-                q.set("id", f"{query_file.stem}_query_{i}")
+            base_id = q.get("id")
+            if base_id is None:
+                new_id = f"{query_file.stem}_query_{i}"
+            else:
+                new_id = str(base_id)
+                counter = 1
+                while new_id in seen_ids:
+                    new_id = f"{base_id}_{counter}"
+                    counter += 1
 
-        global _worker_engine
-        if _worker_engine is None:
-            # Fallback in case process wasn't initialized correctly
-            _worker_engine = get_similarity_engine(config.similarity)
+            q.set("id", new_id)
+            seen_ids.add(new_id)
 
-        all_results = []
-        if config.input.library_path is None:
-            raise ValueError("Library path is not configured.")
-        ref_gen = io.load_spectra(config.input.library_path)
-        ref_iterator = processing.process_spectra(ref_gen, config.processing)
+        global _worker_engine, _worker_references, _worker_decoys
+        engine = (
+            _worker_engine
+            if _worker_engine is not None
+            else get_similarity_engine(config.similarity)
+        )
 
-        chunk_size = 2000
-        ref_chunk = []
+        standard_queries = []
+        triage_queries = []
+        for q in query_spectra:
+            if q.get("triage_flags") or q.get("triage_flag"):
+                triage_queries.append(q)
+            else:
+                standard_queries.append(q)
 
-        for ref_spec in ref_iterator:
-            ref_chunk.append(ref_spec)
-            if len(ref_chunk) >= chunk_size:
-                chunk_results = _worker_engine.search(query_spectra, ref_chunk)
-                all_results.extend(chunk_results)
-                ref_chunk = []
+        tier2_engine = None
+        if triage_queries:
+            tier2_engine = _get_tier2_engine(config)
 
-        if ref_chunk:
-            chunk_results = _worker_engine.search(query_spectra, ref_chunk)
-            all_results.extend(chunk_results)
+        # Search against shared memory libraries if available (from Pool initializer)
+        if _worker_references is not None and _worker_decoys is not None:
+            all_references = _worker_references + _worker_decoys
+            all_results = []
+            if standard_queries:
+                all_results.extend(
+                    engine.search(
+                        standard_queries, all_references, include_decoys=False
+                    )
+                )
+            if triage_queries and tier2_engine:
+                t2_results = tier2_engine.search(
+                    triage_queries, all_references, include_decoys=False
+                )
+                for res in t2_results:
+                    res["annotation_tier"] = (
+                        f"Triage ({config.similarity.cascade_tier2})"
+                    )
+                all_results.extend(t2_results)
+        else:
+            # Fallback for single-process testing or direct invocation
+            all_results = []
+            if config.input.library_path is None:
+                raise ValueError("Library path is not configured.")
+            ref_gen = io.load_spectra(config.input.library_path)
+            ref_iterator = processing.process_spectra(ref_gen, config.processing)
+
+            chunk_size = 2000
+            ref_chunk = []
+
+            for ref_spec in ref_iterator:
+                ref_chunk.append(ref_spec)
+                if len(ref_chunk) >= chunk_size:
+                    if standard_queries:
+                        all_results.extend(
+                            engine.search(
+                                standard_queries, ref_chunk, include_decoys=True
+                            )
+                        )
+                    if triage_queries and tier2_engine:
+                        t2_results = tier2_engine.search(
+                            triage_queries, ref_chunk, include_decoys=True
+                        )
+                        for res in t2_results:
+                            res["annotation_tier"] = (
+                                f"Triage ({config.similarity.cascade_tier2})"
+                            )
+                        all_results.extend(t2_results)
+                    ref_chunk.clear()
+
+            if ref_chunk:
+                if standard_queries:
+                    all_results.extend(
+                        engine.search(standard_queries, ref_chunk, include_decoys=True)
+                    )
+                if triage_queries and tier2_engine:
+                    t2_results = tier2_engine.search(
+                        triage_queries, ref_chunk, include_decoys=True
+                    )
+                    for res in t2_results:
+                        res["annotation_tier"] = (
+                            f"Triage ({config.similarity.cascade_tier2})"
+                        )
+                    all_results.extend(t2_results)
+                ref_chunk.clear()
 
         # Global FDR calculation across all chunks for this experimental file
         target_scores = []
@@ -268,45 +360,56 @@ def run_annotation_pipeline(
     if not Path(config.input.library_path).exists():
         raise ValueError(f"Library path does not exist: {config.input.library_path}")
 
-    logger.info(f"Loading library: {config.input.library_path}")
-    ref_gen = io.load_spectra(config.input.library_path)
-    reference_spectra = list(processing.process_spectra(ref_gen, config.processing))
+    library_size_mb = Path(config.input.library_path).stat().st_size / (1024 * 1024)
+    stream_library = library_size_mb > 500
 
-    if not reference_spectra:
-        raise ValueError("No valid spectra found in library.")
-
-    logger.info(f"Loaded {len(reference_spectra)} reference spectra.")
-
-    if len(reference_spectra) < 2000:
-        logger.warning(
-            f"\n"
-            f"================================================================================\n"
-            f"CRITICAL SCIENTIFIC WARNING: SMALL LIBRARY DETECTED\n"
-            f"The library contains only {len(reference_spectra)} spectra. \n"
-            f"Target-Decoy False Discovery Rate (FDR) statistics are fundamentally invalid on \n"
-            f"small sample sizes because the decoy null-distribution will be too sparse. \n"
-            f"A strict FDR threshold (currently set to {getattr(config.similarity, 'fdr_threshold', 0.01)}) will "
-            f"likely eliminate all true and putative matches as false positives.\n\n"
-            f"Recommendation:\n"
-            f"1. Use a comprehensive library (e.g., GNPS, MoNA, NIST) for FDR validation.\n"
-            f"2. Or, if using a small specialized library, relax the `fdr_threshold` \n"
-            f"   (e.g., 0.1 or 1.0) in your config to evaluate raw Cosine scores directly.\n"
-            f"================================================================================\n"
+    if stream_library:
+        logger.info(
+            f"Library size ({library_size_mb:.1f} MB) exceeds 500MB threshold. Using memory-efficient streaming mode."
         )
+        reference_spectra = None
+        decoy_spectra = None
+    else:
+        logger.info(f"Loading library: {config.input.library_path}")
+        ref_gen = io.load_spectra(config.input.library_path)
+        reference_spectra = list(processing.process_spectra(ref_gen, config.processing))
+
+        if not reference_spectra:
+            raise ValueError("No valid spectra found in library.")
+
+        logger.info(
+            f"Loaded {len(reference_spectra)} reference spectra. Generating decoys for FDR calculation..."
+        )
+        from MassFlow.similarity import generate_decoys
+
+        decoy_spectra = generate_decoys(reference_spectra)
+
+        if len(reference_spectra) < 2000:
+            logger.warning(
+                f"\n"
+                f"================================================================================\n"
+                f"CRITICAL SCIENTIFIC WARNING: SMALL LIBRARY DETECTED\n"
+                f"The library contains only {len(reference_spectra)} spectra. \n"
+                f"Target-Decoy False Discovery Rate (FDR) statistics are fundamentally invalid on \n"
+                f"small sample sizes because the decoy null-distribution will be too sparse. \n"
+                f"A strict FDR threshold (currently set to {getattr(config.similarity, 'fdr_threshold', 0.01)}) will "
+                f"likely eliminate all true and putative matches as false positives.\n\n"
+                f"Recommendation:\n"
+                f"1. Use a comprehensive library (e.g., GNPS, MoNA, NIST) for FDR validation.\n"
+                f"2. Or, if using a small specialized library, relax the `fdr_threshold` \n"
+                f"   (e.g., 0.1 or 1.0) in your config to evaluate raw Cosine scores directly.\n"
+                f"================================================================================\n"
+            )
 
     # 2. Determine Input Files
     input_files = []
-    if config.input.file_path:
-        if not Path(config.input.file_path).exists():
-            raise ValueError(
-                f"Input file path does not exist: {config.input.file_path}"
-            )
-        input_files.append(config.input.file_path)
-    elif config.input.data_directory:
-        if not Path(config.input.data_directory).exists():
-            raise ValueError(
-                f"Data directory does not exist: {config.input.data_directory}"
-            )
+    input_path = Path(config.input.input_path)
+    if not input_path.exists():
+        raise ValueError(f"Input path does not exist: {input_path}")
+
+    if input_path.is_file():
+        input_files.append(input_path)
+    else:
         # Recursively find all supported spectral files
         supported_exts = {
             ".mzml",
@@ -319,21 +422,15 @@ def run_annotation_pipeline(
             ".lcd",
             ".t2d",
         }
-        for f in config.input.data_directory.rglob("*"):
+        for f in input_path.rglob("*"):
             if f.is_file() and f.suffix.lower() in supported_exts:
                 input_files.append(f)
-            # Handle .d directories (Agilent)
+            # Handle .d directories (Agilent/Bruker)
             if f.is_dir() and f.suffix.lower() == ".d":
                 input_files.append(f)
 
         if not input_files:
-            raise ValueError(
-                f"No supported spectral files found in {config.input.data_directory}"
-            )
-    else:
-        raise ValueError(
-            "Neither input file_path nor data_directory specified in configuration."
-        )
+            raise ValueError(f"No supported spectral files found in {input_path}")
 
     # 3. Process Each File in Parallel using Multiprocessing (Bypassing GIL)
     config.output_directory.mkdir(parents=True, exist_ok=True)
@@ -345,7 +442,9 @@ def run_annotation_pipeline(
         f"Processing {len(input_files)} experimental files using multiprocessing..."
     )
 
-    with ProcessPoolExecutor(initializer=_init_worker, initargs=(config,)) as executor:
+    with ProcessPoolExecutor(
+        initializer=_init_worker, initargs=(config, reference_spectra, decoy_spectra)
+    ) as executor:
         futures = {
             executor.submit(_process_single_file, qf, config): qf for qf in input_files
         }
@@ -356,17 +455,64 @@ def run_annotation_pipeline(
                 processed_file, q_spectra, results = future.result()
 
                 if q_spectra:
-                    all_queries.extend(q_spectra)
-                    all_results.extend(results)
+                    # OOM Prevention: Only retain all queries and results in memory if needed for downstream steps
+                    if config.workflow.perform_networking:
+                        all_queries.extend(q_spectra)
+                        all_results.extend(results)
 
-                    # Save intermediate results for this file
-                    out_file = config.output_directory / (
-                        processed_file.stem + "_results.csv"
-                    )
-                    io.save_match_results(results, out_file, query_spectra=q_spectra)  # type: ignore
+                    # Save intermediate results for this file (Collision Prevention)
+                    base_stem = processed_file.stem
+                    export_format = config.export.format.lower()
+                    ext_map = {
+                        "csv": "csv",
+                        "json": "json",
+                        "xlsx": "xlsx",
+                        "parquet": "parquet",
+                        "pickle": "pkl",
+                        "msp": "msp",
+                        "mgf": "mgf",
+                    }
+                    ext = ext_map.get(export_format, "csv")
 
-                    report_file = config.output_directory / (
-                        processed_file.stem + "_results.report.yaml"
+                    out_file = config.output_directory / f"{base_stem}_results.{ext}"
+                    counter = 1
+                    while out_file.exists():
+                        out_file = (
+                            config.output_directory
+                            / f"{base_stem}_{counter}_results.{ext}"
+                        )
+                        counter += 1
+
+                    results_dict = cast(List[Dict[str, Any]], results)
+                    # Route to the correct exporter based on config.export.format
+                    if export_format == "json":
+                        io.save_match_results_to_json(
+                            results_dict, out_file, query_spectra=q_spectra
+                        )
+                    elif export_format == "xlsx":
+                        io.save_match_results_to_xlsx(
+                            results_dict, out_file, query_spectra=q_spectra
+                        )
+                    elif export_format == "parquet":
+                        io.save_match_results_to_parquet(
+                            results_dict, out_file, query_spectra=q_spectra
+                        )
+                    elif export_format == "csv":
+                        io.save_match_results(
+                            results_dict, out_file, query_spectra=q_spectra
+                        )
+                    else:
+                        # Fallback for other formats or unimplemented results exporters
+                        logger.warning(
+                            f"Export format '{export_format}' is not yet supported for result tables. Falling back to CSV."
+                        )
+                        out_file = out_file.with_suffix(".csv")
+                        io.save_match_results(
+                            results_dict, out_file, query_spectra=q_spectra
+                        )
+
+                    report_file = (
+                        config.output_directory / f"{out_file.stem}.report.yaml"
                     )
                     _write_analysis_report(
                         report_path=report_file,
@@ -389,13 +535,24 @@ def run_annotation_pipeline(
         try:
             from MassFlow.networking import generate_molecular_network
 
+            if reference_spectra is None:
+                logger.warning(
+                    "Molecular networking requested with a streamed library. "
+                    "Reference nodes in the output GraphML will be created from results "
+                    "but will lack full spectral metadata."
+                )
+
             network_out = config.output_directory / "molecular_network.graphml"
             generate_molecular_network(
                 all_queries=all_queries,
-                all_references=reference_spectra,
+                all_references=reference_spectra or [],
                 all_results=all_results,
                 config=config,
                 output_path=network_out,
+            )
+        except ImportError:
+            logger.error(
+                "Networking dependencies are missing. Please install them with 'pip install massflow[network]'."
             )
         except Exception as e:
             logger.error(f"Networking failed: {e}", exc_info=True)

@@ -120,3 +120,93 @@ def test_operations_on_closed_db(temp_db, sample_spectrum):
 
     with pytest.raises(ConnectionError, match="Database not connected"):
         db.get_precursor_mz_range()
+
+
+def test_decode_legacy_json_peaks_variations():
+    """Test the decoding of various legacy JSON peak formats."""
+    import json
+
+    import numpy as np
+
+    from MassFlow.database import _decode_legacy_peaks_payload
+
+    # Test dictionary with "peaks" key
+    payload_1 = {"peaks": [[100.0, 50.0], [200.0, 100.0]]}
+    mz, intensity = _decode_legacy_peaks_payload(json.dumps(payload_1))
+    assert np.array_equal(mz, np.array([100.0, 200.0]))
+
+    # Test dictionary with "mz" and "intensity" lists
+    payload_2 = {"mz": [100.0, 200.0], "intensity": [50.0, 100.0]}
+    mz, intensity = _decode_legacy_peaks_payload(json.dumps(payload_2))
+    assert np.array_equal(mz, np.array([100.0, 200.0]))
+
+    # Test dictionary with "mz_array" and "intensity_array" lists
+    payload_3 = {"mz_array": [100.0, 200.0], "intensity_array": [50.0, 100.0]}
+    mz, intensity = _decode_legacy_peaks_payload(json.dumps(payload_3))
+    assert np.array_equal(mz, np.array([100.0, 200.0]))
+
+    # Test list of dicts
+    payload_4 = [{"mz": 100.0, "intensity": 50.0}, {"mz": 200.0, "intensity": 100.0}]
+    mz, intensity = _decode_legacy_peaks_payload(json.dumps(payload_4))
+    assert np.array_equal(mz, np.array([100.0, 200.0]))
+
+    # Test list of tuples (like [[mz, int], [mz, int]])
+    payload_5 = [[100.0, 50.0], [200.0, 100.0]]
+    mz, intensity = _decode_legacy_peaks_payload(json.dumps(payload_5))
+    assert np.array_equal(mz, np.array([100.0, 200.0]))
+
+
+def test_decode_legacy_peaks_payload_edge_cases():
+    from MassFlow.database import _decode_legacy_peaks_payload
+    import pytest
+
+    # Test bytes not utf-8
+    with pytest.raises(
+        ValueError, match="Legacy peaks payload bytes are not valid UTF-8"
+    ):
+        _decode_legacy_peaks_payload(b"\xff\xfe\x00")
+
+    # Test empty string
+    mz, i = _decode_legacy_peaks_payload("")
+    assert len(mz) == 0
+    assert len(i) == 0
+
+    # Test invalid json and literal
+    with pytest.raises(
+        ValueError,
+        match="Legacy peaks payload is neither valid JSON nor a Python literal",
+    ):
+        _decode_legacy_peaks_payload("{invalid")
+
+    # Test dict with mz_array and intensity_array
+    mz, i = _decode_legacy_peaks_payload({"mz_array": [1.0], "intensity_array": [2.0]})
+    assert len(mz) == 1
+    assert len(i) == 1
+
+    # Test dict with mismatched mz_array
+    with pytest.raises(
+        ValueError, match="Legacy peaks dictionary has mismatched array shapes"
+    ):
+        _decode_legacy_peaks_payload({"mz_array": [1.0, 2.0], "intensity_array": [2.0]})
+
+    # Test empty list
+    mz, i = _decode_legacy_peaks_payload([])
+    assert len(mz) == 0
+
+    # Test list of dicts missing keys
+    with pytest.raises(
+        ValueError, match="Legacy peaks list-of-dicts payload must contain 'mz'"
+    ):
+        _decode_legacy_peaks_payload([{"mz": 1.0}])
+
+    # Test tuple with mismatched shapes
+    with pytest.raises(
+        ValueError, match="Legacy peaks tuple has mismatched array shapes"
+    ):
+        _decode_legacy_peaks_payload(([1.0], [1.0, 2.0]))
+
+    # Test unsupported format
+    with pytest.raises(
+        ValueError, match="Legacy peaks payload format is not supported"
+    ):
+        _decode_legacy_peaks_payload(123)

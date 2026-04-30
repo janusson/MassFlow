@@ -17,321 +17,309 @@ modules.
 
 from __future__ import annotations
 
-import argparse
 import logging
 import sys
+from pathlib import Path
+
+import click
 
 from MassFlow import __version__
-from MassFlow.config import MassFlowConfig
-from MassFlow.workflow import run_annotation_pipeline
+from MassFlow.log_config import setup_structured_logging
 
 
-# Setup logging (Simplified for brevity but effective)
 def setup_logging() -> None:
     """
     Configure process-wide logging for CLI execution.
 
     The CLI uses a single basic logging configuration shared across all
-    subcommands. The formatter includes the timestamp, logger name, level, and
-    message, and the default verbosity is ``INFO``.
+    subcommands. It relies on the fail-fast StructuredFormatter to output
+    dev-friendly structured logs.
 
     Returns
     -------
     None
     """
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    )
+    setup_structured_logging(level=logging.INFO)
 
 
 logger = logging.getLogger(__name__)
 
 
-def run_annotate(args: argparse.Namespace) -> int:
+@click.group(invoke_without_command=True)
+@click.version_option(version=__version__, prog_name="MassFlow")
+@click.pass_context
+def main(ctx: click.Context) -> None:
     """
-    Run the annotation workflow from a YAML configuration file.
+    MassFlow: A robust, config-first Python toolkit for local tandem mass spectrometry (MS/MS) annotation.
 
-    This command is the primary batch execution path for MassFlow. It loads the
-    user-supplied configuration, validates it through
-    :meth:`MassFlow.config.MassFlowConfig.from_yaml`, and then hands execution
-    to :func:`MassFlow.workflow.run_annotation_pipeline`.
-
-    Parameters
-    ----------
-    args : argparse.Namespace
-        Parsed CLI arguments. Must include ``config``, the path to the YAML
-        configuration file.
-
-    Returns
-    -------
-    int
-        ``0`` if the workflow completes successfully, otherwise ``1``.
-
-    Notes
-    -----
-    Exceptions are handled inside the command function so the CLI can return a
-    stable exit code for shell scripting and CI usage.
+    It streamlines the process of loading experimental spectral data, applying matchms filters,
+    scoring against reference libraries, and generating reproducible CSV results, all managed
+    through a comprehensive YAML configuration.
     """
-    try:
-        config = MassFlowConfig.from_yaml(args.config)
-        run_annotation_pipeline(config, config_path=args.config)
-        return 0
-    except Exception as e:
-        logger.error(f"Annotation failed: {e}")
-        return 1
+    setup_logging()
+    if ctx.invoked_subcommand is None:
+        click.echo(ctx.get_help())
 
 
-def run_init(args: argparse.Namespace) -> int:
-    """
-    Write a starter MassFlow configuration file.
+@main.command("init")
+@click.option(
+    "--output",
+    default="massflow_config.yaml",
+    show_default=True,
+    help="Path where the configuration YAML should be created.",
+)
+@click.option(
+    "--force", is_flag=True, help="Overwrite existing configuration if it exists."
+)
+def run_init(output: str, force: bool) -> None:
+    """Generate a standardized MassFlow configuration template. (Includes experimental flags)"""
+    output_path = Path(output)
+    if output_path.exists() and not force:
+        logger.error(
+            f"Configuration file already exists at {output_path}. Use --force to overwrite."
+        )
+        sys.exit(1)
 
-    The template is defined inline in this module and captures the expected
-    config-first shape of a typical annotation run, including project, input,
-    processing, and similarity sections.
-
-    Parameters
-    ----------
-    args : argparse.Namespace
-        Parsed CLI arguments. Must include ``output`` and may include ``force``
-        to allow overwriting an existing file.
-
-    Returns
-    -------
-    int
-        ``0`` if the template is written, otherwise ``1``.
-
-    Notes
-    -----
-    If the target path already exists and ``--force`` is not set, the function
-    logs an error and returns without modifying the file.
-    """
-    try:
-        from pathlib import Path
-
-        output_path = Path(args.output)
-        if output_path.exists() and not args.force:
-            logger.error(
-                f"Configuration file already exists at {output_path}. Use --force to overwrite."
-            )
-            return 1
-
-        # Basic template content based on standard_config.yaml
-        template = """project:
-  name: "Standard_Annotation_Project"
-  output_directory: "results/standard_analysis"
+    template = """project:
+  name: "My_MassFlow_Analysis"
+  output_directory: "results/run_01"
 
 input:
-  # Mandatory paths to your spectral data
-  file_path: "data/experiments/experiment.mzML"
-  # data_directory: "data/experiments/" # Alternatively, use a directory of files
-  library_path: "data/libraries/library.msp"
+  # SIBLING DIRECTORY PATTERN:
+  # Keep your large experimental data and reference libraries in a sibling folder
+  # (e.g., ../MassFlow_Data/) outside of your codebase to avoid bloating the Git repository.
+  #
+  # Use 'input_path' for a folder of files, or for a single file.
+  # If 'input_path' points to a directory with mixed formats (e.g., .mzML and .msp),
+  # set `format: null` below to let MassFlow automatically infer the format per file.
+  #
+  # Have vendor files (.d, .raw)? Run: `massflow convert --input ../MassFlow_Data/raw --output ../MassFlow_Data/experiments` first.
+  input_path: "../MassFlow_Data/experiments/"
+  library_path: "../MassFlow_Data/libraries/example_library.msp"
+
+  # Format hint. Options: "mzml", "mzxml", "mgf", "msp", "sqlite", or `null` for auto-inference.
   format: "mzml"
 
 processing:
   # ------------------------------------------------------------------
-  # METADATA PROCESSING
-  # These toggles map to matchms metadata filters.
+  # METADATA & PEAK PROCESSING
+  # These cleaning steps are applied identically to both experimental data and reference libraries to ensure scientific integrity.
   # ------------------------------------------------------------------
   clean_metadata: true
-  add_retention_time: true
-  repair_inchi_inchikey_smiles: true
-  derive_adduct_from_name: true
-  derive_formula_from_name: true
-  clean_compound_name: true
-  derive_ionmode: true
-  make_charge_int: true
-
-  # ------------------------------------------------------------------
-  # PEAK PROCESSING
-  # These settings are applied to both query and reference spectra.
-  # ------------------------------------------------------------------
   filter_by_intensity: true
-  noise_threshold: 1000.0
-  min_intensity: 0.0
-
-  filter_min_peaks: true
-  min_peaks: 5
-
-  filter_by_mz: true
-  mz_min: 0.0
-  mz_max: 1000.0
+  noise_threshold: 1000.0  # Absolute intensity threshold
 
   reduce_to_top_n_peaks: true
-  n_max: 100
+  n_max: 100               # Keep only top 100 most intense peaks per spectrum
 
   normalize_intensity: true
 
 similarity:
   # ------------------------------------------------------------------
-  # CORE SEARCH SETTINGS
-  # Stable options: "cosine", "modified_cosine"
+  # SEARCH & SCORING SETTINGS
   # ------------------------------------------------------------------
-  algorithm: "cosine"
-  ms1_tolerance: 10.0
-  ms2_tolerance: 0.02
-  tolerance_unit: "Da"
-  min_score: 0.6
-  min_matched_peaks: 3
-  fdr_threshold: 0.05
+  algorithm: "cosine" # Available: "cosine", "modified_cosine", "spec2vec", "ms2deepscore", "consensus", "cascade"
+  ms1_tolerance: 0.02      # Precursor tolerance in Da
+  # resolution_ppm: 10.0   # Optional: Precursor resolution in ppm (overrides ms1_tolerance)
+  ms2_tolerance: 0.02      # Fragment tolerance in Da
+
+  min_score: 0.7           # Minimum similarity score (0.0 to 1.0)
+  min_matched_peaks: 3     # Minimum number of matching fragments
+  fdr_threshold: 0.05      # Target-Decoy FDR limit
+
+workflow:
+  # Set to true to generate a GraphML network connecting queries and library hits
+  perform_networking: false
 
 export:
-  # The current stable annotation workflow writes CSV result tables.
-  format: "csv"
+  # Preferred formats: "xlsx" (Excel), "csv", "json", or "parquet"
+  format: "xlsx"
 """
+    try:
         with open(output_path, "w") as f:
             f.write(template)
-
         logger.info(f"Initialized new MassFlow configuration at: {output_path}")
-        return 0
     except Exception as e:
         logger.error(f"Failed to initialize configuration: {e}")
-        return 1
+        sys.exit(1)
 
 
-def run_db_build(args: argparse.Namespace) -> int:
+@main.command("annotate")
+@click.option("--config", required=True, help="Path to configuration YAML file.")
+def run_annotate(config: str) -> None:
     """
-    Build a SQLite spectral library from an input file.
+    Run the stable MassFlow annotation pipeline using a YAML configuration file.
 
-    Spectra are streamed from the input path through the same
-    :mod:`MassFlow.processing` pipeline used during annotation and then inserted
-    into a :class:`MassFlow.database.SpectralDatabase`. This creates a reusable
-    local cache for faster repeated searches and lighter memory use than large
-    text-based library formats.
-
-    Parameters
-    ----------
-    args : argparse.Namespace
-        Parsed CLI arguments. Must include ``input``, ``output``, and
-        ``config``; may include ``category``.
-
-    Returns
-    -------
-    int
-        ``0`` on success, otherwise ``1``.
-
-    Notes
-    -----
-    Input loading is delegated to :func:`MassFlow.io.load_spectra`, so vendor
-    raw formats still require pre-conversion before database ingestion.
+    This is the primary command for reproducible MS/MS data analysis.
     """
+    from MassFlow.config import MassFlowConfig
+    from MassFlow.workflow import run_annotation_pipeline
+
+    try:
+        cfg = MassFlowConfig.from_yaml(config)
+        run_annotation_pipeline(cfg, config_path=config)
+    except Exception as e:
+        logger.error(f"Annotation failed: {e}")
+        sys.exit(1)
+
+
+@main.command("convert")
+@click.option(
+    "--input",
+    required=True,
+    help="Path to input directory containing vendor files (.raw, .d).",
+)
+@click.option(
+    "--output",
+    required=True,
+    help="Path to output directory for converted .mzML files.",
+)
+def run_convert(input: str, output: str) -> None:
+    """
+    Convert vendor raw files to open formats (mzML) using ProteoWizard msconvert.
+    Requires msconvert to be installed and available on the system PATH.
+    """
+    from MassFlow.convert import MSConvertNotFoundError, convert_directory
+
+    input_path = Path(input)
+    output_path = Path(output)
+
+    if not input_path.is_dir():
+        logger.error(f"Input path {input_path} is not a directory.")
+        sys.exit(1)
+
+    try:
+        count = convert_directory(input_path, output_path)
+        logger.info(f"Conversion complete. Successfully converted {count} files.")
+    except MSConvertNotFoundError as e:
+        logger.error(str(e))
+        sys.exit(1)
+    except Exception as e:
+        logger.error(f"Conversion failed: {e}")
+        sys.exit(1)
+
+
+@main.group("db", invoke_without_command=True)
+@click.pass_context
+def db_group(ctx: click.Context) -> None:
+    """Manage local SQLite spectral libraries: build, inspect, or merge databases for efficient reuse."""
+    if ctx.invoked_subcommand is None:
+        click.echo(ctx.get_help())
+
+
+@db_group.command("build")
+@click.option(
+    "--input",
+    required=True,
+    help="Path to input spectral library file (e.g., .msp, .mgf).",
+)
+@click.option(
+    "--output",
+    required=True,
+    help="Path to output SQLite database file (e.g., my_library.db).",
+)
+@click.option(
+    "--config",
+    required=True,
+    help="Path to configuration YAML file for processing parameters.",
+)
+@click.option(
+    "--category",
+    default="default",
+    show_default=True,
+    help="Tag for categorization inside the database.",
+)
+def run_db_build(input: str, output: str, config: str, category: str) -> None:
+    """Process a raw library file and store it in an optimized SQLite database."""
     try:
         from MassFlow import io, processing
+        from MassFlow.config import MassFlowConfig
         from MassFlow.database import SpectralDatabase
 
-        logger.info(f"Loading configuration from {args.config}")
-        config = MassFlowConfig.from_yaml(args.config)
+        logger.info(f"Loading configuration from {config}")
+        cfg = MassFlowConfig.from_yaml(config)
 
-        logger.info(f"Initializing database at {args.output}")
-        db = SpectralDatabase(args.output)
+        logger.info(f"Initializing database at {output}")
+        db = SpectralDatabase(output)
 
-        logger.info(f"Streaming and processing spectra from {args.input}")
-        raw_spectra = io.load_spectra(args.input)
-        cleaned_spectra = processing.process_spectra(raw_spectra, config.processing)
+        logger.info(f"Streaming and processing spectra from {input}")
+        raw_spectra = io.load_spectra(Path(input))
+        cleaned_spectra = processing.process_spectra(raw_spectra, cfg.processing)
 
-        added = db.add_spectra(cleaned_spectra, category=args.category)
+        added = db.add_spectra(cleaned_spectra, category=category)
 
         if added == 0:
-            raise ValueError(f"No valid spectra were extracted from {args.input}.")
+            raise ValueError(f"No valid spectra were extracted from {input}.")
 
         logger.info(
             f"Successfully processed and added {added} spectra to the database."
         )
-
-        return 0
     except Exception as e:
         logger.error(f"Database build failed: {e}", exc_info=True)
-        return 1
+        sys.exit(1)
 
 
-def run_db_inspect(args: argparse.Namespace) -> int:
-    """
-    Print summary statistics for a local spectral database.
-
-    The inspection path uses dedicated lightweight database queries instead of
-    materializing full ``matchms.Spectrum`` objects.
-
-    Parameters
-    ----------
-    args : argparse.Namespace
-        Parsed CLI arguments. Must include ``file``, the path to the SQLite
-        database to inspect.
-
-    Returns
-    -------
-    int
-        ``0`` on success, otherwise ``1``.
-    """
+@db_group.command("inspect")
+@click.argument("file", required=True)
+def run_db_inspect(file: str) -> None:
+    """Inspect a local spectral database to view statistics."""
     try:
         from MassFlow.database import SpectralDatabase
 
-        db = SpectralDatabase(args.file)
+        db = SpectralDatabase(file)
 
         total = db.get_total_spectra_count()
         if total == 0:
-            print("\n" + "=" * 50)
-            print(f"DATABASE INSPECTION: {args.file}")
-            print("=" * 50)
-            print("Database is empty (0 spectra).")
-            print("=" * 50 + "\n")
-            return 0
+            click.echo("\n" + "=" * 50)
+            click.echo(f"DATABASE INSPECTION: {file}")
+            click.echo("=" * 50)
+            click.echo("Database is empty (0 spectra).")
+            click.echo("=" * 50 + "\n")
+            sys.exit(0)
 
         cat_counts = db.get_category_counts()
         mz_min, mz_max = db.get_precursor_mz_range()
 
-        print("\n" + "=" * 50)
-        print(f"DATABASE INSPECTION: {args.file}")
-        print("=" * 50)
-        print(f"Total Spectra: {total}")
-        print(f"Precursor m/z Range: {mz_min:.4f} to {mz_max:.4f}")
-        print("\nCategories:")
+        click.echo("\n" + "=" * 50)
+        click.echo(f"DATABASE INSPECTION: {file}")
+        click.echo("=" * 50)
+        click.echo(f"Total Spectra: {total}")
+        click.echo(f"Precursor m/z Range: {mz_min:.4f} to {mz_max:.4f}")
+        click.echo("\nCategories:")
         if cat_counts:
             for cat, count in cat_counts.items():
-                print(f"  - {cat}: {count} spectra")
+                click.echo(f"  - {cat}: {count} spectra")
         else:
-            print("  - (None)")
-        print("=" * 50 + "\n")
-
-        return 0
+            click.echo("  - (None)")
+        click.echo("=" * 50 + "\n")
     except Exception as e:
         logger.error(f"Database inspection failed: {e}", exc_info=True)
-        return 1
+        sys.exit(1)
 
 
-def run_db_merge(args: argparse.Namespace) -> int:
-    """
-    Merge multiple spectral databases into a new SQLite database.
-
-    Each input database is streamed via ``get_spectra()`` and inserted into the
-    destination database with the category label ``merged``.
-
-    Parameters
-    ----------
-    args : argparse.Namespace
-        Parsed CLI arguments. Must include ``inputs`` and ``output``.
-
-    Returns
-    -------
-    int
-        ``0`` on success, otherwise ``1``.
-
-    Notes
-    -----
-    The destination database is created up front. Existing input databases are
-    read sequentially to keep the merge path simple and memory bounded.
-    """
+@db_group.command("merge")
+@click.option(
+    "--inputs",
+    required=True,
+    multiple=True,
+    help="Paths to input SQLite database files.",
+)
+@click.option(
+    "--output", required=True, help="Path to output merged SQLite database file."
+)
+def run_db_merge(inputs: tuple[str, ...], output: str) -> None:
+    """Merge multiple local spectral databases into a single new database."""
     try:
         from MassFlow.database import SpectralDatabase
 
-        logger.info(f"Initializing merged database at {args.output}")
-        out_db = SpectralDatabase(args.output)
+        logger.info(f"Initializing merged database at {output}")
+        out_db = SpectralDatabase(output)
 
         total_added = 0
-        for input_db_path in args.inputs:
+        for input_db_path in inputs:
             logger.info(f"Streaming from input database: {input_db_path}")
             in_db = SpectralDatabase(input_db_path)
 
-            # Since get_spectra returns an iterator, add_spectra will batch insert smoothly
             added = out_db.add_spectra(in_db.get_spectra(), category="merged")
             total_added += added
 
@@ -345,156 +333,48 @@ def run_db_merge(args: argparse.Namespace) -> int:
         if total_added == 0:
             raise ValueError("No valid spectra were merged from the input databases.")
 
-        logger.info(
-            f"Successfully merged {total_added} total spectra into {args.output}."
-        )
+        logger.info(f"Successfully merged {total_added} total spectra into {output}.")
         out_db.close()
-
-        return 0
     except Exception as e:
         logger.error(f"Database merge failed: {e}", exc_info=True)
-        return 1
+        sys.exit(1)
 
 
-def main(argv: list[str] | None = None) -> int:
+@main.command("visualize")
+@click.argument("graphml_path", type=click.Path(exists=True, path_type=str))
+@click.option(
+    "--output",
+    "-o",
+    default="network.html",
+    show_default=True,
+    help="Path to save the output HTML visualization.",
+)
+def run_visualize(graphml_path: str, output: str) -> None:
     """
-    CLI entry point for MassFlow.
+    Generate an interactive HTML visualization from a GraphML network.
 
-    This function configures the top-level parser, registers all supported
-    subcommands, parses ``argv``, and dispatches to the selected command
-    handler. If no command is supplied, it prints help and exits successfully.
-
-    Parameters
-    ----------
-    argv : list[str] or None, optional
-        A list of command-line arguments to parse. If None, arguments are
-        retrieved from ``sys.argv``. Default is None.
-
-    Returns
-    -------
-    int
-        Exit status code from the invoked subcommand, or ``0`` if help is
-        displayed instead of running a command.
+    GRAPHML_PATH is the path to the .graphml file generated by the annotation workflow.
     """
     setup_logging()
 
-    parser = argparse.ArgumentParser(
-        prog="MassFlow",
-        description="""MassFlow: A robust, config-first Python toolkit for local tandem mass spectrometry (MS/MS) annotation. It streamlines the process of loading experimental spectral data, applying matchms filters, scoring against reference libraries, and generating reproducible CSV results, all managed through a comprehensive YAML configuration. Some advanced features (e.g., ML engines, networking) are considered experimental.""",
-    )
-    parser.add_argument(
-        "--version", action="version", version=f"%(prog)s {__version__}"
-    )
+    try:
+        from MassFlow.visualization import visualize_graphml
+    except ImportError as e:
+        logger.error(f"Failed to load visualization module: {e}")
+        click.echo(
+            "Visualization dependencies are missing. Install them with: "
+            "uv pip install pyvis networkx",
+            err=True,
+        )
+        sys.exit(1)
 
-    subparsers = parser.add_subparsers(dest="command", help="Command to run")
-
-    # Init command
-    init_parser = subparsers.add_parser(
-        "init",
-        help="Generate a standardized MassFlow configuration template. (Includes experimental flags)",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-    )
-    init_parser.add_argument(
-        "--output",
-        default="massflow_config.yaml",
-        help="Path where the configuration YAML should be created.",
-    )
-    init_parser.add_argument(
-        "--force",
-        action="store_true",
-        help="Overwrite existing configuration if it exists.",
-    )
-    init_parser.set_defaults(func=run_init)
-
-    # Annotate command
-    annotate_parser = subparsers.add_parser(
-        "annotate",
-        help="Run the stable MassFlow annotation pipeline using a YAML configuration file. This is the primary command for reproducible MS/MS data analysis.",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-    )
-    annotate_parser.add_argument(
-        "--config", required=True, help="Path to configuration YAML file."
-    )
-    annotate_parser.set_defaults(func=run_annotate)
-
-    # Database Subcommands
-    db_parser = subparsers.add_parser(
-        "db",
-        help="Manage local SQLite spectral libraries: build, inspect, or merge databases for efficient reuse.",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-    )
-    db_subparsers = db_parser.add_subparsers(
-        dest="db_command", help="Database command to run"
-    )
-
-    # DB Build command
-    db_build_parser = db_subparsers.add_parser(
-        "build",
-        help="Process a raw library file and store it in an optimized SQLite database.",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-    )
-    db_build_parser.add_argument(
-        "--input",
-        required=True,
-        help="Path to input spectral library file (e.g., .msp, .mgf).",
-    )
-    db_build_parser.add_argument(
-        "--output",
-        required=True,
-        help="Path to output SQLite database file (e.g., my_library.db).",
-    )
-    db_build_parser.add_argument(
-        "--config",
-        required=True,
-        help="Path to configuration YAML file for processing parameters.",
-    )
-    db_build_parser.add_argument(
-        "--category",
-        default="default",
-        help="Tag for categorization inside the database.",
-    )
-    db_build_parser.set_defaults(func=run_db_build)
-
-    # DB Inspect command
-    db_inspect_parser = db_subparsers.add_parser(
-        "inspect",
-        help="Inspect a local spectral database to view statistics.",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-    )
-    db_inspect_parser.add_argument(
-        "file", help="Path to the SQLite database file to inspect."
-    )
-    db_inspect_parser.set_defaults(func=run_db_inspect)
-
-    # DB Merge command
-    db_merge_parser = db_subparsers.add_parser(
-        "merge",
-        help="Merge multiple local spectral databases into a single new database.",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-    )
-    db_merge_parser.add_argument(
-        "--inputs",
-        nargs="+",
-        required=True,
-        help="Paths to input SQLite database files.",
-    )
-    db_merge_parser.add_argument(
-        "--output", required=True, help="Path to output merged SQLite database file."
-    )
-    db_merge_parser.set_defaults(func=run_db_merge)
-
-    args = parser.parse_args(argv)
-
-    if hasattr(args, "func"):
-        # We also need to handle the case where someone types `massflow db` but no subcommand
-        if args.command == "db" and getattr(args, "db_command", None) is None:
-            db_parser.print_help()
-            return 0
-        return args.func(args)
-    else:
-        parser.print_help()
-        return 0
+    try:
+        visualize_graphml(graphml_path=graphml_path, output_html=output)
+        click.echo(f"Interactive visualization successfully created at: {output}")
+    except Exception as e:
+        logger.error(f"Failed to generate visualization: {e}")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    main()

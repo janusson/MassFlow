@@ -1,7 +1,7 @@
 # MassFlow — Project Context
 
 ## Project Purpose
-MassFlow is a pre-1.0, config-first Python toolkit for local MS/MS annotation workflows. It loads open spectral formats, applies configurable `matchms` processing, runs similarity search against reference libraries, and exports structured outputs through a CLI-first workflow. Optional utilities include a terminal browser, SQLite-backed library management, and GraphML export.
+MassFlow is a pre-1.0, config-first Python toolkit for local MS/MS annotation workflows. It loads open spectral formats, applies configurable `matchms` processing, runs similarity search against reference libraries, and exports structured outputs through a CLI-first workflow. Optional utilities include SQLite-backed library management and GraphML export.
 
 ## Developer Profile
 - Domain expert: PhD analytical chemist (LC-MS, metabolomics)
@@ -11,7 +11,7 @@ MassFlow is a pre-1.0, config-first Python toolkit for local MS/MS annotation wo
 ## Tech Stack
 - Python 3.13+
 - Core Libraries: `matchms`, `pydantic`, `PyYAML`, `numpy`, `pandas`, `pyteomics`, and the standard-library `sqlite3` module.
-- Optional Analysis and UI Libraries: `ms2deepscore`, `spec2vec`, `Textual`, `plotext`, `networkx`, `matplotlib`.
+- Optional Analysis and UI Libraries: `ms2deepscore`, `spec2vec`, `plotext`, `networkx`, `matplotlib`.
 - Data Formats: Open formats such as mzML, mzXML, MGF, MSP, and MassFlow SQLite libraries, all represented as `matchms.Spectrum` objects in the processing pipeline.
 - Testing: `pytest`
 - Environment Management: `uv` or `venv`
@@ -31,7 +31,6 @@ The core application logic resides in `src/MassFlow/`:
 - `networking.py`: Optional GraphML export utilities for molecular-network views derived from annotation outputs.
 - `processing.py`: Contains functions for pre-processing spectral data (e.g., cleaning, normalizing) before similarity calculations.
 - `similarity.py`: Implements the core spectral similarity algorithms using `matchms`, `ms2deepscore`, and `spec2vec`.
-- `tui.py`: Defines the `Textual`-based Terminal User Interface components and application logic.
 - `workflow.py`: Orchestrates the overall data processing and similarity workflows.
 
 ## Naming & Style Conventions

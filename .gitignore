@@ -98,7 +98,7 @@ ipython_config.py
 #   Similar to Pipfile.lock, it is generally recommended to include uv.lock in version control.
 #   This is especially recommended for binary packages to ensure reproducibility, and is more
 #   commonly ignored for libraries.
-#uv.lock
+uv.lock
 
 # poetry
 #   Similar to Pipfile.lock, it is generally recommended to include poetry.lock in version control.
@@ -194,18 +194,6 @@ cython_debug/
 # PyPI configuration file
 .pypirc
 
-# Cursor
-#  Cursor is an AI-powered code editor. `.cursorignore` specifies files/directories to
-#  exclude from AI features like autocomplete and code analysis. Recommended for sensitive data
-#  refer to https://docs.cursor.com/context/ignore-files
-.cursorignore
-.cursorindexingignore
-
-# Marimo
-marimo/_static/
-marimo/_lsp/
-__marimo__/
-
 # Development and Local Files
 .DS_Store
 debugging/
@@ -220,4 +208,21 @@ results/
 requirements-dev.txt
 scripts/
 repomix-output.xml
+uv.lock
+
+# MS Data, Libraries, and Results
+data/
+*.mzML
+*.mzXML
+*.mgf
+*.msp
+*.db
+*.raw
+*.d/
+results/
+
+# Notes
+notes.md
+
+# uv
 uv.lock

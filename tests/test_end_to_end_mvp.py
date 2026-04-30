@@ -55,8 +55,10 @@ def test_mvp_workflow(tmp_path):
     # 2. Run Workflow
     config = MassFlowConfig(
         project=ProjectConfig(output_directory=output_dir),
-        input=InputConfig(file_path=query_path, reference_library=ref_path),
-        similarity=SimilarityConfig(min_score=0.9, tolerance=0.01, min_matched_peaks=1),
+        input=InputConfig(input_path=query_path, library_path=ref_path),
+        similarity=SimilarityConfig(
+            min_score=0.9, tolerance=0.01, min_matched_peaks=1, fdr_threshold=1.0
+        ),
         processing=ProcessingConfig(
             min_peaks=1, noise_threshold=0.0, min_intensity=0.0
         ),

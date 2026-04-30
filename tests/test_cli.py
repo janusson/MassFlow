@@ -2,26 +2,26 @@
 Tests for MassFlow CLI module.
 """
 
-import argparse
 from unittest.mock import patch
 
-import pytest
+import click
+from click.testing import CliRunner
 
 from MassFlow import cli
+from MassFlow.cli import main
 from MassFlow.config import MassFlowConfig
 
 
 def test_run_annotate_success():
     """Test successful execution of run_annotate."""
-    args = argparse.Namespace(config="config.yaml")
-
+    runner = CliRunner()
     with (
-        patch("MassFlow.cli.run_annotation_pipeline") as mock_pipeline,
-        patch("MassFlow.cli.MassFlowConfig.from_yaml") as mock_config,
+        patch("MassFlow.workflow.run_annotation_pipeline") as mock_pipeline,
+        patch("MassFlow.config.MassFlowConfig.from_yaml") as mock_config,
     ):
-        ret = cli.run_annotate(args)
+        result = runner.invoke(cli.main, ["annotate", "--config", "config.yaml"])
 
-        assert ret == 0
+        assert result.exit_code == 0
         mock_config.assert_called_with("config.yaml")
         mock_pipeline.assert_called_once_with(
             mock_config.return_value, config_path="config.yaml"
@@ -30,52 +30,51 @@ def test_run_annotate_success():
 
 def test_run_annotate_failure():
     """Test failure execution of run_annotate."""
-    args = argparse.Namespace(config="config.yaml")
-
+    runner = CliRunner()
     with (
-        patch("MassFlow.cli.MassFlowConfig.from_yaml"),
+        patch("MassFlow.config.MassFlowConfig.from_yaml"),
         patch(
-            "MassFlow.cli.run_annotation_pipeline",
+            "MassFlow.workflow.run_annotation_pipeline",
             side_effect=Exception("Pipeline Error"),
         ),
     ):
         with patch("MassFlow.cli.logger") as mock_logger:
-            ret = cli.run_annotate(args)
+            result = runner.invoke(cli.main, ["annotate", "--config", "config.yaml"])
 
-            assert ret == 1
+            assert result.exit_code == 1
             mock_logger.error.assert_called_once()
 
 
 def test_run_init_success(tmp_path):
     """Test successful execution of run_init."""
     output_file = tmp_path / "test_config.yaml"
-    args = argparse.Namespace(output=str(output_file), force=False)
+    runner = CliRunner()
 
     with patch("MassFlow.cli.logger") as mock_logger:
-        ret = cli.run_init(args)
+        result = runner.invoke(cli.main, ["init", "--output", str(output_file)])
 
-        assert ret == 0
+        assert result.exit_code == 0
         assert output_file.exists()
         content = output_file.read_text()
         assert "project:" in content
-        assert "Standard_Annotation_Project" in content
+        assert "My_MassFlow_Analysis" in content
         mock_logger.info.assert_called_once()
 
         # Verify the generated template is a valid MassFlowConfig
         config = MassFlowConfig.from_yaml(output_file)
-        assert config.project.name == "Standard_Annotation_Project"
+        assert config.project.name == "My_MassFlow_Analysis"
 
 
 def test_run_init_exists_no_force(tmp_path):
     """Test run_init when file exists and force is False."""
     output_file = tmp_path / "test_config.yaml"
     output_file.touch()
-    args = argparse.Namespace(output=str(output_file), force=False)
+    runner = CliRunner()
 
     with patch("MassFlow.cli.logger") as mock_logger:
-        ret = cli.run_init(args)
+        result = runner.invoke(cli.main, ["init", "--output", str(output_file)])
 
-        assert ret == 1
+        assert result.exit_code == 1
         mock_logger.error.assert_called_once()
 
 
@@ -83,46 +82,127 @@ def test_run_init_exists_with_force(tmp_path):
     """Test run_init when file exists and force is True."""
     output_file = tmp_path / "test_config.yaml"
     output_file.write_text("old content")
-    args = argparse.Namespace(output=str(output_file), force=True)
+    runner = CliRunner()
 
     with patch("MassFlow.cli.logger") as mock_logger:
-        ret = cli.run_init(args)
+        result = runner.invoke(
+            cli.main, ["init", "--output", str(output_file), "--force"]
+        )
 
-        assert ret == 0
+        assert result.exit_code == 0
         assert "project:" in output_file.read_text()
         mock_logger.info.assert_called_once()
 
         # Verify the generated template is a valid MassFlowConfig
         config = MassFlowConfig.from_yaml(output_file)
-        assert config.project.name == "Standard_Annotation_Project"
-
-
-def test_main_annotate():
-    """Test main function calling annotate command."""
-    with patch("MassFlow.cli.run_annotate") as mock_run:
-        mock_run.return_value = 0
-
-        ret = cli.main(["annotate", "--config", "config.yaml"])
-
-        assert ret == 0
-        mock_run.assert_called_once()
-        args = mock_run.call_args[0][0]
-        assert args.config == "config.yaml"
+        assert config.project.name == "My_MassFlow_Analysis"
 
 
 def test_main_no_args():
     """Test main function with no arguments (prints help)."""
-    with patch("argparse.ArgumentParser.print_help") as mock_print:
-        ret = cli.main([])
-        assert ret == 0
-        mock_print.assert_called_once()
+    runner = CliRunner()
+    result = runner.invoke(cli.main, [])
+    assert result.exit_code == 0
+    assert "Usage:" in result.output
 
 
-def test_main_version(capsys):
+def test_main_version():
     """Test main function with version argument."""
-    # argparse exits when version is printed, so we catch SystemExit
-    with pytest.raises(SystemExit):
-        cli.main(["--version"])
+    runner = CliRunner()
+    result = runner.invoke(cli.main, ["--version"])
+    assert result.exit_code == 0
+    assert "MassFlow" in result.output
 
-    captured = capsys.readouterr()
-    assert "MassFlow" in captured.out or "MassFlow" in captured.err
+
+@patch("MassFlow.convert.convert_directory")
+def test_run_convert_success(mock_convert, tmp_path):
+    mock_convert.return_value = 2
+
+    in_dir = tmp_path / "in"
+    in_dir.mkdir()
+    out_dir = tmp_path / "out"
+
+    runner = click.testing.CliRunner()
+    result = runner.invoke(
+        main, ["convert", "--input", str(in_dir), "--output", str(out_dir)]
+    )
+
+    assert result.exit_code == 0
+    mock_convert.assert_called_once_with(in_dir, out_dir)
+
+
+def test_run_convert_invalid_input(tmp_path):
+    in_file = tmp_path / "not_a_dir.txt"
+    in_file.touch()
+    out_dir = tmp_path / "out"
+
+    runner = click.testing.CliRunner()
+    result = runner.invoke(
+        main, ["convert", "--input", str(in_file), "--output", str(out_dir)]
+    )
+
+    assert result.exit_code == 1
+
+
+@patch("MassFlow.convert.convert_directory")
+def test_run_convert_msconvert_not_found(mock_convert, tmp_path):
+    from MassFlow.convert import MSConvertNotFoundError
+
+    mock_convert.side_effect = MSConvertNotFoundError("not found")
+
+    in_dir = tmp_path / "in"
+    in_dir.mkdir()
+    out_dir = tmp_path / "out"
+
+    runner = click.testing.CliRunner()
+    result = runner.invoke(
+        main, ["convert", "--input", str(in_dir), "--output", str(out_dir)]
+    )
+
+    assert result.exit_code == 1
+
+
+@patch("MassFlow.cli.open", side_effect=Exception("File system error"))
+def test_init_config_error(mock_open):
+    from click.testing import CliRunner
+
+    runner = CliRunner()
+    from MassFlow.cli import main
+
+    result = runner.invoke(main, ["init", "--force"])
+    assert result.exit_code == 1
+    assert "Failed to initialize configuration: File system error" in result.output
+
+
+@patch("MassFlow.cli.Path.is_dir", return_value=True)
+@patch(
+    "MassFlow.convert.convert_directory",
+    side_effect=Exception("Conversion backend failed"),
+)
+def test_convert_general_error(mock_convert, mock_isdir):
+    from click.testing import CliRunner
+
+    runner = CliRunner()
+    from MassFlow.cli import main
+
+    result = runner.invoke(
+        main, ["convert", "--input", "fake_dir", "--output", "out_dir"]
+    )
+    assert result.exit_code == 1
+    assert "Conversion failed: Conversion backend failed" in result.output
+
+
+@patch(
+    "MassFlow.cli.visualize_graphml", side_effect=Exception("Viz Error"), create=True
+)
+def test_visualize_error(mock_viz):
+    from click.testing import CliRunner
+
+    from MassFlow.cli import main
+
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        with open("test.graphml", "w") as f:
+            f.write("<graphml></graphml>")
+        result = runner.invoke(main, ["visualize", "test.graphml"])
+        assert result.exit_code == 1

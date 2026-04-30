@@ -59,6 +59,7 @@ def test_cascade_benchmark_reduces_expensive_tier2_work(monkeypatch):
             reference_spectra: list[Spectrum],
             min_score: float | None = None,
             top_n: int | None = None,
+            include_decoys: bool = True,
         ) -> list[dict[str, object]]:
             self.last_query_count = len(query_spectra)
 

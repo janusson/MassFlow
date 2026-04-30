@@ -125,6 +125,65 @@ def load_spectra(
     yield from loader(str(path), **args)
 
 
+def _build_results_dataframe(
+    results: list[dict[str, Any]],
+    query_spectra: Optional[Iterable[Spectrum]] = None,
+) -> Optional[pd.DataFrame]:
+    """
+    Construct a results DataFrame from match results and optional query spectra.
+
+    This is an internal helper shared by the various export functions to ensure
+    consistent data shaping, merging, and status labeling.
+    """
+    if query_spectra is not None:
+        # Build base dataframe from all queries
+        base_rows = []
+        for q in query_spectra:
+            q_id = str(q.get("id"))
+            q_mz = q.get("precursor_mz")
+            q_rt = q.get("retention_time")
+            base_rows.append(
+                {
+                    "query_id": q_id,
+                    "query_precursor_mz": float(q_mz) if q_mz is not None else None,
+                    "query_retention_time": float(q_rt) if q_rt is not None else None,
+                }
+            )
+        base_df = pd.DataFrame(base_rows)
+
+        if results:
+            results_df = pd.DataFrame(results)
+            # Left join results onto the base query dataframe
+            df = pd.merge(
+                base_df,
+                results_df,
+                on="query_id",
+                how="left",
+                suffixes=("", "_matched"),
+            )
+            # Drop duplicated columns if any exist from the merge
+            if "query_precursor_mz_matched" in df.columns:
+                df = df.drop(columns=["query_precursor_mz_matched"])
+        else:
+            df = base_df
+    else:
+        if not results:
+            return None
+        df = pd.DataFrame(results)
+
+    # Add Annotation_Status
+    if "score" in df.columns:
+        df["Annotation_Status"] = df["score"].apply(
+            lambda x: (
+                "Unknown" if pd.isna(x) else ("Matched" if x >= 0.9 else "Putative")
+            )
+        )
+    else:
+        df["Annotation_Status"] = "Unknown"
+
+    return df
+
+
 def save_match_results(
     results: list[dict[str, Any]],
     output_path: Path,
@@ -166,64 +225,106 @@ def save_match_results(
     If both ``results`` is empty and ``query_spectra`` is ``None``, the
     function logs a warning and returns without writing a file.
     """
+    df = _build_results_dataframe(results, query_spectra)
+    if df is None:
+        logger.warning("No results to save and no query_spectra provided.")
+        return
+
     output_path.parent.mkdir(parents=True, exist_ok=True)
-
-    if query_spectra is not None:
-        # Build base dataframe from all queries
-        base_rows = []
-        for q in query_spectra:
-            q_id = str(q.get("id"))
-            q_mz = q.get("precursor_mz")
-            q_rt = q.get("retention_time")
-            base_rows.append(
-                {
-                    "query_id": q_id,
-                    "query_precursor_mz": float(q_mz) if q_mz is not None else None,
-                    "query_retention_time": float(q_rt) if q_rt is not None else None,
-                }
-            )
-        base_df = pd.DataFrame(base_rows)
-
-        if results:
-            results_df = pd.DataFrame(results)
-            # Left join results onto the base query dataframe
-            df = pd.merge(
-                base_df,
-                results_df,
-                on="query_id",
-                how="left",
-                suffixes=("", "_matched"),
-            )
-            # Drop duplicated columns if any exist from the merge
-            if "query_precursor_mz_matched" in df.columns:
-                df = df.drop(columns=["query_precursor_mz_matched"])
-        else:
-            df = base_df
-
-        # Add Annotation_Status
-        if "score" in df.columns:
-            df["Annotation_Status"] = df["score"].apply(
-                lambda x: (
-                    "Unknown" if pd.isna(x) else ("Matched" if x >= 0.9 else "Putative")
-                )
-            )
-        else:
-            df["Annotation_Status"] = "Unknown"
-    else:
-        if not results:
-            logger.warning("No results to save and no query_spectra provided.")
-            return
-        df = pd.DataFrame(results)
-        if "score" in df.columns:
-            df["Annotation_Status"] = df["score"].apply(
-                lambda x: (
-                    "Unknown" if pd.isna(x) else ("Matched" if x >= 0.9 else "Putative")
-                )
-            )
-        else:
-            df["Annotation_Status"] = "Unknown"
-
     df.to_csv(output_path, index=False)
+    logger.info(f"Results saved to {output_path}")
+
+
+def save_match_results_to_json(
+    results: list[dict[str, Any]],
+    output_path: Path,
+    query_spectra: Optional[Iterable[Spectrum]] = None,
+) -> None:
+    """
+    Save annotation results to a JSON report.
+
+    Parameters
+    ----------
+    results : list of dict
+        Match result rows to export.
+    output_path : Path
+        The destination file path for the JSON output.
+    query_spectra : Optional[Iterable[Spectrum]]
+        Full set of experimental query spectra.
+
+    Returns
+    -------
+    None
+    """
+    df = _build_results_dataframe(results, query_spectra)
+    if df is None:
+        logger.warning("No results to save and no query_spectra provided.")
+        return
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    df.to_json(output_path, orient="records", indent=4)
+    logger.info(f"Results saved to {output_path}")
+
+
+def save_match_results_to_xlsx(
+    results: list[dict[str, Any]],
+    output_path: Path,
+    query_spectra: Optional[Iterable[Spectrum]] = None,
+) -> None:
+    """
+    Save annotation results to an Excel (.xlsx) report.
+
+    Parameters
+    ----------
+    results : list of dict
+        Match result rows to export.
+    output_path : Path
+        The destination file path for the Excel output.
+    query_spectra : Optional[Iterable[Spectrum]]
+        Full set of experimental query spectra.
+
+    Returns
+    -------
+    None
+    """
+    df = _build_results_dataframe(results, query_spectra)
+    if df is None:
+        logger.warning("No results to save and no query_spectra provided.")
+        return
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    df.to_excel(output_path, index=False)
+    logger.info(f"Results saved to {output_path}")
+
+
+def save_match_results_to_parquet(
+    results: list[dict[str, Any]],
+    output_path: Path,
+    query_spectra: Optional[Iterable[Spectrum]] = None,
+) -> None:
+    """
+    Save annotation results to a Parquet report.
+
+    Parameters
+    ----------
+    results : list of dict
+        Match result rows to export.
+    output_path : Path
+        The destination file path for the Parquet output.
+    query_spectra : Optional[Iterable[Spectrum]]
+        Full set of experimental query spectra.
+
+    Returns
+    -------
+    None
+    """
+    df = _build_results_dataframe(results, query_spectra)
+    if df is None:
+        logger.warning("No results to save and no query_spectra provided.")
+        return
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    df.to_parquet(output_path, index=False)
     logger.info(f"Results saved to {output_path}")
 
 

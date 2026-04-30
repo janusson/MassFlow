@@ -33,6 +33,21 @@ advanced ML-backed engines remain outside the core support promise.
 
 ---
 
+## Simple Data Flow Workflow
+
+```mermaid
+graph LR
+    Config[YAML Config] --> CLI{MassFlow CLI}
+    Input[Input Files] --> CLI
+    Library[Reference Library] --> CLI
+    CLI --> Processed[Processed Spectra]
+    Processed --> Sim[Similarity Search]
+    Sim --> Filter[FDR Filtering]
+    Filter --> Out[CSV + YAML Report]
+```
+
+---
+
 ## High-Level Components
 
 ### User-facing surfaces
@@ -71,6 +86,7 @@ advanced ML-backed engines remain outside the core support promise.
 - `src/MassFlow/database.py`
   - Stores and retrieves spectra in SQLite format.
   - Supports database build, inspection, and merge workflows.
+  - Implements a fast NumPy-based **Triage Bitmask** scan during insertion to flag structurally significant features (e.g., Tyrosine immonium ions at 136.076 Da). These flags are stored as JSON in the `triage_flags` column for future ML routing.
 
 ### Processing
 
@@ -90,8 +106,18 @@ advanced ML-backed engines remain outside the core support promise.
   - Experimental engines:
     - `spec2vec`
     - `ms2deepscore`
-    - `consensus`
+    - `consensus` (via the `ConsensusEngine` and v1.1 Orchestrator API)
     - `cascade`
+
+### Orchestrator API (v1.1 Foundation)
+
+- `src/MassFlow/models.py`
+  - Defines strict Pydantic data contracts (`AnnotationHit`, `ConsensusInput`, `ConsensusResult`, `ConsensusConfig`).
+  - Provides a dependency-free, engine-agnostic language for communication between the lightweight core and heavy ML satellite repositories (e.g., `massflow-ml`).
+- `src/MassFlow/consensus.py`
+  - Implements `ConsensusEngine` for resolving multiple algorithmic annotations into a single `ConsensusResult`.
+  - Supports weighted score aggregation and multiple tie-breaking strategies (`highest_rank`, `average_score`, `validator_engine`).
+  - Includes a scientific credibility check to flag high-discrepancy results for human review.
 
 ---
 
@@ -99,34 +125,17 @@ advanced ML-backed engines remain outside the core support promise.
 
 ```mermaid
 graph TD
-    subgraph User_Surfaces
-        CLI["CLI<br/>src/MassFlow/cli.py"]
-        API["Python API"]
-    end
-
-    subgraph Core
-        CONFIG["Configuration<br/>src/MassFlow/config.py"]
-        WORKFLOW["Workflow Orchestrator<br/>src/MassFlow/workflow.py"]
-        IO["I/O Layer<br/>src/MassFlow/io.py"]
-        PROCESS["Processing<br/>src/MassFlow/processing.py"]
-        SIM["Similarity Engines<br/>src/MassFlow/similarity.py"]
-        DB["SQLite Library Backend<br/>src/MassFlow/database.py"]
-    end
-
-    subgraph Optional
-        NETWORK["GraphML Export<br/>Experimental"]
-    end
-
-    CLI --> WORKFLOW
-    API --> WORKFLOW
-
-    WORKFLOW --> CONFIG
-    WORKFLOW --> IO
-    WORKFLOW --> PROCESS
-    WORKFLOW --> SIM
-    WORKFLOW --> NETWORK
-
-    IO <--> DB
+    CLI[CLI & API] --> WORKFLOW[Workflow]
+    WORKFLOW --> CONFIG[Configuration]
+    WORKFLOW --> IO[I/O Layer]
+    IO <--> DB[Database]
+    WORKFLOW --> PROCESS[Processing]
+    PROCESS --> SIM[Similarity Engine]
+    SIM --> WORKFLOW
+    SIM --> ML[ML Engines]
+    WORKFLOW --> NET[Networking]
+    WORKFLOW --> ORCH[Orchestrator API]
+    ORCH --> WORKFLOW
 ```
 
 ---
@@ -161,19 +170,19 @@ The CLI loads the config and calls `run_annotation_pipeline()`.
      - or `input.data_directory`
    - If a directory is used, files are discovered recursively.
 
-4. **Per-file multiprocessing**
-   - Each experimental input file is processed in a worker process.
-   - Each worker builds its own similarity engine instance.
+4. **Pre-loading and Multiprocessing**
+   - The parent process generates the decoy library ONCE.
+   - The fully processed reference library and decoys are loaded into shared memory.
+   - Each experimental input file is dispatched to a worker process.
 
 5. **Query spectrum loading and processing**
    - Query spectra are loaded from the experimental file.
    - Each spectrum is passed through metadata and peak processing.
    - Missing query IDs are filled in automatically.
 
-6. **Chunked reference searching**
-   - The worker reloads the reference library and processes it again in chunks.
-   - Queries are searched against each reference chunk and results are
-     aggregated.
+6. **Chunked reference searching (Zero I/O overhead)**
+   - The worker searches its queries against the pre-loaded shared memory library in chunks to preserve RAM, entirely bypassing disk I/O.
+   - Results are aggregated.
 
 7. **FDR calculation**
    - Decoys are generated from the reference spectra.
@@ -198,48 +207,25 @@ The CLI loads the config and calls `run_annotation_pipeline()`.
 
 ```mermaid
 sequenceDiagram
-    autonumber
     participant User
-    participant CLI as cli.py
-    participant Config as config.py
-    participant Workflow as workflow.py
-    participant IO as io.py
-    participant Process as processing.py
-    participant Sim as similarity.py
-    participant DB as database.py
-    participant Network as networking.py
+    participant CLI
+    participant Workflow
+    participant IO
+    participant Process
+    participant Sim
 
-    User->>CLI: massflow annotate --config massflow_config.yaml
-    CLI->>Config: MassFlowConfig.from_yaml(...)
-    Config-->>CLI: validated config
-    CLI->>Workflow: run_annotation_pipeline(config)
-
+    User->>CLI: massflow annotate
+    CLI->>Workflow: run_annotation_pipeline()
     Workflow->>IO: load reference library
-    IO->>DB: stream if input is .db/.sqlite
-    DB-->>IO: spectra iterator
-    IO-->>Workflow: raw reference spectra
-    Workflow->>Process: process reference spectra
-    Process-->>Workflow: processed reference spectra
-
-    Workflow->>Workflow: discover query files
-
-    loop each experimental file
+    Workflow->>Process: process reference
+    loop each file
         Workflow->>IO: load query spectra
-        IO-->>Workflow: raw query spectra
-        Workflow->>Process: process query spectra
-        Process-->>Workflow: processed query spectra
-        Workflow->>Sim: search queries vs reference chunks
-        Sim-->>Workflow: search results
-        Workflow->>Workflow: calculate q-values and filter results
-        Workflow->>IO: save_match_results(...)
+        Workflow->>Process: process queries
+        Workflow->>Sim: search & score
+        Workflow->>Workflow: filter FDR
+        Workflow->>IO: save results
     end
-
-    alt perform_networking is enabled
-        Workflow->>Network: generate_molecular_network(...)
-    end
-
-    Workflow-->>CLI: run complete
-    CLI-->>User: exit status
+    Workflow-->>CLI: complete
 ```
 
 ---
@@ -390,7 +376,7 @@ input:
 
 similarity:
   algorithm: "cosine"
-  ms1_tolerance: 10.0
+  ms1_tolerance: 0.02
   ms2_tolerance: 0.02
   tolerance_unit: "Da"
   min_score: 0.6

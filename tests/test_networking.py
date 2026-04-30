@@ -56,9 +56,10 @@ def test_generate_molecular_network_success(
     sample_queries, sample_references, sample_results, tmp_path
 ):
     from MassFlow.config import InputConfig
+    from pathlib import Path
 
     output_path = tmp_path / "network.graphml"
-    config = MassFlowConfig(input=InputConfig())
+    config = MassFlowConfig(input=InputConfig(input_path=Path("dummy")))
     config.similarity.min_score = 0.5
     config.similarity.algorithm = "cosine"
 
@@ -92,9 +93,10 @@ def test_generate_molecular_network_success(
 
 def test_generate_molecular_network_empty_queries(tmp_path):
     from MassFlow.config import InputConfig
+    from pathlib import Path
 
     output_path = tmp_path / "network.graphml"
-    config = MassFlowConfig(input=InputConfig())
+    config = MassFlowConfig(input=InputConfig(input_path=Path("dummy")))
     generate_molecular_network([], [], [], config, output_path)
     assert not output_path.exists()
 
@@ -103,9 +105,10 @@ def test_generate_molecular_network_filtering(
     sample_queries, sample_references, sample_results, tmp_path
 ):
     from MassFlow.config import InputConfig
+    from pathlib import Path
 
     output_path = tmp_path / "network.graphml"
-    config = MassFlowConfig(input=InputConfig())
+    config = MassFlowConfig(input=InputConfig(input_path=Path("dummy")))
     # High threshold to filter out the result
     config.similarity.min_score = 0.99
 
@@ -122,9 +125,10 @@ def test_generate_molecular_network_consensus_fallback(
     sample_queries, sample_references, sample_results, tmp_path
 ):
     from MassFlow.config import InputConfig
+    from pathlib import Path
 
     output_path = tmp_path / "network.graphml"
-    config = MassFlowConfig(input=InputConfig())
+    config = MassFlowConfig(input=InputConfig(input_path=Path("dummy")))
     config.similarity.algorithm = "consensus"
     # Note: networking.py expects engines to be in config.similarity (if consensus)
     # But wait, networking.py reads:
@@ -153,9 +157,10 @@ def test_consensus_fallback_returns_cosine_engine(caplog):
     import logging
 
     from MassFlow.config import InputConfig
+    from pathlib import Path
     from MassFlow.similarity import SimilarityEngine
 
-    config = MassFlowConfig(input=InputConfig())
+    config = MassFlowConfig(input=InputConfig(input_path=Path("dummy")))
     config.similarity.algorithm = "consensus"
     config.similarity.consensus_weights = None  # explicit for clarity
 

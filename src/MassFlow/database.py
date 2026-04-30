@@ -979,22 +979,8 @@ class SpectralDatabase:
             )
 
             # Fast scan for Tyrosine immonium ion (136.076 Da)
-            triage_flags = {}
-            target_mz = 136.076
-            mz_tolerance = 0.05
-
-            idx = np.searchsorted(mz_array_raw, target_mz)
-            has_tyrosine = False
-            for i in [idx - 1, idx]:
-                if 0 <= i < len(mz_array_raw):
-                    if abs(mz_array_raw[i] - target_mz) <= mz_tolerance:
-                        if intensity_array_raw[i] > 0:
-                            has_tyrosine = True
-                            break
-
-            if has_tyrosine:
-                triage_flags["has_tyrosine_fragment"] = True
-
+            # Triage flags are now pre-calculated in processing.py and stored in metadata
+            triage_flags = spectrum.get("triage_flags", {})
             triage_json = json.dumps(triage_flags)
 
             mz_blob, intensity_blob = _serialize_peak_arrays(

@@ -17,7 +17,6 @@ from typing import List
 
 import networkx as nx
 import numpy as np
-import scipy.sparse as sp
 from matchms import Spectrum, calculate_scores
 
 from MassFlow.config import MassFlowConfig
@@ -95,25 +94,6 @@ def generate_molecular_network(
         logger.warning("Could not determine similarity function for networking.")
         return
 
-    scores_obj = calculate_scores(
-        references=all_queries,
-        queries=all_queries,
-        similarity_function=sim_func,
-        is_symmetric=True,
-    )
-
-    scores_data = scores_obj.scores
-    if hasattr(scores_data, "to_array"):
-        scores_array = scores_data.to_array()
-    else:
-        scores_array = np.asarray(scores_data)
-
-    if hasattr(scores_array.dtype, "names") and scores_array.dtype.names is not None:
-        score_cols = [c for c in scores_array.dtype.names if "score" in c.lower()]
-        numeric_scores = scores_array[score_cols[0]]
-    else:
-        numeric_scores = scores_array
-
     G = nx.Graph()
 
     # 1. Add Query Nodes
@@ -151,18 +131,72 @@ def generate_molecular_network(
                     edge_type="query_to_ref",
                 )
 
-    # 4. Add Query-to-Query Edges (From new matrix)
+    # 4. Add Query-to-Query Edges (Chunked calculation to prevent OOM)
     min_score = config.similarity.min_score
-    # Only keep upper triangle to avoid duplicate edges (since it's symmetric)
-    adj_matrix = np.triu(numeric_scores, k=1)
-    adj_matrix[adj_matrix < min_score] = 0.0
+    n_queries = len(all_queries)
+    chunk_size = 1000
 
-    sparse_adj = sp.coo_matrix(adj_matrix)
+    logger.info(
+        f"Computing query-to-query similarity for {n_queries} spectra in chunks..."
+    )
 
-    for i, j, v in zip(sparse_adj.row, sparse_adj.col, sparse_adj.data):
-        q1_id = str(all_queries[i].get("id", f"query_{i}"))
-        q2_id = str(all_queries[j].get("id", f"query_{j}"))
-        G.add_edge(q1_id, q2_id, weight=float(v), edge_type="query_to_query")
+    for i in range(0, n_queries, chunk_size):
+        end_i = min(i + chunk_size, n_queries)
+        q_chunk = all_queries[i:end_i]
+
+        for j in range(i, n_queries, chunk_size):
+            end_j = min(j + chunk_size, n_queries)
+            r_chunk = all_queries[j:end_j]
+
+            try:
+                scores_obj = calculate_scores(
+                    references=r_chunk,
+                    queries=q_chunk,
+                    similarity_function=sim_func,
+                    is_symmetric=(i == j),
+                )
+
+                scores_data = scores_obj.scores
+                if hasattr(scores_data, "to_array"):
+                    scores_array = scores_data.to_array()
+                else:
+                    scores_array = np.asarray(scores_data)
+
+                if (
+                    hasattr(scores_array.dtype, "names")
+                    and scores_array.dtype.names is not None
+                ):
+                    score_cols = [
+                        c for c in scores_array.dtype.names if "score" in c.lower()
+                    ]
+                    numeric_scores = scores_array[score_cols[0]]
+                else:
+                    numeric_scores = scores_array
+
+                # Add edges for scores above threshold, strictly upper triangle
+                row_indices, col_indices = np.where(numeric_scores >= min_score)
+                for r_idx, c_idx in zip(row_indices, col_indices):
+                    global_i = i + r_idx
+                    global_j = j + c_idx
+
+                    if global_j > global_i:
+                        score_val = float(numeric_scores[r_idx, c_idx])
+                        q1_id = str(
+                            all_queries[global_i].get("id", f"query_{global_i}")
+                        )
+                        q2_id = str(
+                            all_queries[global_j].get("id", f"query_{global_j}")
+                        )
+                        G.add_edge(
+                            q1_id, q2_id, weight=score_val, edge_type="query_to_query"
+                        )
+
+            except Exception as e:
+                logger.error(
+                    f"Chunked similarity calculation failed at indices {i}, {j}: {e}",
+                    exc_info=True,
+                )
+                continue
 
     # Export to GraphML
     output_path.parent.mkdir(parents=True, exist_ok=True)

@@ -1,6 +1,17 @@
 # MassFlow (pre-v1.0)
 
-MassFlow is a config-first Python toolkit for local tandem mass spectrometry (MS/MS) annotation.
+[![Documentation](https://img.shields.io/badge/docs-available-blue.svg)](https://ericjanusson.github.io/MassFlow/)
+
+MassFlow is a config-first Python toolkit for local tandem mass spectrometry (MS/MS) annotation. It is designed to be **dead easy to run** locally, producing highly reproducible scientific outputs.
+
+### TL;DR - Run it in two steps:
+```shell
+# 1. Generate a default config file
+uv run massflow init
+
+# 2. Run your annotation pipeline
+uv run massflow annotate --config massflow_config.yaml
+```
 
 Its core workflow is simple:
 
@@ -57,7 +68,11 @@ These exist in the codebase, but should not be treated as part of the stable `v1
 - `ms2deepscore`
 - `consensus`
 - `cascade`
-- Orchestrator API (`MassFlow.models`, `MassFlow.consensus`) for engine-agnostic consensus routing
+- Orchestrator API (`MassFlow.models`, `MassFlow.consensus`) for engine-agnostic consensus routing. It establishes strict data contracts (`AnnotationHit`, `ConsensusInput`, `ConsensusResult`) and features a pure-Python `ConsensusEngine` with weighted score aggregation, configurable tie-breaking, and scientific credibility checks to flag algorithmic discordance.
+
+## Documentation
+
+Comprehensive documentation, including API references, experimental guides, and deep-dives into processing, is available at: **[https://ericjanusson.github.io/MassFlow/](https://ericjanusson.github.io/MassFlow/)**
 
 ## Installation and Dependency Policy
 
@@ -122,7 +137,7 @@ processing:
 
 similarity:
   algorithm: "cosine"
-  ms1_tolerance: 10.0
+  ms1_tolerance: 0.02
   ms2_tolerance: 0.02
   tolerance_unit: "Da"
   min_score: 0.6
@@ -278,7 +293,9 @@ input:
   format: "mzml"
 ```
 
-The database layer stores spectra plus metadata and a category label, so categories such as `reference`, `personal`, `standards`, or `project_x` can help you keep local libraries organized. During database construction, MassFlow also performs a fast scan of the spectra to generate a `triage_flags` bitmask (e.g., flagging Tyrosine immonium ions) to optimize routing for future machine learning models.
+The database layer stores spectra plus metadata and a category label, so categories such as `reference`, `personal`, `standards`, or `project_x` can help you keep local libraries organized.
+
+During the core peak processing pipeline, MassFlow performs a fast NumPy-based scan of the mass spectra to generate a `triage_flags` bitmask. For example, it scans for the presence of the Tyrosine immonium ion (136.076 Da ± 0.05 Da). This fast, pre-compute triage step allows the orchestrator to dynamically route structurally interesting query spectra to heavy machine learning models (like MS2DeepScore) without adding ML dependencies to the core ingestion pipeline.
 
 ## Processing controls
 
