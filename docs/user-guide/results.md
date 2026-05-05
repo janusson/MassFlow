@@ -1,17 +1,18 @@
 # Result Export & FDR
 
-When MassFlow completes an annotation run, it writes reproducible, tabular outputs designed for downstream review and statistical confidence. The stable v1.0 contract focuses on generating per-file CSV results accompanied by YAML provenance reports.
+When MassFlow completes an annotation run, it writes reproducible, tabular outputs designed for downstream review and statistical confidence. The stable v1.0 contract focuses on generating per-file results (CSV, mzTab-M) accompanied by YAML provenance reports, alongside optional GNPS FBMN paired exports.
 
 ---
 
 ## Output Structure
 
-If you process a single experimental file (e.g., `experiment.mzML`), MassFlow will generate two files in your configured `project.output_directory`:
+If you process a single experimental file (e.g., `experiment.mzML`), MassFlow will generate two standard files in your configured `project.output_directory`:
 
-1.  **`experiment_results.csv`**: The main tabular annotation report.
-2.  **`experiment_results.report.yaml`**: The provenance sidecar containing the runtime context and the exact configuration parameters that produced the CSV.
+1.  **`experiment_results.<ext>`**: The main tabular annotation report (CSV or mzTab-M depending on the configured `export.format`).
+2.  **`experiment_results.report.yaml`**: The provenance sidecar containing the runtime context and the exact configuration parameters that produced the results.
+3.  **`consensus_spectra.mgf`**: (Optional) An aggregated MGF file containing representative MS2 spectra. This is generated only when `format: "fbmn"` is configured to pair with the CSV output for GNPS workflows.
 
-### The CSV Result Table
+### The Result Table
 
 The CSV contains the actual annotation hits, including the computed `score`, `matched_peaks`, and an automated `Annotation_Status` tag (e.g., `Matched`, `Putative`, or `Unknown`).
 

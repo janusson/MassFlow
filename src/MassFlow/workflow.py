@@ -456,7 +456,10 @@ def run_annotation_pipeline(
 
                 if q_spectra:
                     # OOM Prevention: Only retain all queries and results in memory if needed for downstream steps
-                    if config.workflow.perform_networking:
+                    if (
+                        config.workflow.perform_networking
+                        or config.export.format.lower() == "fbmn"
+                    ):
                         all_queries.extend(q_spectra)
                         all_results.extend(results)
 
@@ -471,6 +474,8 @@ def run_annotation_pipeline(
                         "pickle": "pkl",
                         "msp": "msp",
                         "mgf": "mgf",
+                        "mztab": "mztab",
+                        "fbmn": "csv",  # FBMN uses CSV as its primary feature table
                     }
                     ext = ext_map.get(export_format, "csv")
 
@@ -497,7 +502,11 @@ def run_annotation_pipeline(
                         io.save_match_results_to_parquet(
                             results_dict, out_file, query_spectra=q_spectra
                         )
-                    elif export_format == "csv":
+                    elif export_format == "mztab":
+                        io.save_match_results_to_mztab(
+                            results_dict, out_file, query_spectra=q_spectra
+                        )
+                    elif export_format in ["csv", "fbmn"]:
                         io.save_match_results(
                             results_dict, out_file, query_spectra=q_spectra
                         )
@@ -530,7 +539,16 @@ def run_annotation_pipeline(
             except Exception as e:
                 logger.error(f"Process failed for {qf}: {e}")
 
-    # 4. Perform Molecular Networking
+    # 4. Perform FBMN Export (Consensus MGF)
+    if config.export.format.lower() == "fbmn":
+        try:
+            mgf_out = config.output_directory / "consensus_spectra.mgf"
+            logger.info(f"Generating Consensus MGF for FBMN: {mgf_out}")
+            io.save_spectra_to_mgf(all_queries, mgf_out)
+        except Exception as e:
+            logger.error(f"FBMN MGF export failed: {e}", exc_info=True)
+
+    # 5. Perform Molecular Networking
     if config.workflow.perform_networking:
         try:
             from MassFlow.networking import generate_molecular_network

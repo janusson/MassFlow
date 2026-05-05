@@ -428,3 +428,72 @@ def save_spectra_to_pickle(spectra: Iterable[Spectrum], export_path: Path) -> No
     export_path.parent.mkdir(parents=True, exist_ok=True)
     with open(export_path, "wb") as f:
         pickle.dump(list(spectra), f)
+
+
+def save_spectra_to_mgf(spectra: Iterable[Spectrum], export_path: Path) -> None:
+    """
+    Export spectra to an MGF file.
+
+    Parameters
+    ----------
+    spectra : Iterable[matchms.Spectrum]
+        Spectra to export.
+    export_path : Path
+        The file path for the resulting MGF file.
+    """
+    from matchms.exporting import save_as_mgf
+
+    export_path.parent.mkdir(parents=True, exist_ok=True)
+    save_as_mgf(list(spectra), str(export_path))
+
+
+def save_match_results_to_mztab(
+    results: list[dict[str, Any]],
+    output_path: Path,
+    query_spectra: Optional[Iterable[Spectrum]] = None,
+) -> None:
+    """
+    Save annotation results in a minimal mzTab-M format.
+
+    This exporter produces a tab-separated file with MTD (metadata) and
+    SML (small molecule list) sections compatible with GNPS and other
+    metabolomics tools.
+
+    Parameters
+    ----------
+    results : list of dict
+        Match result rows to export.
+    output_path : Path
+        The destination file path for the mzTab-M output.
+    query_spectra : Optional[Iterable[Spectrum]]
+        Full set of experimental query spectra.
+    """
+    df = _build_results_dataframe(results, query_spectra)
+    if df is None:
+        logger.warning("No results to save and no query_spectra provided.")
+        return
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    with open(output_path, "w") as f:
+        # 1. Metadata Section (MTD)
+        f.write("MTD\tmzTab-version\t2.0.0-M\n")
+        f.write("MTD\tmzTab-ID\tMassFlow_Export\n")
+        f.write(
+            f"MTD\ttitle\tMassFlow Annotation Results - {datetime.now().isoformat()}\n"
+        )
+        f.write("MTD\tdescription\tAutomated spectral annotation via MassFlow\n")
+
+        # 2. Small Molecule Header (SMH)
+        # SML columns usually include: SML_ID, SM_identifier, smiles, inchikey, theoretical_neutral_mass,
+        # adduct, exp_mass_to_charge, charge, retention_time, etc.
+        cols = df.columns.tolist()
+        header = "SMH\t" + "\t".join(cols) + "\n"
+        f.write(header)
+
+        # 3. Small Molecule List (SML)
+        for i, row in df.iterrows():
+            row_vals = [str(v) if not pd.isna(v) else "" for v in row.values]
+            f.write("SML\t" + "\t".join(row_vals) + "\n")
+
+    logger.info(f"mzTab-M results saved to {output_path}")

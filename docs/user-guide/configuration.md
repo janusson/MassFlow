@@ -85,9 +85,13 @@ Defines the output format.
 
 ```yaml
 export:
-  format: "csv"
+  format: "fbmn"
 ```
-*   `format`: The only currently stable export format is `"csv"`.
+*   `format`: The primary stable export formats are `"csv"`, `"mztab"`, and `"fbmn"`.
+    *   **csv:** Simplest tabular format.
+    *   **mztab:** Writes standard metabolomics tracking `.mztab` files.
+    *   **fbmn:** Exports a CSV feature table alongside a `consensus_spectra.mgf` to power downstream GNPS Feature-Based Molecular Networking workflows.
+    *   *Experimental Formats:* `"pickle"`, `"json"`, `"xlsx"`, `"parquet"`.
 
 ---
 

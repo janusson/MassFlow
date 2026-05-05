@@ -29,7 +29,7 @@ We prioritize stability, predictability, and correct data handling over cutting-
 | Open-format ingestion (`mzML`, `mzXML`, `MGF`, `MSP`) | **Stable** | Vendor raw conversion is explicitly out of scope |
 | SQLite library workflows (`massflow db ...`) | **Stable** | Recommended for reusable local libraries |
 | `cosine` and `modified_cosine` | **Stable** | Best-supported classical scoring paths |
-| CSV result export | **Stable** | Main reporting surface (w/ YAML provenance reports) |
+| CSV, mzTab-M, and FBMN export | **Stable** | Main reporting surfaces (w/ YAML provenance reports) |
 | Orchestrator API (`ConsensusEngine`, etc.) | *Experimental* | Engine-agnostic data contracts for v1.1 ML integration |
 | Advanced Engines (`spec2vec`, `ms2deepscore`, `cascade`) | *Experimental* | Higher setup and complex scientific validation |
 | GraphML networking | *Experimental* | Optional and non-core |

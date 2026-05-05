@@ -26,7 +26,7 @@ For `v1.0`, the stable product contract is centered on:
 - open-format ingestion for `mzML`, `mzXML`, `MGF`, and `MSP`
 - configurable `matchms`-based processing
 - `cosine` and `modified_cosine` similarity
-- CSV result export
+- CSV, mzTab-M, and GNPS FBMN compatible export formats
 
 Experimental utilities such as the terminal browser, molecular networking, and
 advanced ML-backed engines remain outside the core support promise.
@@ -43,7 +43,7 @@ graph LR
     CLI --> Processed[Processed Spectra]
     Processed --> Sim[Similarity Search]
     Sim --> Filter[FDR Filtering]
-    Filter --> Out[CSV + YAML Report]
+    Filter --> Out[CSV / mzTab / FBMN + YAML Report]
 ```
 
 ---
@@ -81,7 +81,7 @@ graph LR
 - `src/MassFlow/io.py`
   - Loads spectra from supported open formats and SQLite libraries.
   - Rejects vendor raw formats instead of converting them implicitly.
-  - Writes match results to CSV.
+  - Writes match results to CSV, mzTab-M, and MGF formats (for FBMN).
 
 - `src/MassFlow/database.py`
   - Stores and retrieves spectra in SQLite format.
@@ -192,10 +192,11 @@ The CLI loads the config and calls `run_annotation_pipeline()`.
      - matched-peak thresholds where applicable
      - configured FDR threshold
 
-8. **CSV export**
-   - The workflow writes one CSV file per experimental input file.
+8. **Result Export**
+   - The workflow writes one result file per experimental input file.
    - Output filenames follow the pattern:
-     - `<input_stem>_results.csv`
+     - `<input_stem>_results.<ext>`
+   - Depending on configuration, it can also output a `consensus_spectra.mgf` (for FBMN mode).
 
 9. **Optional networking**
    - If `workflow.perform_networking` is enabled, GraphML output is generated.
@@ -265,16 +266,16 @@ running the annotation workflow.
 
 ### Standard outputs
 
-The stable output format is:
+The stable output formats are:
 
-- CSV result files written per experimental input
+- CSV or mzTab-M result files written per experimental input
+- FBMN compatibility outputs (CSV paired with Consensus MGF)
 
 Optional output:
 
 - GraphML molecular-network export when explicitly enabled
 
-Although the config model includes broader export fields, the main annotation
-workflow currently writes CSV result tables directly.
+Although the config model includes broader export fields (JSON, Excel, Parquet), CSV and mzTab-M are the core reporting surfaces.
 
 ---
 
@@ -291,7 +292,7 @@ These are the features the docs should treat as the main supported path:
 - `matchms`-based metadata and peak processing
 - `cosine` and `modified_cosine`
 - target-decoy FDR filtering
-- per-file CSV result export
+- per-file CSV and mzTab-M result export, plus GNPS FBMN mode
 - `massflow db build`, `inspect`, and `merge`
 
 ## Experimental or less-stable surfaces

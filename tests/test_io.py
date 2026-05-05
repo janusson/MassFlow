@@ -146,3 +146,29 @@ def test_save_spectra_to_msp(tmp_path, mock_spectrum):
         args, _ = mock_save.call_args
         assert args[0] == [mock_spectrum]
         assert args[1] == str(out_path)
+
+
+def test_save_spectra_to_mgf(tmp_path, mock_spectrum):
+    out_path = tmp_path / "test.mgf"
+
+    with patch("matchms.exporting.save_as_mgf") as mock_save:
+        io.save_spectra_to_mgf([mock_spectrum], out_path)
+
+        mock_save.assert_called_once()
+        args, _ = mock_save.call_args
+        assert args[0] == [mock_spectrum]
+        assert args[1] == str(out_path)
+
+
+def test_save_match_results_to_mztab(tmp_path):
+    results = [{"query_id": "q1", "reference_id": "r1", "score": 0.95}]
+    out_path = tmp_path / "results.mztab"
+
+    io.save_match_results_to_mztab(results, out_path)
+
+    assert out_path.exists()
+    with open(out_path, "r") as f:
+        content = f.read()
+        assert "MTD\tmzTab-version\t2.0.0-M" in content
+        assert "SMH\tquery_id\treference_id\tscore\tAnnotation_Status" in content
+        assert "SML\tq1\tr1\t0.95\tMatched" in content

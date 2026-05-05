@@ -27,4 +27,6 @@ similarity:
 
 export:
   # Simplified output for spreadsheet analysis
+  # Available formats: "csv", "mztab", "fbmn", "json", "parquet", "xlsx"
+  # Use "fbmn" to generate GNPS-compatible paired files (CSV feature table + Consensus MGF)
   format: "csv"

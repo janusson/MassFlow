@@ -385,9 +385,11 @@ class ExportConfig(BaseModel):
     is currently part of the stable v1.0 contract; other formats are experimental.
     """
 
-    format: Literal["csv", "pickle", "msp", "mgf", "json", "xlsx", "parquet"] = Field(
+    format: Literal[
+        "csv", "pickle", "msp", "mgf", "json", "xlsx", "parquet", "fbmn", "mztab"
+    ] = Field(
         default="csv",
-        description="Stable: 'csv'. Experimental: 'pickle', 'msp', 'mgf', 'json', 'xlsx', 'parquet'.",
+        description="Stable: 'csv'. Experimental: 'pickle', 'msp', 'mgf', 'json', 'xlsx', 'parquet', 'fbmn', 'mztab'.",
     )
 
 
