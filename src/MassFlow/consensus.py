@@ -9,6 +9,7 @@ aggregation, configurable tie-breaking strategies, and scientific credibility ch
 to flag orthogonal agreement failures.
 """
 
+import logging
 from typing import Dict
 
 from MassFlow.models import (
@@ -17,6 +18,8 @@ from MassFlow.models import (
     ConsensusInput,
     ConsensusResult,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def generate_consensus(
@@ -75,12 +78,25 @@ def generate_consensus(
         reverse=True,
     )
 
+    # Log the expert guide: top 3 candidates
+    logger.debug(
+        f"Calculating weighted consensus for query '{input_data.query_id}'. Top 3 results:"
+    )
+    for i, cand in enumerate(sorted_candidates[:3], start=1):
+        scores_str = ", ".join([f"{e}: {s:.4f}" for e, s in cand.engine_scores.items()])
+        logger.debug(
+            f"  #{i} | Ref: {cand.reference_id} | Score: {cand.consensus_score:.4f} (Breakdown: {scores_str})"
+        )
+
     # 3. Handle Tie-Breaking for the Top Position
     top_score = sorted_candidates[0].consensus_score
     tied_candidates = [c for c in sorted_candidates if c.consensus_score == top_score]
 
     best_candidate = tied_candidates[0]
     if len(tied_candidates) > 1:
+        logger.info(
+            f"Tie detected for query '{input_data.query_id}' (Score: {top_score:.4f}). Applying tie-breaker: {config.tie_breaker_strategy}"
+        )
         strategy = config.tie_breaker_strategy
 
         if strategy == "highest_rank":
@@ -112,6 +128,8 @@ def generate_consensus(
         if best_candidate in sorted_candidates:
             sorted_candidates.remove(best_candidate)
             sorted_candidates.insert(0, best_candidate)
+
+        logger.debug(f"Tie-breaker winner: {best_candidate.reference_id}")
 
     # 4. Perform Scientific Credibility Check: Flag Rank Discrepancy
     flagged = False
@@ -150,6 +168,7 @@ def generate_consensus(
                     f"Orthogonal Agreement Failure: Primary engine '{primary_engine}' top hit "
                     f"({primary_top_hit.reference_id}) was completely unranked by {engine_b}."
                 )
+                logger.warning(f"Consensus Warning [{input_data.query_id}]: {reason}")
                 break
             elif rank_in_b > threshold:
                 flagged = True
@@ -158,6 +177,7 @@ def generate_consensus(
                     f"({primary_top_hit.reference_id}) was ranked #{rank_in_b} by {engine_b} "
                     f"(Threshold: {threshold})."
                 )
+                logger.warning(f"Consensus Warning [{input_data.query_id}]: {reason}")
                 break
 
     return ConsensusResult(
