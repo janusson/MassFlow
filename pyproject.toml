@@ -25,7 +25,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=8.0",
+    "pytest>=9.0.3",
     "pytest-cov>=5.0",
 ]
 ml = [
@@ -52,7 +52,7 @@ packages = ["src/MassFlow"]
 
 [dependency-groups]
 dev = [
-    "pytest>=9.0.2",
+    "pytest>=9.0.3",
     "mkdocs<2.0",
     "mkdocs-material",
     "mkdocstrings",
