@@ -11,10 +11,16 @@ dependencies = [
     "matchms>=0.27.0",
     "numpy>=1.26.4",
     "packaging>=26.0",
-    "pandas>=2.3.3",
+    "polars>=0.20.0",
     "pydantic>=2.12.5",
+    "pygls>=2.1.1",
     "pyteomics",
     "PyYAML",
+    "rdkit>=2025.9.6",
+    "rich>=15.0.0",
+    "scikit-learn>=1.8.0",
+    "typer>=0.25.1",
+    "watchfiles>=1.1.1",
 ]
 
 [project.optional-dependencies]
@@ -52,6 +58,8 @@ dev = [
     "mkdocstrings",
     "mkdocstrings-python",
     "pytest-cov>=7.0.0",
+    "pytest-benchmark",
+    "memray",
 ]
 
 [tool.pytest.ini_options]

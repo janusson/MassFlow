@@ -94,7 +94,9 @@ workflow.
   - `retention_time`
   - `adduct`
   - `compound_name`
+- Maintain strict theoretical limits: structural validation should enforce a 5 ppm tolerance for precursor m/z calculations.
 - Be explicit about retention-time units.
+- Support robust theoretical modeling (e.g., fallback to pyteomics for isotopic envelope calculations when RDKit features are missing).
 
 ### Docstrings and naming
 - Use clear, explicit names.

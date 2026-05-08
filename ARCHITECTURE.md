@@ -112,12 +112,14 @@ graph LR
 ### Orchestrator API (v1.1 Foundation)
 
 - `src/MassFlow/models.py`
-  - Defines strict Pydantic data contracts (`AnnotationHit`, `ConsensusInput`, `ConsensusResult`, `ConsensusConfig`).
+  - Defines strict Pydantic data contracts (`AnnotationHit`, `ConsensusInput`, `ConsensusResult`, `ConsensusConfig`, `MolecularStructure`).
   - Provides a dependency-free, engine-agnostic language for communication between the lightweight core and heavy ML satellite repositories (e.g., `massflow-ml`).
+  - Implements rigorous structural validation (e.g., 5 ppm precursor m/z checks) and automatically calculates theoretical `isotopic_envelope` distributions for valid molecules.
 - `src/MassFlow/consensus.py`
   - Implements `ConsensusEngine` for resolving multiple algorithmic annotations into a single `ConsensusResult`.
-  - Supports weighted score aggregation and multiple tie-breaking strategies (`highest_rank`, `average_score`, `validator_engine`).
-  - Includes a scientific credibility check to flag high-discrepancy results for human review.
+  - Supports probabilistically-weighted score aggregation representing the precision-recall trade-offs of the underlying ensemble.
+  - Implements multiple tie-breaking strategies (`highest_rank`, `average_score`, `validator_engine`).
+  - Includes a scientific credibility check to flag high-discrepancy results as an 'orthogonal agreement failure' for human review.
 
 ---
 

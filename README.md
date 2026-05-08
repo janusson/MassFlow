@@ -68,7 +68,7 @@ These exist in the codebase, but should not be treated as part of the stable `v1
 - `ms2deepscore`
 - `consensus`
 - `cascade`
-- Orchestrator API (`MassFlow.models`, `MassFlow.consensus`) for engine-agnostic consensus routing. It establishes strict data contracts (`AnnotationHit`, `ConsensusInput`, `ConsensusResult`) and features a pure-Python `ConsensusEngine` with weighted score aggregation, configurable tie-breaking, and scientific credibility checks to flag algorithmic discordance.
+- Orchestrator API (`MassFlow.models`, `MassFlow.consensus`) for engine-agnostic consensus routing. It establishes strict data contracts (`AnnotationHit`, `ConsensusInput`, `ConsensusResult`, `MolecularStructure`) and features a pure-Python `ConsensusEngine` with probabilistically-weighted score aggregation, configurable tie-breaking, and scientific credibility checks to flag orthogonal algorithmic discordance. It also introduces theoretical `isotopic_envelope` calculation and validation to accurately model M, M+1, and M+2 abundances.
 
 ## Documentation
 

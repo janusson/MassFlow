@@ -20,7 +20,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Iterator, Optional
 
-import pandas as pd
+import polars as pl
 import yaml
 from matchms import Spectrum
 from matchms.importing import (
@@ -128,7 +128,7 @@ def load_spectra(
 def _build_results_dataframe(
     results: list[dict[str, Any]],
     query_spectra: Optional[Iterable[Spectrum]] = None,
-) -> Optional[pd.DataFrame]:
+) -> Optional[pl.DataFrame]:
     """
     Construct a results DataFrame from match results and optional query spectra.
 
@@ -136,50 +136,59 @@ def _build_results_dataframe(
     consistent data shaping, merging, and status labeling.
     """
     if query_spectra is not None:
-        # Build base dataframe from all queries
-        base_rows = []
+        q_ids, q_mzs, q_rts = [], [], []
         for q in query_spectra:
-            q_id = str(q.get("id"))
+            q_ids.append(str(q.get("id")))
             q_mz = q.get("precursor_mz")
             q_rt = q.get("retention_time")
-            base_rows.append(
-                {
-                    "query_id": q_id,
-                    "query_precursor_mz": float(q_mz) if q_mz is not None else None,
-                    "query_retention_time": float(q_rt) if q_rt is not None else None,
-                }
-            )
-        base_df = pd.DataFrame(base_rows)
+            q_mzs.append(float(q_mz) if q_mz is not None else None)
+            q_rts.append(float(q_rt) if q_rt is not None else None)
+
+        base_df = pl.DataFrame(
+            {
+                "query_id": q_ids,
+                "query_precursor_mz": q_mzs,
+                "query_retention_time": q_rts,
+            },
+            schema={
+                "query_id": pl.Utf8,
+                "query_precursor_mz": pl.Float64,
+                "query_retention_time": pl.Float64,
+            },
+        )
 
         if results:
-            results_df = pd.DataFrame(results)
-            # Left join results onto the base query dataframe
-            df = pd.merge(
-                base_df,
-                results_df,
-                on="query_id",
-                how="left",
-                suffixes=("", "_matched"),
-            )
-            # Drop duplicated columns if any exist from the merge
-            if "query_precursor_mz_matched" in df.columns:
-                df = df.drop(columns=["query_precursor_mz_matched"])
+            # Fix numpy bool serialization warning in Polars by converting manually
+            clean_results = []
+            for r in results:
+                clean_r = r.copy()
+                if "is_decoy" in clean_r and hasattr(clean_r["is_decoy"], "item"):
+                    clean_r["is_decoy"] = clean_r["is_decoy"].item()
+                clean_results.append(clean_r)
+
+            results_df = pl.DataFrame(clean_results)
+            df = base_df.join(results_df, on="query_id", how="left")
+            if "query_precursor_mz_right" in df.columns:
+                df = df.drop("query_precursor_mz_right")
         else:
             df = base_df
     else:
         if not results:
             return None
-        df = pd.DataFrame(results)
+        df = pl.DataFrame(results)
 
     # Add Annotation_Status
     if "score" in df.columns:
-        df["Annotation_Status"] = df["score"].apply(
-            lambda x: (
-                "Unknown" if pd.isna(x) else ("Matched" if x >= 0.9 else "Putative")
-            )
+        df = df.with_columns(
+            pl.when(pl.col("score").is_null())
+            .then(pl.lit("Unknown"))
+            .when(pl.col("score") >= 0.9)
+            .then(pl.lit("Matched"))
+            .otherwise(pl.lit("Putative"))
+            .alias("Annotation_Status")
         )
     else:
-        df["Annotation_Status"] = "Unknown"
+        df = df.with_columns(pl.lit("Unknown").alias("Annotation_Status"))
 
     return df
 
@@ -231,7 +240,7 @@ def save_match_results(
         return
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    df.to_csv(output_path, index=False)
+    df.write_csv(output_path)
     logger.info(f"Results saved to {output_path}")
 
 
@@ -262,7 +271,7 @@ def save_match_results_to_json(
         return
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    df.to_json(output_path, orient="records", indent=4)
+    df.write_json(output_path, row_oriented=True)
     logger.info(f"Results saved to {output_path}")
 
 
@@ -293,7 +302,7 @@ def save_match_results_to_xlsx(
         return
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    df.to_excel(output_path, index=False)
+    df.write_excel(output_path)
     logger.info(f"Results saved to {output_path}")
 
 
@@ -324,7 +333,7 @@ def save_match_results_to_parquet(
         return
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    df.to_parquet(output_path, index=False)
+    df.write_parquet(output_path)
     logger.info(f"Results saved to {output_path}")
 
 
@@ -487,13 +496,13 @@ def save_match_results_to_mztab(
         # 2. Small Molecule Header (SMH)
         # SML columns usually include: SML_ID, SM_identifier, smiles, inchikey, theoretical_neutral_mass,
         # adduct, exp_mass_to_charge, charge, retention_time, etc.
-        cols = df.columns.tolist()
+        cols = df.columns
         header = "SMH\t" + "\t".join(cols) + "\n"
         f.write(header)
 
         # 3. Small Molecule List (SML)
-        for i, row in df.iterrows():
-            row_vals = [str(v) if not pd.isna(v) else "" for v in row.values]
+        for row in df.iter_rows():
+            row_vals = [str(v) if v is not None else "" for v in row]
             f.write("SML\t" + "\t".join(row_vals) + "\n")
 
     logger.info(f"mzTab-M results saved to {output_path}")

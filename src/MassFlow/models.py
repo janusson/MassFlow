@@ -10,7 +10,11 @@ dependencies like PyTorch or TensorFlow.
 
 from typing import Dict, List, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+from rdkit import Chem
+from rdkit.Chem import Descriptors
+
+from MassFlow.cheminformatics import ADDUCT_OFFSETS, calculate_isotopic_envelope
 
 
 class AnnotationHit(BaseModel):
@@ -100,23 +104,220 @@ class ConsensusResult(BaseModel):
 class ConsensusConfig(BaseModel):
     """
     Configuration for the consensus weighting and tie-breaking logic.
+
+    This configuration dictates how individual similarity engine outputs are aggregated into
+    a single consensus score. Tuning these parameters alters the balance between false positives
+    and false negatives in structural identification.
     """
 
     engine_weights: Dict[str, float] = Field(
         ...,
-        description="Mapping of engine_id to its relative weight (e.g., {'cosine': 0.6, 'ms2deepscore': 0.4}).",
+        description=(
+            "Mapping of engine_id to its relative weight (e.g., {'exact_mass': 0.6, 'ms2deepscore': 0.4}).\n\n"
+            "Scientific Justification:\n"
+            "These weights represent the prior probability of engine accuracy within the ensemble. "
+            "Weighting should reflect the known precision-recall trade-offs of the underlying engines. "
+            "For example, exact-mass-based or isotopic-envelope engines provide high precision (low false-positive rate) "
+            "and should receive higher priors for confident exact-structure identification. Conversely, "
+            "fragmentation-pattern-based Machine Learning models (e.g., MS2DeepScore, Spec2Vec) offer high recall "
+            "(sensitivity) for structural analogs but may suffer from lower precision for exact molecular matches. "
+            "Tuning these weights fundamentally defines the operating point on the Receiver Operating Characteristic (ROC) curve."
+        ),
     )
     tie_breaker_strategy: Literal[
         "highest_rank", "average_score", "validator_engine"
     ] = Field(
         default="highest_rank",
-        description="Strategy to resolve exact consensus score ties.",
+        description=(
+            "Strategy to resolve exact consensus score ties between competing candidate structures.\n\n"
+            "Scientific Justification:\n"
+            "- 'highest_rank': Defers to the candidate that achieved the single best rank across any individual engine, "
+            "leveraging the hypothesis that at least one scoring modality has captured the true orthogonal signal.\n"
+            "- 'average_score': Assumes ensemble stability; averages the raw scores, favoring candidates with broad but "
+            "moderate empirical agreement across all underlying feature spaces.\n"
+            "- 'validator_engine': Employs orthogonal validation by deferring to a specific, highly-trusted engine "
+            "(e.g., retreating to exact mass limits when fragmentation spectra yield ambiguous ties)."
+        ),
     )
     validator_engine: Optional[str] = Field(
         default=None,
-        description="Engine ID to trust during a 'validator_engine' tie-break.",
+        description="Engine ID to trust during a 'validator_engine' tie-break (e.g., 'exact_mass').",
     )
     flag_rank_discrepancy_threshold: int = Field(
         default=5,
-        description="Flag result if Engine A's top hit is ranked worse than this in Engine B.",
+        description=(
+            "Threshold for flagging a consensus result due to algorithmic disagreement.\n\n"
+            "Scientific Justification:\n"
+            "This parameter serves as a heuristic for 'orthogonal agreement failure' across engines. If a candidate is highly ranked "
+            "by one engine (e.g., rank 1) but falls below this threshold in another (e.g., rank > 5), it indicates severe "
+            "disagreement across orthogonal feature spaces (e.g., functional group similarity vs. backbone fragmentation). "
+            "These cases represent low-confidence hits that require manual expert review to prevent false discoveries "
+            "from propagating through automated downstream pipelines."
+        ),
     )
+
+
+class IsotopicDistribution(BaseModel):
+    """Schema for a molecule's theoretical isotopic distribution."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    peaks: List[tuple[float, float]] = Field(
+        ...,
+        description="List of (centroid_mass, relative_abundance) tuples representing the M, M+1, M+2... isotopic peaks.",
+    )
+
+
+class MolecularStructure(BaseModel):
+    """Schema for molecular metadata and structure validation."""
+
+    # Optimize for JSON: strip whitespace, forbid extra fields
+    model_config = ConfigDict(
+        str_strip_whitespace=True, extra="forbid", validate_assignment=True
+    )
+
+    smiles: Optional[str] = Field(None, description="Canonical SMILES")
+    inchi: Optional[str] = Field(None, description="Standard InChI")
+    formula: Optional[str] = Field(None, description="Chemical formula")
+    exact_mass: Optional[float] = Field(
+        None, ge=0, description="Monoisotopic exact mass"
+    )
+    isotopic_distribution: Optional[IsotopicDistribution] = Field(
+        None, description="Theoretical isotopic distribution (mass, abundance) pairs."
+    )
+    isotopic_envelope: Optional[List[tuple[float, float]]] = Field(
+        None, description="Theoretical isotopic envelope (M, M+1, M+2...)"
+    )
+
+    @model_validator(mode="after")
+    def validate_and_compute_mass(self) -> "MolecularStructure":
+        """
+        Validates the chemical structure via RDKit.
+        Calculates exact mass if missing, or validates it against the provided mass.
+        """
+        mol = None
+
+        # 1. Parse Structure
+        if self.smiles:
+            mol = Chem.MolFromSmiles(self.smiles)
+            if not mol:
+                raise ValueError(f"Invalid SMILES string: {self.smiles}")
+        elif self.inchi:
+            mol = Chem.MolFromInchi(self.inchi)
+            if not mol:
+                raise ValueError(f"Invalid InChI string: {self.inchi}")
+
+        # 2. Validate / Compute Exact Mass
+        if mol:
+            calculated_mass = Descriptors.ExactMolWt(mol)
+
+            if self.exact_mass is not None:
+                # Enforce strict 5 ppm mass error threshold for structural integrity
+                ppm_error = (
+                    abs(self.exact_mass - calculated_mass) / calculated_mass * 1e6
+                )
+                if ppm_error > 5.0:
+                    raise ValueError(
+                        f"Structure exact mass ({calculated_mass:.4f}) conflicts with "
+                        f"provided exact mass ({self.exact_mass:.4f}). Error: {ppm_error:.1f} ppm."
+                    )
+            else:
+                # Auto-fill missing exact mass
+                self.exact_mass = calculated_mass
+
+            # Auto-fill missing formula
+            if not self.formula:
+                self.formula = Chem.rdMolDescriptors.CalcMolFormula(mol)
+
+            # Auto-fill isotopic envelope
+            if self.smiles and not self.isotopic_envelope:
+                self.isotopic_envelope = calculate_isotopic_envelope(self.smiles)
+
+        return self
+
+
+class SpectrumMetadata(BaseModel):
+    """Schema for LC-MS/MS specific metadata."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    spectrum_id: str
+    precursor_mz: float = Field(..., gt=0)
+    retention_time: Optional[float] = Field(None, ge=0, description="RT in seconds")
+    charge: Optional[int] = Field(None, description="Ion charge state (e.g., 1, -1, 2)")
+    ion_mode: Optional[Literal["positive", "negative", "neutral"]] = None
+    collision_energy: Optional[float] = None
+    adduct: Optional[str] = Field(
+        None, description="Ionization adduct (e.g., [M+H]+, [M-H]-)"
+    )
+    molecule: Optional[MolecularStructure] = None
+
+    @model_validator(mode="after")
+    def validate_precursor_mass_logic(self) -> "SpectrumMetadata":
+        """
+        Ensures the precursor m/z physically aligns with the exact mass, charge,
+        and specific adduct within a strict 5 ppm tolerance.
+        """
+        # Assign default adduct based on ion_mode if not provided
+        if not self.adduct:
+            if self.ion_mode == "positive":
+                self.adduct = "[M+H]+"
+            elif self.ion_mode == "negative":
+                self.adduct = "[M-H]-"
+
+        if self.molecule and self.molecule.exact_mass and self.charge and self.adduct:
+            exact_mass = self.molecule.exact_mass
+            charge = self.charge
+
+            if self.adduct not in ADDUCT_OFFSETS:
+                raise ValueError(f"Unsupported adduct: {self.adduct}")
+
+            offset = ADDUCT_OFFSETS[self.adduct]
+
+            # Theoretical m/z calculation. ADDUCT_OFFSETS assume z=+/-1 for the offset mass.
+            theoretical_mz = (exact_mass + offset) / abs(charge)
+
+            # Enforce strict 5 ppm tolerance
+            ppm_error = abs(self.precursor_mz - theoretical_mz) / theoretical_mz * 1e6
+            if ppm_error > 5.0:
+                raise ValueError(
+                    f"Precursor m/z ({self.precursor_mz:.6f}) deviates from theoretical m/z "
+                    f"({theoretical_mz:.6f}) for adduct {self.adduct} by {ppm_error:.1f} ppm "
+                    "(tolerance is 5.0 ppm)."
+                )
+
+        return self
+
+
+class SpectralPeaks(BaseModel):
+    """Schema for the raw spectral arrays."""
+
+    model_config = ConfigDict(
+        # Rust core optimizes `list[float]` serialization drastically
+        ser_json_bytes="utf8"
+    )
+
+    mz_array: List[float]
+    intensity_array: List[float]
+
+    @model_validator(mode="after")
+    def validate_arrays(self) -> "SpectralPeaks":
+        """Ensures array integrity."""
+        length = len(self.mz_array)
+        if length != len(self.intensity_array):
+            raise ValueError(
+                f"Array length mismatch: mz ({length}) vs intensity ({len(self.intensity_array)})"
+            )
+
+        # Ensure m/z is sorted (crucial for fast similarity searches later)
+        if not all(self.mz_array[i] <= self.mz_array[i + 1] for i in range(length - 1)):
+            raise ValueError("mz_array must be monotonically increasing.")
+
+        return self
+
+
+class MassFlowSpectrum(BaseModel):
+    """Top-level schema representing a complete MS/MS spectral record."""
+
+    metadata: SpectrumMetadata
+    peaks: SpectralPeaks

@@ -43,6 +43,7 @@ class SearchResult(TypedDict):
     is_decoy: bool
     q_value: float
     annotation_tier: str | None
+    structural_similarity: float | None
 
 
 def _ms1_prefilter(
@@ -62,17 +63,37 @@ def _ms1_prefilter(
     ref_mzs = np.array([float(r) if r is not None else 0.0 for r in ref_mzs_raw])
     query_mzs = np.array([float(q) if q is not None else 0.0 for q in query_mzs_raw])
 
-    # Avoid division by zero
-    safe_query_mzs = np.where(query_mzs == 0, np.nan, query_mzs)
-
     if resolution_ppm is not None:
-        with np.errstate(divide="ignore", invalid="ignore"):
-            diff = (
-                np.abs(ref_mzs[:, None] - safe_query_mzs[None, :])
-                / safe_query_mzs[None, :]
-                * 1e6
-            )
-        mask = diff <= resolution_ppm
+        # For each query, find references where |ref_mz - query_mz| / query_mz <= ppm_tolerance
+        # This is more efficient than a full matrix operation for sparse results.
+        query_mzs_indexed = list(enumerate(query_mzs))
+        ref_mzs_sorted_indices = np.argsort(ref_mzs)
+        ref_mzs_sorted = ref_mzs[ref_mzs_sorted_indices]
+
+        rows, cols = [], []
+        for query_idx, query_mz in query_mzs_indexed:
+            if query_mz > 0:
+                ppm_tol_da = resolution_ppm * query_mz / 1e6
+                min_mz, max_mz = query_mz - ppm_tol_da, query_mz + ppm_tol_da
+
+                start_idx = np.searchsorted(ref_mzs_sorted, min_mz, side="left")
+                end_idx = np.searchsorted(ref_mzs_sorted, max_mz, side="right")
+
+                original_indices = ref_mzs_sorted_indices[start_idx:end_idx]
+                for ref_idx in original_indices:
+                    rows.append(ref_idx)
+                    cols.append(query_idx)
+
+        # Also include spectra with missing precursors, as they bypass the filter
+        for i in np.where(ref_missing)[0]:
+            rows.extend([i] * len(query_mzs))
+            cols.extend(range(len(query_mzs)))
+        for i in np.where(query_missing)[0]:
+            rows.extend(range(len(ref_mzs)))
+            cols.extend([i] * len(ref_mzs))
+
+        return np.array(rows), np.array(cols)
+
     else:
         diff = np.abs(ref_mzs[:, None] - query_mzs[None, :])
         mask = diff <= ms1_tolerance
@@ -270,6 +291,112 @@ class SimilarityEngine:
 
         else:
             raise ValueError(f"Unsupported algorithm: {self.config.algorithm}")
+
+    def _search_spec2vec_indexed(
+        self,
+        query_spectra: List[Spectrum],
+        reference_spectra: List[Spectrum],
+        min_score: float | None = None,
+        top_n: int | None = None,
+        include_decoys: bool = True,
+    ) -> List[SearchResult]:
+        """
+        Run an indexed similarity search for spec2vec using a BallTree.
+        """
+        from sklearn.neighbors import BallTree
+        from sklearn.preprocessing import normalize
+
+        if not hasattr(self.similarity_function, "_calculate_vector"):
+            raise TypeError(
+                "The configured similarity function is not a valid spec2vec instance."
+            )
+
+        cutoff = min_score if min_score is not None else self.config.min_score
+        radius = np.sqrt(2 - 2 * cutoff)
+
+        if include_decoys:
+            decoy_spectra = generate_decoys(reference_spectra)
+            all_references = reference_spectra + decoy_spectra
+        else:
+            all_references = reference_spectra
+
+        ref_embeddings = np.array(
+            [self.similarity_function._calculate_vector(s) for s in all_references]
+        )
+        ref_embeddings_normalized = normalize(ref_embeddings, axis=1, norm="l2")
+        tree = BallTree(ref_embeddings_normalized, metric="euclidean")
+
+        results: List[SearchResult] = []
+
+        for i, query_spec in enumerate(query_spectra):
+            query_embedding = self.similarity_function._calculate_vector(
+                query_spec
+            ).reshape(1, -1)
+            query_embedding_normalized = normalize(query_embedding, axis=1, norm="l2")
+
+            indices, distances = tree.query_radius(
+                query_embedding_normalized, r=radius, return_distance=True
+            )
+
+            indices, distances = indices[0], distances[0]
+
+            if len(indices) == 0:
+                continue
+
+            scores = 1 - (distances**2) / 2
+
+            sorted_indices = np.argsort(scores)[::-1]
+            if top_n is not None:
+                sorted_indices = sorted_indices[:top_n]
+
+            q_id = str(query_spec.get("id", f"query_{i}"))
+            q_mz = query_spec.get("precursor_mz")
+            q_mz_val = float(q_mz) if q_mz is not None else None
+            q_smiles = query_spec.get("smiles")
+
+            for idx in sorted_indices:
+                original_ref_idx = indices[idx]
+                ref = all_references[original_ref_idx]
+                score_val = scores[idx]
+
+                ref_mz = ref.get("precursor_mz")
+                ref_mz_val = float(ref_mz) if ref_mz is not None else None
+                ref_smiles = ref.get("smiles")
+
+                is_decoy = (
+                    original_ref_idx >= len(reference_spectra)
+                    if include_decoys
+                    else False
+                )
+
+                structural_sim = None
+                if q_smiles and ref_smiles and not is_decoy:
+                    from MassFlow.cheminformatics import calculate_tanimoto_similarity
+
+                    structural_sim = calculate_tanimoto_similarity(q_smiles, ref_smiles)
+
+                results.append(
+                    {
+                        "query_id": q_id,
+                        "query_precursor_mz": q_mz_val,
+                        "reference_id": str(ref.get("id")),
+                        "reference_name": str(
+                            ref.get("compound_name") or ref.get("name")
+                        ),
+                        "reference_precursor_mz": ref_mz_val,
+                        "score": score_val,
+                        "matched_peaks": -1,  # Not applicable for spec2vec
+                        "smiles": str(ref_smiles) if ref_smiles else None,
+                        "inchikey": str(ref.get("inchikey"))
+                        if ref.get("inchikey")
+                        else None,
+                        "is_decoy": is_decoy,
+                        "q_value": 1.0,
+                        "annotation_tier": None,
+                        "structural_similarity": structural_sim,
+                    }
+                )
+        return results
 
     def search(
         self,
@@ -472,12 +599,13 @@ class SimilarityEngine:
                         "score": score_val,
                         "matched_peaks": match_val,
                         "smiles": str(ref.get("smiles")) if ref.get("smiles") else None,
-                        "inchikey": (
-                            str(ref.get("inchikey")) if ref.get("inchikey") else None
-                        ),
+                        "inchikey": str(ref.get("inchikey"))
+                        if ref.get("inchikey")
+                        else None,
                         "is_decoy": is_decoy,
-                        "q_value": 1.0,  # Placeholder, computed globally later
+                        "q_value": 1.0,  # Will be updated by FDR calculation
                         "annotation_tier": None,
+                        "structural_similarity": None,
                     }
                 )
 
@@ -802,12 +930,13 @@ class ConsensusEngine:
                         "score": score_val,
                         "matched_peaks": match_val,
                         "smiles": str(ref.get("smiles")) if ref.get("smiles") else None,
-                        "inchikey": (
-                            str(ref.get("inchikey")) if ref.get("inchikey") else None
-                        ),
+                        "inchikey": str(ref.get("inchikey"))
+                        if ref.get("inchikey")
+                        else None,
                         "is_decoy": is_decoy,
                         "q_value": 1.0,
-                        "annotation_tier": "Standard",
+                        "annotation_tier": None,
+                        "structural_similarity": None,
                     }
                 )
 

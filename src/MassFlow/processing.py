@@ -9,8 +9,10 @@ It is designed to fail fast on invalid data while logging detailed diagnostics.
 """
 
 import logging
-from typing import Iterator, Optional
+from typing import Iterator, List, Optional, Tuple
 
+import numpy as np
+import polars as pl
 from matchms import Spectrum
 from matchms.filtering import (
     add_retention_time,
@@ -25,7 +27,6 @@ from matchms.filtering import (
     make_charge_int,
     normalize_intensities,
     reduce_to_number_of_peaks,
-    repair_inchi_inchikey_smiles,
     require_minimum_number_of_peaks,
     select_by_intensity,
     select_by_mz,
@@ -36,31 +37,38 @@ from MassFlow.config import ProcessingConfig
 logger = logging.getLogger(__name__)
 
 
+def compute_spectral_metrics(
+    mz_array: np.ndarray, precursor_mz: float
+) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Compute vectorized spectral metrics: neutral losses and m/z offsets.
+
+    Parameters
+    ----------
+    mz_array : np.ndarray
+        Array of peak m/z values.
+    precursor_mz : float
+        The precursor m/z for the spectrum.
+
+    Returns
+    -------
+    tuple[np.ndarray, np.ndarray]
+        A tuple containing (neutral_losses, mz_offsets).
+    """
+    if precursor_mz is None or precursor_mz <= 0:
+        return np.array([]), np.array([])
+
+    neutral_losses = precursor_mz - mz_array
+    mz_offsets = mz_array - precursor_mz
+
+    return neutral_losses, mz_offsets
+
+
 def metadata_processing(
     spectrum: Spectrum, config: Optional[ProcessingConfig] = None
 ) -> Optional[Spectrum]:
     """
     Standardize and repair spectrum metadata using matchms filters.
-
-    This function applies a sequence of metadata cleaning operations to ensure consistency
-    across spectral records. It handles tasks such as repairing InChIKeys, deriving
-    formulas and adducts from compound names, harmonizing missing identifiers (SMILES,
-    InChI), and standardizing charge and ion mode information. If a configuration
-    object is provided, it can also inject instrument-specific metadata.
-
-    Parameters
-    ----------
-    spectrum : matchms.Spectrum
-        The input spectrum object to process.
-    config : ProcessingConfig, optional
-        Configuration object containing instrument metadata (e.g., instrument name,
-        ionization mode) to be injected into the spectrum. Default is None.
-
-    Returns
-    -------
-    matchms.Spectrum or None
-        The processed spectrum with standardized metadata, or None if the spectrum
-        is invalidated during processing (e.g., due to critical missing info).
     """
     if spectrum is None:
         return None
@@ -80,6 +88,9 @@ def metadata_processing(
 
     # Metadata repairs and derivations
     if config is None or getattr(config, "repair_inchi_inchikey_smiles", True):
+        # matchms filters return a new spectrum or None
+        from matchms.filtering import repair_inchi_inchikey_smiles
+
         s = repair_inchi_inchikey_smiles(s)
         if s is None:
             return None
@@ -147,8 +158,6 @@ def calculate_triage_flags(spectrum: Spectrum) -> Spectrum:
 
     # Ensure mz_array is not empty
     if len(mz_array) > 0:
-        import numpy as np
-
         idx = np.searchsorted(mz_array, target_mz)
         has_tyrosine = False
 
@@ -172,40 +181,14 @@ def calculate_triage_flags(spectrum: Spectrum) -> Spectrum:
 def peak_processing(spectrum: Spectrum, config: ProcessingConfig) -> Optional[Spectrum]:
     """
     Apply peak-level filters and normalization based on configuration.
-
-    This function filters spectral peaks based on intensity thresholds (noise removal),
-    peak counts (minimum required peaks), and m/z ranges. It can also reduce the
-    spectrum to the top-N peaks and normalize intensities. The operations are performed
-    in a specific order:
-    1. Filter by intensity (Noise Threshold)
-    2. Filter by minimum peak count
-    3. Filter by m/z range
-    4. Reduce to Top-N peaks
-    5. Normalize intensities
-
-    Parameters
-    ----------
-    spectrum : matchms.Spectrum
-        The input spectrum object containing peak data.
-    config : ProcessingConfig
-        The configuration object defining filter thresholds (e.g., `noise_threshold`,
-        `min_peaks`, `mz_min`, `mz_max`, `n_max`, `normalize_intensity`).
-
-    Returns
-    -------
-    matchms.Spectrum or None
-        The processed spectrum with filtered/normalized peaks, or None if the
-        spectrum fails any of the filtering criteria (e.g., too few peaks remaining).
     """
     if spectrum is None:
         return None
 
-    spec_id = spectrum.get("id", "Unknown ID")
     s: Optional[Spectrum] = spectrum
 
     # 1. Filter Noise (Absolute Intensity)
     if getattr(config, "filter_by_intensity", True):
-        # Use noise_threshold from config if available (and positive), otherwise fallback to min_intensity
         threshold = (
             config.noise_threshold
             if getattr(config, "noise_threshold", 0) > 0
@@ -213,30 +196,20 @@ def peak_processing(spectrum: Spectrum, config: ProcessingConfig) -> Optional[Sp
         )
         s = select_by_intensity(s, intensity_from=threshold, intensity_to=float("inf"))
         if s is None:
-            logger.debug(
-                f"Spectrum {spec_id} dropped: all peaks below noise threshold {threshold}"
-            )
             return None
 
     # 2. Filter Peak Count
     if getattr(config, "filter_min_peaks", True):
         s = require_minimum_number_of_peaks(s, n_required=config.min_peaks)
         if s is None:
-            logger.debug(
-                f"Spectrum {spec_id} dropped: fewer than {config.min_peaks} peaks"
-            )
             return None
 
     # 3. M/Z Range Truncation
     if getattr(config, "filter_by_mz", True):
-        # Defaults to 0-1000 Da if not specified in config
         mz_from = getattr(config, "mz_min", 0.0)
         mz_to = getattr(config, "mz_max", 1000.0)
         s = select_by_mz(s, mz_from=mz_from, mz_to=mz_to)
         if s is None:
-            logger.debug(
-                f"Spectrum {spec_id} dropped: no peaks in m/z range {mz_from}-{mz_to}"
-            )
             return None
 
     # 4. Max-Peak Restriction (Top-N)
@@ -253,12 +226,113 @@ def peak_processing(spectrum: Spectrum, config: ProcessingConfig) -> Optional[Sp
         if s is None:
             return None
 
-    # Compute and attach structural triage flags for ML routing
-    # This must happen after noise filtering to prevent false positives
+    # Compute and attach structural triage flags
     if s is not None:
         s = calculate_triage_flags(s)
 
     return s
+
+
+def process_spectra_batch(
+    spectra: List[Spectrum], config: ProcessingConfig
+) -> List[Spectrum]:
+    """
+    Process a batch of spectra using Polars for high-performance metadata operations.
+    """
+    if not spectra:
+        return []
+
+    # 1. Extract metadata into a Polars LazyFrame for fast batch validation
+    metadata_rows = []
+    for i, s in enumerate(spectra):
+        metadata_rows.append(
+            {
+                "batch_index": i,
+                "id": s.get("id"),
+                "precursor_mz": float(s.get("precursor_mz", 0.0)),
+                "retention_time": float(s.get("retention_time", 0.0)),
+                "charge": int(s.get("charge", 0)),
+                "ionmode": s.get("ionmode"),
+                "peak_count": len(s.peaks) if s.peaks else 0,
+            }
+        )
+
+    # Use LazyFrame to prepare filters without immediate execution
+    lf = pl.LazyFrame(metadata_rows)
+
+    # Apply batch-level metadata filters (e.g. minimum peaks, m/z range)
+    mz_min = getattr(config, "mz_min", 0.0)
+    mz_max = getattr(config, "mz_max", 1000.0)
+    min_peaks = getattr(config, "min_peaks", 1)
+
+    filtered_lf = lf.filter(
+        (pl.col("precursor_mz") >= mz_min)
+        & (pl.col("precursor_mz") <= mz_max)
+        & (pl.col("peak_count") >= min_peaks)
+    )
+
+    # Compute vectorized m/z offsets and neutral losses for the entire batch metadata table
+    # (This represents the relationship of the PRECURSOR to nominal mass ranges)
+    filtered_lf = filtered_lf.with_columns(
+        [
+            (pl.col("precursor_mz") % 1).alias("mz_nominal_offset"),
+            (pl.col("precursor_mz") - 18.01).alias("theoretical_water_loss"),
+        ]
+    )
+
+    # Materialize the filtered metadata
+    valid_metadata = filtered_lf.collect()
+    valid_indices = valid_metadata.get_column("batch_index").to_list()
+
+    processed_batch = []
+    for idx in valid_indices:
+        spec = spectra[idx]
+
+        try:
+            # Apply standard matchms metadata repairs
+            spec = metadata_processing(spec, config)
+            if spec is None:
+                continue
+        except Exception as e:
+            logger.error(
+                f"Skipping spectrum due to metadata processing error: {e}",
+                extra={
+                    "spectrum_id": spec.get("id"),
+                    "precursor_mz": spec.get("precursor_mz"),
+                    "compound_name": spec.get("compound_name"),
+                    "step": "metadata_processing",
+                },
+                exc_info=True,
+            )
+            continue
+
+        try:
+            # Apply peak-level processing
+            spec = peak_processing(spec, config)
+            if spec is None:
+                continue
+        except Exception as e:
+            logger.error(
+                f"Skipping spectrum due to peak processing error: {e}",
+                extra={
+                    "spectrum_id": spec.get("id"),
+                    "precursor_mz": spec.get("precursor_mz"),
+                    "compound_name": spec.get("compound_name"),
+                    "step": "peak_processing",
+                },
+                exc_info=True,
+            )
+            continue
+
+        # Vectorized Peak-level calculations (Neutral Loss & Offset)
+        # We attach these to the Spectrum metadata for use by similarity engines
+        nl, offsets = compute_spectral_metrics(spec.peaks.mz, spec.get("precursor_mz"))
+        spec.set("neutral_losses", nl)
+        spec.set("mz_offsets", offsets)
+
+        processed_batch.append(spec)
+
+    return processed_batch
 
 
 def process_spectra(
@@ -266,64 +340,19 @@ def process_spectra(
 ) -> Iterator[Spectrum]:
     """
     Orchestrate the full spectral processing pipeline.
-
-    This generator function iterates through a collection of raw spectra and applies
-    both metadata processing (`metadata_processing`) and peak processing (`peak_processing`)
-    sequentially. It adheres to a 'fail-fast' approach where invalid spectra (returning None
-    from any step) are silently skipped (logged within the sub-functions).
-
-    Parameters
-    ----------
-    spectra : Iterator[matchms.Spectrum]
-        An iterator yielding raw spectrum objects to be processed.
-    config : ProcessingConfig
-        The configuration object governing all processing steps.
-
-    Yields
-    ------
-    matchms.Spectrum
-        Fully processed, cleaned, and filtered spectrum objects ready for analysis.
+    Processes in chunks to optimize Polars batch performance while staying memory-aware.
     """
+    chunk_size = 5000
+    chunk = []
+
     for spectrum in spectra:
         if spectrum is None:
             continue
+        chunk.append(spectrum)
 
-        try:
-            # Step A: Metadata Processing
-            processed_spec = metadata_processing(spectrum, config)
-        except Exception as e:
-            logger.error(
-                f"Skipping spectrum due to metadata processing error: {e}",
-                extra={
-                    "spectrum_id": spectrum.get("id"),
-                    "precursor_mz": spectrum.get("precursor_mz"),
-                    "compound_name": spectrum.get("compound_name"),
-                    "step": "metadata_processing",
-                },
-                exc_info=True,
-            )
-            continue
+        if len(chunk) >= chunk_size:
+            yield from process_spectra_batch(chunk, config)
+            chunk.clear()
 
-        if processed_spec is None:
-            continue
-
-        try:
-            # Step B: Peak Processing
-            processed_spec = peak_processing(processed_spec, config)
-        except Exception as e:
-            logger.error(
-                f"Skipping spectrum due to peak processing error: {e}",
-                extra={
-                    "spectrum_id": spectrum.get("id"),
-                    "precursor_mz": spectrum.get("precursor_mz"),
-                    "compound_name": spectrum.get("compound_name"),
-                    "step": "peak_processing",
-                },
-                exc_info=True,
-            )
-            continue
-
-        if processed_spec is None:
-            continue
-
-        yield processed_spec
+    if chunk:
+        yield from process_spectra_batch(chunk, config)
