@@ -43,8 +43,8 @@ def test_ms1_prefilter_no_precursor():
 
 
 def test_similarity_engine_ml_model_errors():
-    # Test for ImportError on ML models when not installed
-    with pytest.raises(ImportError):
+    # Test for FileNotFoundError on ML models when the file doesn't exist
+    with pytest.raises(FileNotFoundError):
         SimilarityEngine(
             SimilarityConfig(algorithm="spec2vec", model_path="nonexistent.model")
         )
