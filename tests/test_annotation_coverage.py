@@ -49,7 +49,7 @@ def test_similarity_engine_ml_model_errors():
             SimilarityConfig(algorithm="spec2vec", model_path="nonexistent.model")
         )
 
-    with pytest.raises(ImportError):
+    with pytest.raises(FileNotFoundError):
         SimilarityEngine(
             SimilarityConfig(algorithm="ms2deepscore", model_path="nonexistent.model")
         )
