@@ -30,7 +30,7 @@ def test_consensus_flagged_for_review_rank_discrepancy():
 
     # Assert it was flagged because cosine's #1 (Ref_A) was ranked 10th by neural_net (10 > 5)
     assert result.flagged_for_review is True
-    assert "Discordance:" in result.review_reason
+    assert "Orthogonal Agreement Failure:" in result.review_reason
     assert "was ranked #10 by neural_net" in result.review_reason
 
 

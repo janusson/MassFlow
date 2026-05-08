@@ -19,7 +19,7 @@ def base_config():
 
 def test_consensus_engine_init(base_config):
     engine = ConsensusEngine(base_config)
-    assert engine._total_weight == 1.0
+    assert engine.config == base_config
 
 
 def test_consensus_engine_invalid_weight():

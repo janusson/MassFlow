@@ -63,5 +63,5 @@ def test_consensus_flag_rank_discrepancy():
     # 5 > threshold (3), so orthogonal agreement failure should flag the result.
     assert result.flagged_for_review is True
     assert result.review_reason is not None
-    assert "Discordance" in result.review_reason
+    assert "Orthogonal Agreement Failure" in result.review_reason
     assert "was ranked #5 by ms2deepscore" in result.review_reason
