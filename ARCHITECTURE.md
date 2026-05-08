@@ -123,6 +123,22 @@ graph LR
 
 ---
 
+## Scientific Data Integrity
+
+MassFlow enforces strict physical boundaries at the point of ingestion, ensuring that automated annotation pipelines do not propagate chemically impossible results.
+
+### Precursor Validation (5 ppm Tolerance)
+Within the `SpectrumMetadata` contract, an experimental `precursor_mz` is rigorously cross-referenced against the molecule's theoretical exact mass, charge state, and ionization adduct. The orchestrator pulls high-precision monoisotopic mass shifts from the internal `ADDUCT_OFFSETS` registry and calculates the theoretical m/z. If the provided experimental precursor m/z deviates from this theoretical value by more than **5.0 ppm**, the record is rejected as physically implausible via a Pydantic `ValidationError`.
+
+**Supported Adducts:**
+- **Positive Mode:** `[M+H]+`, `[M+NH4]+`, `[M+Na]+`, `[M+K]+`, `[M]+`
+- **Negative Mode:** `[M-H]-`, `[M+Cl]-`, `[M+HCOO]-`, `[M+CH3COO]-`, `[M+FA-H]-` (Formate), `[M]-`
+
+### Theoretical Isotopic Envelopes
+For advanced structural verification, the `MolecularStructure` model automatically calculates and caches the theoretical isotopic envelope (M, M+1, M+2, etc.) for any parsed SMILES string. By generating abundance-weighted centroid masses normalized to the base peak, the pipeline establishes a ground-truth MS1 signature for every reference candidate. This allows the `ConsensusEngine` and orthogonal ML models to evaluate candidate credibility by checking experimental MS1 isotopic patterns, providing a powerful orthogonal tie-breaking mechanism when MS2 fragmentation scores are ambiguous.
+
+---
+
 ## Component Diagram
 
 ```mermaid
