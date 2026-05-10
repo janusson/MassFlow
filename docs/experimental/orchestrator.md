@@ -24,6 +24,11 @@ The **Consensus Orchestrator** is designed to execute a "Map-Reduce" style patte
 
 To keep MassFlow's core lightweight, the orchestrator relies entirely on strictly typed Pydantic data contracts to communicate with external ML satellites. It does not parse raw `matchms.Spectrum` objects.
 
+### `MolecularStructure`
+A foundational schema for validating chemical metadata. When initialized with a SMILES or InChI string, it automatically:
+1. Calculates the **exact monoisotopic mass** and enforces a strict 5.0 ppm tolerance against the experimental precursor m/z.
+2. Generates a **Theoretical Isotopic Envelope** (M, M+1, M+2) using high-precision calculations, which can later be used by the Orchestrator as an orthogonal tie-breaker.
+
 ### `AnnotationHit`
 The atomic unit of an annotation result. Every engine (whether local or remote) must return hits in this exact shape:
 

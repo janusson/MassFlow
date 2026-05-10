@@ -95,12 +95,14 @@ nav:
           - Configuration (YAML): user-guide/configuration.md
           - SQLite Library Management: user-guide/database.md
           - Processing & Filtering: user-guide/processing.md
+          - Scientific Validation: user-guide/validation.md
           - Classical Similarity: user-guide/similarity.md
           - Result Export & FDR: user-guide/results.md
       - Experimental Features:
           - Advanced ML Engines: experimental/ml-engines.md
           - Molecular Networking: experimental/networking.md
           - Consensus Orchestrator: experimental/orchestrator.md
+          - Language Server (LSP): experimental/lsp.md
   - Architecture: ../ARCHITECTURE.md
   - API Reference:
       - CLI: api/cli.md
@@ -114,4 +116,6 @@ nav:
       - Networking: api/networking.md
       - Models: api/models.md
       - Consensus: api/consensus.md
+      - Cheminformatics: api/cheminformatics.md
+      - Server (LSP): api/server.md
   - Changelog: ../CHANGELOG.md

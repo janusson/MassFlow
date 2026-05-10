@@ -25,6 +25,21 @@ uv sync
 
 This will automatically create a `.venv` directory, resolve the locked dependencies, and install MassFlow as an editable CLI tool.
 
+### Optional Features
+
+MassFlow offers several experimental features that require heavy external dependencies (like PyTorch or NetworkX) that are not installed by default to keep the core lightweight. You can opt-in to these by syncing specific dependency groups:
+
+```shell
+# For Machine Learning engines (Spec2Vec, MS2DeepScore)
+uv sync --group ml
+
+# For GraphML molecular networking
+uv sync --group network
+
+# For interactive HTML visualization
+uv sync --group viz
+```
+
 You can now run MassFlow commands natively via `uv run`:
 
 ```shell

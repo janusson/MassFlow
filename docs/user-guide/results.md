@@ -6,11 +6,23 @@ When MassFlow completes an annotation run, it writes reproducible, tabular outpu
 
 ## Output Structure
 
-If you process a single experimental file (e.g., `experiment.mzML`), MassFlow will generate two standard files in your configured `project.output_directory`:
+If you process a single experimental file (e.g., `experiment.mzML`), MassFlow will generate standard output files in your configured `project.output_directory` depending on your `export.format`:
 
-1.  **`experiment_results.<ext>`**: The main tabular annotation report (CSV or mzTab-M depending on the configured `export.format`).
-2.  **`experiment_results.report.yaml`**: The provenance sidecar containing the runtime context and the exact configuration parameters that produced the results.
-3.  **`consensus_spectra.mgf`**: (Optional) An aggregated MGF file containing representative MS2 spectra. This is generated only when `format: "fbmn"` is configured to pair with the CSV output for GNPS workflows.
+### CSV Export (`csv`)
+The simplest and most common format.
+1.  **`experiment_results.csv`**: The main tabular annotation report.
+2.  **`experiment_results.report.yaml`**: The provenance sidecar containing the runtime context.
+
+### mzTab-M Export (`mztab`)
+An industry-standard, plain-text format specifically designed for reporting metabolomics results to public repositories (like MetaboLights).
+1.  **`experiment_results.mztab`**: Contains both the experimental metadata (MTD section) and the feature/annotation lists (SML/SME sections) in a tightly controlled schema.
+2.  **`experiment_results.report.yaml`**: The provenance sidecar.
+
+### GNPS FBMN Export (`fbmn`)
+Generates the specific pair of files required to run Feature-Based Molecular Networking (FBMN) on the GNPS web platform.
+1.  **`experiment_results.csv`**: The feature quantification table.
+2.  **`consensus_spectra.mgf`**: An aggregated MGF file containing the representative MS2 spectra for the annotated features.
+3.  **`experiment_results.report.yaml`**: The provenance sidecar.
 
 ### The Result Table
 

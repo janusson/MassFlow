@@ -13,7 +13,7 @@ By building a SQLite database, you preprocess the spectra, serialize their mass 
 1.  **Speed:** SQLite blobs bypass the slow string-parsing required for MGF/MSP files.
 2.  **Memory:** SQLite allows MassFlow to lazily stream spectra into the scoring engine instead of materializing an entire 10GB `.msp` into RAM at once.
 3.  **Organization:** You can merge multiple project-specific libraries together and query them by category.
-4.  **Triage Scanning:** During database construction, MassFlow automatically scans spectra for key chemical features (like the Tyrosine immonium ion) and flags them in a `triage_flags` bitmask, heavily optimizing routing for advanced machine learning engines in v1.1.
+4.  **Triage Scanning (Core Feature):** During database construction, MassFlow automatically scans spectra for key chemical features (like the Tyrosine immonium ion at 136.076 Da) and flags them in a `triage_flags` bitmask. This allows the workflow to intelligently route structurally significant spectra to advanced machine learning engines downstream without having to re-parse the raw peak arrays.
 
 ---
 

@@ -26,9 +26,12 @@ You need:
 2.  **One reference library** (e.g., `library.msp` or an existing SQLite `.db` library).
 
 !!! warning "Vendor Raw Formats"
-    MassFlow directly supports open formats. It **does not** implicitly convert vendor raw formats (like `.raw`, `.d`, `.wiff`, `.lcd`).
+    MassFlow core pipeline directly supports open formats. It **does not** implicitly convert vendor raw formats (like `.raw`, `.d`, `.wiff`, `.lcd`) during the annotation run.
 
-    You must pre-convert vendor files to `.mzML` or `.mgf` using tools like [ProteoWizard (MSConvert)](https://proteowizard.sourceforge.io/) or [MS-DIAL](http://prime.psc.riken.jp/compms/msdial/main.html) prior to running MassFlow.
+    You must pre-convert vendor files to `.mzML` prior to running MassFlow. We provide a convenient wrapper command to do this using ProteoWizard's MSConvert (if installed on your system):
+    ```shell
+    uv run massflow convert --input data/raw/ --output data/experiments/
+    ```
 
 **Supported user-facing input formats:**
 *   `.mzML`
@@ -60,7 +63,7 @@ project:
 
 input:
   # Mandatory paths to your spectral data
-  file_path: "data/experiments/experiment.mzML"
+  input_path: "data/experiments/experiment.mzML"
   library_path: "data/libraries/library.msp"
   format: "mzml"
 
@@ -73,7 +76,6 @@ similarity:
   algorithm: "cosine"
   ms1_tolerance: 0.02
   ms2_tolerance: 0.02
-  tolerance_unit: "Da"
   min_score: 0.6
   min_matched_peaks: 3
   fdr_threshold: 0.05
@@ -83,7 +85,7 @@ export:
 ```
 
 !!! tip "Directories instead of files"
-    If you have a batch of experimental files, you can use `data_directory: "data/experiments/"` instead of `file_path`. MassFlow will recursively process all supported spectral files in that folder in parallel. If using `data_directory`, you should usually remove the explicit `format:` hint to allow MassFlow to infer the format for each file based on its extension.
+    If you have a batch of experimental files, you can point `input_path` to a folder instead of a single file. MassFlow will recursively process all supported spectral files in that folder in parallel.
 
 ---
 
@@ -105,7 +107,19 @@ MassFlow will:
 
 ---
 
-## 4. Check the Results
+## 4. Interactive 'Watch' Mode
+
+If you are actively tweaking your noise thresholds or similarity parameters, you don't need to manually re-run the `annotate` command every time. MassFlow provides an interactive live-reloading UI:
+
+```shell
+uv run massflow watch --config massflow_config.yaml
+```
+
+This launches a real-time Rich table in your terminal. Whenever you save changes to your files or configuration, MassFlow will automatically re-run the pipeline and update the results preview on your screen.
+
+---
+
+## 5. Check the Results
 
 MassFlow writes one CSV report per experimental input file directly into `project.output_directory`.
 
