@@ -11,6 +11,7 @@ A cornerstone of MassFlow's data integrity is the **5.0 ppm precursor tolerance 
 In high-resolution mass spectrometry, the experimental precursor m/z must align with the theoretical monoisotopic mass of the candidate molecule, adjusted for its ionization adduct and charge state.
 
 When the `MassFlow.models` layer processes a candidate structure (via SMILES or InChI), it automatically:
+
 1. Calculates the **exact monoisotopic mass** of the neutral molecule.
 2. Identifies the **adduct offset** (e.g., +1.007276 Da for `[M+H]+`).
 3. Computes the **theoretical m/z**: $(ExactMass + AdductOffset) / |Charge|$.
