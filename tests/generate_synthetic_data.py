@@ -52,6 +52,9 @@ def generate_spectrum(
 
 
 def main():
+    from rich.console import Console
+
+    console = Console()
     data_root = Path("data")
     raw_dir = data_root / "raw"
     ref_dir = data_root / "reference"
@@ -59,7 +62,7 @@ def main():
     raw_dir.mkdir(parents=True, exist_ok=True)
     ref_dir.mkdir(parents=True, exist_ok=True)
 
-    print("Generating Reference Library...")
+    console.print("[cyan]Generating Reference Library...[/cyan]")
     reference_spectra = []
     num_library = 100
     for i in range(num_library):
@@ -70,9 +73,11 @@ def main():
         reference_spectra.append(spec)
 
     save_as_msp(reference_spectra, str(ref_dir / "synthetic_library.msp"))
-    print(f"Saved {num_library} spectra to {ref_dir / 'synthetic_library.msp'}")
+    console.print(
+        f"[green]Saved {num_library} spectra to {ref_dir / 'synthetic_library.msp'}[/green]"
+    )
 
-    print("Generating Experimental Runs...")
+    console.print("[cyan]Generating Experimental Runs...[/cyan]")
     num_runs = 50  # 50 files
     spectra_per_run = 20  # 20 spectra each => 1000 total queries
 
@@ -126,7 +131,7 @@ def main():
         filename = raw_dir / f"synthetic_run_{run_idx:03d}.mgf"
         save_as_mgf(run_spectra, str(filename))
 
-    print(f"Generated {num_runs} MGF files in {raw_dir}")
+    console.print(f"[green]Generated {num_runs} MGF files in {raw_dir}[/green]")
 
 
 if __name__ == "__main__":

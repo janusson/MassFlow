@@ -40,6 +40,10 @@ def create_golden_file(golden_path: Path):
 
 
 def main():
+    from rich.console import Console
+
+    console = Console()
+
     smoke_dir = Path("smoke_test_run")
     if smoke_dir.exists():
         shutil.rmtree(smoke_dir)
@@ -101,13 +105,15 @@ def main():
         cfg.project.output_directory = smoke_dir / "results"
 
         # 3. Run Pipeline
-        print("Running MassFlow Annotation Pipeline...")
+        console.print("[bold blue]Running MassFlow Annotation Pipeline...[/bold blue]")
         run_annotation_pipeline(cfg)
 
         # 4. Compare Outputs
         results_file = smoke_dir / "results" / "query_results.csv"
         if not results_file.exists():
-            print(f"FAIL: Expected result file not found at {results_file}")
+            console.print(
+                f"[bold red]FAIL:[/bold red] Expected result file not found at {results_file}"
+            )
             sys.exit(1)
 
         actual_df = pd.read_csv(results_file)
@@ -125,8 +131,8 @@ def main():
         )
 
         if len(compare_df) != len(golden_df):
-            print(
-                f"FAIL: Row count mismatch. Expected {len(golden_df)}, got {len(compare_df)}"
+            console.print(
+                f"[bold red]FAIL:[/bold red] Row count mismatch. Expected {len(golden_df)}, got {len(compare_df)}"
             )
             sys.exit(1)
 
@@ -139,22 +145,22 @@ def main():
             peaks_diff = abs(row["matched_peaks_golden"] - row["matched_peaks_actual"])
 
             if score_diff > tolerance:
-                print(
-                    f"FAIL: Score precision exceeded 1E-6 for {row['query_id']}-{row['reference_id']}. "
+                console.print(
+                    f"[bold red]FAIL:[/bold red] Score precision exceeded 1E-6 for {row['query_id']}-{row['reference_id']}. "
                     f"Golden: {row['score_golden']:.6f}, Actual: {row['score_actual']:.6f}, Delta: {score_diff:.2E}"
                 )
                 passed = False
 
             if q_diff > tolerance:
-                print(
-                    f"FAIL: Q-value precision exceeded 1E-6 for {row['query_id']}-{row['reference_id']}. "
+                console.print(
+                    f"[bold red]FAIL:[/bold red] Q-value precision exceeded 1E-6 for {row['query_id']}-{row['reference_id']}. "
                     f"Golden: {row['q_value_golden']:.6f}, Actual: {row['q_value_actual']:.6f}, Delta: {q_diff:.2E}"
                 )
                 passed = False
 
             if peaks_diff != 0:
-                print(
-                    f"FAIL: Matched peaks mismatch for {row['query_id']}-{row['reference_id']}. "
+                console.print(
+                    f"[bold red]FAIL:[/bold red] Matched peaks mismatch for {row['query_id']}-{row['reference_id']}. "
                     f"Golden: {row['matched_peaks_golden']}, Actual: {row['matched_peaks_actual']}"
                 )
                 passed = False
@@ -162,7 +168,9 @@ def main():
         if not passed:
             sys.exit(1)
 
-        print("SUCCESS: End-to-end numeric precision smoke test passed within 1E-6.")
+        console.print(
+            "[bold green]SUCCESS:[/bold green] End-to-end numeric precision smoke test passed within 1E-6."
+        )
 
     finally:
         # Cleanup

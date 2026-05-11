@@ -44,8 +44,11 @@ def test_array_mismatch():
 
 
 if __name__ == "__main__":
+    from rich.console import Console
+
+    console = Console()
     test_spectrum_validation()
     test_invalid_smiles()
     test_mass_mismatch()
     test_array_mismatch()
-    print("All Pydantic v2 validation tests passed!")
+    console.print("[bold green]All Pydantic v2 validation tests passed![/bold green]")
