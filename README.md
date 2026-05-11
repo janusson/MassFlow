@@ -385,8 +385,8 @@ MassFlow is intentionally conservative at the I/O boundary.
 
 - `README.md`: quickstart and user-facing overview
 - `ARCHITECTURE.md`: module responsibilities and data flow
-- `TODO.md`: release blockers and implementation prompts
-- `V1_0_DEVELOPMENT_PLAN.md`: staged path to a stable `v1.0.0`
+- `docs/user-guide/`: technical manuals and metadata contracts
+- `docs/post-v1.0-roadmap.md`: future development and machine learning integrations
 
 ## License
 
