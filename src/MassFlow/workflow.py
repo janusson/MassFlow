@@ -217,26 +217,44 @@ def _process_single_file(
         target_scores_arr = np.array(target_scores, dtype=float)
         decoy_scores_arr = np.array(decoy_scores, dtype=float)
 
-        sorted_scores, q_values, _ = calculate_fdr(target_scores_arr, decoy_scores_arr)
+        from MassFlow.similarity import calculate_empirical_p_values
 
-        # For fast interpolation (needs ascending x)
+        # Determine if we use Small Library Statistics
+        lib_size = len(_worker_references) if _worker_references else 0
+        is_small_library = lib_size < 2000
+
+        # 1. Standard FDR
+        sorted_scores, q_values, _ = calculate_fdr(target_scores_arr, decoy_scores_arr)
         asc_scores = sorted_scores[::-1]
         asc_q = q_values[::-1]
+
+        # 2. Empirical P-Value (Small Library Alternative)
+        p_vals = calculate_empirical_p_values(target_scores_arr, decoy_scores_arr)
+        p_val_map = dict(zip(target_scores_arr, p_vals))
 
         fdr_threshold = getattr(config.similarity, "fdr_threshold", 0.01)
 
         fdr_filtered_results = []
         for res in all_results:
+            if res.get("is_decoy", False):
+                continue
+
             score = res["score"]
             if len(asc_scores) > 0:
                 q_val = float(np.interp(score, asc_scores, asc_q))
             else:
                 q_val = 1.0
 
-            res["q_value"] = q_val
+            p_val = float(p_val_map.get(score, 1.0))
 
-            # Filter by FDR and remove decoys
-            if q_val <= fdr_threshold and not res.get("is_decoy", False):
+            res["q_value"] = q_val
+            res["p_value"] = p_val
+
+            # MODIFIED FILTERING:
+            # If small library, use p-value for filtering instead of sparse q-value
+            filter_metric = p_val if is_small_library else q_val
+
+            if filter_metric <= fdr_threshold:
                 fdr_filtered_results.append(res)
 
         # Sort results descending by score

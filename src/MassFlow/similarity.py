@@ -42,6 +42,7 @@ class SearchResult(TypedDict):
     inchikey: str | None
     is_decoy: bool
     q_value: float
+    p_value: float | None
     annotation_tier: str | None
     structural_similarity: float | None
 
@@ -144,6 +145,23 @@ def generate_decoys(spectra: List[Spectrum], random_seed: int = 42) -> List[Spec
         )
         decoys.append(decoy_spec)
     return decoys
+
+
+def calculate_empirical_p_values(
+    target_scores: np.ndarray, decoy_scores: np.ndarray
+) -> np.ndarray:
+    """
+    Calculate empirical p-values for target scores against a decoy null distribution.
+    """
+    if len(decoy_scores) == 0:
+        return np.ones_like(target_scores)
+
+    # Vectorized computation of instances where decoy score >= target score
+    greater_equal_decoys = np.sum(decoy_scores >= target_scores[:, None], axis=1)
+
+    # Apply +1 pseudo-count to numerator and denominator
+    p_values = (greater_equal_decoys + 1) / (len(decoy_scores) + 1)
+    return p_values
 
 
 def calculate_fdr(
@@ -392,6 +410,7 @@ class SimilarityEngine:
                         else None,
                         "is_decoy": is_decoy,
                         "q_value": 1.0,
+                        "p_value": None,
                         "annotation_tier": None,
                         "structural_similarity": structural_sim,
                     }
@@ -604,6 +623,7 @@ class SimilarityEngine:
                         else None,
                         "is_decoy": is_decoy,
                         "q_value": 1.0,  # Will be updated by FDR calculation
+                        "p_value": None,  # Will be updated by empirical p-value calculation
                         "annotation_tier": None,
                         "structural_similarity": None,
                     }
@@ -935,6 +955,7 @@ class ConsensusEngine:
                         else None,
                         "is_decoy": is_decoy,
                         "q_value": 1.0,
+                        "p_value": None,
                         "annotation_tier": None,
                         "structural_similarity": None,
                     }

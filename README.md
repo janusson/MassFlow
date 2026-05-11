@@ -1,14 +1,20 @@
-# MassFlow (pre-v1.0)
+# MassFlow (v1.0.0)
 
 [![Documentation](https://img.shields.io/badge/docs-available-blue.svg)](https://ericjanusson.github.io/MassFlow/)
 
 MassFlow is a config-first Python toolkit for local tandem mass spectrometry (MS/MS) annotation. It is designed to be **dead easy to run** locally, producing highly reproducible scientific outputs.
 
+### The MassFlow Way
+MassFlow is built on three core pillars:
+1. **Precision**: Strict 5.0 ppm precursor mass validation and physics-informed models guarantee structural integrity.
+2. **Portability**: Vendor-agnostic, open-format ingestion (`.mzML`, `.mgf`) keeps your data pipeline flexible.
+3. **Performance**: Vectorized calculations and local SQLite backends allow for rapid, memory-aware searching.
+
 ### TL;DR - Run it in two steps:
 ```shell
 # 1. Generate a default config file
 uv run massflow init
-W
+
 # 2. Run your annotation pipeline
 uv run massflow annotate --config massflow_config.yaml
 ```
@@ -20,8 +26,6 @@ Its core workflow is simple:
 3. apply configurable `matchms` processing
 4. score query spectra against the library
 5. write per-file CSV or mzTab-M results (plus Consensus MGF for FBMN)
-
-The project is currently being stabilized for a `v1.0.0` release including CLI annotation, standard YAML configuration, vendor-agnostic ingestion, SQLite-backed library workflows, and predictable CSV output.
 
 ## Stable vs experimental at a glance
 
@@ -76,15 +80,14 @@ Comprehensive documentation, including API references, experimental guides, and 
 
 ## Installation and Dependency Policy
 
-MassFlow requires **Python 3.13+**.
+MassFlow requires **Python 3.10+**.
 
 The project uses `pyproject.toml` and `uv.lock` as the single source of truth for packaging, versioning, and dependencies. Using `uv` is strictly recommended to ensure reproducible environments.
 
 ```shell
-git clone https://github.com/yourusername/MassFlow.git
-cd MassFlow
-uv python pin 3.13
-uv sync
+pip install massflow-ms  # Or your preferred distribution method
+# or
+git clone https://github.com/ejanusson/massflow && cd massflow && uv sync
 ```
 
 ## Quickstart
