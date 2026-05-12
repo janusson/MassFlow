@@ -159,51 +159,31 @@ def _process_single_file(
                     )
                 all_results.extend(t2_results)
         else:
-            # Fallback for single-process testing or direct invocation
+            # Fallback for single-process testing or direct invocation, streaming the library
             all_results = []
             if config.input.library_path is None:
                 raise ValueError("Library path is not configured.")
             ref_gen = io.load_spectra(config.input.library_path)
             ref_iterator = processing.process_spectra(ref_gen, config.processing)
 
-            chunk_size = 2000
-            ref_chunk = []
-
-            for ref_spec in ref_iterator:
-                ref_chunk.append(ref_spec)
-                if len(ref_chunk) >= chunk_size:
-                    if standard_queries:
-                        all_results.extend(
-                            engine.search(
-                                standard_queries, ref_chunk, include_decoys=True
-                            )
-                        )
-                    if triage_queries and tier2_engine:
-                        t2_results = tier2_engine.search(
-                            triage_queries, ref_chunk, include_decoys=True
-                        )
-                        for res in t2_results:
-                            res["annotation_tier"] = (
-                                f"Triage ({config.similarity.cascade_tier2})"
-                            )
-                        all_results.extend(t2_results)
-                    ref_chunk.clear()
-
-            if ref_chunk:
-                if standard_queries:
-                    all_results.extend(
-                        engine.search(standard_queries, ref_chunk, include_decoys=True)
+            if standard_queries:
+                all_results.extend(
+                    engine.search(standard_queries, ref_iterator, include_decoys=True)
+                )
+            if triage_queries and tier2_engine:
+                # We need to recreate the iterator because it was exhausted above
+                ref_gen_2 = io.load_spectra(config.input.library_path)
+                ref_iterator_2 = processing.process_spectra(
+                    ref_gen_2, config.processing
+                )
+                t2_results = tier2_engine.search(
+                    triage_queries, ref_iterator_2, include_decoys=True
+                )
+                for res in t2_results:
+                    res["annotation_tier"] = (
+                        f"Triage ({config.similarity.cascade_tier2})"
                     )
-                if triage_queries and tier2_engine:
-                    t2_results = tier2_engine.search(
-                        triage_queries, ref_chunk, include_decoys=True
-                    )
-                    for res in t2_results:
-                        res["annotation_tier"] = (
-                            f"Triage ({config.similarity.cascade_tier2})"
-                        )
-                    all_results.extend(t2_results)
-                ref_chunk.clear()
+                all_results.extend(t2_results)
 
         # Global FDR calculation across all chunks for this experimental file
         target_scores = []

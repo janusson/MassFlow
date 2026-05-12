@@ -131,14 +131,15 @@ def generate_molecular_network(
                     edge_type="query_to_ref",
                 )
 
-    # 4. Add Query-to-Query Edges (Chunked calculation to prevent OOM)
+    # 4. Add Query-to-Query Edges
     min_score = config.similarity.min_score
     n_queries = len(all_queries)
-    chunk_size = 1000
 
     logger.info(
-        f"Computing query-to-query similarity for {n_queries} spectra in chunks..."
+        f"Computing query-to-query similarity for {n_queries} spectra using Python chunked calculation..."
     )
+
+    chunk_size = 1000
 
     for i in range(0, n_queries, chunk_size):
         end_i = min(i + chunk_size, n_queries)
@@ -154,6 +155,7 @@ def generate_molecular_network(
                     queries=q_chunk,
                     similarity_function=sim_func,
                     is_symmetric=(i == j),
+                    array_type="sparse",
                 )
 
                 scores_data = scores_obj.scores
@@ -188,7 +190,10 @@ def generate_molecular_network(
                             all_queries[global_j].get("id", f"query_{global_j}")
                         )
                         G.add_edge(
-                            q1_id, q2_id, weight=score_val, edge_type="query_to_query"
+                            q1_id,
+                            q2_id,
+                            weight=score_val,
+                            edge_type="query_to_query",
                         )
 
             except Exception as e:

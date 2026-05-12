@@ -58,6 +58,10 @@ class ConsensusInput(BaseModel):
     hits: List[AnnotationHit] = Field(
         default_factory=list, description="All hits across all engines for this query."
     )
+    experimental_spectrum: Optional["MassFlowSpectrum"] = Field(
+        default=None,
+        description="The complete experimental MS/MS spectrum used for credibility checks.",
+    )
 
 
 class AggregatedCandidate(BaseModel):
@@ -72,6 +76,7 @@ class AggregatedCandidate(BaseModel):
     consensus_score: float = 0.0
     engine_scores: Dict[str, float] = Field(default_factory=dict)
     engine_ranks: Dict[str, int] = Field(default_factory=dict)
+    credibility_factor: float = 1.0
 
 
 class ConsensusResult(BaseModel):
@@ -90,7 +95,7 @@ class ConsensusResult(BaseModel):
     )
     flagged_for_review: bool = Field(
         default=False,
-        description="True if top engines strongly disagree on the candidate.",
+        description="True if top engines strongly disagree on the candidate or credibility checks fail.",
     )
     review_reason: Optional[str] = Field(
         default=None, description="Explanation of the scientific credibility flag."
@@ -154,6 +159,26 @@ class ConsensusConfig(BaseModel):
             "These cases represent low-confidence hits that require manual expert review to prevent false discoveries "
             "from propagating through automated downstream pipelines."
         ),
+    )
+    isotopic_credibility_weight: float = Field(
+        default=0.0,
+        description=(
+            "Weight applied to the MS1 Isotopic Credibility Factor. If > 0, the consensus score is "
+            "adjusted by the cosine similarity between the experimental MS1 isotopic envelope and the "
+            "theoretical envelope predicted by the candidate's SMILES."
+        ),
+    )
+    penalize_impossible_neutral_losses: bool = Field(
+        default=True,
+        description=(
+            "If True, activates the Fragmentation Heuristic validator. Candidates whose SMILES "
+            "cannot physically produce the observed major neutral losses (e.g., losing H2O when "
+            "the formula lacks oxygen) receive a severe penalty."
+        ),
+    )
+    neutral_loss_penalty_factor: float = Field(
+        default=0.1,
+        description="Multiplier applied to the consensus score if an impossible neutral loss is detected.",
     )
 
 
@@ -255,6 +280,10 @@ class SpectrumMetadata(BaseModel):
         None, description="Ionization adduct (e.g., [M+H]+, [M-H]-)"
     )
     molecule: Optional[MolecularStructure] = None
+    experimental_isotopic_envelope: Optional[List[tuple[float, float]]] = Field(
+        default=None,
+        description="Experimental MS1 isotopic envelope (mz, abundance) pairs if available.",
+    )
     is_physically_valid: bool = Field(
         default=True,
         description="False if adduct is unknown or theoretical m/z deviates by >5 ppm.",

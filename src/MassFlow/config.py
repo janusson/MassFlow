@@ -293,7 +293,21 @@ class SimilarityConfig(BaseModel):
     cascade_upper_bound: float = 0.85
     model_path: Optional[Path] = Field(
         default=None,
-        description="Experimental: Path to model weights for spec2vec or ms2deepscore.",
+        description="Experimental: Path to ML model file (e.g., gensim Word2Vec for Spec2Vec or PyTorch model for MS2DeepScore).",
+    )
+
+    # Evidence-Based Consensus Parameters
+    isotopic_credibility_weight: float = Field(
+        default=0.0,
+        description="Weight applied to the MS1 Isotopic Credibility Factor in consensus engines.",
+    )
+    penalize_impossible_neutral_losses: bool = Field(
+        default=False,
+        description="If True, candidates with physically impossible major neutral losses receive a severe score penalty.",
+    )
+    neutral_loss_penalty_factor: float = Field(
+        default=0.1,
+        description="Score multiplier applied when an impossible neutral loss is detected.",
     )
 
     # Fixed-unit Tolerances

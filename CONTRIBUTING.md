@@ -182,6 +182,17 @@ Features such as terminal browsing, GraphML export, and advanced ML-backed
 similarity paths should be treated as experimental unless explicitly documented
 otherwise.
 
+## Code of Conduct
+
+This repository is for the technical development of MassFlow.
+
+* **Stay on topic:** Keep all discussions focused on code, architecture, and mass spectrometry.
+* **Be professional:** Treat others with professional courtesy.
+* **No disruptions:** No attacks, spam, or non-technical disputes.
+
+Violations will result in a block. Contact the project maintainers via GitHub if you have any questions or concerns.
+
+
 ## Questions
 
 If something in the docs, tests, or code disagrees with something else, prefer

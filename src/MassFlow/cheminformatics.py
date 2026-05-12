@@ -6,9 +6,11 @@ including exact masses with adduct offsets and Tanimoto similarity scores using
 Morgan fingerprints.
 """
 
+import math
+import re
 from collections import defaultdict
 from functools import lru_cache
-from typing import Optional
+from typing import Optional, Set
 
 import pyteomics.mass as pmass
 from rdkit import Chem, DataStructs
@@ -281,3 +283,146 @@ def calculate_theoretical_mass(smiles: str, adduct: str = "[M+H]+") -> Optional[
         )
 
     return exact_mass + offset
+
+
+# Common exact neutral losses and the elements they physically require
+COMMON_NEUTRAL_LOSSES = [
+    (18.0106, {"O"}),  # H2O
+    (17.0265, {"N"}),  # NH3
+    (27.9949, {"O"}),  # CO
+    (43.9898, {"O"}),  # CO2
+    (34.9956, {"S"}),  # H2S
+    (63.9619, {"S", "O"}),  # SO2
+    (78.9585, {"P", "O"}),  # PO3
+    (35.9767, {"Cl"}),  # HCl
+    (79.9262, {"Br"}),  # HBr
+    (20.0062, {"F"}),  # HF
+]
+
+
+def calculate_isotopic_similarity(
+    exp_env: list[tuple[float, float]],
+    theor_env: list[tuple[float, float]],
+    mz_tolerance: float = 0.05,
+) -> float:
+    """
+    Calculate the cosine similarity between an experimental and theoretical isotopic envelope.
+
+    Parameters
+    ----------
+    exp_env : list of tuple
+        Experimental MS1 isotopic envelope as (mz, abundance) pairs.
+    theor_env : list of tuple
+        Theoretical MS1 isotopic envelope as (mz, abundance) pairs.
+    mz_tolerance : float
+        Tolerance in Da to match an experimental peak to a theoretical one.
+
+    Returns
+    -------
+    float
+        Cosine similarity score (0.0 to 1.0).
+    """
+    if not exp_env or not theor_env:
+        return 0.0
+
+    # Align peaks greedily
+    aligned_exp = []
+    aligned_theor = []
+
+    used_exp = set()
+    for t_mz, t_int in theor_env:
+        best_match = None
+        best_diff = mz_tolerance
+
+        for i, (e_mz, e_int) in enumerate(exp_env):
+            if i in used_exp:
+                continue
+            diff = abs(t_mz - e_mz)
+            if diff <= best_diff:
+                best_diff = diff
+                best_match = (i, e_int)
+
+        if best_match is not None:
+            used_exp.add(best_match[0])
+            aligned_exp.append(best_match[1])
+            aligned_theor.append(t_int)
+
+    if not aligned_exp:
+        return 0.0
+
+    dot_product = sum(e * t for e, t in zip(aligned_exp, aligned_theor))
+    norm_exp = math.sqrt(sum(e * e for _, e in exp_env))
+    norm_theor = math.sqrt(sum(t * t for _, t in theor_env))
+
+    if norm_exp == 0.0 or norm_theor == 0.0:
+        return 0.0
+
+    return dot_product / (norm_exp * norm_theor)
+
+
+def parse_elements_from_smiles(smiles: str) -> Set[str]:
+    """Extract a set of element symbols present in a SMILES string."""
+    mol = Chem.MolFromSmiles(smiles)
+    if not mol:
+        return set()
+    formula = rdMolDescriptors.CalcMolFormula(mol)
+    matches = re.findall(r"([A-Z][a-z]*)(\d*)", formula)
+    return {element for element, _ in matches}
+
+
+def find_impossible_neutral_losses(
+    mz_array: list[float],
+    int_array: list[float],
+    precursor_mz: float,
+    smiles: str,
+    tolerance: float = 0.02,
+    intensity_threshold: float = 0.05,
+) -> list[tuple[float, float, Set[str]]]:
+    """
+    Identify observed neutral losses that are physically impossible given the molecular formula.
+
+    Parameters
+    ----------
+    mz_array : list of float
+        Fragment m/z array.
+    int_array : list of float
+        Fragment intensity array.
+    precursor_mz : float
+        Precursor m/z.
+    smiles : str
+        SMILES string of the candidate structure.
+    tolerance : float
+        m/z tolerance for matching neutral losses.
+    intensity_threshold : float
+        Minimum relative intensity (0.0 to 1.0) to consider a fragment peak.
+
+    Returns
+    -------
+    list of tuple
+        A list of impossible neutral losses detected, structured as:
+        (observed_loss, exact_mass_matched, required_atoms_missing)
+    """
+    atoms = parse_elements_from_smiles(smiles)
+    if not atoms:
+        return []
+
+    max_int = max(int_array) if len(int_array) > 0 else 0.0
+    if max_int == 0.0:
+        return []
+
+    impossible_losses = []
+
+    for mz, intensity in zip(mz_array, int_array):
+        if intensity / max_int < intensity_threshold:
+            continue
+
+        nl = precursor_mz - mz
+        if nl <= 0:
+            continue
+
+        for exact_mass, required_atoms in COMMON_NEUTRAL_LOSSES:
+            if abs(nl - exact_mass) <= tolerance:
+                if not required_atoms.issubset(atoms):
+                    impossible_losses.append((nl, exact_mass, required_atoms))
+
+    return impossible_losses

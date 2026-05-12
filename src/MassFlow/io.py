@@ -20,6 +20,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Iterator, Optional
 
+import numpy as np
 import polars as pl
 import yaml
 from matchms import Spectrum
@@ -41,6 +42,113 @@ class UnsupportedVendorFormatError(Exception):
     pass
 
 
+quarantine_logger = logging.getLogger("quarantine")
+
+
+def _validate_spectra_iterator(
+    spectra: Iterable[Spectrum], source_path: Path
+) -> Iterator[Spectrum]:
+    """
+    A high-performance validation layer for spectrum iterators.
+
+    This generator function intercepts each spectrum and performs a series of
+    strict checks. If a spectrum is invalid, it is logged to a dedicated
+    quarantine log and skipped, never reaching the downstream processing engine.
+
+    Checks:
+    1. Precursor MZ must exist, be numeric, and be positive.
+    2. Peak arrays must not be empty.
+    3. M/Z and intensity arrays must have matching lengths.
+    4. All intensity values must be positive.
+    5. M/Z values must be monotonically increasing.
+
+    Parameters
+    ----------
+    spectra : Iterable[Spectrum]
+        An iterator of raw spectrum objects from a loader.
+    source_path : Path
+        The file path the spectrum was loaded from (for logging).
+
+    Yields
+    ------
+    Spectrum
+        A valid spectrum object that has passed all checks.
+    """
+    for spectrum in spectra:
+        if spectrum is None:
+            continue
+
+        # Manually handle PEPMASS for MGF files when harmonization is off
+        if spectrum.get("precursor_mz") is None and spectrum.get("pepmass") is not None:
+            pepmass = spectrum.get("pepmass")
+            if isinstance(pepmass, (tuple, list)) and len(pepmass) > 0:
+                spectrum.set("precursor_mz", pepmass[0])
+            else:
+                spectrum.set("precursor_mz", pepmass)
+
+        spec_id = (
+            spectrum.get("id")
+            or spectrum.get("spectrum_id")
+            or spectrum.get("scans")
+            or "Unknown"
+        )
+        is_valid = True
+        rejection_reason = ""
+
+        # 1. Precursor Check
+        precursor_mz = spectrum.get("precursor_mz")
+        if precursor_mz is None:
+            is_valid = False
+            rejection_reason = "Missing precursor_mz"
+        else:
+            try:
+                if float(precursor_mz) <= 0:
+                    is_valid = False
+                    rejection_reason = f"Non-positive precursor_mz: {precursor_mz}"
+            except (ValueError, TypeError):
+                is_valid = False
+                rejection_reason = f"Non-numeric precursor_mz: {precursor_mz}"
+
+        # 2. Peaks Check
+        if is_valid:
+            if spectrum.peaks is None or len(spectrum.peaks.mz) == 0:
+                is_valid = False
+                rejection_reason = "Empty peak arrays"
+            elif len(spectrum.peaks.mz) != len(spectrum.peaks.intensities):
+                is_valid = False
+                rejection_reason = (
+                    f"Mismatched array lengths (mz={len(spectrum.peaks.mz)}, "
+                    f"int={len(spectrum.peaks.intensities)})"
+                )
+            elif not np.all(np.diff(spectrum.peaks.mz) >= 0):
+                is_valid = False
+                rejection_reason = "M/Z values are not monotonically increasing"
+
+        if is_valid:
+            yield spectrum
+        else:
+            quarantine_logger.warning(
+                f"Quarantined Spectrum | Source: {source_path.name} | "
+                f"ID: {spec_id} | Reason: {rejection_reason}"
+            )
+
+
+def load_from_parquet(file_path: str, **kwargs) -> Iterator[Spectrum]:
+    """
+    Load spectra from a Parquet file using Polars.
+
+    Expects columns 'mz_array' and 'intensity_array' as lists of floats.
+    All other columns are treated as metadata.
+    """
+    df = pl.read_parquet(file_path)
+    for row in df.iter_rows(named=True):
+        mz = np.array(row.pop("mz_array"), dtype=np.float64)
+        intensity = np.array(row.pop("intensity_array"), dtype=np.float64)
+        # Filter out nulls from metadata
+        metadata = {k: v for k, v in row.items() if v is not None}
+        yield Spectrum(mz=mz, intensities=intensity, metadata=metadata)
+
+
 def load_spectra(
     file_path: Path, file_format: Optional[str] = None
 ) -> Iterator[Spectrum]:
@@ -49,9 +157,9 @@ def load_spectra(
 
     The loader infers the format from ``file_path`` unless ``file_format`` is
     provided explicitly. Supported formats are mzML, mzXML, MGF, MSP, SQLite
-    (``db``/``sqlite``), and pickle. Imported spectra are yielded exactly as the
-    backend loader returns them; MassFlow's metadata cleaning and peak filtering
-    happen later in :func:`MassFlow.processing.process_spectra`.
+    (``db``/``sqlite``), Parquet, and pickle. Imported spectra are yielded exactly
+    as the backend loader returns them; MassFlow's metadata cleaning and peak
+    filtering happen later in :func:`MassFlow.processing.process_spectra`.
 
     Parameters
     ----------
@@ -60,8 +168,8 @@ def load_spectra(
         treated as vendor raw inputs and rejected unless pre-converted.
     file_format : str, optional
         Explicit format override. Accepted values are ``mzml``, ``mzxml``,
-        ``mgf``, ``msp``, ``db``, ``sqlite``, and ``pickle``. If omitted, the
-        format is inferred from the file extension.
+        ``mgf``, ``msp``, ``db``, ``sqlite``, ``parquet``, and ``pickle``. If
+        omitted, the format is inferred from the file extension.
 
     Yields
     ------
@@ -96,33 +204,32 @@ def load_spectra(
 
     # Step 2: Determine loading function
     fmt = (file_format or ext.lstrip(".")).lower()
-
+    loader = None
     # Disable matchms internal harmonization to allow MassFlow's processing module to handle it
-    args = {"metadata_harmonization": False}
 
     if fmt == "mzml":
-        loader = load_from_mzml
+        loader = load_from_mzml(str(path), metadata_harmonization=False)
     elif fmt == "msp":
-        loader = load_from_msp
+        loader = load_from_msp(str(path), metadata_harmonization=False)
     elif fmt == "mgf":
-        loader = load_from_mgf
+        loader = load_from_mgf(str(path), metadata_harmonization=False)
     elif fmt == "mzxml":
-        loader = load_from_mzxml
+        loader = load_from_mzxml(str(path), metadata_harmonization=False)
+    elif fmt == "parquet":
+        loader = load_from_parquet(str(path))
     elif fmt in ["db", "sqlite"]:
         from MassFlow.database import SpectralDatabase
 
         db = SpectralDatabase(path)
-        yield from db.get_spectra()
-        return
+        loader = db.get_spectra()
     elif fmt == "pickle":
         with open(path, "rb") as f:
-            yield from iter(pickle.load(f))
-        return
+            loader = iter(pickle.load(f))
     else:
         raise ValueError(f"Format '{fmt}' is not supported by MassFlow.")
 
-    # Step 3: Yield spectra using the selected loader
-    yield from loader(str(path), **args)
+    # Step 3: Yield spectra through the validation layer
+    yield from _validate_spectra_iterator(loader, path)
 
 
 def _build_results_dataframe(
@@ -437,6 +544,30 @@ def save_spectra_to_pickle(spectra: Iterable[Spectrum], export_path: Path) -> No
     export_path.parent.mkdir(parents=True, exist_ok=True)
     with open(export_path, "wb") as f:
         pickle.dump(list(spectra), f)
+
+
+def save_spectra_to_parquet(spectra: Iterable[Spectrum], export_path: Path) -> None:
+    """
+    Export spectra to a Parquet file.
+
+    Parameters
+    ----------
+    spectra : Iterable[matchms.Spectrum]
+        Spectra to export.
+    export_path : Path
+        The file path for the resulting Parquet file.
+    """
+    export_path.parent.mkdir(parents=True, exist_ok=True)
+
+    records = []
+    for s in spectra:
+        record = s.metadata.copy()
+        record["mz_array"] = s.peaks.mz.tolist()
+        record["intensity_array"] = s.peaks.intensities.tolist()
+        records.append(record)
+
+    df = pl.DataFrame(records)
+    df.write_parquet(export_path)
 
 
 def save_spectra_to_mgf(spectra: Iterable[Spectrum], export_path: Path) -> None:

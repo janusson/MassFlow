@@ -12,6 +12,11 @@ to flag orthogonal agreement failures.
 import logging
 from typing import Dict
 
+from MassFlow.cheminformatics import (
+    calculate_isotopic_envelope,
+    calculate_isotopic_similarity,
+    find_impossible_neutral_losses,
+)
 from MassFlow.models import (
     AggregatedCandidate,
     ConsensusConfig,
@@ -43,8 +48,8 @@ def generate_consensus(
     if not input_data.hits:
         return ConsensusResult(query_id=input_data.query_id)
 
-    total_weight = sum(config.engine_weights.values())
-    if total_weight <= 0:
+    total_base_weight = sum(config.engine_weights.values())
+    if total_base_weight <= 0:
         raise ValueError("The sum of engine weights must be greater than 0.")
 
     # 1. Group hits by reference candidate
@@ -61,7 +66,22 @@ def generate_consensus(
         candidate.engine_scores[hit.engine_id] = hit.score
         candidate.engine_ranks[hit.engine_id] = hit.rank
 
-    # 2. Calculate Weighted Average Scores
+    flagged_reasons = []
+
+    # Extract experimental spectrum details if available
+    exp_spec = input_data.experimental_spectrum
+    exp_env = None
+    exp_mz_array = None
+    exp_int_array = None
+    exp_precursor = None
+
+    if exp_spec:
+        exp_env = exp_spec.metadata.experimental_isotopic_envelope
+        exp_mz_array = exp_spec.peaks.mz_array
+        exp_int_array = exp_spec.peaks.intensity_array
+        exp_precursor = exp_spec.metadata.precursor_mz
+
+    # 2. Calculate Weighted Average Scores with Evidence-Based Credibility
     for candidate in candidate_map.values():
         weighted_sum = 0.0
         for engine_id, weight in config.engine_weights.items():
@@ -69,7 +89,42 @@ def generate_consensus(
             score = candidate.engine_scores.get(engine_id, 0.0)
             weighted_sum += score * weight
 
-        candidate.consensus_score = weighted_sum / total_weight
+        current_total_weight = total_base_weight
+
+        # --- Isotopic Credibility Factor ---
+        if config.isotopic_credibility_weight > 0.0 and exp_env and candidate.smiles:
+            theor_env = calculate_isotopic_envelope(candidate.smiles)
+            iso_sim = calculate_isotopic_similarity(exp_env, theor_env)
+            weighted_sum += iso_sim * config.isotopic_credibility_weight
+            current_total_weight += config.isotopic_credibility_weight
+
+        candidate.consensus_score = weighted_sum / current_total_weight
+
+        # --- Fragmentation Heuristic (Neutral Loss Validator) ---
+        if (
+            config.penalize_impossible_neutral_losses
+            and exp_mz_array is not None
+            and exp_int_array is not None
+            and exp_precursor is not None
+            and candidate.smiles
+        ):
+            impossible_losses = find_impossible_neutral_losses(
+                list(exp_mz_array),
+                list(exp_int_array),
+                float(exp_precursor),
+                candidate.smiles,
+            )
+            if impossible_losses:
+                candidate.credibility_factor = config.neutral_loss_penalty_factor
+                candidate.consensus_score *= config.neutral_loss_penalty_factor
+
+                loss_strs = [
+                    f"{nl:.2f} Da (requires {req})"
+                    for nl, exact, req in impossible_losses
+                ]
+                msg = f"Candidate {candidate.reference_id} penalized: impossible neutral losses detected: {', '.join(loss_strs)}."
+                logger.debug(f"Consensus Penalty [{input_data.query_id}]: {msg}")
+                flagged_reasons.append(msg)
 
     # Sort candidates descending by consensus score
     sorted_candidates = sorted(
@@ -164,21 +219,27 @@ def generate_consensus(
 
             if rank_in_b is None:
                 flagged = True
-                reason = (
+                msg = (
                     f"Orthogonal Agreement Failure: Primary engine '{primary_engine}' top hit "
                     f"({primary_top_hit.reference_id}) was completely unranked by {engine_b}."
                 )
-                logger.warning(f"Consensus Warning [{input_data.query_id}]: {reason}")
+                flagged_reasons.append(msg)
+                logger.warning(f"Consensus Warning [{input_data.query_id}]: {msg}")
                 break
             elif rank_in_b > threshold:
                 flagged = True
-                reason = (
+                msg = (
                     f"Orthogonal Agreement Failure: Primary engine '{primary_engine}' top hit "
                     f"({primary_top_hit.reference_id}) was ranked #{rank_in_b} by {engine_b} "
                     f"(Threshold: {threshold})."
                 )
-                logger.warning(f"Consensus Warning [{input_data.query_id}]: {reason}")
+                flagged_reasons.append(msg)
+                logger.warning(f"Consensus Warning [{input_data.query_id}]: {msg}")
                 break
+
+    if flagged_reasons:
+        flagged = True
+        reason = " | ".join(flagged_reasons)
 
     return ConsensusResult(
         query_id=input_data.query_id,
