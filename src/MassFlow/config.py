@@ -72,6 +72,10 @@ class InputConfig(BaseModel):
         default=None,
         validation_alias=AliasChoices("library_path", "reference_library"),
     )
+    streaming_threshold_mb: int = Field(
+        default=500,
+        description="Threshold (in MB) above which the library is streamed from disk instead of loaded into memory.",
+    )
 
     @property
     def reference_library(self) -> Optional[Path]:

@@ -56,4 +56,4 @@ if __name__ == "__main__":
         results = list(executor.map(calculate_chunk, chunks))
     full_array = np.hstack(results)
     t1 = time.time()
-    print(f"Parallel Process with init took: {t1-t0:.2f}s")
+    print(f"Parallel Process with init took: {t1 - t0:.2f}s")

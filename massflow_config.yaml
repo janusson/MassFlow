@@ -1,24 +1,21 @@
 project:
-  name: "MassFlow_Annotation"
+  name: "MassFlow_Annotation_Test"
   # Results will be saved in a subfolder named by the run
-  output_directory: "results/annotation_report"
+  output_directory: "results/test_run"
 
 input:
   # Automatically detects mzML, mzXML, MSP, MGF, etc.
-  input_path: "../MassFlow_Data/experiments/"
-  library_path: "../MassFlow_Data/libraries/example_library.msp"
+  input_path: "../MassFlow_Data/experiments/example_spectrum.MSP"
+  library_path: "../MassFlow_Data/libraries/ALL_GNPS.msp"
   format: null
 
-processing:
-  # Optimized for speed: basic cleaning only
+processing: # basic cleaning only
   clean_metadata: true
   normalize_intensity: true
-  # Optional: Uncomment for faster processing of complex spectra
-  # reduce_to_top_n_peaks: true
-  # n_max: 100
+  reduce_to_top_n_peaks: true
+  n_max: 100
 
 similarity:
-  # Fast, standard cosine search
   algorithm: "cosine"
   ms1_tolerance: 0.02
   ms2_tolerance: 0.02

@@ -70,11 +70,6 @@ class LegacyDatabaseSchemaError(RuntimeError):
     """
     Raised when a database uses the legacy ``peaks`` schema.
 
-    Parameters
-    ----------
-    message : str
-        Human-readable error message describing the migration requirement.
-
     Returns
     -------
     None
@@ -877,10 +872,6 @@ class SpectralDatabase:
         """
         Establish a connection to the SQLite database.
 
-        Parameters
-        ----------
-        None
-
         Returns
         -------
         None
@@ -894,10 +885,6 @@ class SpectralDatabase:
     def _initialize_tables(self) -> None:
         """
         Create the current schema or reject legacy schemas safely.
-
-        Parameters
-        ----------
-        None
 
         Returns
         -------
@@ -1102,10 +1089,6 @@ class SpectralDatabase:
         """
         Get the total number of spectra stored in the database.
 
-        Parameters
-        ----------
-        None
-
         Returns
         -------
         int
@@ -1130,10 +1113,6 @@ class SpectralDatabase:
         """
         Get the number of spectra per category.
 
-        Parameters
-        ----------
-        None
-
         Returns
         -------
         dict[str, int]
@@ -1157,10 +1136,6 @@ class SpectralDatabase:
     def get_precursor_mz_range(self) -> tuple[float, float]:
         """
         Get the minimum and maximum precursor m/z values stored in the database.
-
-        Parameters
-        ----------
-        None
 
         Returns
         -------
@@ -1189,10 +1164,6 @@ class SpectralDatabase:
     def close(self) -> None:
         """
         Close the database connection.
-
-        Parameters
-        ----------
-        None
 
         Returns
         -------

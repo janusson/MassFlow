@@ -34,11 +34,11 @@ query_mzs = np.random.uniform(100, 1000, 10000)
 t0 = time.time()
 r_old, c_old = ms1_prefilter_old(ref_mzs, query_mzs, 0.05)
 t1 = time.time()
-print(f"Old took: {t1-t0:.4f}s")
+print(f"Old took: {t1 - t0:.4f}s")
 
 t0 = time.time()
 r_new, c_new = ms1_prefilter_new(ref_mzs, query_mzs, 0.05)
 t1 = time.time()
-print(f"New took: {t1-t0:.4f}s")
+print(f"New took: {t1 - t0:.4f}s")
 
 assert len(r_old) == len(r_new)

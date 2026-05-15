@@ -50,4 +50,4 @@ if __name__ == "__main__":
 
     res = np.vstack(results)
     t1 = time.time()
-    print(f"ThreadPool sparse_array took: {t1-t0:.2f}s")
+    print(f"ThreadPool sparse_array took: {t1 - t0:.2f}s")

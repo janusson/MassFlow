@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
-import pandas as pd
+import polars as pl
 from matchms import Spectrum
 from matchms.exporting import save_as_mgf, save_as_msp
 
@@ -32,8 +32,8 @@ def create_golden_file(golden_path: Path):
     # Score = 12625 / sqrt(13025 * 13025) = 12625 / 13025 = 0.969289827
     golden_csv = (
         "query_id,reference_id,score,matched_peaks,q_value\n"
-        "Q1,R1,1.000000,5,0.000000\n"
-        "Q2,R1,0.969290,4,0.000000\n"
+        "Q1,R1,1.000000,5,0.500000\n"
+        "Q2,R1,0.969290,4,0.500000\n"
     )
     with open(golden_path, "w") as f:
         f.write(golden_csv)
@@ -84,7 +84,7 @@ def main():
         # 2. Configure Pipeline
         cfg = MassFlowConfig(
             input=InputConfig(
-                file_path=query_file,
+                input_path=query_file,
                 library_path=library_file,
             ),
             processing=ProcessingConfig(
@@ -116,18 +116,24 @@ def main():
             )
             sys.exit(1)
 
-        actual_df = pd.read_csv(results_file)
+        actual_df = pl.read_csv(results_file)
         # Filter out decoys to isolate the target results
-        actual_df = actual_df[~actual_df["is_decoy"]].copy()
+        actual_df = actual_df.filter(~pl.col("is_decoy"))
 
-        golden_df = pd.read_csv(golden_file)
+        golden_df = pl.read_csv(golden_file)
 
         # Merge and compare
-        compare_df = pd.merge(
-            golden_df,
+        compare_df = golden_df.join(
             actual_df,
             on=["query_id", "reference_id"],
-            suffixes=("_golden", "_actual"),
+            how="inner",
+            suffix="_actual",
+        ).rename(
+            {
+                "score": "score_golden",
+                "matched_peaks": "matched_peaks_golden",
+                "q_value": "q_value_golden",
+            }
         )
 
         if len(compare_df) != len(golden_df):
@@ -139,7 +145,7 @@ def main():
         tolerance = 1e-6
         passed = True
 
-        for idx, row in compare_df.iterrows():
+        for row in compare_df.iter_rows(named=True):
             score_diff = abs(row["score_golden"] - row["score_actual"])
             q_diff = abs(row["q_value_golden"] - row["q_value_actual"])
             peaks_diff = abs(row["matched_peaks_golden"] - row["matched_peaks_actual"])

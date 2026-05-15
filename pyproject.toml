@@ -43,6 +43,9 @@ viz = [
 [project.scripts]
 massflow = "MassFlow.cli:main"
 
+[tool.hatch.build.targets.wheel]
+packages = ["src/MassFlow"]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
@@ -57,6 +60,7 @@ dev = [
     "pytest-cov>=7.0.0",
     "pytest-benchmark",
     "memray",
+    "ruff",
 ]
 
 [tool.pytest.ini_options]

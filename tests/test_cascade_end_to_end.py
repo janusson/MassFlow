@@ -77,29 +77,33 @@ def mock_similarity_engines():
             for query in query_spectra:
                 query_id = str(query.get("id"))
 
-                if self.config.algorithm == "cosine":
-                    if query_id == "High_Conf_Query":
-                        results.append(
-                            make_result(query, find_reference("Ref_HighConf"), 0.96)
-                        )
-                    elif query_id == "Gray_Zone_Query":
-                        results.append(
-                            make_result(query, find_reference("Ref_GrayZone"), 0.6)
-                        )
-                    elif query_id == "Noise_Query":
-                        results.append(
-                            make_result(query, find_reference("Ref_Noise"), 0.2)
-                        )
+                try:
+                    if self.config.algorithm == "cosine":
+                        if query_id == "High_Conf_Query":
+                            results.append(
+                                make_result(query, find_reference("Ref_HighConf"), 0.96)
+                            )
+                        elif query_id == "Gray_Zone_Query":
+                            results.append(
+                                make_result(query, find_reference("Ref_GrayZone"), 0.6)
+                            )
+                        elif query_id == "Noise_Query":
+                            results.append(
+                                make_result(query, find_reference("Ref_Noise"), 0.2)
+                            )
 
-                elif self.config.algorithm == "ms2deepscore":
-                    if query_id == "Gray_Zone_Query":
-                        results.append(
-                            make_result(query, find_reference("Ref_GrayZone"), 0.95)
-                        )
-                    elif query_id == "High_Conf_Query":
-                        results.append(
-                            make_result(query, find_reference("Ref_HighConf"), 0.6)
-                        )
+                    elif self.config.algorithm == "ms2deepscore":
+                        if query_id == "Gray_Zone_Query":
+                            results.append(
+                                make_result(query, find_reference("Ref_GrayZone"), 0.95)
+                            )
+                        elif query_id == "High_Conf_Query":
+                            results.append(
+                                make_result(query, find_reference("Ref_HighConf"), 0.6)
+                            )
+                except KeyError:
+                    # Reference not found in this precursor bin, skip it
+                    continue
 
             return results
 

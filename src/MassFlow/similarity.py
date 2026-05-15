@@ -29,34 +29,20 @@ from MassFlow.config import SimilarityConfig
 logger = logging.getLogger(__name__)
 
 
-def yield_precursor_bins(
-    spectra: Iterable[Spectrum], bin_size: float = 10.0
+def yield_fixed_chunks(
+    spectra: Iterable[Spectrum], chunk_size: int = 10000
 ) -> Iterator[List[Spectrum]]:
-    """Yield spectra grouped by precursor_mz bins."""
-    current_bin: List[Spectrum] = []
-    current_edge = None
+    """Yield spectra grouped into fixed-size chunks to optimize vectorized similarity operations."""
+    current_chunk: List[Spectrum] = []
 
     for s in spectra:
-        mz = s.get("precursor_mz")
-        if mz is None:
-            mz = 0.0
-        else:
-            mz = float(mz)
+        current_chunk.append(s)
+        if len(current_chunk) >= chunk_size:
+            yield current_chunk
+            current_chunk = []
 
-        edge = (mz // bin_size) * bin_size
-        if current_edge is None:
-            current_edge = edge
-
-        if edge != current_edge:
-            if current_bin:
-                yield current_bin
-            current_bin = []
-            current_edge = edge
-
-        current_bin.append(s)
-
-    if current_bin:
-        yield current_bin
+    if current_chunk:
+        yield current_chunk
 
 
 def _handle_lazy_reference_spectra(func):
@@ -73,14 +59,21 @@ def _handle_lazy_reference_spectra(func):
     ):
         if not isinstance(reference_spectra, (list, tuple)):
             all_results = []
-            for bin_chunk in yield_precursor_bins(reference_spectra, bin_size=10.0):
-                if not bin_chunk:
+            processed_count = 0
+            for chunk in yield_fixed_chunks(reference_spectra, chunk_size=10000):
+                if not chunk:
                     continue
+
+                processed_count += len(chunk)
+                logger.info(
+                    f"Streaming library... scored against {processed_count} reference spectra so far."
+                )
+
                 all_results.extend(
                     func(
                         self,
                         query_spectra,
-                        bin_chunk,
+                        chunk,
                         min_score=min_score,
                         top_n=top_n,
                         include_decoys=include_decoys,
@@ -285,6 +278,8 @@ def calculate_fdr(
         - q_values: Calculated q-values corresponding to each score. Shape: (N+M,), dtype: float.
         - is_target: Boolean mask indicating if the score belongs to a target (True) or decoy (False). Shape: (N+M,), dtype: bool.
     """
+    import polars as pl
+
     if len(target_scores) == 0 and len(decoy_scores) == 0:
         return np.array([]), np.array([]), np.array([], dtype=bool)
 
@@ -305,32 +300,47 @@ def calculate_fdr(
         is_target = np.zeros_like(sorted_scores, dtype=bool)
         return sorted_scores, q_values, is_target
 
-    all_scores = np.concatenate([target_scores, decoy_scores])
-    is_target = np.concatenate(
+    # Use Polars for efficient sorting and cumulative calculations
+    df = pl.DataFrame(
+        {
+            "score": np.concatenate([target_scores, decoy_scores]),
+            "is_target": np.concatenate(
+                [
+                    np.ones_like(target_scores, dtype=bool),
+                    np.zeros_like(decoy_scores, dtype=bool),
+                ]
+            ),
+        }
+    )
+
+    # Sort descending by score, then targets first on ties
+    df = df.sort(["score", "is_target"], descending=[True, True])
+
+    df = df.with_columns(
         [
-            np.ones_like(target_scores, dtype=bool),
-            np.zeros_like(decoy_scores, dtype=bool),
+            pl.col("is_target").cast(pl.Int64).cum_sum().alias("cum_targets"),
+            (~pl.col("is_target")).cast(pl.Int64).cum_sum().alias("cum_decoys"),
         ]
     )
 
-    # Sort descending
-    sort_idx = np.argsort(all_scores)[::-1]
-    sorted_scores = all_scores[sort_idx]
-    sorted_is_target = is_target[sort_idx]
+    # Apply conservative FDR formula: (cum_decoys + 1) / cum_targets
+    df = df.with_columns(
+        pl.when(pl.col("cum_targets") > 0)
+        .then((pl.col("cum_decoys") + 1) / pl.col("cum_targets"))
+        .otherwise(1.0)
+        .clip(0, 1)
+        .alias("fdr")
+    )
 
-    cum_targets = np.cumsum(sorted_is_target)
-    cum_decoys = np.cumsum(~sorted_is_target)
+    # Calculate q-values (minimum FDR for all lower scores)
+    # In Polars, we can reverse, cum_min, and reverse back
+    df = df.with_columns(pl.col("fdr").reverse().cum_min().reverse().alias("q_value"))
 
-    fdr = np.zeros_like(cum_targets, dtype=float)
-    valid = cum_targets > 0
-    # Conservative target-decoy formula (+1 pseudo-count)
-    fdr[valid] = (cum_decoys[valid] + 1) / cum_targets[valid]
-    fdr = np.minimum(fdr, 1.0)
-
-    # Q-value is the minimum FDR for all lower scores
-    q_values = np.minimum.accumulate(fdr[::-1])[::-1]
-
-    return sorted_scores, q_values, sorted_is_target
+    return (
+        df.get_column("score").to_numpy(),
+        df.get_column("q_value").to_numpy(),
+        df.get_column("is_target").to_numpy(),
+    )
 
 
 class SimilarityEngine:
@@ -368,17 +378,17 @@ class SimilarityEngine:
                 tolerance=self.config.ms2_tolerance
             )
         elif self.config.algorithm == "spec2vec":
+            if not self.config.model_path or not self.config.model_path.exists():
+                raise FileNotFoundError(
+                    f"Model file not found at {self.config.model_path}"
+                )
+
             try:
                 import gensim
                 from spec2vec import Spec2Vec
             except ImportError:
                 raise ImportError(
                     "spec2vec is required for Spec2Vec similarity. Install it with 'pip install massflow[ml]'."
-                )
-
-            if not self.config.model_path or not self.config.model_path.exists():
-                raise FileNotFoundError(
-                    f"Model file not found at {self.config.model_path}"
                 )
 
             model = gensim.models.Word2Vec.load(str(self.config.model_path))
@@ -389,17 +399,17 @@ class SimilarityEngine:
             )
 
         elif self.config.algorithm == "ms2deepscore":
+            if not self.config.model_path or not self.config.model_path.exists():
+                raise FileNotFoundError(
+                    f"Model file not found at {self.config.model_path}"
+                )
+
             try:
                 from ms2deepscore import MS2DeepScore
                 from ms2deepscore.models import load_model
             except ImportError:
                 raise ImportError(
                     "ms2deepscore is required for MS2DeepScore similarity. Install it with 'pip install massflow[ml]'."
-                )
-
-            if not self.config.model_path or not self.config.model_path.exists():
-                raise FileNotFoundError(
-                    f"Model file not found at {self.config.model_path}"
                 )
 
             model = load_model(str(self.config.model_path))
@@ -570,7 +580,7 @@ class SimilarityEngine:
             n_targets = len(ref_list)
         else:
             all_references = list(reference_spectra)
-            n_targets = len(all_references) // 2
+            n_targets = len(all_references)
 
         n_queries = len(query_spectra)
 
@@ -586,7 +596,12 @@ class SimilarityEngine:
 
             if len(idx_row) > 0:
                 sparse_results = self.similarity_function.sparse_array(
-                    all_references, query_spectra, idx_row, idx_col, is_symmetric=False
+                    all_references,
+                    query_spectra,
+                    idx_row,
+                    idx_col,
+                    is_symmetric=False,
+                    progress_bar=False,
                 )
                 scores_array = np.zeros(
                     (len(all_references), n_queries),
@@ -705,7 +720,7 @@ class SimilarityEngine:
                 ref_mz = ref.get("precursor_mz")
                 ref_mz_val = float(ref_mz) if ref_mz is not None else None
 
-                is_decoy = idx >= n_targets
+                is_decoy = bool(ref.get("is_decoy", False)) or (idx >= n_targets)
 
                 results.append(
                     {
@@ -937,6 +952,7 @@ class ConsensusEngine:
                         idx_row,
                         idx_col,
                         is_symmetric=False,
+                        progress_bar=False,
                     )
                     scores_array = np.zeros(
                         (n_refs, n_queries),
@@ -1046,7 +1062,7 @@ class ConsensusEngine:
                 ref_mz = ref.get("precursor_mz")
                 ref_mz_val = float(ref_mz) if ref_mz is not None else None
 
-                is_decoy = idx >= n_targets
+                is_decoy = bool(ref.get("is_decoy", False)) or (idx >= n_targets)
 
                 results.append(
                     {

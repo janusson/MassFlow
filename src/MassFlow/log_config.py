@@ -40,6 +40,9 @@ def setup_structured_logging(level=logging.INFO):
     root_logger.handlers = []
     root_logger.addHandler(handler)
 
+    # Suppress extremely verbose matchms metadata warnings
+    logging.getLogger("matchms").setLevel(logging.ERROR)
+
     # --- Quarantine Logger Setup ---
     # Dedicated logger for invalid spectra that should not pollute the main log.
     quarantine_logger = logging.getLogger("quarantine")

@@ -37,7 +37,7 @@ if __name__ == "__main__":
     t0 = time.time()
     calculate_chunk((refs, queries))
     t1 = time.time()
-    print(f"Sequential took: {t1-t0:.2f}s")
+    print(f"Sequential took: {t1 - t0:.2f}s")
 
     t0 = time.time()
     chunks = []
@@ -46,4 +46,4 @@ if __name__ == "__main__":
     with ThreadPoolExecutor() as executor:
         results = list(executor.map(calculate_chunk, chunks))
     t1 = time.time()
-    print(f"Parallel Threading took: {t1-t0:.2f}s")
+    print(f"Parallel Threading took: {t1 - t0:.2f}s")

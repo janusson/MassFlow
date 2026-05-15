@@ -26,9 +26,9 @@ if __name__ == "__main__":
     t0 = time.time()
     calculate_scores(refs, queries, sim, is_symmetric=False)
     t1 = time.time()
-    print(f"numpy array took: {t1-t0:.2f}s")
+    print(f"numpy array took: {t1 - t0:.2f}s")
 
     t0 = time.time()
     calculate_scores(refs, queries, sim, is_symmetric=False, array_type="sparse")
     t1 = time.time()
-    print(f"sparse array took: {t1-t0:.2f}s")
+    print(f"sparse array took: {t1 - t0:.2f}s")

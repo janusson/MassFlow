@@ -42,4 +42,4 @@ if __name__ == "__main__":
     )
     res = np.hstack(results)
     t1 = time.time()
-    print(f"joblib Parallel took: {t1-t0:.2f}s")
+    print(f"joblib Parallel took: {t1 - t0:.2f}s")

@@ -27,7 +27,7 @@ if __name__ == "__main__":
     t0 = time.time()
     scores = calculate_scores(refs, queries, sim, is_symmetric=False)
     t1 = time.time()
-    print(f"calculate_scores took: {t1-t0:.2f}s")
+    print(f"calculate_scores took: {t1 - t0:.2f}s")
 
     t0 = time.time()
     idx_row, idx_col = np.where(np.ones((len(refs), len(queries)), dtype=bool))
@@ -35,4 +35,4 @@ if __name__ == "__main__":
         refs, queries, idx_row, idx_col, is_symmetric=False
     )
     t1 = time.time()
-    print(f"sparse_array (all pairs) took: {t1-t0:.2f}s")
+    print(f"sparse_array (all pairs) took: {t1 - t0:.2f}s")

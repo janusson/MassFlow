@@ -86,12 +86,14 @@ def _validate_spectra_iterator(
             else:
                 spectrum.set("precursor_mz", pepmass)
 
-        spec_id = (
-            spectrum.get("id")
-            or spectrum.get("spectrum_id")
-            or spectrum.get("scans")
-            or "Unknown"
-        )
+        spec_id = "Unknown"
+        if spectrum.get("id"):
+            spec_id = f"ID={spectrum.get('id')}"
+        elif spectrum.get("spectrum_id"):
+            spec_id = f"ID={spectrum.get('spectrum_id')}"
+        elif spectrum.get("scans"):
+            spec_id = f"SCANS={spectrum.get('scans')}"
+
         is_valid = True
         rejection_reason = ""
 
@@ -123,6 +125,9 @@ def _validate_spectra_iterator(
             elif not np.all(np.diff(spectrum.peaks.mz) >= 0):
                 is_valid = False
                 rejection_reason = "M/Z values are not monotonically increasing"
+            elif not np.all(spectrum.peaks.intensities > 0):
+                is_valid = False
+                rejection_reason = "Contains non-positive intensity values"
 
         if is_valid:
             yield spectrum

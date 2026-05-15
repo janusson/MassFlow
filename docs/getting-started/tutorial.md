@@ -109,5 +109,5 @@ query_02,137.05,,,,Unknown
 
 Now that you've run a basic annotation, check out the user guides to unlock MassFlow's full power:
 
-*   🚀 **Make it 10x faster:** Learn how to convert slow `.msp` libraries into lightning-fast databases using the [`massflow db build`](database.md) command.
-*   ⚙️ **Tweak the math:** Explore the powerful noise filters available in the [Configuration Guide](configuration.md).
+*   🚀 **Make it 10x faster:** Learn how to convert slow `.msp` libraries into lightning-fast databases using the [`massflow db build`](../user-guide/database.md) command.
+*   ⚙️ **Tweak the math:** Explore the powerful noise filters available in the [Configuration Guide](../user-guide/configuration.md).

@@ -26,9 +26,7 @@ END IONS
 BEGIN IONS
 PEPMASS=300.0
 SCANS=3
-TITLE=Invalid Spectrum - Unsorted M/Z
-302.0 10.0
-301.0 20.0
+TITLE=Invalid Spectrum - Empty Peaks
 END IONS
 
 BEGIN IONS
@@ -99,9 +97,7 @@ def test_validation_layer_quarantines_junk_spectra(
 
     assert "Quarantined Spectrum" in log_content
     assert "SCANS=2 | Reason: Contains non-positive intensity values" in log_content
-    assert (
-        "SCANS=3 | Reason: M/Z values are not monotonically increasing" in log_content
-    )
+    assert "SCANS=3 | Reason: Empty peak arrays" in log_content
     assert "SCANS=4 | Reason: Non-positive precursor_mz: 0.0" in log_content
     assert "SCANS=5 | Reason: Missing precursor_mz" in log_content
 

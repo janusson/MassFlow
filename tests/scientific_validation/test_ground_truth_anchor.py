@@ -27,6 +27,9 @@ from MassFlow.consensus import ConsensusEngine
 from MassFlow.models import (
     AnnotationHit,
     ConsensusInput,
+    MassFlowSpectrum,
+    SpectralPeaks,
+    SpectrumMetadata,
 )
 from MassFlow.models import (
     ConsensusConfig as MFConsensusConfig,
@@ -81,17 +84,24 @@ def test_ground_truth_anchor(
 
     # 2. Configure the engines for the consensus pipeline
     processing_config = ProcessingConfig(
-        default_filters=["default_filters"], select_by_number_of_peaks_n=2
+        default_filters=["default_filters"],
+        min_peaks=1,
+        filter_min_peaks=False,
+        reduce_to_top_n_peaks=True,
+        n_max=2,
     )
     base_config = MassFlowConfig(
         input=InputConfig(input_path="fake_input.mgf", library_path="fake_library.msp"),
         processing=processing_config,
     )
     sim_config_cosine = SimilarityConfig(
-        algorithm="cosine", min_score=0.7, ms2_tolerance=0.1
+        algorithm="cosine", min_score=0.7, ms2_tolerance=0.1, min_matched_peaks=1
     )
     sim_config_modcosine = SimilarityConfig(
-        algorithm="modified_cosine", min_score=0.7, ms2_tolerance=0.1
+        algorithm="modified_cosine",
+        min_score=0.7,
+        ms2_tolerance=0.1,
+        min_matched_peaks=1,
     )
 
     # 3. Process spectra using default MassFlow parameters
@@ -156,10 +166,21 @@ def test_ground_truth_anchor(
     for q_spec in processed_exp:
         q_id = q_spec.get("id")
         if q_id in all_annotation_hits:
+            # Convert matchms.Spectrum to MassFlowSpectrum for Pydantic validation
+            mf_spec = MassFlowSpectrum(
+                metadata=SpectrumMetadata(
+                    spectrum_id=str(q_id),
+                    precursor_mz=float(q_spec.get("precursor_mz")),
+                ),
+                peaks=SpectralPeaks(
+                    mz_array=list(q_spec.peaks.mz),
+                    intensity_array=list(q_spec.peaks.intensities),
+                ),
+            )
             consensus_input = ConsensusInput(
                 query_id=q_id,
                 hits=all_annotation_hits[q_id],
-                experimental_spectrum=q_spec,
+                experimental_spectrum=mf_spec,
             )
             result = consensus_engine.resolve(consensus_input)
             actual_results[q_id] = {
