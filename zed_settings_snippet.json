@@ -1,0 +1,21 @@
+{
+  "lsp": {
+    "massflow-lsp": {
+      "binary": {
+        "path": "uv",
+        "arguments": ["run", "python", "-m", "MassFlow.server"]
+      }
+    }
+  },
+  "languages": {
+    "Markdown": {
+      "language_servers": ["massflow-lsp", "..."]
+    },
+    "Plain Text": {
+      "language_servers": ["massflow-lsp", "..."]
+    },
+    "CSV": {
+      "language_servers": ["massflow-lsp", "..."]
+    }
+  }
+}

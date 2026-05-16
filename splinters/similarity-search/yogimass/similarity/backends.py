@@ -4,7 +4,7 @@ Search backends for spectrum libraries.
 
 from __future__ import annotations
 
-from typing import Iterable, Mapping, Protocol
+from typing import Any, Iterable, Mapping, Protocol
 
 from yogimass.similarity.library import LibraryEntry, SearchHit
 from yogimass.similarity.metrics import cosine_from_vectors
@@ -69,7 +69,7 @@ class AnnoySpectrumIndex:
         self._num_trees = num_trees
         self._entries: list[LibraryEntry] = []
         self._vocab: dict[str, int] = {}
-        self._index = None
+        self._index: Any = None
 
     def add(self, entry: LibraryEntry) -> None:
         self._entries.append(entry)

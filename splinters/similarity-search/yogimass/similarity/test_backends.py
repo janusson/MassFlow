@@ -1,6 +1,8 @@
-import pytest
-
-from yogimass.similarity.backends import create_index_backend, NaiveSpectrumIndex, logger
+from yogimass.similarity.backends import (
+    create_index_backend,
+    NaiveSpectrumIndex,
+    logger,
+)
 
 
 def test_faiss_backend_falls_back_to_naive_and_logs(monkeypatch):

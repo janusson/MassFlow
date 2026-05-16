@@ -1,71 +1,70 @@
-[build-system]
-requires = ["setuptools>=69.0", "wheel"]
-build-backend = "setuptools.build_meta"
-
 [project]
-name = "yogimass"
-version = "0.3.0"
-description = "Spectrum processing defaults and similarity scoring for tandem MS/MS data."
+name = "massflow"
+version = "1.0.0"
+description = "A scientific Python package for mass spectrometry processing and analysis."
 readme = "README.md"
-requires-python = ">=3.10"
-license = { file = "LICENSE" }
-authors = [{ name = "Eric Janusson" }]
-classifiers = [
-    "Development Status :: 3 - Alpha",
-    "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: MIT License",
-    "Programming Language :: Python :: 3",
-    "Topic :: Scientific/Cheminformatics :: Mass Spectrometry",
-]
+license = {text = "MIT"}
+requires-python = ">=3.13"
 dependencies = [
-    "matchms>=0.23",
-    "numpy>=1.24",
+    "click",
+    "lxml",
+    "matchms>=0.27.0",
+    "numpy>=1.26.4",
+    "packaging>=26.0",
+    "polars>=0.20.0",
+    "pydantic>=2.12.5",
+    "pygls>=2.1.1",
+    "pyteomics",
+    "PyYAML",
+    "rdkit>=2025.9.6",
+    "rich>=15.0.0",
+    "scikit-learn>=1.8.0",
+    "typer>=0.25.1",
+    "watchfiles>=1.1.1",
 ]
 
 [project.optional-dependencies]
-# Optional feature extras: enable splinter functionality documented in README and code
-# Examples: `pip install "yogimass[annoy]"` or `pip install "yogimass[msdial]"`.
 dev = [
     "pytest>=8.0",
     "pytest-cov>=5.0",
 ]
-
-annoy = [
-    "annoy>=1.17",
+ml = [
+    "ms2deepscore>=2.5.1",
+    "spec2vec>=0.8.0",
 ]
-
-msdial = [
-    "pandas>=1.5",
+network = [
+    "networkx>=3.2.1",
 ]
-
-spec2vec = [
-    "gensim>=4.2",
-]
-
-# Convenience groups
-all = [
-    "annoy>=1.17",
-    "pandas>=1.5",
-    "gensim>=4.2",
-]
-
-full = [
-    "annoy>=1.17",
-    "pandas>=1.5",
-    "gensim>=4.2",
+viz = [
+    "networkx>=3.4.2",
+    "pyvis>=0.3.2",
 ]
 
 [project.scripts]
-yogimass = "yogimass.cli:main"
+massflow = "MassFlow.cli:main"
 
-[tool.setuptools]
-package-dir = {"" = "."}
+[tool.hatch.build.targets.wheel]
+packages = ["src/MassFlow"]
 
-[tool.setuptools.packages.find]
-where = ["."]
-include = ["yogimass*"]
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+    "mkdocs<2.0",
+    "mkdocs-material",
+    "mkdocstrings",
+    "mkdocstrings-python",
+    "pytest-cov>=7.0.0",
+    "pytest-benchmark",
+    "memray",
+    "ruff",
+]
 
 [tool.pytest.ini_options]
-pythonpath = [
-    ".",
+markers = [
+    "core: tests that must pass for the v1.0 stable release contract",
+    "experimental: tests for experimental, post-1.0, or optional features",
 ]

@@ -1,0 +1,127 @@
+site_name: MassFlow
+site_description: A config-first Python toolkit for local tandem mass spectrometry (MS/MS) annotation workflows.
+site_author: Eric Janusson
+repo_url: https://github.com/janusson/MassFlow
+repo_name: janusson/MassFlow
+
+theme:
+  name: material
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - navigation.indexes
+    - search.suggest
+    - search.highlight
+    - search.share
+    - content.code.copy
+    - content.code.annotate
+    - content.tabs.link
+  palette:
+    # Palette toggle for light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: teal
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    # Palette toggle for dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: teal
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+
+plugins:
+  - search
+  - mkdocstrings:
+      default_handler: python
+      handlers:
+        python:
+          paths: [src]
+          options:
+            show_root_heading: true
+            show_source: true
+            docstring_style: numpy
+            merge_init_into_class: true
+            show_signature_annotations: true
+            separate_signature: true
+
+markdown_extensions:
+  - admonition
+  - tables
+  - attr_list
+  - md_in_html
+  - toc:
+      permalink: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: "!!python/name:pymdownx.superfences.fence_code_format"
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.details
+  - pymdownx.arithmatex:
+      generic: true
+
+extra_css:
+  - stylesheets/ayu-dark.css
+
+extra_javascript:
+  - javascripts/mathjax.js
+  - https://polyfill.io/v3/polyfill.min.js?features=es6
+  - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
+
+nav:
+  - Home: index.md
+  - Getting Started:
+      - Installation: getting-started/installation.md
+      - Tutorial: getting-started/tutorial.md
+      - Quickstart: getting-started/quickstart.md
+  - User Guide:
+      - Diagrams & Architecture: summary_diagrams.md
+      - Core Workflow (Stable):
+          - CLI Annotation: user-guide/annotation.md
+          - Configuration (YAML): user-guide/configuration.md
+          - SQLite Library Management: user-guide/database.md
+          - Processing & Filtering: user-guide/processing.md
+          - Scientific Validation: user-guide/validation.md
+          - Classical Similarity: user-guide/similarity.md
+          - Result Export & FDR: user-guide/results.md
+          - Usage Reference: user-guide/usage.md
+      - Data & Math:
+          - Data Requirements: user-guide/data-requirements.md
+          - Scoring Logic: user-guide/scoring_logic.md
+      - Experimental Features:
+          - Advanced ML Engines: experimental/ml-engines.md
+          - Molecular Networking: experimental/networking.md
+          - Consensus Orchestrator: experimental/orchestrator.md
+          - Language Server (LSP): experimental/lsp.md
+  - Architecture: ARCHITECTURE.md
+  - API Reference:
+      - Overview: api_reference.md
+      - CLI: api/cli.md
+      - Configuration: api/config.md
+      - Database: api/database.md
+      - Conversion: api/convert.md
+      - Input/Output: api/io.md
+      - Processing: api/processing.md
+      - Similarity: api/similarity.md
+      - Workflow: api/workflow.md
+      - Networking: api/networking.md
+      - Models: api/models.md
+      - Consensus: api/consensus.md
+      - Cheminformatics: api/cheminformatics.md
+      - Server (LSP): api/server.md
+  - Roadmap: post-v1.0-roadmap.md
+  - Changelog: CHANGELOG.md
