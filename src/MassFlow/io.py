@@ -287,7 +287,15 @@ def _build_results_dataframe(
     else:
         if not results:
             return None
-        df = pl.DataFrame(results)
+
+        clean_results = []
+        for r in results:
+            clean_r = r.copy()
+            if "is_decoy" in clean_r and hasattr(clean_r["is_decoy"], "item"):
+                clean_r["is_decoy"] = clean_r["is_decoy"].item()
+            clean_results.append(clean_r)
+
+        df = pl.DataFrame(clean_results)
 
     # Add Annotation_Status
     if "score" in df.columns:
