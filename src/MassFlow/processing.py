@@ -76,8 +76,11 @@ def metadata_processing(
 
     # Pre-emptively fix ionmode to prevent matchms default_filters from raising AssertionError
     ionmode = s.get("ionmode")
-    if isinstance(ionmode, str):
-        s.set("ionmode", ionmode.lower())
+    if ionmode is not None:
+        if isinstance(ionmode, (list, tuple)):
+            ionmode = ionmode[0] if len(ionmode) > 0 else None
+        if ionmode is not None:
+            s.set("ionmode", str(ionmode).lower())
 
     # Apply default filters (handles common metadata issues)
     if config is None or getattr(config, "clean_metadata", True):
