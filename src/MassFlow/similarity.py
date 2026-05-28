@@ -790,12 +790,15 @@ class CascadeEngine:
         # We manually bypass the internal min_score to grab the full matrix
         original_min = self.tier1_engine.config.min_score
         self.tier1_engine.config.min_score = 0.0
+        # Run a light-weight Tier 1 pass requesting only the top hit per query
+        # and without decoys. We only need the max Tier 1 score per query to
+        # decide routing into Tier 2; requesting top_n=1 keeps the operation fast.
         tier1_raw_results = self.tier1_engine.search(
             query_spectra,
             reference_spectra,
             min_score=0.0,
-            top_n=None,
-            include_decoys=include_decoys,
+            top_n=1,
+            include_decoys=False,
         )
         self.tier1_engine.config.min_score = original_min
 

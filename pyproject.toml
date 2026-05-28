@@ -6,6 +6,7 @@ readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.13"
 dependencies = [
+    "aider>=0.2.6",
     "click",
     "lxml",
     "matchms>=0.27.0",
@@ -16,7 +17,7 @@ dependencies = [
     "pygls>=2.1.1",
     "pyteomics",
     "PyYAML",
-    "rdkit>=2025.9.6",
+    # rdkit moved to optional "chem" extra
     "rich>=15.0.0",
     "scikit-learn>=1.8.0",
     "typer>=0.25.1",
@@ -27,6 +28,9 @@ dependencies = [
 dev = [
     "pytest>=8.0",
     "pytest-cov>=5.0",
+]
+chem = [
+    "rdkit>=2025.9.6",
 ]
 ml = [
     "ms2deepscore>=2.5.1",

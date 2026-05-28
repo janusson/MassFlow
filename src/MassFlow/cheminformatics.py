@@ -208,11 +208,72 @@ def calculate_isotopic_envelope(
         except Exception:
             pass  # Fall back to pyteomics
 
-    # Fallback: Pyteomics centroiding approach
-    formula = rdMolDescriptors.CalcMolFormula(mol)
+    # RDKit's CalcMolFormula for SMILES like [13C] may just return C6.
+    # We must explicitly use atoms to get the correct formula or mass if isotopes are present.
+    # Pyteomics prefers its own isotope notation.
     try:
-        comp = pmass.Composition(formula=formula)
-        mono_mass = pmass.calculate_mass(formula=formula)
+        # Check for isotopes in the RDKit molecule
+        has_isotope = any(atom.GetIsotope() > 0 for atom in mol.GetAtoms())
+
+        if has_isotope:
+            # Construct formula manually for pyteomics if isotopes are present.
+            # Use RDKit's CalcMolFormula to obtain base counts (including implicit H),
+            # then overlay isotopic labels from explicit atoms so we produce something like C[13]6H6.
+            # Try to compute a base formula from a molecule copy with isotopes zeroed so implicit H counts are preserved
+            try:
+                mol_no_iso = Chem.Mol(mol)
+                for atom in mol_no_iso.GetAtoms():
+                    atom.SetIsotope(0)
+                base_formula = rdMolDescriptors.CalcMolFormula(mol_no_iso)
+            except Exception:
+                base_formula = rdMolDescriptors.CalcMolFormula(mol)
+
+            base_matches = re.findall(r"([A-Z][a-z]*)(\d*)", base_formula)
+            base_counts = {
+                element: int(count) if count else 1 for element, count in base_matches
+            }
+
+            counts = defaultdict(lambda: defaultdict(int))
+            for atom in mol.GetAtoms():
+                symbol = atom.GetSymbol()
+                isotope = atom.GetIsotope()
+                counts[symbol][isotope] += 1
+
+            parts = []
+            for symbol in sorted(base_counts.keys()):
+                total = base_counts[symbol]
+                if symbol in counts:
+                    # Add isotopically labeled atoms first (e.g., C[13]6)
+                    isotopic_items = [
+                        (iso, counts[symbol][iso])
+                        for iso in sorted(counts[symbol].keys())
+                        if iso > 0
+                    ]
+                    for iso, cnt in isotopic_items:
+                        parts.append(f"{symbol}[{iso}]{cnt}")
+
+                    # Non-labeled atoms present explicitly
+                    non_iso_count = counts[symbol].get(0, 0)
+                    if non_iso_count > 0:
+                        parts.append(f"{symbol}{non_iso_count}")
+
+                    # If explicit atom counts sum to less than the base total (rare), append the remainder
+                    sum_counts = non_iso_count + sum(cnt for _, cnt in isotopic_items)
+                    if sum_counts < total:
+                        rem = total - sum_counts
+                        parts.append(f"{symbol}{rem}")
+                else:
+                    # No isotopic labels for this element; use base count
+                    parts.append(f"{symbol}{total}")
+
+            formula_py = "".join(parts)
+
+            comp = pmass.Composition(formula=formula_py)
+            mono_mass = pmass.calculate_mass(formula=formula_py)
+        else:
+            formula = rdMolDescriptors.CalcMolFormula(mol)
+            comp = pmass.Composition(formula=formula)
+            mono_mass = pmass.calculate_mass(formula=formula)
     except Exception:
         return []
 

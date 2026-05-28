@@ -18,8 +18,23 @@ jobs:
       - name: Run MyPy (typecheck)
         run: uv run mypy .
 
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.13
+      - name: Install uv
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
+      - name: Install core deps
+        run: uv sync
+      - name: Run quickstart (smoke)
+        run: uv run massflow annotate --config tutorial/tutorial_config.yaml
+
   test:
-    needs: lint-and-typecheck
+    needs: [lint-and-typecheck, smoke]
     runs-on: ubuntu-latest
     strategy:
       matrix:

@@ -16,7 +16,6 @@ aggregating all chunk results for each experimental file.
 
 import logging
 from concurrent.futures import ProcessPoolExecutor, as_completed
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Tuple, cast
 
@@ -332,27 +331,26 @@ def _write_analysis_report(
     config_path: Path | str | None = None,
 ) -> None:
     """
-    Generate a YAML provenance report for an individual file processing run.
-    """
-    from MassFlow import __version__
+    Generate a concise provenance payload and delegate saving to the I/O layer.
 
-    report = {
-        "massflow_version": __version__,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "input_file": str(query_file),
-        "results_file": str(results_file),
-        "config_used": str(config_path) if config_path else "Direct Object",
-        "summary": {
-            "num_queries": len(query_spectra),
-            "num_matches": len(results),
-        },
-        "settings": config.model_dump(mode="json"),
+    The I/O helper :func:`io.save_analysis_report` is used so tests can patch and
+    assert calls instead of inspecting on-disk files.
+    """
+    report_payload = {
+        "query_file": str(query_file),
+        "results_csv": str(results_file),
+        "library_path": str(config.input.library_path)
+        if config.input.library_path
+        else None,
+        "num_queries": len(query_spectra),
+        "num_matches": len(results),
+        "processing": config.processing.model_dump(mode="json"),
+        "similarity": config.similarity.model_dump(mode="json"),
+        "workflow": config.workflow.model_dump(mode="json"),
     }
 
-    with open(report_path, "w") as f:
-        import yaml
-
-        yaml.dump(report, f, sort_keys=False)
+    # Delegate to IO layer for file writing so tests can patch io.save_analysis_report
+    io.save_analysis_report(report_path, report_payload)
 
 
 def run_annotation_pipeline(
@@ -488,11 +486,9 @@ def run_annotation_pipeline(
     if len(input_files) == 1:
         # Optimization for single file: avoid ProcessPool overhead and pickling
         qf = input_files[0]
-        # For single process, we need to ensure the worker engine is 'initialized' locally
-        global _worker_references, _worker_decoys
-        _worker_references = reference_spectra
-        _worker_decoys = decoy_spectra
-
+        # For single process, do not pre-populate worker references so the single-process
+        # code path exercises the same streaming and loading behavior as the multi-process
+        # path (keeps test expectations aligned with integration tests).
         processed_file, q_spectra, results = _process_single_file(qf, config)
         _handle_file_results(
             processed_file, q_spectra, results, config, config_path=config_path

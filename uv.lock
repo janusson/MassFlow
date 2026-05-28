@@ -20,6 +20,18 @@ wheels = [
 ]
 
 [[package]]
+name = "aider"
+version = "0.2.6"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "configparser" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/eb/db/e0e79a60749ecb052f10d1ea115d96f09d91d4ee8ae836ed0330a31eaedf/aider-0.2.6.tar.gz", hash = "sha256:770ecdf888e15215ae4b10cde22b6961ba67b0bd7737b2260c6efd0ef76b969d", size = 3052, upload-time = "2024-08-09T20:37:17.148Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/5f/d9/77420d87bce381b8d70396bafab90924e1d7c89fddebf62c3ac1d86cf2c7/aider-0.2.6-py3-none-any.whl", hash = "sha256:4e3e5c0f6cde7ca1c3291e022ab08618ddebddaa5836d5b0b6d3100c86c5d652", size = 3091, upload-time = "2024-08-09T20:37:14.349Z" },
+]
+
+[[package]]
 name = "annotated-doc"
 version = "0.0.4"
 source = { registry = "https://pypi.org/simple" }
@@ -187,6 +199,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/d8/53/6f443c9a4a8358a93a6792e2acffb9d9d5cb0a5cfd8802644b7b1c9a02e4/colorama-0.4.6.tar.gz", hash = "sha256:08695f5cb7ed6e0531a20572697297273c47b8cae5a63ffc6d6ed5c201be6e44", size = 27697, upload-time = "2022-10-25T02:36:22.414Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/d1/d6/3965ed04c63042e047cb6a3e6ed1a63a35087b6a609aa3a15ed8ac56c221/colorama-0.4.6-py2.py3-none-any.whl", hash = "sha256:4f1d9991f5acc0ca119f9d443620b77f9d6b33703e51011c16baf57afb285fc6", size = 25335, upload-time = "2022-10-25T02:36:20.889Z" },
+]
+
+[[package]]
+name = "configparser"
+version = "7.2.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/8b/ac/ea19242153b5e8be412a726a70e82c7b5c1537c83f61b20995b2eda3dcd7/configparser-7.2.0.tar.gz", hash = "sha256:b629cc8ae916e3afbd36d1b3d093f34193d851e11998920fdcfc4552218b7b70", size = 51273, upload-time = "2025-03-08T16:04:09.339Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/09/fe/f61e7129e9e689d9e40bbf8a36fb90f04eceb477f4617c02c6a18463e81f/configparser-7.2.0-py3-none-any.whl", hash = "sha256:fee5e1f3db4156dcd0ed95bc4edfa3580475537711f67a819c966b389d09ce62", size = 17232, upload-time = "2025-03-08T16:04:07.743Z" },
 ]
 
 [[package]]
@@ -884,6 +905,7 @@ name = "massflow"
 version = "1.0.0"
 source = { editable = "." }
 dependencies = [
+    { name = "aider" },
     { name = "click" },
     { name = "lxml" },
     { name = "matchms" },
@@ -894,7 +916,6 @@ dependencies = [
     { name = "pygls" },
     { name = "pyteomics" },
     { name = "pyyaml" },
-    { name = "rdkit" },
     { name = "rich" },
     { name = "scikit-learn" },
     { name = "typer" },
@@ -902,6 +923,9 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+chem = [
+    { name = "rdkit" },
+]
 dev = [
     { name = "pytest" },
     { name = "pytest-cov" },
@@ -933,6 +957,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "aider", specifier = ">=0.2.6" },
     { name = "click" },
     { name = "lxml" },
     { name = "matchms", specifier = ">=0.27.0" },
@@ -949,14 +974,14 @@ requires-dist = [
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=5.0" },
     { name = "pyvis", marker = "extra == 'viz'", specifier = ">=0.3.2" },
     { name = "pyyaml" },
-    { name = "rdkit", specifier = ">=2025.9.6" },
+    { name = "rdkit", marker = "extra == 'chem'", specifier = ">=2025.9.6" },
     { name = "rich", specifier = ">=15.0.0" },
     { name = "scikit-learn", specifier = ">=1.8.0" },
     { name = "spec2vec", marker = "extra == 'ml'", specifier = ">=0.8.0" },
     { name = "typer", specifier = ">=0.25.1" },
     { name = "watchfiles", specifier = ">=1.1.1" },
 ]
-provides-extras = ["dev", "ml", "network", "viz"]
+provides-extras = ["dev", "chem", "ml", "network", "viz"]
 
 [package.metadata.requires-dev]
 dev = [
