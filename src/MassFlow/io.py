@@ -158,15 +158,12 @@ def _build_results_dataframe(
         )
 
         if results:
-            # Fix numpy bool serialization warning in Polars by converting manually
-            clean_results = []
-            for r in results:
-                clean_r = r.copy()
-                if "is_decoy" in clean_r and hasattr(clean_r["is_decoy"], "item"):
-                    clean_r["is_decoy"] = clean_r["is_decoy"].item()
-                clean_results.append(clean_r)
+            results_df = pl.DataFrame(results)
+            if "is_decoy" in results_df.columns:
+                results_df = results_df.with_columns(
+                    pl.col("is_decoy").cast(pl.Boolean)
+                )
 
-            results_df = pl.DataFrame(clean_results)
             df = base_df.join(results_df, on="query_id", how="left")
             if "query_precursor_mz_right" in df.columns:
                 df = df.drop("query_precursor_mz_right")

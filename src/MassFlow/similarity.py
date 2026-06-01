@@ -363,7 +363,7 @@ class SimilarityEngine:
                 ref_mz_val = float(ref_mz) if ref_mz is not None else None
                 ref_smiles = ref.get("smiles")
 
-                is_decoy = (
+                is_decoy = bool(
                     original_ref_idx >= len(reference_spectra)
                     if include_decoys
                     else False
@@ -585,7 +585,7 @@ class SimilarityEngine:
                 ref_mz = ref.get("precursor_mz")
                 ref_mz_val = float(ref_mz) if ref_mz is not None else None
 
-                is_decoy = idx >= n_targets
+                is_decoy = bool(idx >= n_targets)
 
                 results.append(
                     {
@@ -916,7 +916,7 @@ class ConsensusEngine:
                 ref_mz = ref.get("precursor_mz")
                 ref_mz_val = float(ref_mz) if ref_mz is not None else None
 
-                is_decoy = idx >= n_targets
+                is_decoy = bool(idx >= n_targets)
 
                 results.append(
                     {
