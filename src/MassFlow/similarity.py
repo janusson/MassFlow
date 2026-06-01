@@ -146,8 +146,8 @@ def _ms1_prefilter(
         cols: List[int] = []
         for query_idx, query_mz in query_mzs_indexed:
             if query_mz > 0:
-                ppm_tol_da = resolution_ppm * query_mz / 1e6
-                min_mz, max_mz = query_mz - ppm_tol_da, query_mz + ppm_tol_da
+                ppm_ratio = resolution_ppm / 1e6
+                min_mz, max_mz = query_mz / (1 + ppm_ratio), query_mz / (1 - ppm_ratio)
 
                 start_idx = np.searchsorted(ref_mzs_sorted, min_mz, side="left")
                 end_idx = np.searchsorted(ref_mzs_sorted, max_mz, side="right")
