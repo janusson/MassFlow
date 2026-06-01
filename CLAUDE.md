@@ -10,7 +10,7 @@ MassFlow is a pre-1.0, config-first Python toolkit for local MS/MS annotation wo
 
 ## Tech Stack
 - Python 3.13+
-- Core Libraries: `matchms`, `pydantic`, `PyYAML`, `numpy`, `pandas`, `pyteomics`, and the standard-library `sqlite3` module.
+- Core Libraries: `matchms`, `pydantic`, `PyYAML`, `numpy`, `polars`, `pyteomics`, and the standard-library `sqlite3` module.
 - Optional Analysis and UI Libraries: `ms2deepscore`, `spec2vec`, `plotext`, `networkx`, `matplotlib`.
 - Data Formats: Open formats such as mzML, mzXML, MGF, MSP, and MassFlow SQLite libraries, all represented as `matchms.Spectrum` objects in the processing pipeline.
 - Testing: `pytest`

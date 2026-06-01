@@ -12,7 +12,8 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict
-from typing import List, Optional, TypedDict
+from functools import wraps
+from typing import Iterable, Iterator, List, Optional, TypedDict
 
 import numpy as np
 from matchms import Spectrum, calculate_scores
@@ -26,6 +27,75 @@ except ImportError:
 from MassFlow.config import SimilarityConfig
 
 logger = logging.getLogger(__name__)
+
+
+def yield_fixed_chunks(
+    spectra: Iterable[Spectrum], chunk_size: int = 10000
+) -> Iterator[List[Spectrum]]:
+    """Yield spectra grouped into fixed-size chunks to optimize vectorized similarity operations."""
+    current_chunk: List[Spectrum] = []
+
+    for s in spectra:
+        current_chunk.append(s)
+        if len(current_chunk) >= chunk_size:
+            yield current_chunk
+            current_chunk = []
+
+    if current_chunk:
+        yield current_chunk
+
+
+def _handle_lazy_reference_spectra(func):
+    """Decorator to allow search engines to lazily process generator inputs in chunks."""
+
+    @wraps(func)
+    def wrapper(
+        self,
+        query_spectra,
+        reference_spectra,
+        min_score=None,
+        top_n=None,
+        include_decoys=True,
+    ):
+        if not isinstance(reference_spectra, (list, tuple)):
+            all_results = []
+            processed_count = 0
+            for chunk in yield_fixed_chunks(reference_spectra, chunk_size=10000):
+                if not chunk:
+                    continue
+
+                processed_count += len(chunk)
+                logger.info(
+                    f"Streaming library... scored against {processed_count} reference spectra so far."
+                )
+
+                all_results.extend(
+                    func(
+                        self,
+                        query_spectra,
+                        chunk,
+                        min_score=min_score,
+                        top_n=top_n,
+                        include_decoys=include_decoys,
+                    )
+                )
+
+            if top_n is not None:
+                grouped = defaultdict(list)
+                for r in all_results:
+                    grouped[r["query_id"]].append(r)
+
+                final_res = []
+                for q_id, hits in grouped.items():
+                    hits.sort(key=lambda x: x["score"], reverse=True)
+                    final_res.extend(hits[:top_n])
+                return final_res
+            return all_results
+        return func(
+            self, query_spectra, reference_spectra, min_score, top_n, include_decoys
+        )
+
+    return wrapper
 
 
 class SearchResult(TypedDict):
@@ -42,8 +112,10 @@ class SearchResult(TypedDict):
     inchikey: str | None
     is_decoy: bool
     q_value: float
+    p_value: float | None
     annotation_tier: str | None
     structural_similarity: float | None
+    score_breakdown: dict[str, float] | None
 
 
 def _ms1_prefilter(
@@ -70,7 +142,8 @@ def _ms1_prefilter(
         ref_mzs_sorted_indices = np.argsort(ref_mzs)
         ref_mzs_sorted = ref_mzs[ref_mzs_sorted_indices]
 
-        rows, cols = [], []
+        rows: List[int] = []
+        cols: List[int] = []
         for query_idx, query_mz in query_mzs_indexed:
             if query_mz > 0:
                 ppm_tol_da = resolution_ppm * query_mz / 1e6
@@ -80,9 +153,8 @@ def _ms1_prefilter(
                 end_idx = np.searchsorted(ref_mzs_sorted, max_mz, side="right")
 
                 original_indices = ref_mzs_sorted_indices[start_idx:end_idx]
-                for ref_idx in original_indices:
-                    rows.append(ref_idx)
-                    cols.append(query_idx)
+                rows.extend(original_indices)
+                cols.extend([query_idx] * len(original_indices))
 
         # Also include spectra with missing precursors, as they bypass the filter
         for i in np.where(ref_missing)[0]:
@@ -95,14 +167,34 @@ def _ms1_prefilter(
         return np.array(rows), np.array(cols)
 
     else:
-        diff = np.abs(ref_mzs[:, None] - query_mzs[None, :])
-        mask = diff <= ms1_tolerance
+        # For each query, find references where |ref_mz - query_mz| <= ms1_tolerance
+        # This uses binary search, which is O(Q * log(R)) and avoids O(R * Q) dense array memory allocation
+        query_mzs_indexed = list(enumerate(query_mzs))
+        ref_mzs_sorted_indices = np.argsort(ref_mzs)
+        ref_mzs_sorted = ref_mzs[ref_mzs_sorted_indices]
 
-    # Bypass MS1 filter if either query or reference is missing a precursor m/z
-    missing_mask = ref_missing[:, None] | query_missing[None, :]
-    mask = mask | missing_mask
+        rows_abs: List[int] = []
+        cols_abs: List[int] = []
+        for query_idx, query_mz in query_mzs_indexed:
+            if query_mz > 0:
+                min_mz, max_mz = query_mz - ms1_tolerance, query_mz + ms1_tolerance
 
-    return np.where(mask)
+                start_idx = np.searchsorted(ref_mzs_sorted, min_mz, side="left")
+                end_idx = np.searchsorted(ref_mzs_sorted, max_mz, side="right")
+
+                original_indices = ref_mzs_sorted_indices[start_idx:end_idx]
+                rows_abs.extend(original_indices)
+                cols_abs.extend([query_idx] * len(original_indices))
+
+        # Also include spectra with missing precursors, as they bypass the filter
+        for i in np.where(ref_missing)[0]:
+            rows_abs.extend([i] * len(query_mzs))
+            cols_abs.extend(range(len(query_mzs)))
+        for i in np.where(query_missing)[0]:
+            rows_abs.extend(range(len(ref_mzs)))
+            cols_abs.extend([i] * len(ref_mzs))
+
+        return np.array(rows_abs), np.array(cols_abs)
 
 
 def generate_decoys(spectra: List[Spectrum], random_seed: int = 42) -> List[Spectrum]:
@@ -146,6 +238,23 @@ def generate_decoys(spectra: List[Spectrum], random_seed: int = 42) -> List[Spec
     return decoys
 
 
+def calculate_empirical_p_values(
+    target_scores: np.ndarray, decoy_scores: np.ndarray
+) -> np.ndarray:
+    """
+    Calculate empirical p-values for target scores against a decoy null distribution.
+    """
+    if len(decoy_scores) == 0:
+        return np.ones_like(target_scores)
+
+    # Vectorized computation of instances where decoy score >= target score
+    greater_equal_decoys = np.sum(decoy_scores >= target_scores[:, None], axis=1)
+
+    # Apply +1 pseudo-count to numerator and denominator
+    p_values = (greater_equal_decoys + 1) / (len(decoy_scores) + 1)
+    return p_values
+
+
 def calculate_fdr(
     target_scores: np.ndarray, decoy_scores: np.ndarray
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -169,6 +278,8 @@ def calculate_fdr(
         - q_values: Calculated q-values corresponding to each score. Shape: (N+M,), dtype: float.
         - is_target: Boolean mask indicating if the score belongs to a target (True) or decoy (False). Shape: (N+M,), dtype: bool.
     """
+    import polars as pl
+
     if len(target_scores) == 0 and len(decoy_scores) == 0:
         return np.array([]), np.array([]), np.array([], dtype=bool)
 
@@ -189,32 +300,47 @@ def calculate_fdr(
         is_target = np.zeros_like(sorted_scores, dtype=bool)
         return sorted_scores, q_values, is_target
 
-    all_scores = np.concatenate([target_scores, decoy_scores])
-    is_target = np.concatenate(
+    # Use Polars for efficient sorting and cumulative calculations
+    df = pl.DataFrame(
+        {
+            "score": np.concatenate([target_scores, decoy_scores]),
+            "is_target": np.concatenate(
+                [
+                    np.ones_like(target_scores, dtype=bool),
+                    np.zeros_like(decoy_scores, dtype=bool),
+                ]
+            ),
+        }
+    )
+
+    # Sort descending by score, then targets first on ties
+    df = df.sort(["score", "is_target"], descending=[True, True])
+
+    df = df.with_columns(
         [
-            np.ones_like(target_scores, dtype=bool),
-            np.zeros_like(decoy_scores, dtype=bool),
+            pl.col("is_target").cast(pl.Int64).cum_sum().alias("cum_targets"),
+            (~pl.col("is_target")).cast(pl.Int64).cum_sum().alias("cum_decoys"),
         ]
     )
 
-    # Sort descending
-    sort_idx = np.argsort(all_scores)[::-1]
-    sorted_scores = all_scores[sort_idx]
-    sorted_is_target = is_target[sort_idx]
+    # Apply conservative FDR formula: (cum_decoys + 1) / cum_targets
+    df = df.with_columns(
+        pl.when(pl.col("cum_targets") > 0)
+        .then((pl.col("cum_decoys") + 1) / pl.col("cum_targets"))
+        .otherwise(1.0)
+        .clip(0, 1)
+        .alias("fdr")
+    )
 
-    cum_targets = np.cumsum(sorted_is_target)
-    cum_decoys = np.cumsum(~sorted_is_target)
+    # Calculate q-values (minimum FDR for all lower scores)
+    # In Polars, we can reverse, cum_min, and reverse back
+    df = df.with_columns(pl.col("fdr").reverse().cum_min().reverse().alias("q_value"))
 
-    fdr = np.zeros_like(cum_targets, dtype=float)
-    valid = cum_targets > 0
-    # Conservative target-decoy formula (+1 pseudo-count)
-    fdr[valid] = (cum_decoys[valid] + 1) / cum_targets[valid]
-    fdr = np.minimum(fdr, 1.0)
-
-    # Q-value is the minimum FDR for all lower scores
-    q_values = np.minimum.accumulate(fdr[::-1])[::-1]
-
-    return sorted_scores, q_values, sorted_is_target
+    return (
+        df.get_column("score").to_numpy(),
+        df.get_column("q_value").to_numpy(),
+        df.get_column("is_target").to_numpy(),
+    )
 
 
 class SimilarityEngine:
@@ -252,17 +378,17 @@ class SimilarityEngine:
                 tolerance=self.config.ms2_tolerance
             )
         elif self.config.algorithm == "spec2vec":
+            if not self.config.model_path or not self.config.model_path.exists():
+                raise FileNotFoundError(
+                    f"Model file not found at {self.config.model_path}"
+                )
+
             try:
                 import gensim
                 from spec2vec import Spec2Vec
             except ImportError:
                 raise ImportError(
                     "spec2vec is required for Spec2Vec similarity. Install it with 'pip install massflow[ml]'."
-                )
-
-            if not self.config.model_path or not self.config.model_path.exists():
-                raise FileNotFoundError(
-                    f"Model file not found at {self.config.model_path}"
                 )
 
             model = gensim.models.Word2Vec.load(str(self.config.model_path))
@@ -273,17 +399,17 @@ class SimilarityEngine:
             )
 
         elif self.config.algorithm == "ms2deepscore":
+            if not self.config.model_path or not self.config.model_path.exists():
+                raise FileNotFoundError(
+                    f"Model file not found at {self.config.model_path}"
+                )
+
             try:
                 from ms2deepscore import MS2DeepScore
                 from ms2deepscore.models import load_model
             except ImportError:
                 raise ImportError(
                     "ms2deepscore is required for MS2DeepScore similarity. Install it with 'pip install massflow[ml]'."
-                )
-
-            if not self.config.model_path or not self.config.model_path.exists():
-                raise FileNotFoundError(
-                    f"Model file not found at {self.config.model_path}"
                 )
 
             model = load_model(str(self.config.model_path))
@@ -392,16 +518,19 @@ class SimilarityEngine:
                         else None,
                         "is_decoy": is_decoy,
                         "q_value": 1.0,
+                        "p_value": None,
                         "annotation_tier": None,
                         "structural_similarity": structural_sim,
+                        "score_breakdown": None,
                     }
                 )
         return results
 
+    @_handle_lazy_reference_spectra
     def search(
         self,
         query_spectra: List[Spectrum],
-        reference_spectra: List[Spectrum],
+        reference_spectra: Iterable[Spectrum],
         min_score: float | None = None,
         top_n: int | None = None,
         include_decoys: bool = True,
@@ -445,13 +574,13 @@ class SimilarityEngine:
 
         if include_decoys:
             # Generate decoys and combine
-            decoy_spectra = generate_decoys(reference_spectra)
-            all_references = reference_spectra + decoy_spectra
-            n_targets = len(reference_spectra)
+            ref_list = list(reference_spectra)
+            decoy_spectra = generate_decoys(ref_list)
+            all_references = ref_list + decoy_spectra
+            n_targets = len(ref_list)
         else:
-            all_references = reference_spectra
-            # If decoys are handled externally, we assume the first half of all_references are targets
-            n_targets = len(reference_spectra) // 2
+            all_references = list(reference_spectra)
+            n_targets = len(all_references)
 
         n_queries = len(query_spectra)
 
@@ -467,7 +596,12 @@ class SimilarityEngine:
 
             if len(idx_row) > 0:
                 sparse_results = self.similarity_function.sparse_array(
-                    all_references, query_spectra, idx_row, idx_col, is_symmetric=False
+                    all_references,
+                    query_spectra,
+                    idx_row,
+                    idx_col,
+                    is_symmetric=False,
+                    progress_bar=False,
                 )
                 scores_array = np.zeros(
                     (len(all_references), n_queries),
@@ -489,6 +623,7 @@ class SimilarityEngine:
                     queries=query_spectra,  # type: ignore
                     similarity_function=self.similarity_function,
                     is_symmetric=False,
+                    array_type="sparse",
                 )
             except Exception as e:
                 logger.error(
@@ -585,7 +720,7 @@ class SimilarityEngine:
                 ref_mz = ref.get("precursor_mz")
                 ref_mz_val = float(ref_mz) if ref_mz is not None else None
 
-                is_decoy = bool(idx >= n_targets)
+                is_decoy = bool(ref.get("is_decoy", False)) or (idx >= n_targets)
 
                 results.append(
                     {
@@ -604,8 +739,10 @@ class SimilarityEngine:
                         else None,
                         "is_decoy": is_decoy,
                         "q_value": 1.0,  # Will be updated by FDR calculation
+                        "p_value": None,  # Will be updated by empirical p-value calculation
                         "annotation_tier": None,
                         "structural_similarity": None,
+                        "score_breakdown": None,
                     }
                 )
 
@@ -636,10 +773,11 @@ class CascadeEngine:
         tier2_config = config.model_copy(update={"algorithm": config.cascade_tier2})
         self.tier2_engine = SimilarityEngine(tier2_config)
 
+    @_handle_lazy_reference_spectra
     def search(
         self,
         query_spectra: List[Spectrum],
-        reference_spectra: List[Spectrum],
+        reference_spectra: Iterable[Spectrum],
         min_score: float | None = None,
         top_n: int | None = None,
         include_decoys: bool = True,
@@ -744,10 +882,11 @@ class ConsensusEngine:
         if not np.isclose(total_weight, 1.0):
             logger.warning(f"Engine weights sum to {total_weight}, not 1.0")
 
+    @_handle_lazy_reference_spectra
     def search(
         self,
         query_spectra: List[Spectrum],
-        reference_spectra: List[Spectrum],
+        reference_spectra: Iterable[Spectrum],
         min_score: float | None = None,
         top_n: int | None = None,
         include_decoys: bool = True,
@@ -765,12 +904,13 @@ class ConsensusEngine:
 
         if include_decoys:
             # Generate decoys and combine
-            decoy_spectra = generate_decoys(reference_spectra)
-            all_references = reference_spectra + decoy_spectra
-            n_targets = len(reference_spectra)
+            ref_list: List[Spectrum] = list(reference_spectra)
+            decoy_spectra: List[Spectrum] = generate_decoys(ref_list)
+            all_references: List[Spectrum] = ref_list + decoy_spectra
+            n_targets: int = len(ref_list)
         else:
-            all_references = reference_spectra
-            n_targets = len(reference_spectra) // 2
+            all_references = list(reference_spectra)
+            n_targets = len(all_references) // 2
 
         n_queries = len(query_spectra)
 
@@ -791,6 +931,9 @@ class ConsensusEngine:
         consensus_scores = np.zeros((n_refs, n_queries), dtype=float)
         consensus_matches = np.full((n_refs, n_queries), -1, dtype=int)
 
+        # Store individual score arrays for the breakdown
+        engine_score_arrays = {}
+
         for engine, weight in self.engines:
             # Check if this specific engine is a candidate for MS1 pre-filtering
             if engine.config.algorithm == "cosine" and hasattr(
@@ -809,6 +952,7 @@ class ConsensusEngine:
                         idx_row,
                         idx_col,
                         is_symmetric=False,
+                        progress_bar=False,
                     )
                     scores_array = np.zeros(
                         (n_refs, n_queries),
@@ -828,6 +972,7 @@ class ConsensusEngine:
                         queries=query_spectra,  # type: ignore
                         similarity_function=engine.similarity_function,
                         is_symmetric=False,
+                        array_type="sparse",
                     )
                 except Exception as e:
                     logger.error(
@@ -868,6 +1013,7 @@ class ConsensusEngine:
             else:
                 numeric_scores = scores_array.astype(float)
 
+            engine_score_arrays[engine.config.algorithm] = numeric_scores
             consensus_scores += numeric_scores * weight
 
         results: List[SearchResult] = []
@@ -916,7 +1062,7 @@ class ConsensusEngine:
                 ref_mz = ref.get("precursor_mz")
                 ref_mz_val = float(ref_mz) if ref_mz is not None else None
 
-                is_decoy = bool(idx >= n_targets)
+                is_decoy = bool(ref.get("is_decoy", False)) or (idx >= n_targets)
 
                 results.append(
                     {
@@ -935,8 +1081,10 @@ class ConsensusEngine:
                         else None,
                         "is_decoy": is_decoy,
                         "q_value": 1.0,
+                        "p_value": None,
                         "annotation_tier": None,
                         "structural_similarity": None,
+                        "score_breakdown": None,
                     }
                 )
 

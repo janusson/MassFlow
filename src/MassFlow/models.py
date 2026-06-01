@@ -58,6 +58,10 @@ class ConsensusInput(BaseModel):
     hits: List[AnnotationHit] = Field(
         default_factory=list, description="All hits across all engines for this query."
     )
+    experimental_spectrum: Optional["MassFlowSpectrum"] = Field(
+        default=None,
+        description="The complete experimental MS/MS spectrum used for credibility checks.",
+    )
 
 
 class AggregatedCandidate(BaseModel):
@@ -72,6 +76,7 @@ class AggregatedCandidate(BaseModel):
     consensus_score: float = 0.0
     engine_scores: Dict[str, float] = Field(default_factory=dict)
     engine_ranks: Dict[str, int] = Field(default_factory=dict)
+    credibility_factor: float = 1.0
 
 
 class ConsensusResult(BaseModel):
@@ -90,7 +95,7 @@ class ConsensusResult(BaseModel):
     )
     flagged_for_review: bool = Field(
         default=False,
-        description="True if top engines strongly disagree on the candidate.",
+        description="True if top engines strongly disagree on the candidate or credibility checks fail.",
     )
     review_reason: Optional[str] = Field(
         default=None, description="Explanation of the scientific credibility flag."
@@ -155,6 +160,26 @@ class ConsensusConfig(BaseModel):
             "from propagating through automated downstream pipelines."
         ),
     )
+    isotopic_credibility_weight: float = Field(
+        default=0.0,
+        description=(
+            "Weight applied to the MS1 Isotopic Credibility Factor. If > 0, the consensus score is "
+            "adjusted by the cosine similarity between the experimental MS1 isotopic envelope and the "
+            "theoretical envelope predicted by the candidate's SMILES."
+        ),
+    )
+    penalize_impossible_neutral_losses: bool = Field(
+        default=True,
+        description=(
+            "If True, activates the Fragmentation Heuristic validator. Candidates whose SMILES "
+            "cannot physically produce the observed major neutral losses (e.g., losing H2O when "
+            "the formula lacks oxygen) receive a severe penalty."
+        ),
+    )
+    neutral_loss_penalty_factor: float = Field(
+        default=0.1,
+        description="Multiplier applied to the consensus score if an impossible neutral loss is detected.",
+    )
 
 
 class IsotopicDistribution(BaseModel):
@@ -188,6 +213,10 @@ class MolecularStructure(BaseModel):
     isotopic_envelope: Optional[List[tuple[float, float]]] = Field(
         None, description="Theoretical isotopic envelope (M, M+1, M+2...)"
     )
+    is_physically_valid: bool = Field(
+        default=True,
+        description="False if strict 5 ppm mass validation fails or SMILES is unparseable.",
+    )
 
     @model_validator(mode="after")
     def validate_and_compute_mass(self) -> "MolecularStructure":
@@ -201,11 +230,13 @@ class MolecularStructure(BaseModel):
         if self.smiles:
             mol = Chem.MolFromSmiles(self.smiles)
             if not mol:
-                raise ValueError(f"Invalid SMILES string: {self.smiles}")
+                # GRACEFUL FALLBACK: Flag as invalid, do not crash
+                self.__dict__["is_physically_valid"] = False
         elif self.inchi:
             mol = Chem.MolFromInchi(self.inchi)
             if not mol:
-                raise ValueError(f"Invalid InChI string: {self.inchi}")
+                # GRACEFUL FALLBACK: Flag as invalid, do not crash
+                self.__dict__["is_physically_valid"] = False
 
         # 2. Validate / Compute Exact Mass
         if mol:
@@ -217,10 +248,8 @@ class MolecularStructure(BaseModel):
                     abs(self.exact_mass - calculated_mass) / calculated_mass * 1e6
                 )
                 if ppm_error > 5.0:
-                    raise ValueError(
-                        f"Structure exact mass ({calculated_mass:.4f}) conflicts with "
-                        f"provided exact mass ({self.exact_mass:.4f}). Error: {ppm_error:.1f} ppm."
-                    )
+                    # GRACEFUL FALLBACK: Bypass 5 ppm crash
+                    self.__dict__["is_physically_valid"] = False
             else:
                 # Auto-fill missing exact mass
                 self.exact_mass = calculated_mass
@@ -230,7 +259,7 @@ class MolecularStructure(BaseModel):
                 self.formula = Chem.rdMolDescriptors.CalcMolFormula(mol)
 
             # Auto-fill isotopic envelope
-            if self.smiles and not self.isotopic_envelope:
+            if self.smiles and not self.isotopic_envelope and self.is_physically_valid:
                 self.isotopic_envelope = calculate_isotopic_envelope(self.smiles)
 
         return self
@@ -251,6 +280,14 @@ class SpectrumMetadata(BaseModel):
         None, description="Ionization adduct (e.g., [M+H]+, [M-H]-)"
     )
     molecule: Optional[MolecularStructure] = None
+    experimental_isotopic_envelope: Optional[List[tuple[float, float]]] = Field(
+        default=None,
+        description="Experimental MS1 isotopic envelope (mz, abundance) pairs if available.",
+    )
+    is_physically_valid: bool = Field(
+        default=True,
+        description="False if adduct is unknown or theoretical m/z deviates by >5 ppm.",
+    )
 
     @model_validator(mode="after")
     def validate_precursor_mass_logic(self) -> "SpectrumMetadata":
@@ -265,26 +302,33 @@ class SpectrumMetadata(BaseModel):
             elif self.ion_mode == "negative":
                 self.adduct = "[M-H]-"
 
-        if self.molecule and self.molecule.exact_mass and self.charge and self.adduct:
-            exact_mass = self.molecule.exact_mass
-            charge = self.charge
+        # Cascade failure from molecule layer
+        if self.molecule and not self.molecule.is_physically_valid:
+            self.__dict__["is_physically_valid"] = False
 
-            if self.adduct not in ADDUCT_OFFSETS:
-                raise ValueError(f"Unsupported adduct: {self.adduct}")
+        # Graceful fallback: Skip strict validation if structural data is missing
+        if not (
+            self.molecule and self.molecule.exact_mass and self.charge and self.adduct
+        ):
+            return self
 
-            offset = ADDUCT_OFFSETS[self.adduct]
+        # Graceful fallback: Bypass exact mass validation for non-standard adducts
+        if self.adduct not in ADDUCT_OFFSETS:
+            self.__dict__["is_physically_valid"] = False
+            return self
 
-            # Theoretical m/z calculation. ADDUCT_OFFSETS assume z=+/-1 for the offset mass.
-            theoretical_mz = (exact_mass + offset) / abs(charge)
+        exact_mass = self.molecule.exact_mass
+        charge = self.charge
+        offset = ADDUCT_OFFSETS[self.adduct]
 
-            # Enforce strict 5 ppm tolerance
-            ppm_error = abs(self.precursor_mz - theoretical_mz) / theoretical_mz * 1e6
-            if ppm_error > 5.0:
-                raise ValueError(
-                    f"Precursor m/z ({self.precursor_mz:.6f}) deviates from theoretical m/z "
-                    f"({theoretical_mz:.6f}) for adduct {self.adduct} by {ppm_error:.1f} ppm "
-                    "(tolerance is 5.0 ppm)."
-                )
+        # Theoretical m/z calculation. ADDUCT_OFFSETS assume z=+/-1 for the offset mass.
+        theoretical_mz = (exact_mass + offset) / abs(charge)
+
+        # Enforce strict 5 ppm tolerance
+        ppm_error = abs(self.precursor_mz - theoretical_mz) / theoretical_mz * 1e6
+        if ppm_error > 5.0:
+            # GRACEFUL FALLBACK: Bypass 5 ppm crash
+            self.__dict__["is_physically_valid"] = False
 
         return self
 

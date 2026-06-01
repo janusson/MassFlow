@@ -39,3 +39,18 @@ def setup_structured_logging(level=logging.INFO):
     root_logger.setLevel(level)
     root_logger.handlers = []
     root_logger.addHandler(handler)
+
+    # Suppress extremely verbose matchms metadata warnings
+    logging.getLogger("matchms").setLevel(logging.ERROR)
+
+    # --- Quarantine Logger Setup ---
+    # Dedicated logger for invalid spectra that should not pollute the main log.
+    quarantine_logger = logging.getLogger("quarantine")
+    quarantine_logger.setLevel(logging.WARNING)
+    quarantine_logger.propagate = False  # Do not forward to the root logger
+
+    # Ensure it has a handler, even if the root one is suppressed
+    if not quarantine_logger.handlers:
+        q_handler = logging.FileHandler("massflow_quarantine.log")
+        q_handler.setFormatter(logging.Formatter("%(asctime)s - %(message)s"))
+        quarantine_logger.addHandler(q_handler)

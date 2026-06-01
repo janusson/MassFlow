@@ -1,8 +1,8 @@
 site_name: MassFlow
 site_description: A config-first Python toolkit for local tandem mass spectrometry (MS/MS) annotation workflows.
 site_author: Eric Janusson
-repo_url: https://github.com/ericjanusson/MassFlow
-repo_name: ericjanusson/MassFlow
+repo_url: https://github.com/janusson/MassFlow
+repo_name: janusson/MassFlow
 
 theme:
   name: material
@@ -98,13 +98,18 @@ nav:
           - Scientific Validation: user-guide/validation.md
           - Classical Similarity: user-guide/similarity.md
           - Result Export & FDR: user-guide/results.md
+          - Usage Reference: user-guide/usage.md
+      - Data & Math:
+          - Data Requirements: user-guide/data-requirements.md
+          - Scoring Logic: user-guide/scoring_logic.md
       - Experimental Features:
           - Advanced ML Engines: experimental/ml-engines.md
           - Molecular Networking: experimental/networking.md
           - Consensus Orchestrator: experimental/orchestrator.md
           - Language Server (LSP): experimental/lsp.md
-  - Architecture: ../ARCHITECTURE.md
+  - Architecture: ARCHITECTURE.md
   - API Reference:
+      - Overview: api_reference.md
       - CLI: api/cli.md
       - Configuration: api/config.md
       - Database: api/database.md
@@ -118,4 +123,5 @@ nav:
       - Consensus: api/consensus.md
       - Cheminformatics: api/cheminformatics.md
       - Server (LSP): api/server.md
-  - Changelog: ../CHANGELOG.md
+  - Roadmap: post-v1.0-roadmap.md
+  - Changelog: CHANGELOG.md

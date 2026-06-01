@@ -523,7 +523,7 @@ def test_triage_routing_in_process_single_file(
 
     ref_spec = make_spectrum("ref_1")
 
-    mock_load.side_effect = [[std_query, triage_query], [ref_spec]]
+    mock_load.side_effect = [[std_query, triage_query], [ref_spec], [ref_spec]]
     mock_process.side_effect = lambda s, c: s
 
     # Mock engines

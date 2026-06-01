@@ -28,14 +28,14 @@ def test_spectrum_validation():
 
 
 def test_invalid_smiles():
-    with pytest.raises(ValidationError):
-        MolecularStructure(smiles="NOT_A_SMILES")
+    mol = MolecularStructure(smiles="NOT_A_SMILES")
+    assert mol.is_physically_valid is False
 
 
 def test_mass_mismatch():
     # Caffeine mass is ~194.08. Providing 300.0 should fail 5ppm threshold.
-    with pytest.raises(ValidationError):
-        MolecularStructure(smiles="CN1C=NC2=C1C(=O)N(C(=O)N2C)C", exact_mass=300.0)
+    mol = MolecularStructure(smiles="CN1C=NC2=C1C(=O)N(C(=O)N2C)C", exact_mass=300.0)
+    assert mol.is_physically_valid is False
 
 
 def test_array_mismatch():
@@ -44,8 +44,11 @@ def test_array_mismatch():
 
 
 if __name__ == "__main__":
+    from rich.console import Console
+
+    console = Console()
     test_spectrum_validation()
     test_invalid_smiles()
     test_mass_mismatch()
     test_array_mismatch()
-    print("All Pydantic v2 validation tests passed!")
+    console.print("[bold green]All Pydantic v2 validation tests passed![/bold green]")

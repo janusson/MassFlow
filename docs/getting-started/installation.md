@@ -1,6 +1,6 @@
 # Installation
 
-MassFlow requires **Python 3.13+**. It relies heavily on standard scientific Python libraries (like `numpy`, `pandas`, and `matchms`) and is explicitly designed to remain lightweight and dependency-minimal.
+MassFlow requires **Python 3.13+**. It relies heavily on standard scientific Python libraries (like `numpy`, `polars`, and `matchms`) and is explicitly designed to remain lightweight and dependency-minimal.
 
 ---
 

@@ -15,7 +15,6 @@ import numpy as np
 import polars as pl
 from matchms import Spectrum
 from matchms.filtering import (
-    add_retention_time,
     clean_compound_name,
     default_filters,
     derive_adduct_from_name,
@@ -73,18 +72,27 @@ def metadata_processing(
     if spectrum is None:
         return None
 
-    s: Optional[Spectrum] = spectrum
+    s: Spectrum = spectrum
+
+    # Pre-emptively fix ionmode to prevent matchms default_filters from raising AssertionError
+    ionmode = s.get("ionmode")
+    if isinstance(ionmode, str):
+        s.set("ionmode", ionmode.lower())
 
     # Apply default filters (handles common metadata issues)
     if config is None or getattr(config, "clean_metadata", True):
-        s = default_filters(s)
-        if s is None:
+        # matchms default_filters may return None
+        s_opt = default_filters(s)
+        if s_opt is None:
             return None
+        s = s_opt
 
-    if config is None or getattr(config, "add_retention_time", True):
-        s = add_retention_time(s)
-        if s is None:
-            return None
+    # Skip matchms add_retention_time because we manually parse it safely in the batch extraction
+    # and matchms's internal regexes throw extremely slow WARNING logs for 'CCS:' strings.
+    # if config is None or getattr(config, "add_retention_time", True):
+    #     s = add_retention_time(s)
+    #     if s is None:
+    #         return None
 
     # Metadata repairs and derivations
     if config is None or getattr(config, "repair_inchi_inchikey_smiles", True):
@@ -245,13 +253,36 @@ def process_spectra_batch(
     # 1. Extract metadata into a Polars LazyFrame for fast batch validation
     metadata_rows = []
     for i, s in enumerate(spectra):
+        # Handle cases where charge might be a list or non-numeric
+        raw_charge = s.get("charge", 0)
+        if isinstance(raw_charge, (list, tuple)) and len(raw_charge) > 0:
+            charge = int(raw_charge[0])
+        elif hasattr(raw_charge, "__iter__") and not isinstance(
+            raw_charge, (str, bytes)
+        ):
+            # Handle matchms ChargeList or similar iterables
+            try:
+                charge = int(next(iter(raw_charge)))
+            except (StopIteration, ValueError, TypeError):
+                charge = 0
+        else:
+            try:
+                charge = int(raw_charge) if raw_charge is not None else 0
+            except (ValueError, TypeError):
+                charge = 0
+
+        try:
+            rt = float(s.get("retention_time", 0.0))
+        except (ValueError, TypeError):
+            rt = 0.0
+
         metadata_rows.append(
             {
                 "batch_index": i,
                 "id": s.get("id"),
                 "precursor_mz": float(s.get("precursor_mz", 0.0)),
-                "retention_time": float(s.get("retention_time", 0.0)),
-                "charge": int(s.get("charge", 0)),
+                "retention_time": rt,
+                "charge": charge,
                 "ionmode": s.get("ionmode"),
                 "peak_count": len(s.peaks) if s.peaks else 0,
             }

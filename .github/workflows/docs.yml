@@ -5,10 +5,10 @@ on:
     branches:
       - main
     paths:
-      - 'docs/**'
-      - 'src/**'
-      - 'mkdocs.yml'
-      - '.github/workflows/docs.yml'
+      - "docs/**"
+      - "src/**"
+      - "mkdocs.yml"
+      - ".github/workflows/docs.yml"
 
 permissions:
   contents: write
@@ -16,6 +16,8 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -32,6 +34,11 @@ jobs:
 
       - name: Install dependencies
         run: uv sync --all-groups
+
+      - name: Prepare documentation files
+        run: |
+          cp ARCHITECTURE.md docs/ARCHITECTURE.md
+          cp CHANGELOG.md docs/CHANGELOG.md
 
       - name: Deploy to GitHub Pages
         run: uv run mkdocs gh-deploy --force

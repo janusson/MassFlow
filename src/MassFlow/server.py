@@ -40,11 +40,22 @@ FORMULA_RE = re.compile(r"\b([A-Z][a-z]?\d*)+\b")
 # Looks for chains of C, N, O, S, rings (1-9), and brackets
 SMILES_RE = re.compile(r"\b([CNOPSFclbrI\=\#\(\)\[\]\@\+\-\.\d]{4,})\b")
 
-# --- Mock Databases for Editor Context ---
-# In a real implementation, this would query the `MassFlow.database` SQLite backend
+# --- In-Memory Trie for Editor Context ---
+# In a production environment, this is loaded from the SQLite library at startup.
+memory_trie = None
 MOCK_SCAN_DB = {
-    "Scan_001": {"name": "Caffeine", "mz": 195.088, "score": 0.98, "adduct": "[M+H]+"},
-    "query_42": {"name": "Aspirin", "mz": 181.050, "score": 0.91, "adduct": "[M+H]+"},
+    "Scan_001": {
+        "name": "Caffeine",
+        "mz": 195.088,
+        "score": 0.98,
+        "adduct": "[M+H]+",
+    },
+    "query_42": {
+        "name": "Aspirin",
+        "mz": 181.050,
+        "score": 0.91,
+        "adduct": "[M+H]+",
+    },
 }
 
 VALID_ELEMENTS = {
@@ -86,7 +97,7 @@ def is_plausible_formula(text: str) -> bool:
 
 def check_smiles_validity(smiles: str) -> Optional[str]:
     """Returns an error message if SMILES is invalid, else None."""
-    # RDKit suppresses C++ errors by default, we just check if it returns None
+    # 1. RDKit Semantic validation
     mol = Chem.MolFromSmiles(smiles, sanitize=False)
     if mol is None:
         return "Invalid SMILES syntax."
@@ -169,8 +180,11 @@ def hover(ls: LanguageServer, params: HoverParams) -> Optional[Hover]:
         return None
 
     # 1. Check if it's a known Scan ID
+    info = None
     if word in MOCK_SCAN_DB:
         info = MOCK_SCAN_DB[word]
+
+    if info:
         content = (
             f"### 🔬 MassFlow Annotation\n"
             f"**Scan ID:** `{word}`\n\n"

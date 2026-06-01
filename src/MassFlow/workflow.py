@@ -16,6 +16,7 @@ aggregating all chunk results for each experimental file.
 
 import logging
 from concurrent.futures import ProcessPoolExecutor, as_completed
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Tuple, cast
 
@@ -65,6 +66,10 @@ def _init_worker(
     large model state is not serialized. References and decoys are passed once
     at initialization to avoid repetitive disk I/O.
     """
+    from MassFlow.log_config import setup_structured_logging
+
+    setup_structured_logging(level=logging.INFO)
+
     global _worker_engine, _worker_references, _worker_decoys
     _worker_engine = get_similarity_engine(config.similarity)
     _worker_references = references
@@ -159,51 +164,31 @@ def _process_single_file(
                     )
                 all_results.extend(t2_results)
         else:
-            # Fallback for single-process testing or direct invocation
+            # Fallback for single-process testing or direct invocation, streaming the library
             all_results = []
             if config.input.library_path is None:
                 raise ValueError("Library path is not configured.")
             ref_gen = io.load_spectra(config.input.library_path)
             ref_iterator = processing.process_spectra(ref_gen, config.processing)
 
-            chunk_size = 2000
-            ref_chunk = []
-
-            for ref_spec in ref_iterator:
-                ref_chunk.append(ref_spec)
-                if len(ref_chunk) >= chunk_size:
-                    if standard_queries:
-                        all_results.extend(
-                            engine.search(
-                                standard_queries, ref_chunk, include_decoys=True
-                            )
-                        )
-                    if triage_queries and tier2_engine:
-                        t2_results = tier2_engine.search(
-                            triage_queries, ref_chunk, include_decoys=True
-                        )
-                        for res in t2_results:
-                            res["annotation_tier"] = (
-                                f"Triage ({config.similarity.cascade_tier2})"
-                            )
-                        all_results.extend(t2_results)
-                    ref_chunk.clear()
-
-            if ref_chunk:
-                if standard_queries:
-                    all_results.extend(
-                        engine.search(standard_queries, ref_chunk, include_decoys=True)
+            if standard_queries:
+                all_results.extend(
+                    engine.search(standard_queries, ref_iterator, include_decoys=True)
+                )
+            if triage_queries and tier2_engine:
+                # We need to recreate the iterator because it was exhausted above
+                ref_gen_2 = io.load_spectra(config.input.library_path)
+                ref_iterator_2 = processing.process_spectra(
+                    ref_gen_2, config.processing
+                )
+                t2_results = tier2_engine.search(
+                    triage_queries, ref_iterator_2, include_decoys=True
+                )
+                for res in t2_results:
+                    res["annotation_tier"] = (
+                        f"Triage ({config.similarity.cascade_tier2})"
                     )
-                if triage_queries and tier2_engine:
-                    t2_results = tier2_engine.search(
-                        triage_queries, ref_chunk, include_decoys=True
-                    )
-                    for res in t2_results:
-                        res["annotation_tier"] = (
-                            f"Triage ({config.similarity.cascade_tier2})"
-                        )
-                    all_results.extend(t2_results)
-                ref_chunk.clear()
+                all_results.extend(t2_results)
 
         # Global FDR calculation across all chunks for this experimental file
         target_scores = []
@@ -217,26 +202,44 @@ def _process_single_file(
         target_scores_arr = np.array(target_scores, dtype=float)
         decoy_scores_arr = np.array(decoy_scores, dtype=float)
 
-        sorted_scores, q_values, _ = calculate_fdr(target_scores_arr, decoy_scores_arr)
+        from MassFlow.similarity import calculate_empirical_p_values
 
-        # For fast interpolation (needs ascending x)
+        # Determine if we use Small Library Statistics
+        lib_size = len(_worker_references) if _worker_references else 0
+        is_small_library = lib_size < 2000
+
+        # 1. Standard FDR
+        sorted_scores, q_values, _ = calculate_fdr(target_scores_arr, decoy_scores_arr)
         asc_scores = sorted_scores[::-1]
         asc_q = q_values[::-1]
+
+        # 2. Empirical P-Value (Small Library Alternative)
+        p_vals = calculate_empirical_p_values(target_scores_arr, decoy_scores_arr)
+        p_val_map = dict(zip(target_scores_arr, p_vals))
 
         fdr_threshold = getattr(config.similarity, "fdr_threshold", 0.01)
 
         fdr_filtered_results = []
         for res in all_results:
+            if res.get("is_decoy", False):
+                continue
+
             score = res["score"]
             if len(asc_scores) > 0:
                 q_val = float(np.interp(score, asc_scores, asc_q))
             else:
                 q_val = 1.0
 
-            res["q_value"] = q_val
+            p_val = float(p_val_map.get(score, 1.0))
 
-            # Filter by FDR and remove decoys
-            if q_val <= fdr_threshold and not res.get("is_decoy", False):
+            res["q_value"] = q_val
+            res["p_value"] = p_val
+
+            # MODIFIED FILTERING:
+            # If small library, use p-value for filtering instead of sparse q-value
+            filter_metric = p_val if is_small_library else q_val
+
+            if filter_metric <= fdr_threshold:
                 fdr_filtered_results.append(res)
 
         # Sort results descending by score
@@ -249,6 +252,76 @@ def _process_single_file(
         return query_file, [], []
 
 
+def _handle_file_results(
+    processed_file: Path,
+    q_spectra: List[Spectrum],
+    results: List[SearchResult],
+    config: MassFlowConfig,
+    config_path: Path | str | None = None,
+) -> None:
+    """Helper to save results and write reports for a processed file."""
+    if not q_spectra:
+        logger.warning(f"No valid spectra extracted from {processed_file}.")
+        return
+
+    # Save intermediate results for this file (Collision Prevention)
+    base_stem = processed_file.stem
+    export_format = config.export.format.lower()
+    ext_map = {
+        "csv": "csv",
+        "json": "json",
+        "xlsx": "xlsx",
+        "parquet": "parquet",
+        "pickle": "pkl",
+        "msp": "msp",
+        "mgf": "mgf",
+        "mztab": "mztab",
+        "fbmn": "csv",  # FBMN uses CSV as its primary feature table
+    }
+    ext = ext_map.get(export_format, "csv")
+
+    out_file = config.output_directory / f"{base_stem}_results.{ext}"
+    counter = 1
+    while out_file.exists():
+        out_file = config.output_directory / f"{base_stem}_{counter}_results.{ext}"
+        counter += 1
+
+    results_dict = cast(List[Dict[str, Any]], results)
+    # Route to the correct exporter based on config.export.format
+    if export_format == "json":
+        io.save_match_results_to_json(results_dict, out_file, query_spectra=q_spectra)
+    elif export_format == "xlsx":
+        io.save_match_results_to_xlsx(results_dict, out_file, query_spectra=q_spectra)
+    elif export_format == "parquet":
+        io.save_match_results_to_parquet(
+            results_dict, out_file, query_spectra=q_spectra
+        )
+    elif export_format == "mztab":
+        io.save_match_results_to_mztab(results_dict, out_file, query_spectra=q_spectra)
+    elif export_format in ["csv", "fbmn"]:
+        io.save_match_results(results_dict, out_file, query_spectra=q_spectra)
+    else:
+        # Fallback for other formats or unimplemented results exporters
+        logger.warning(
+            f"Export format '{export_format}' is not yet supported for result tables. Falling back to CSV."
+        )
+        out_file = out_file.with_suffix(".csv")
+        io.save_match_results(results_dict, out_file, query_spectra=q_spectra)
+
+    report_file = config.output_directory / f"{out_file.stem}.report.yaml"
+    _write_analysis_report(
+        report_path=report_file,
+        config=config,
+        query_file=processed_file,
+        results_file=out_file,
+        query_spectra=q_spectra,
+        results=results,
+        config_path=config_path,
+    )
+
+    logger.info(f"Results saved to {out_file}")
+
+
 def _write_analysis_report(
     report_path: Path,
     config: MassFlowConfig,
@@ -259,62 +332,34 @@ def _write_analysis_report(
     config_path: Path | str | None = None,
 ) -> None:
     """
-    Write a provenance report alongside an annotation results file.
-
-    Parameters
-    ----------
-    report_path : Path
-        Destination path for the provenance report.
-    config : MassFlowConfig
-        Full configuration used for the annotation run.
-    query_file : Path
-        Experimental input file processed for this result set.
-    results_file : Path
-        CSV results file written for this query file.
-    query_spectra : list[matchms.Spectrum]
-        Processed query spectra used in the search.
-    results : list[SearchResult]
-        Final filtered search results written to the CSV file.
-    config_path : Path or str or None, optional
-        Original YAML configuration path when available.
-
-    Returns
-    -------
-    None
+    Generate a YAML provenance report for an individual file processing run.
     """
-    original_config_yaml = None
-    if config_path is not None and Path(config_path).exists():
-        original_config_yaml = Path(config_path).read_text()
+    from MassFlow import __version__
 
-    report_data = {
-        "config_path": str(config_path) if config_path is not None else None,
-        "original_config_yaml": original_config_yaml,
-        "query_file": str(query_file),
-        "results_csv": str(results_file),
-        "library_path": (
-            str(config.input.library_path)
-            if config.input.library_path is not None
-            else None
-        ),
-        "input_format": config.input.format,
-        "query_spectra_count": len(query_spectra),
-        "retained_result_count": len(results),
-        "project": config.project.model_dump(mode="json"),
-        "input": config.input.model_dump(mode="json"),
-        "processing": config.processing.model_dump(mode="json"),
-        "similarity": config.similarity.model_dump(mode="json"),
-        "workflow": config.workflow.model_dump(mode="json"),
-        "export": config.export.model_dump(mode="json"),
+    report = {
+        "massflow_version": __version__,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "input_file": str(query_file),
+        "results_file": str(results_file),
+        "config_used": str(config_path) if config_path else "Direct Object",
+        "summary": {
+            "num_queries": len(query_spectra),
+            "num_matches": len(results),
+        },
+        "settings": config.model_dump(mode="json"),
     }
 
-    io.save_analysis_report(report_path, report_data)
+    with open(report_path, "w") as f:
+        import yaml
+
+        yaml.dump(report, f, sort_keys=False)
 
 
 def run_annotation_pipeline(
     config: MassFlowConfig, config_path: Path | str | None = None
 ) -> None:
     """
-    Execute the full MassFlow annotation analysis pipeline.
+    Execute the full MassFlow annotation workflow.
 
     The workflow performs these major stages:
 
@@ -361,11 +406,11 @@ def run_annotation_pipeline(
         raise ValueError(f"Library path does not exist: {config.input.library_path}")
 
     library_size_mb = Path(config.input.library_path).stat().st_size / (1024 * 1024)
-    stream_library = library_size_mb > 500
+    stream_library = library_size_mb > config.input.streaming_threshold_mb
 
     if stream_library:
         logger.info(
-            f"Library size ({library_size_mb:.1f} MB) exceeds 500MB threshold. Using memory-efficient streaming mode."
+            f"Library size ({library_size_mb:.1f} MB) exceeds {config.input.streaming_threshold_mb}MB threshold. Using memory-efficient streaming mode."
         )
         reference_spectra = None
         decoy_spectra = None
@@ -432,112 +477,65 @@ def run_annotation_pipeline(
         if not input_files:
             raise ValueError(f"No supported spectral files found in {input_path}")
 
-    # 3. Process Each File in Parallel using Multiprocessing (Bypassing GIL)
+    # 3. Process Each File
     config.output_directory.mkdir(parents=True, exist_ok=True)
 
     all_queries: List[Spectrum] = []
     all_results: List[SearchResult] = []
 
-    logger.info(
-        f"Processing {len(input_files)} experimental files using multiprocessing..."
-    )
+    logger.info(f"Processing {len(input_files)} experimental files...")
 
-    with ProcessPoolExecutor(
-        initializer=_init_worker, initargs=(config, reference_spectra, decoy_spectra)
-    ) as executor:
-        futures = {
-            executor.submit(_process_single_file, qf, config): qf for qf in input_files
-        }
+    if len(input_files) == 1:
+        # Optimization for single file: avoid ProcessPool overhead and pickling
+        qf = input_files[0]
+        # For single process, we need to ensure the worker engine is 'initialized' locally
+        global _worker_references, _worker_decoys
+        _worker_references = reference_spectra
+        _worker_decoys = decoy_spectra
 
-        for future in as_completed(futures):
-            qf = futures[future]
-            try:
-                processed_file, q_spectra, results = future.result()
+        processed_file, q_spectra, results = _process_single_file(qf, config)
+        _handle_file_results(
+            processed_file, q_spectra, results, config, config_path=config_path
+        )
 
-                if q_spectra:
-                    # OOM Prevention: Only retain all queries and results in memory if needed for downstream steps
-                    if (
-                        config.workflow.perform_networking
-                        or config.export.format.lower() == "fbmn"
-                    ):
-                        all_queries.extend(q_spectra)
-                        all_results.extend(results)
+        if q_spectra:
+            if (
+                config.workflow.perform_networking
+                or config.export.format.lower() == "fbmn"
+            ):
+                all_queries.extend(q_spectra)
+                all_results.extend(results)
+    else:
+        with ProcessPoolExecutor(
+            initializer=_init_worker,
+            initargs=(config, reference_spectra, decoy_spectra),
+        ) as executor:
+            futures = {
+                executor.submit(_process_single_file, qf, config): qf
+                for qf in input_files
+            }
 
-                    # Save intermediate results for this file (Collision Prevention)
-                    base_stem = processed_file.stem
-                    export_format = config.export.format.lower()
-                    ext_map = {
-                        "csv": "csv",
-                        "json": "json",
-                        "xlsx": "xlsx",
-                        "parquet": "parquet",
-                        "pickle": "pkl",
-                        "msp": "msp",
-                        "mgf": "mgf",
-                        "mztab": "mztab",
-                        "fbmn": "csv",  # FBMN uses CSV as its primary feature table
-                    }
-                    ext = ext_map.get(export_format, "csv")
-
-                    out_file = config.output_directory / f"{base_stem}_results.{ext}"
-                    counter = 1
-                    while out_file.exists():
-                        out_file = (
-                            config.output_directory
-                            / f"{base_stem}_{counter}_results.{ext}"
-                        )
-                        counter += 1
-
-                    results_dict = cast(List[Dict[str, Any]], results)
-                    # Route to the correct exporter based on config.export.format
-                    if export_format == "json":
-                        io.save_match_results_to_json(
-                            results_dict, out_file, query_spectra=q_spectra
-                        )
-                    elif export_format == "xlsx":
-                        io.save_match_results_to_xlsx(
-                            results_dict, out_file, query_spectra=q_spectra
-                        )
-                    elif export_format == "parquet":
-                        io.save_match_results_to_parquet(
-                            results_dict, out_file, query_spectra=q_spectra
-                        )
-                    elif export_format == "mztab":
-                        io.save_match_results_to_mztab(
-                            results_dict, out_file, query_spectra=q_spectra
-                        )
-                    elif export_format in ["csv", "fbmn"]:
-                        io.save_match_results(
-                            results_dict, out_file, query_spectra=q_spectra
-                        )
-                    else:
-                        # Fallback for other formats or unimplemented results exporters
-                        logger.warning(
-                            f"Export format '{export_format}' is not yet supported for result tables. Falling back to CSV."
-                        )
-                        out_file = out_file.with_suffix(".csv")
-                        io.save_match_results(
-                            results_dict, out_file, query_spectra=q_spectra
-                        )
-
-                    report_file = (
-                        config.output_directory / f"{out_file.stem}.report.yaml"
-                    )
-                    _write_analysis_report(
-                        report_path=report_file,
-                        config=config,
-                        query_file=processed_file,
-                        results_file=out_file,
-                        query_spectra=q_spectra,
-                        results=results,
+            for future in as_completed(futures):
+                qf = futures[future]
+                try:
+                    processed_file, q_spectra, results = future.result()
+                    _handle_file_results(
+                        processed_file,
+                        q_spectra,
+                        results,
+                        config,
                         config_path=config_path,
                     )
 
-                    logger.info(f"Results saved to {out_file}")
-                else:
-                    logger.warning(f"No valid spectra extracted from {processed_file}.")
-            except Exception as e:
-                logger.error(f"Process failed for {qf}: {e}")
+                    if q_spectra:
+                        if (
+                            config.workflow.perform_networking
+                            or config.export.format.lower() == "fbmn"
+                        ):
+                            all_queries.extend(q_spectra)
+                            all_results.extend(results)
+                except Exception as e:
+                    logger.error(f"Worker failed for {qf}: {e}")
 
     # 4. Perform FBMN Export (Consensus MGF)
     if config.export.format.lower() == "fbmn":

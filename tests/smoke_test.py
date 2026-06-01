@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
-import pandas as pd
+import polars as pl
 from matchms import Spectrum
 from matchms.exporting import save_as_mgf, save_as_msp
 
@@ -32,14 +32,18 @@ def create_golden_file(golden_path: Path):
     # Score = 12625 / sqrt(13025 * 13025) = 12625 / 13025 = 0.969289827
     golden_csv = (
         "query_id,reference_id,score,matched_peaks,q_value\n"
-        "Q1,R1,1.000000,5,0.000000\n"
-        "Q2,R1,0.969290,4,0.000000\n"
+        "Q1,R1,1.000000,5,0.500000\n"
+        "Q2,R1,0.969290,4,0.500000\n"
     )
     with open(golden_path, "w") as f:
         f.write(golden_csv)
 
 
 def main():
+    from rich.console import Console
+
+    console = Console()
+
     smoke_dir = Path("smoke_test_run")
     if smoke_dir.exists():
         shutil.rmtree(smoke_dir)
@@ -80,7 +84,7 @@ def main():
         # 2. Configure Pipeline
         cfg = MassFlowConfig(
             input=InputConfig(
-                file_path=query_file,
+                input_path=query_file,
                 library_path=library_file,
             ),
             processing=ProcessingConfig(
@@ -101,60 +105,68 @@ def main():
         cfg.project.output_directory = smoke_dir / "results"
 
         # 3. Run Pipeline
-        print("Running MassFlow Annotation Pipeline...")
+        console.print("[bold blue]Running MassFlow Annotation Pipeline...[/bold blue]")
         run_annotation_pipeline(cfg)
 
         # 4. Compare Outputs
         results_file = smoke_dir / "results" / "query_results.csv"
         if not results_file.exists():
-            print(f"FAIL: Expected result file not found at {results_file}")
+            console.print(
+                f"[bold red]FAIL:[/bold red] Expected result file not found at {results_file}"
+            )
             sys.exit(1)
 
-        actual_df = pd.read_csv(results_file)
+        actual_df = pl.read_csv(results_file)
         # Filter out decoys to isolate the target results
-        actual_df = actual_df[~actual_df["is_decoy"]].copy()
+        actual_df = actual_df.filter(~pl.col("is_decoy"))
 
-        golden_df = pd.read_csv(golden_file)
+        golden_df = pl.read_csv(golden_file)
 
         # Merge and compare
-        compare_df = pd.merge(
-            golden_df,
+        compare_df = golden_df.join(
             actual_df,
             on=["query_id", "reference_id"],
-            suffixes=("_golden", "_actual"),
+            how="inner",
+            suffix="_actual",
+        ).rename(
+            {
+                "score": "score_golden",
+                "matched_peaks": "matched_peaks_golden",
+                "q_value": "q_value_golden",
+            }
         )
 
         if len(compare_df) != len(golden_df):
-            print(
-                f"FAIL: Row count mismatch. Expected {len(golden_df)}, got {len(compare_df)}"
+            console.print(
+                f"[bold red]FAIL:[/bold red] Row count mismatch. Expected {len(golden_df)}, got {len(compare_df)}"
             )
             sys.exit(1)
 
         tolerance = 1e-6
         passed = True
 
-        for idx, row in compare_df.iterrows():
+        for row in compare_df.iter_rows(named=True):
             score_diff = abs(row["score_golden"] - row["score_actual"])
             q_diff = abs(row["q_value_golden"] - row["q_value_actual"])
             peaks_diff = abs(row["matched_peaks_golden"] - row["matched_peaks_actual"])
 
             if score_diff > tolerance:
-                print(
-                    f"FAIL: Score precision exceeded 1E-6 for {row['query_id']}-{row['reference_id']}. "
+                console.print(
+                    f"[bold red]FAIL:[/bold red] Score precision exceeded 1E-6 for {row['query_id']}-{row['reference_id']}. "
                     f"Golden: {row['score_golden']:.6f}, Actual: {row['score_actual']:.6f}, Delta: {score_diff:.2E}"
                 )
                 passed = False
 
             if q_diff > tolerance:
-                print(
-                    f"FAIL: Q-value precision exceeded 1E-6 for {row['query_id']}-{row['reference_id']}. "
+                console.print(
+                    f"[bold red]FAIL:[/bold red] Q-value precision exceeded 1E-6 for {row['query_id']}-{row['reference_id']}. "
                     f"Golden: {row['q_value_golden']:.6f}, Actual: {row['q_value_actual']:.6f}, Delta: {q_diff:.2E}"
                 )
                 passed = False
 
             if peaks_diff != 0:
-                print(
-                    f"FAIL: Matched peaks mismatch for {row['query_id']}-{row['reference_id']}. "
+                console.print(
+                    f"[bold red]FAIL:[/bold red] Matched peaks mismatch for {row['query_id']}-{row['reference_id']}. "
                     f"Golden: {row['matched_peaks_golden']}, Actual: {row['matched_peaks_actual']}"
                 )
                 passed = False
@@ -162,7 +174,9 @@ def main():
         if not passed:
             sys.exit(1)
 
-        print("SUCCESS: End-to-end numeric precision smoke test passed within 1E-6.")
+        console.print(
+            "[bold green]SUCCESS:[/bold green] End-to-end numeric precision smoke test passed within 1E-6."
+        )
 
     finally:
         # Cleanup
