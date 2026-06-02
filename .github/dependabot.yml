@@ -1,0 +1,11 @@
+version: 2
+updates:
+  - package-ecosystem: "pip" # or "pub", "npm", etc. depending on your setup
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    # Group all minor and patch updates together
+    groups:
+      dependencies:
+        patterns:
+          - "*"

@@ -10,7 +10,7 @@ import math
 import re
 from collections import defaultdict
 from functools import lru_cache
-from typing import Optional, Set
+from typing import Optional, Set, DefaultDict
 
 import pyteomics.mass as pmass
 from rdkit import Chem, DataStructs
@@ -233,7 +233,9 @@ def calculate_isotopic_envelope(
                 element: int(count) if count else 1 for element, count in base_matches
             }
 
-            counts = defaultdict(lambda: defaultdict(int))
+            counts: DefaultDict[str, DefaultDict[int, int]] = defaultdict(
+                lambda: defaultdict(int)
+            )
             for atom in mol.GetAtoms():
                 symbol = atom.GetSymbol()
                 isotope = atom.GetIsotope()

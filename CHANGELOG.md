@@ -2,6 +2,13 @@
 
 All notable changes to MassFlow will be documented in this file.
 
+## [Unreleased]
+### Changed
+- **Deduplicated `_ms1_prefilter`:** Unified previously separate Da-tolerance and PPM-resolution code paths into a single search loop, eliminating ~35 lines of duplicated logic. The two modes now produce bit-identical results when configured to equivalent tolerances, which is enforced by a new equivalence-invariant test.
+
+### Added
+- **MS1 prefilter test coverage:** Added 6 new unit tests covering PPM boundary edge cases (high/low mass), Da/PPM equivalence invariance, simultaneous missing-precursor handling on both query and reference sides, zero-precursor rejection, and empty-input graceful degradation.
+
 ## [1.0.0] - 2026-05-10
 ### Added
 - **Formal Data Model:** Implemented Pydantic-based validation for all spectral metadata.

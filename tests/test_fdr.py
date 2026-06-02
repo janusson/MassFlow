@@ -9,7 +9,7 @@ from MassFlow.similarity import calculate_fdr
 
 
 def _is_non_decreasing(arr: np.ndarray) -> bool:
-    return np.all(np.diff(arr) >= -1e-8)
+    return bool(np.all(np.diff(arr) >= -1e-8))
 
 
 def test_calculate_fdr_no_decoys_properties():
@@ -47,8 +47,8 @@ def test_calculate_fdr_ties_put_targets_before_decoys():
     sorted_scores, q_values, is_target = calculate_fdr(targets, decoys)
 
     # When scores tie, targets must be ordered before decoys (is_target True first)
-    assert is_target[0] == True
-    assert is_target[1] == False
+    assert is_target[0]
+    assert not is_target[1]
 
 
 def test_calculate_fdr_mixed_case_monotonicity_and_bounds():

@@ -124,77 +124,80 @@ def _ms1_prefilter(
     ms1_tolerance: float,
     resolution_ppm: Optional[float] = None,
 ) -> tuple[np.ndarray, ...]:
-    """Perform MS1 precursor m/z pre-filtering using Da tolerance or optionally PPM resolution."""
+    """
+    Perform MS1 precursor m/z pre-filtering.
+
+    Uses absolute Da tolerance by default.  When ``resolution_ppm`` is set it
+    overrides ``ms1_tolerance`` and derives a per-query absolute window from the
+    ppm value.  Spectra with missing precursor information bypass the filter so
+    they are not silently dropped.
+
+    The algorithm uses binary search over a sorted reference m/z array, which
+    runs in O(Q \u00b7 log(R)) and avoids materialising a dense R \u00d7 Q matrix.
+
+    Parameters
+    ----------
+    all_references : list of Spectrum
+        Reference library spectra.
+    query_spectra : list of Spectrum
+        Experimental query spectra.
+    ms1_tolerance : float
+        Precursor m/z tolerance in Da (used when ``resolution_ppm`` is None).
+    resolution_ppm : float or None, optional
+        If set, the per-query tolerance is ``query_mz * resolution_ppm / 1e6``.
+
+    Returns
+    -------
+    tuple of (np.ndarray, np.ndarray)
+        ``(row_indices, col_indices)`` sparse index arrays for the reference-query
+        pairs that pass the MS1 precursor filter.
+    """
     ref_mzs_raw = [s.get("precursor_mz") for s in all_references]
     query_mzs_raw = [q.get("precursor_mz") for q in query_spectra]
 
-    # Track missing precursors to allow them to bypass the MS1 filter
+    # Track missing precursors so they bypass the filter.
     ref_missing = np.array([r is None for r in ref_mzs_raw], dtype=bool)
     query_missing = np.array([q is None for q in query_mzs_raw], dtype=bool)
 
     ref_mzs = np.array([float(r) if r is not None else 0.0 for r in ref_mzs_raw])
     query_mzs = np.array([float(q) if q is not None else 0.0 for q in query_mzs_raw])
 
-    if resolution_ppm is not None:
-        # For each query, find references where |ref_mz - query_mz| / query_mz <= ppm_tolerance
-        # This is more efficient than a full matrix operation for sparse results.
-        query_mzs_indexed = list(enumerate(query_mzs))
-        ref_mzs_sorted_indices = np.argsort(ref_mzs)
-        ref_mzs_sorted = ref_mzs[ref_mzs_sorted_indices]
+    # -- Pre-sort references once for binary-search lookups --
+    ref_mzs_sorted_indices = np.argsort(ref_mzs)
+    ref_mzs_sorted = ref_mzs[ref_mzs_sorted_indices]
 
-        rows: List[int] = []
-        cols: List[int] = []
-        for query_idx, query_mz in query_mzs_indexed:
-            if query_mz > 0:
-                ppm_tol_da = resolution_ppm * query_mz / 1e6
-                min_mz, max_mz = query_mz - ppm_tol_da, query_mz + ppm_tol_da
+    rows: List[int] = []
+    cols: List[int] = []
 
-                start_idx = np.searchsorted(ref_mzs_sorted, min_mz, side="left")
-                end_idx = np.searchsorted(ref_mzs_sorted, max_mz, side="right")
+    for query_idx, query_mz in enumerate(query_mzs):
+        if query_mz <= 0:
+            continue
 
-                original_indices = ref_mzs_sorted_indices[start_idx:end_idx]
-                rows.extend(original_indices)
-                cols.extend([query_idx] * len(original_indices))
+        # Determine the absolute tolerance window for this query.
+        if resolution_ppm is not None:
+            tol_da = resolution_ppm * query_mz / 1e6
+        else:
+            tol_da = ms1_tolerance
 
-        # Also include spectra with missing precursors, as they bypass the filter
-        for i in np.where(ref_missing)[0]:
-            rows.extend([i] * len(query_mzs))
-            cols.extend(range(len(query_mzs)))
-        for i in np.where(query_missing)[0]:
-            rows.extend(range(len(ref_mzs)))
-            cols.extend([i] * len(ref_mzs))
+        lo = query_mz - tol_da
+        hi = query_mz + tol_da
 
-        return np.array(rows), np.array(cols)
+        start_idx = np.searchsorted(ref_mzs_sorted, lo, side="left")
+        end_idx = np.searchsorted(ref_mzs_sorted, hi, side="right")
 
-    else:
-        # For each query, find references where |ref_mz - query_mz| <= ms1_tolerance
-        # This uses binary search, which is O(Q * log(R)) and avoids O(R * Q) dense array memory allocation
-        query_mzs_indexed = list(enumerate(query_mzs))
-        ref_mzs_sorted_indices = np.argsort(ref_mzs)
-        ref_mzs_sorted = ref_mzs[ref_mzs_sorted_indices]
+        matched_refs = ref_mzs_sorted_indices[start_idx:end_idx]
+        rows.extend(matched_refs)
+        cols.extend([query_idx] * len(matched_refs))
 
-        rows_abs: List[int] = []
-        cols_abs: List[int] = []
-        for query_idx, query_mz in query_mzs_indexed:
-            if query_mz > 0:
-                min_mz, max_mz = query_mz - ms1_tolerance, query_mz + ms1_tolerance
+    # Spectra with missing precursors bypass the filter entirely.
+    for i in np.where(ref_missing)[0]:
+        rows.extend([i] * len(query_mzs))
+        cols.extend(range(len(query_mzs)))
+    for i in np.where(query_missing)[0]:
+        rows.extend(range(len(ref_mzs)))
+        cols.extend([i] * len(ref_mzs))
 
-                start_idx = np.searchsorted(ref_mzs_sorted, min_mz, side="left")
-                end_idx = np.searchsorted(ref_mzs_sorted, max_mz, side="right")
-
-                original_indices = ref_mzs_sorted_indices[start_idx:end_idx]
-                rows_abs.extend(original_indices)
-                cols_abs.extend([query_idx] * len(original_indices))
-
-        # Also include spectra with missing precursors, as they bypass the filter
-        for i in np.where(ref_missing)[0]:
-            rows_abs.extend([i] * len(query_mzs))
-            cols_abs.extend(range(len(query_mzs)))
-        for i in np.where(query_missing)[0]:
-            rows_abs.extend(range(len(ref_mzs)))
-            cols_abs.extend([i] * len(ref_mzs))
-
-        return np.array(rows_abs), np.array(cols_abs)
+    return np.array(rows), np.array(cols)
 
 
 def generate_decoys(spectra: List[Spectrum], random_seed: int = 42) -> List[Spectrum]:
