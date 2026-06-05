@@ -352,21 +352,33 @@ def calculate_theoretical_mass(smiles: str, adduct: str = "[M+H]+") -> Optional[
     return exact_mass + offset
 
 
-# Common exact neutral losses with the minimum element counts they physically require.
+# Common neutral losses expressed as chemical formulas. The monoisotopic mass and
+# the {element: minimum_count} requirement are both derived from each formula at
+# module load via pyteomics, so there is a single source of truth and no parallel
+# hand-maintained dicts to drift out of sync.
+#
+# The element-count requirement (not mere presence) prevents false negatives such as
+# CO₂ loss (needs 2 O) passing on a 1-O molecule. For example, CO₂ requires at least
+# 2 oxygen atoms and PO₃ requires at least 3 oxygen atoms in the candidate's formula.
+_NEUTRAL_LOSS_FORMULAS = [
+    "H2O",
+    "NH3",
+    "CO",
+    "CO2",
+    "H2S",
+    "SO2",
+    "PO3",
+    "HCl",
+    "HBr",
+    "HF",
+]
+
 # Each entry is (monoisotopic_mass_da, {element: minimum_count}).
-# The count check prevents false negatives such as CO₂ loss (needs 2 O) passing on a
-# 1-O molecule, which the old element-presence-only check allowed.
+# pmass.Composition(formula=f) yields a dict-like {element: count} mapping, which
+# doubles as both the exact-mass input and the element-count requirement.
 COMMON_NEUTRAL_LOSSES: list[tuple[float, dict[str, int]]] = [
-    (18.0106, {"H": 2, "O": 1}),  # H2O
-    (17.0265, {"H": 3, "N": 1}),  # NH3
-    (27.9949, {"C": 1, "O": 1}),  # CO
-    (43.9898, {"C": 1, "O": 2}),  # CO2 — requires at least 2 oxygen atoms
-    (33.9877, {"H": 2, "S": 1}),  # H2S  (fixed from H₃S sulfonium in prior commit)
-    (63.9619, {"S": 1, "O": 2}),  # SO2 — requires at least 2 oxygen atoms
-    (78.9585, {"P": 1, "O": 3}),  # PO3 — requires at least 3 oxygen atoms
-    (35.9767, {"H": 1, "Cl": 1}),  # HCl
-    (79.9262, {"H": 1, "Br": 1}),  # HBr
-    (20.0062, {"H": 1, "F": 1}),  # HF
+    (pmass.calculate_mass(formula=formula), dict(pmass.Composition(formula=formula)))
+    for formula in _NEUTRAL_LOSS_FORMULAS
 ]
 
 
