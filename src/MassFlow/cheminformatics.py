@@ -8,9 +8,9 @@ Morgan fingerprints.
 
 import math
 import re
-from collections import defaultdict
+from collections import Counter, defaultdict
 from functools import lru_cache
-from typing import Optional, Set
+from typing import Optional
 
 import pyteomics.mass as pmass
 from rdkit import Chem, DataStructs
@@ -352,18 +352,21 @@ def calculate_theoretical_mass(smiles: str, adduct: str = "[M+H]+") -> Optional[
     return exact_mass + offset
 
 
-# Common exact neutral losses and the elements they physically require
-COMMON_NEUTRAL_LOSSES = [
-    (18.0106, {"O"}),  # H2O
-    (17.0265, {"N"}),  # NH3
-    (27.9949, {"O"}),  # CO
-    (43.9898, {"O"}),  # CO2
-    (33.9877, {"S"}),  # H2S  (2 × H_MASS + S_MASS = 33.9877; 34.9956 was H₃S sulfonium)
-    (63.9619, {"S", "O"}),  # SO2
-    (78.9585, {"P", "O"}),  # PO3
-    (35.9767, {"Cl"}),  # HCl
-    (79.9262, {"Br"}),  # HBr
-    (20.0062, {"F"}),  # HF
+# Common exact neutral losses with the minimum element counts they physically require.
+# Each entry is (monoisotopic_mass_da, {element: minimum_count}).
+# The count check prevents false negatives such as CO₂ loss (needs 2 O) passing on a
+# 1-O molecule, which the old element-presence-only check allowed.
+COMMON_NEUTRAL_LOSSES: list[tuple[float, dict[str, int]]] = [
+    (18.0106, {"H": 2, "O": 1}),  # H2O
+    (17.0265, {"H": 3, "N": 1}),  # NH3
+    (27.9949, {"C": 1, "O": 1}),  # CO
+    (43.9898, {"C": 1, "O": 2}),  # CO2 — requires at least 2 oxygen atoms
+    (33.9877, {"H": 2, "S": 1}),  # H2S  (fixed from H₃S sulfonium in prior commit)
+    (63.9619, {"S": 1, "O": 2}),  # SO2 — requires at least 2 oxygen atoms
+    (78.9585, {"P": 1, "O": 3}),  # PO3 — requires at least 3 oxygen atoms
+    (35.9767, {"H": 1, "Cl": 1}),  # HCl
+    (79.9262, {"H": 1, "Br": 1}),  # HBr
+    (20.0062, {"H": 1, "F": 1}),  # HF
 ]
 
 
@@ -427,14 +430,33 @@ def calculate_isotopic_similarity(
     return dot_product / (norm_exp * norm_theor)
 
 
-def parse_elements_from_smiles(smiles: str) -> Set[str]:
-    """Extract a set of element symbols present in a SMILES string."""
+def parse_elements_from_smiles(smiles: str) -> Counter:
+    """
+    Parse a SMILES string and return a Counter mapping each element symbol to
+    its atom count in the molecular formula (implicit H included).
+
+    Parameters
+    ----------
+    smiles : str
+        A valid SMILES string.
+
+    Returns
+    -------
+    collections.Counter
+        Element-to-count mapping, e.g. Counter({'C': 3, 'H': 8, 'O': 3}) for glycerol.
+        Returns an empty Counter if the SMILES is invalid or unparseable.
+
+    Examples
+    --------
+    >>> parse_elements_from_smiles("OCC(O)CO")  # glycerol C3H8O3
+    Counter({'H': 8, 'C': 3, 'O': 3})
+    """
     mol = Chem.MolFromSmiles(smiles)
     if not mol:
-        return set()
+        return Counter()
     formula = rdMolDescriptors.CalcMolFormula(mol)
     matches = re.findall(r"([A-Z][a-z]*)(\d*)", formula)
-    return {element for element, _ in matches}
+    return Counter({element: int(count) if count else 1 for element, count in matches})
 
 
 def find_impossible_neutral_losses(
@@ -444,9 +466,13 @@ def find_impossible_neutral_losses(
     smiles: str,
     tolerance: float = 0.02,
     intensity_threshold: float = 0.05,
-) -> list[tuple[float, float, Set[str]]]:
+) -> list[tuple[float, float, dict[str, int]]]:
     """
     Identify observed neutral losses that are physically impossible given the molecular formula.
+
+    Element counts (not just presence) are compared against the minimum counts required by
+    each neutral loss fragment.  For example, CO₂ loss requires at least 2 oxygen atoms;
+    a candidate with only 1 oxygen is correctly flagged even though oxygen is present.
 
     Parameters
     ----------
@@ -466,11 +492,11 @@ def find_impossible_neutral_losses(
     Returns
     -------
     list of tuple
-        A list of impossible neutral losses detected, structured as:
-        (observed_loss, exact_mass_matched, required_atoms_missing)
+        A list of impossible neutral losses detected, each as:
+        (observed_loss_da, exact_neutral_loss_da, required_element_counts)
     """
-    atoms = parse_elements_from_smiles(smiles)
-    if not atoms:
+    element_counts = parse_elements_from_smiles(smiles)
+    if not element_counts:
         return []
 
     max_int = max(int_array) if len(int_array) > 0 else 0.0
@@ -487,9 +513,13 @@ def find_impossible_neutral_losses(
         if nl <= 0:
             continue
 
-        for exact_mass, required_atoms in COMMON_NEUTRAL_LOSSES:
+        for exact_mass, required_counts in COMMON_NEUTRAL_LOSSES:
             if abs(nl - exact_mass) <= tolerance:
-                if not required_atoms.issubset(atoms):
-                    impossible_losses.append((nl, exact_mass, required_atoms))
+                # Check that the candidate has at least the required count of each element.
+                if not all(
+                    element_counts.get(elem, 0) >= count
+                    for elem, count in required_counts.items()
+                ):
+                    impossible_losses.append((nl, exact_mass, required_counts))
 
     return impossible_losses

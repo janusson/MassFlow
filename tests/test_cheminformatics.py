@@ -14,6 +14,8 @@ from MassFlow.cheminformatics import (
     _get_morgan_fingerprint,
     calculate_tanimoto_similarity,
     calculate_theoretical_mass,
+    find_impossible_neutral_losses,
+    parse_elements_from_smiles,
 )
 
 
@@ -87,6 +89,74 @@ def test_neutral_loss_mass_first_principles(name, table_index, expected_mass):
         f"{name}: recorded mass {recorded_mass:.4f} differs from "
         f"first-principles {expected_mass:.4f} by {deviation_da * 1000:.2f} mDa"
     )
+
+
+def test_co2_loss_on_one_oxygen_molecule_is_impossible():
+    """CO₂ loss requires ≥ 2 oxygen atoms; methanol (1 O) must be flagged."""
+    # methanol CH4O: precursor 100, fragment at 56.0102 → NL = 43.9898 (CO2)
+    precursor_mz = 100.0
+    fragment_mz = precursor_mz - 43.9898
+    losses = find_impossible_neutral_losses(
+        mz_array=[fragment_mz],
+        int_array=[100.0],
+        precursor_mz=precursor_mz,
+        smiles="CO",  # methanol: C1H4O1
+    )
+    assert len(losses) == 1
+    nl, exact, req = losses[0]
+    assert abs(nl - 43.9898) < 0.01
+    assert req == {"C": 1, "O": 2}
+
+
+def test_co2_loss_on_three_oxygen_glycerol_is_possible():
+    """CO₂ loss on glycerol (3 O) must NOT be flagged — 3 ≥ 2 required."""
+    precursor_mz = 100.0
+    fragment_mz = precursor_mz - 43.9898
+    losses = find_impossible_neutral_losses(
+        mz_array=[fragment_mz],
+        int_array=[100.0],
+        precursor_mz=precursor_mz,
+        smiles="OCC(O)CO",  # glycerol: C3H8O3
+    )
+    assert losses == []
+
+
+def test_po3_loss_on_one_oxygen_phospho_compound_is_impossible():
+    """PO₃ loss requires ≥ 3 oxygen atoms; trimethylphosphine oxide (1 O) must be flagged."""
+    # trimethylphosphine oxide: O=P(C)(C)C → C3H9OP (1 O, 1 P)
+    precursor_mz = 150.0
+    fragment_mz = precursor_mz - 78.9585  # PO3 mass
+    losses = find_impossible_neutral_losses(
+        mz_array=[fragment_mz],
+        int_array=[100.0],
+        precursor_mz=precursor_mz,
+        smiles="O=P(C)(C)C",  # 1 O, 1 P → PO3 impossible
+    )
+    assert len(losses) == 1
+    _, _, req = losses[0]
+    assert req == {"P": 1, "O": 3}
+
+
+def test_h2o_loss_on_oxygen_containing_molecule_is_possible():
+    """Regression: H₂O loss on a molecule with O must not be flagged."""
+    # ethanol CCO: C2H6O → H2O requires H ≥ 2, O ≥ 1 → possible
+    precursor_mz = 100.0
+    fragment_mz = precursor_mz - 18.0106
+    losses = find_impossible_neutral_losses(
+        mz_array=[fragment_mz],
+        int_array=[100.0],
+        precursor_mz=precursor_mz,
+        smiles="CCO",  # ethanol: C2H6O
+    )
+    assert losses == []
+
+
+def test_parse_elements_from_smiles_returns_counts():
+    """parse_elements_from_smiles must return element counts, not just a set."""
+    counts = parse_elements_from_smiles("OCC(O)CO")  # glycerol C3H8O3
+    assert counts["C"] == 3
+    assert counts["O"] == 3
+    assert counts["H"] == 8
 
 
 def test_caching_behavior():

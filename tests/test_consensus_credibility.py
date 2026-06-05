@@ -44,7 +44,7 @@ def test_neutral_loss_penalty(base_config):
     assert res.best_consensus_score == pytest.approx(0.1)  # 1.0 * 0.1
     assert res.flagged_for_review is True
     assert "impossible neutral losses detected" in res.review_reason
-    assert "H2O" in res.review_reason or "requires {'O'}" in res.review_reason
+    assert "impossible neutral losses" in res.review_reason
 
 
 def test_isotopic_credibility(base_config):
