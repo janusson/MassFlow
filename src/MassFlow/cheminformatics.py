@@ -21,9 +21,13 @@ H_MASS = 1.0078250322
 C_MASS = 12.0000000000
 N_MASS = 14.0030740044
 O_MASS = 15.9949146196
+S_MASS = 31.9720711374
+P_MASS = 30.9737616320
+F_MASS = 18.9984031627
+BR_MASS = 78.9183371000
+CL_MASS = 34.96885268
 NA_MASS = 22.9897692809
 K_MASS = 38.9637064864
-CL_MASS = 34.96885268
 ELECTRON_MASS = 0.0005485799
 PROTON_MASS = H_MASS - ELECTRON_MASS
 
@@ -233,7 +237,9 @@ def calculate_isotopic_envelope(
                 element: int(count) if count else 1 for element, count in base_matches
             }
 
-            counts = defaultdict(lambda: defaultdict(int))
+            counts: defaultdict[str, defaultdict[int, int]] = defaultdict(
+                lambda: defaultdict(int)
+            )
             for atom in mol.GetAtoms():
                 symbol = atom.GetSymbol()
                 isotope = atom.GetIsotope()
@@ -352,7 +358,7 @@ COMMON_NEUTRAL_LOSSES = [
     (17.0265, {"N"}),  # NH3
     (27.9949, {"O"}),  # CO
     (43.9898, {"O"}),  # CO2
-    (34.9956, {"S"}),  # H2S
+    (33.9877, {"S"}),  # H2S  (2 × H_MASS + S_MASS = 33.9877; 34.9956 was H₃S sulfonium)
     (63.9619, {"S", "O"}),  # SO2
     (78.9585, {"P", "O"}),  # PO3
     (35.9767, {"Cl"}),  # HCl
