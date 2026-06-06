@@ -1,22 +1,27 @@
 import pytest
 
 from MassFlow.cheminformatics import (
-    BR_MASS,
-    C_MASS,
-    CL_MASS,
     COMMON_NEUTRAL_LOSSES,
-    F_MASS,
-    H_MASS,
-    N_MASS,
-    O_MASS,
-    P_MASS,
-    S_MASS,
     _get_morgan_fingerprint,
     calculate_tanimoto_similarity,
     calculate_theoretical_mass,
     find_impossible_neutral_losses,
     parse_elements_from_smiles,
 )
+
+# NIST monoisotopic element masses (Da), inlined here as literals so this test is an
+# independent first-principles cross-check of COMMON_NEUTRAL_LOSSES. cheminformatics
+# now derives those masses from pyteomics; defining the expected values from a
+# separate source keeps the regression test from becoming circular.
+H_MASS = 1.0078250322
+C_MASS = 12.0000000000
+N_MASS = 14.0030740044
+O_MASS = 15.9949146196
+S_MASS = 31.9720711374
+P_MASS = 30.9737616320
+F_MASS = 18.9984031627
+CL_MASS = 34.96885268
+BR_MASS = 78.9183371000
 
 
 def test_tanimoto_similarity():
@@ -51,14 +56,26 @@ def test_theoretical_mass_sodiated():
     assert abs(mass - 217.0696) < 0.001
 
 
+def test_theoretical_mass_doubly_protonated():
+    # Caffeine [M+2H]2+: neutral mass ~194.08038, add 2 protons and divide by 2.
+    # (194.08038 + 2 × 1.00727646) / 2 = ~98.04746 m/z.
+    # This exercises the abs(charge) division for multiply-charged adducts.
+    mass = calculate_theoretical_mass("CN1C=NC2=C1C(=O)N(C(=O)N2C)C", "[M+2H]2+")
+    assert mass is not None
+    assert abs(mass - 98.04746) < 0.001
+    # Sanity: the doubly-charged m/z must be roughly half the protonated [M+H]+ m/z.
+    singly = calculate_theoretical_mass("CN1C=NC2=C1C(=O)N(C(=O)N2C)C", "[M+H]+")
+    assert mass < singly
+
+
 def test_theoretical_mass_invalid_adduct():
     with pytest.raises(ValueError, match="is not supported"):
         calculate_theoretical_mass("C", "[M+UNKNOWN]+")
 
 
 # First-principles expected masses for every entry in COMMON_NEUTRAL_LOSSES,
-# computed from the element constants defined in cheminformatics.py.
-# Table index must stay in sync with the declaration order in that file.
+# computed from the NIST element literals defined above in this test module.
+# Table index must stay in sync with the declaration order in cheminformatics.py.
 _NEUTRAL_LOSS_FIRST_PRINCIPLES = [
     ("H2O", 0, 2 * H_MASS + 1 * O_MASS),
     ("NH3", 1, 1 * N_MASS + 3 * H_MASS),

@@ -16,37 +16,70 @@ import pyteomics.mass as pmass
 from rdkit import Chem, DataStructs
 from rdkit.Chem import Descriptors, rdMolDescriptors
 
-# Standard monoisotopic exact masses (NIST)
-H_MASS = 1.0078250322
-C_MASS = 12.0000000000
-N_MASS = 14.0030740044
-O_MASS = 15.9949146196
-S_MASS = 31.9720711374
-P_MASS = 30.9737616320
-F_MASS = 18.9984031627
-BR_MASS = 78.9183371000
-CL_MASS = 34.96885268
-NA_MASS = 22.9897692809
-K_MASS = 38.9637064864
+# Electron rest mass (Da). pyteomics deliberately omits the electron from neutral
+# atomic compositions, so we apply it explicitly when an ion gains or loses charge.
+# This is the one mass constant we keep: every element mass now comes from pyteomics.
 ELECTRON_MASS = 0.0005485799
-PROTON_MASS = H_MASS - ELECTRON_MASS
 
-# Theoretical shifts for common LC-MS adducts (m/z offsets for z=1 or z=-1)
-# All values are calculated to 6 decimal places using monoisotopic exact masses.
-ADDUCT_OFFSETS = {
+# Adduct definitions: each adduct maps to (component_spec, charge).
+#
+# component_spec is a sequence of signed chemical formulas describing the atoms
+# added to (+) or removed from (-) the neutral molecule M, e.g. "+H", "-H",
+# "+CHO2" (formate). An empty spec means no atoms change (e.g. "[M]+", a radical
+# cation formed purely by electron loss).
+#
+# charge is the signed integer ion charge. The net m/z shift is the component
+# mass minus charge × ELECTRON_MASS (losing electrons to form a cation lowers the
+# mass; gaining electrons to form an anion raises it). calculate_theoretical_mass
+# divides the neutral-plus-shift mass by abs(charge) to yield the observed m/z.
+_ADDUCT_DEFS: dict[str, tuple[str, int]] = {
     # Positive Ion Mode
-    "[M+H]+": 1.007276,
-    "[M+NH4]+": 18.033826,
-    "[M+Na]+": 22.989221,
-    "[M+K]+": 38.963158,
-    "[M]+": -0.000549,
+    "[M+H]+": ("+H", 1),
+    "[M+NH4]+": ("+NH4", 1),
+    "[M+Na]+": ("+Na", 1),
+    "[M+K]+": ("+K", 1),
+    "[M]+": ("", 1),
+    "[M+2H]2+": ("+H2", 2),  # doubly protonated, m/z = (M + 2 protons) / 2
     # Negative Ion Mode
-    "[M-H]-": -1.007276,
-    "[M+Cl]-": 34.969401,
-    "[M+HCOO]-": 44.998203,
-    "[M+CH3COO]-": 59.013853,
-    "[M+FA-H]-": 44.998203,  # Formate (common LC-MS alias)
-    "[M]-": 0.000549,
+    "[M-H]-": ("-H", -1),
+    "[M+Cl]-": ("+Cl", -1),
+    "[M+HCOO]-": ("+CHO2", -1),
+    "[M+CH3COO]-": ("+C2H3O2", -1),
+    "[M+FA-H]-": ("+CHO2", -1),  # Formate (common LC-MS alias)
+    "[M]-": ("", -1),
+}
+
+
+def _component_mass(component_spec: str) -> float:
+    """
+    Sum the signed monoisotopic masses of the formulas in an adduct component spec.
+
+    Parameters
+    ----------
+    component_spec : str
+        A run of signed chemical formulas, e.g. "+H", "-H", "+CHO2". An empty
+        string contributes zero mass.
+
+    Returns
+    -------
+    float
+        Net monoisotopic mass added (positive) or removed (negative), in Da.
+    """
+    total_mass = 0.0
+    for sign, formula in re.findall(r"([+-])([A-Za-z0-9]+)", component_spec):
+        formula_mass = pmass.calculate_mass(formula=formula)
+        total_mass += formula_mass if sign == "+" else -formula_mass
+    return total_mass
+
+
+# Theoretical neutral-mass shifts for common LC-MS adducts, derived from
+# _ADDUCT_DEFS via pyteomics. Each value is the component mass minus the electron
+# mass change for the ion's charge. For z=±1 these reproduce the historical
+# hardcoded offsets to sub-mDa; multiply-charged shifts are divided by abs(charge)
+# downstream in calculate_theoretical_mass.
+ADDUCT_OFFSETS: dict[str, float] = {
+    adduct: _component_mass(component_spec) - charge * ELECTRON_MASS
+    for adduct, (component_spec, charge) in _ADDUCT_DEFS.items()
 }
 
 
@@ -343,13 +376,18 @@ def calculate_theoretical_mass(smiles: str, adduct: str = "[M+H]+") -> Optional[
 
     exact_mass = Descriptors.ExactMolWt(mol)
 
-    offset = ADDUCT_OFFSETS.get(adduct)
-    if offset is None:
+    definition = _ADDUCT_DEFS.get(adduct)
+    if definition is None:
         raise ValueError(
-            f"Adduct '{adduct}' is not supported. Supported adducts: {list(ADDUCT_OFFSETS.keys())}"
+            f"Adduct '{adduct}' is not supported. Supported adducts: {list(_ADDUCT_DEFS.keys())}"
         )
 
-    return exact_mass + offset
+    _component_spec, charge = definition
+    offset = ADDUCT_OFFSETS[adduct]
+
+    # Divide by the absolute charge so multiply-charged adducts (e.g. [M+2H]2+)
+    # report the observed m/z rather than the neutral mass.
+    return (exact_mass + offset) / abs(charge)
 
 
 # Common neutral losses expressed as chemical formulas. The monoisotopic mass and
