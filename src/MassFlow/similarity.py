@@ -118,6 +118,14 @@ class SearchResult(TypedDict):
     score_breakdown: dict[str, float] | None
 
 
+def _is_missing(val):
+    if val is None:
+        return True
+    try:
+        return np.isnan(float(val))
+    except (ValueError, TypeError):
+        return True
+
 def _ms1_prefilter(
     all_references: List[Spectrum],
     query_spectra: List[Spectrum],
@@ -129,11 +137,11 @@ def _ms1_prefilter(
     query_mzs_raw = [q.get("precursor_mz") for q in query_spectra]
 
     # Track missing precursors to allow them to bypass the MS1 filter
-    ref_missing = np.array([r is None for r in ref_mzs_raw], dtype=bool)
-    query_missing = np.array([q is None for q in query_mzs_raw], dtype=bool)
+    ref_missing = np.array([_is_missing(r) for r in ref_mzs_raw], dtype=bool)
+    query_missing = np.array([_is_missing(q) for q in query_mzs_raw], dtype=bool)
 
-    ref_mzs = np.array([float(r) if r is not None else 0.0 for r in ref_mzs_raw])
-    query_mzs = np.array([float(q) if q is not None else 0.0 for q in query_mzs_raw])
+    ref_mzs = np.array([float(r) if not _is_missing(r) else 0.0 for r in ref_mzs_raw])
+    query_mzs = np.array([float(q) if not _is_missing(q) else 0.0 for q in query_mzs_raw])
 
     if resolution_ppm is not None:
         # For each query, find references where |ref_mz - query_mz| / query_mz <= ppm_tolerance
