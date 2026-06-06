@@ -4,7 +4,6 @@ Covers both fixed Da tolerance and ppm resolution paths and verifies that
 missing precursor_mz values bypass the filter (i.e., entries are included).
 """
 
-import math
 import numpy as np
 from matchms import Spectrum
 
