@@ -167,6 +167,8 @@ results/
 # Tutorial fixtures must be committed so the CI smoke test can run
 !tutorial/tutorial_experimental.mgf
 !tutorial/tutorial_library.msp
+# Scientific validation fixtures must be committed for the ground-truth anchor test
+!tests/scientific_validation/*.mgf
 
 # Notes
 notes.md
