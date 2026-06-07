@@ -374,7 +374,7 @@ def calculate_theoretical_mass(smiles: str, adduct: str = "[M+H]+") -> Optional[
     if not mol:
         return None
 
-    exact_mass = Descriptors.ExactMolWt(mol)
+    exact_mass = Descriptors.ExactMolWt(mol)  # type: ignore[attr-defined]
 
     definition = _ADDUCT_DEFS.get(adduct)
     if definition is None:

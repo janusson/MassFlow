@@ -90,7 +90,7 @@ def test_modified_cosine_integration(
     # Configuration for CosineGreedy
     cosine_config = SimilarityConfig(
         algorithm="cosine",
-        tolerance=0.1,
+        ms2_tolerance=0.1,
         min_score=0.0,  # Zero threshold to capture the failure score
     )
     cosine_engine = SimilarityEngine(cosine_config)
@@ -98,7 +98,7 @@ def test_modified_cosine_integration(
     # Configuration for ModifiedCosine
     mod_cosine_config = SimilarityConfig(
         algorithm="modified_cosine",
-        tolerance=0.1,
+        ms2_tolerance=0.1,
         min_score=0.0,
     )
     mod_cosine_engine = SimilarityEngine(mod_cosine_config)

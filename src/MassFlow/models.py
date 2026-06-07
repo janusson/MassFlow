@@ -240,7 +240,7 @@ class MolecularStructure(BaseModel):
 
         # 2. Validate / Compute Exact Mass
         if mol:
-            calculated_mass = Descriptors.ExactMolWt(mol)
+            calculated_mass = Descriptors.ExactMolWt(mol)  # type: ignore[attr-defined]
 
             if self.exact_mass is not None:
                 # Enforce strict 5 ppm mass error threshold for structural integrity

@@ -64,8 +64,15 @@ dev = [
     "pytest-cov>=7.0.0",
     "pytest-benchmark",
     "memray",
+    "mypy>=1.10",
     "ruff",
 ]
+
+[tool.mypy]
+ignore_missing_imports = true
+plugins = ["pydantic.mypy"]
+# Exclude experimental LSP server (stale pygls API) and root-level scratch scripts
+exclude = ["src/MassFlow/server\\.py", "repro_isotope\\.py"]
 
 [tool.pytest.ini_options]
 markers = [

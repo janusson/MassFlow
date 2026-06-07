@@ -391,7 +391,7 @@ def save_match_results_to_json(
         return
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    df.write_json(output_path, row_oriented=True)
+    df.write_json(output_path)
     logger.info(f"Results saved to {output_path}")
 
 
