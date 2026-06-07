@@ -164,6 +164,9 @@ data/
 *.raw
 *.d/
 results/
+# Tutorial fixtures must be committed so the CI smoke test can run
+!tutorial/tutorial_experimental.mgf
+!tutorial/tutorial_library.msp
 
 # Notes
 notes.md
@@ -177,3 +180,4 @@ console_log.txt
 .aider.tags.cache.v4/
 CLAUDE.md
 todo.md
+notes/
