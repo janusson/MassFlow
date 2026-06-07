@@ -79,3 +79,11 @@ markers = [
     "core: tests that must pass for the v1.0 stable release contract",
     "experimental: tests for experimental, post-1.0, or optional features",
 ]
+
+[tool.coverage.run]
+# The coverage gate measures the stable annotation-pipeline contract. The LSP
+# editor-integration server is an experimental, optional feature (depends on
+# pygls/lsprotocol, not part of the v1.0 contract, and already excluded from
+# mypy), so it is omitted from the coverage denominator rather than held to the
+# 80% threshold.
+omit = ["src/MassFlow/server.py"]
