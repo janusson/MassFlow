@@ -247,6 +247,17 @@ def _build_results_dataframe(
     This is an internal helper shared by the various export functions to ensure
     consistent data shaping, merging, and status labeling.
     """
+    # Sanitize any numpy scalars in result dicts before they enter Polars.
+    # numpy bool/int/float scalars trigger DeprecationWarnings (and future
+    # errors) when interpreted as indices during DataFrame construction.
+    clean_results = []
+    for r in results:
+        clean_r = r.copy()
+        for key in ("is_decoy",):
+            if key in clean_r and hasattr(clean_r[key], "item"):
+                clean_r[key] = clean_r[key].item()
+        clean_results.append(clean_r)
+
     if query_spectra is not None:
         q_ids, q_mzs, q_rts = [], [], []
         for q in query_spectra:
@@ -269,8 +280,8 @@ def _build_results_dataframe(
             },
         )
 
-        if results:
-            results_df = pl.DataFrame(results)
+        if clean_results:
+            results_df = pl.DataFrame(clean_results)
             if "is_decoy" in results_df.columns:
                 results_df = results_df.with_columns(
                     pl.col("is_decoy").cast(pl.Boolean)
@@ -282,16 +293,8 @@ def _build_results_dataframe(
         else:
             df = base_df
     else:
-        if not results:
+        if not clean_results:
             return None
-
-        clean_results = []
-        for r in results:
-            clean_r = r.copy()
-            if "is_decoy" in clean_r and hasattr(clean_r["is_decoy"], "item"):
-                clean_r["is_decoy"] = clean_r["is_decoy"].item()
-            clean_results.append(clean_r)
-
         df = pl.DataFrame(clean_results)
 
     # Add Annotation_Status

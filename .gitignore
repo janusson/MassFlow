@@ -167,10 +167,13 @@ results/
 
 # Notes
 notes.md
+todo.md
 
-# uv
+# Dev
 uv.lock
 console_log.txt
 .aider.chat.history.md
 .aider.input.history
 .aider.tags.cache.v4/
+CLAUDE.md
+todo.md

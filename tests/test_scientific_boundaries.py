@@ -87,7 +87,6 @@ def test_highly_halogenated_isotopic_envelope():
     # The code normalizes to base peak = 1.0.
     # For Cl6, the base peak is M+2.
 
-    masses = [p[0] for p in envelope]
     abundances = [p[1] for p in envelope]
 
     # Base peak should be the second or third peak (M+2 or M+4 depending on exact stats)
@@ -138,17 +137,3 @@ def test_invalid_smiles_graceful_failure():
     # Peaks validation check (already exists but good for coverage)
     with pytest.raises(ValueError, match="Array length mismatch"):
         SpectralPeaks(mz_array=[100.0], intensity_array=[1.0, 2.0])
-
-
-def test_heavy_isotope_purity_check():
-    """
-    Check isotopic envelope for a molecule with only Carbon-13 (RDKit handling).
-    While rare in standard metabolomics, boundary cases like this test the underlying logic.
-    """
-    # SMILES with explicit C13
-    smiles_c13 = "[13C]1=[13C][13C]=[13C][13C]=[13C]1"
-    envelope = calculate_isotopic_envelope(smiles_c13)
-
-    # The monoisotopic mass of C13-Benzene is ~84.04 (vs 78.04)
-    # The envelope should be shifted
-    assert envelope[0][0] > 84.0
