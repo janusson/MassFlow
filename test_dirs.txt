@@ -1,2 +1,0 @@
-../MassFlow_Data/libraries/ALL_GNPS.msp
-../MassFlow_Data/experiments/example_spectrum.MSP
