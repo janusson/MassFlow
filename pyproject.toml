@@ -14,12 +14,13 @@ dependencies = [
     "packaging>=26.0",
     "polars>=0.20.0",
     "pydantic>=2.12.5",
-    "pygls>=2.1.1",
     "pyteomics",
     "PyYAML",
     # rdkit moved to optional "chem" extra
     "rich>=15.0.0",
     "scikit-learn>=1.8.0",
+    # Pinned for macOS 15 dyld compatibility with matchms transitive dep
+    "scipy>=1.15.0",
     "typer>=0.25.1",
     "watchfiles>=1.1.1",
 ]
@@ -31,17 +32,6 @@ dev = [
 ]
 chem = [
     "rdkit>=2025.9.6",
-]
-ml = [
-    "ms2deepscore>=2.5.1",
-    "spec2vec>=0.8.0",
-]
-network = [
-    "networkx>=3.2.1",
-]
-viz = [
-    "networkx>=3.4.2",
-    "pyvis>=0.3.2",
 ]
 
 [project.scripts]
@@ -71,8 +61,8 @@ dev = [
 [tool.mypy]
 ignore_missing_imports = true
 plugins = ["pydantic.mypy"]
-# Exclude experimental LSP server (stale pygls API) and root-level scratch scripts
-exclude = ["src/MassFlow/server\\.py", "repro_isotope\\.py"]
+# Exclude root-level scratch scripts
+exclude = ["repro_isotope\\.py"]
 
 [tool.pytest.ini_options]
 markers = [
@@ -81,9 +71,6 @@ markers = [
 ]
 
 [tool.coverage.run]
-# The coverage gate measures the stable annotation-pipeline contract. The LSP
-# editor-integration server is an experimental, optional feature (depends on
-# pygls/lsprotocol, not part of the v1.0 contract, and already excluded from
-# mypy), so it is omitted from the coverage denominator rather than held to the
-# 80% threshold.
-omit = ["src/MassFlow/server.py"]
+# The coverage gate measures the stable annotation-pipeline contract.
+# All source modules are included in coverage measurement.
+omit = []

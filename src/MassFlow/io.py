@@ -3,8 +3,8 @@ I/O helpers for MassFlow spectral data.
 
 This module is the file-system boundary for MassFlow. It loads spectra from
 open interchange formats such as mzML, mzXML, MGF, and MSP, as well as
-MassFlow-native serialized stores such as SQLite databases and pickle files. It
-also exports search results and spectra to flat-file formats for downstream use.
+SQLite databases. It exports search results to CSV and mzTab-M formats and
+provides utilities for writing provenance reports and open-format spectra.
 
 The loader is intentionally narrow in scope: it does not auto-convert
 proprietary vendor files and it does not sanitize metadata during import.
@@ -15,7 +15,6 @@ harmonization is deferred to :mod:`MassFlow.processing` after import.
 from __future__ import annotations
 
 import logging
-import pickle
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Iterator, Optional
@@ -138,22 +137,6 @@ def _validate_spectra_iterator(
             )
 
 
-def load_from_parquet(file_path: str, **kwargs) -> Iterator[Spectrum]:
-    """
-    Load spectra from a Parquet file using Polars.
-
-    Expects columns 'mz_array' and 'intensity_array' as lists of floats.
-    All other columns are treated as metadata.
-    """
-    df = pl.read_parquet(file_path)
-    for row in df.iter_rows(named=True):
-        mz = np.array(row.pop("mz_array"), dtype=np.float64)
-        intensity = np.array(row.pop("intensity_array"), dtype=np.float64)
-        # Filter out nulls from metadata
-        metadata = {k: v for k, v in row.items() if v is not None}
-        yield Spectrum(mz=mz, intensities=intensity, metadata=metadata)
-
-
 def load_spectra(
     file_path: Path, file_format: Optional[str] = None
 ) -> Iterator[Spectrum]:
@@ -161,10 +144,10 @@ def load_spectra(
     Load spectra from an open spectral file or a MassFlow-native store.
 
     The loader infers the format from ``file_path`` unless ``file_format`` is
-    provided explicitly. Supported formats are mzML, mzXML, MGF, MSP, SQLite
-    (``db``/``sqlite``), Parquet, and pickle. Imported spectra are yielded exactly
-    as the backend loader returns them; MassFlow's metadata cleaning and peak
-    filtering happen later in :func:`MassFlow.processing.process_spectra`.
+    provided explicitly. Supported formats are mzML, mzXML, MGF, MSP, and SQLite
+    (``db``/``sqlite``). Imported spectra are yielded exactly as the backend
+    loader returns them; MassFlow's metadata cleaning and peak filtering happen
+    later in :func:`MassFlow.processing.process_spectra`.
 
     Parameters
     ----------
@@ -173,8 +156,8 @@ def load_spectra(
         treated as vendor raw inputs and rejected unless pre-converted.
     file_format : str, optional
         Explicit format override. Accepted values are ``mzml``, ``mzxml``,
-        ``mgf``, ``msp``, ``db``, ``sqlite``, ``parquet``, and ``pickle``. If
-        omitted, the format is inferred from the file extension.
+        ``mgf``, ``msp``, ``db``, and ``sqlite``. If omitted, the format is
+        inferred from the file extension.
 
     Yields
     ------
@@ -220,16 +203,11 @@ def load_spectra(
         loader = load_from_mgf(str(path), metadata_harmonization=False)
     elif fmt == "mzxml":
         loader = load_from_mzxml(str(path), metadata_harmonization=False)
-    elif fmt == "parquet":
-        loader = load_from_parquet(str(path))
     elif fmt in ["db", "sqlite"]:
         from MassFlow.database import SpectralDatabase
 
         db = SpectralDatabase(path)
         loader = db.get_spectra()
-    elif fmt == "pickle":
-        with open(path, "rb") as f:
-            loader = iter(pickle.load(f))
     else:
         raise ValueError(f"Format '{fmt}' is not supported by MassFlow.")
 
@@ -364,99 +342,6 @@ def save_match_results(
     logger.info(f"Results saved to {output_path}")
 
 
-def save_match_results_to_json(
-    results: list[dict[str, Any]],
-    output_path: Path,
-    query_spectra: Optional[Iterable[Spectrum]] = None,
-) -> None:
-    """
-    Save annotation results to a JSON report.
-
-    Parameters
-    ----------
-    results : list of dict
-        Match result rows to export.
-    output_path : Path
-        The destination file path for the JSON output.
-    query_spectra : Optional[Iterable[Spectrum]]
-        Full set of experimental query spectra.
-
-    Returns
-    -------
-    None
-    """
-    df = _build_results_dataframe(results, query_spectra)
-    if df is None:
-        logger.warning("No results to save and no query_spectra provided.")
-        return
-
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    df.write_json(output_path)
-    logger.info(f"Results saved to {output_path}")
-
-
-def save_match_results_to_xlsx(
-    results: list[dict[str, Any]],
-    output_path: Path,
-    query_spectra: Optional[Iterable[Spectrum]] = None,
-) -> None:
-    """
-    Save annotation results to an Excel (.xlsx) report.
-
-    Parameters
-    ----------
-    results : list of dict
-        Match result rows to export.
-    output_path : Path
-        The destination file path for the Excel output.
-    query_spectra : Optional[Iterable[Spectrum]]
-        Full set of experimental query spectra.
-
-    Returns
-    -------
-    None
-    """
-    df = _build_results_dataframe(results, query_spectra)
-    if df is None:
-        logger.warning("No results to save and no query_spectra provided.")
-        return
-
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    df.write_excel(output_path)
-    logger.info(f"Results saved to {output_path}")
-
-
-def save_match_results_to_parquet(
-    results: list[dict[str, Any]],
-    output_path: Path,
-    query_spectra: Optional[Iterable[Spectrum]] = None,
-) -> None:
-    """
-    Save annotation results to a Parquet report.
-
-    Parameters
-    ----------
-    results : list of dict
-        Match result rows to export.
-    output_path : Path
-        The destination file path for the Parquet output.
-    query_spectra : Optional[Iterable[Spectrum]]
-        Full set of experimental query spectra.
-
-    Returns
-    -------
-    None
-    """
-    df = _build_results_dataframe(results, query_spectra)
-    if df is None:
-        logger.warning("No results to save and no query_spectra provided.")
-        return
-
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    df.write_parquet(output_path)
-    logger.info(f"Results saved to {output_path}")
-
-
 def save_analysis_report(
     output_path: Path,
     report_data: dict[str, Any],
@@ -532,57 +417,6 @@ def save_spectra_to_msp(spectra: Iterable[Spectrum], export_path: Path) -> None:
     save_as_msp(list(spectra), str(export_path))
 
 
-def save_spectra_to_pickle(spectra: Iterable[Spectrum], export_path: Path) -> None:
-    """
-    Serialize spectra to a pickle file.
-
-    Parameters
-    ----------
-    spectra : Iterable[matchms.Spectrum]
-        Spectra to serialize. The iterable is materialized into memory before
-        serialization.
-    export_path : Path
-        The file path for the resulting pickle file.
-
-    Returns
-    -------
-    None
-
-    Raises
-    ------
-    OSError
-        If the output directory cannot be created or the pickle file cannot be
-        written.
-    """
-    export_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(export_path, "wb") as f:
-        pickle.dump(list(spectra), f)
-
-
-def save_spectra_to_parquet(spectra: Iterable[Spectrum], export_path: Path) -> None:
-    """
-    Export spectra to a Parquet file.
-
-    Parameters
-    ----------
-    spectra : Iterable[matchms.Spectrum]
-        Spectra to export.
-    export_path : Path
-        The file path for the resulting Parquet file.
-    """
-    export_path.parent.mkdir(parents=True, exist_ok=True)
-
-    records = []
-    for s in spectra:
-        record = s.metadata.copy()
-        record["mz_array"] = s.peaks.mz.tolist()
-        record["intensity_array"] = s.peaks.intensities.tolist()
-        records.append(record)
-
-    df = pl.DataFrame(records)
-    df.write_parquet(export_path)
-
-
 def save_spectra_to_mgf(spectra: Iterable[Spectrum], export_path: Path) -> None:
     """
     Export spectra to an MGF file.
@@ -638,8 +472,6 @@ def save_match_results_to_mztab(
         f.write("MTD\tdescription\tAutomated spectral annotation via MassFlow\n")
 
         # 2. Small Molecule Header (SMH)
-        # SML columns usually include: SML_ID, SM_identifier, smiles, inchikey, theoretical_neutral_mass,
-        # adduct, exp_mass_to_charge, charge, retention_time, etc.
         cols = df.columns
         header = "SMH\t" + "\t".join(cols) + "\n"
         f.write(header)

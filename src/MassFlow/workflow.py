@@ -4,9 +4,9 @@ High-level orchestration for MassFlow annotation runs.
 This module coordinates the end-to-end execution path used by the CLI: loading
 and validating the reference library, discovering experimental inputs,
 processing spectra, dispatching per-file similarity searches across worker
-processes, exporting result tables, and optionally generating a molecular
-network. It is the integration layer that turns the config, I/O, processing,
-similarity, and networking modules into a reproducible pipeline.
+processes, and exporting result tables. It is the integration layer that turns
+the config, I/O, processing, and similarity modules into a reproducible
+pipeline.
 
 The workflow is designed to stay memory-aware. Worker processes build their own
 similarity engines, reference libraries are searched in chunks rather than as a
@@ -25,8 +25,6 @@ from matchms import Spectrum
 from MassFlow import io, processing
 from MassFlow.config import MassFlowConfig
 from MassFlow.similarity import (
-    CascadeEngine,
-    ConsensusEngine,
     SearchResult,
     SimilarityEngine,
     calculate_fdr,
@@ -35,22 +33,9 @@ from MassFlow.similarity import (
 
 logger = logging.getLogger(__name__)
 
-_worker_engine: SimilarityEngine | ConsensusEngine | CascadeEngine | None = None
+_worker_engine: SimilarityEngine | None = None
 _worker_references: List[Spectrum] | None = None
 _worker_decoys: List[Spectrum] | None = None
-_worker_tier2_engine: SimilarityEngine | None = None
-
-
-def _get_tier2_engine(config: MassFlowConfig) -> SimilarityEngine:
-    global _worker_tier2_engine
-    if _worker_tier2_engine is not None:
-        return _worker_tier2_engine
-
-    tier2_config = config.similarity.model_copy(
-        update={"algorithm": config.similarity.cascade_tier2}
-    )
-    _worker_tier2_engine = SimilarityEngine(tier2_config)
-    return _worker_tier2_engine
 
 
 def _init_worker(
@@ -131,37 +116,14 @@ def _process_single_file(
             else get_similarity_engine(config.similarity)
         )
 
-        standard_queries = []
-        triage_queries = []
-        for q in query_spectra:
-            if q.get("triage_flags") or q.get("triage_flag"):
-                triage_queries.append(q)
-            else:
-                standard_queries.append(q)
-
-        tier2_engine = None
-        if triage_queries:
-            tier2_engine = _get_tier2_engine(config)
+        standard_queries = query_spectra
 
         # Search against shared memory libraries if available (from Pool initializer)
         if _worker_references is not None and _worker_decoys is not None:
             all_references = _worker_references + _worker_decoys
-            all_results = []
-            if standard_queries:
-                all_results.extend(
-                    engine.search(
-                        standard_queries, all_references, include_decoys=False
-                    )
-                )
-            if triage_queries and tier2_engine:
-                t2_results = tier2_engine.search(
-                    triage_queries, all_references, include_decoys=False
-                )
-                for res in t2_results:
-                    res["annotation_tier"] = (
-                        f"Triage ({config.similarity.cascade_tier2})"
-                    )
-                all_results.extend(t2_results)
+            all_results = engine.search(
+                standard_queries, all_references, include_decoys=False
+            )
         else:
             # Fallback for single-process testing or direct invocation, streaming the library
             all_results = []
@@ -170,24 +132,9 @@ def _process_single_file(
             ref_gen = io.load_spectra(config.input.library_path)
             ref_iterator = processing.process_spectra(ref_gen, config.processing)
 
-            if standard_queries:
-                all_results.extend(
-                    engine.search(standard_queries, ref_iterator, include_decoys=True)
-                )
-            if triage_queries and tier2_engine:
-                # We need to recreate the iterator because it was exhausted above
-                ref_gen_2 = io.load_spectra(config.input.library_path)
-                ref_iterator_2 = processing.process_spectra(
-                    ref_gen_2, config.processing
-                )
-                t2_results = tier2_engine.search(
-                    triage_queries, ref_iterator_2, include_decoys=True
-                )
-                for res in t2_results:
-                    res["annotation_tier"] = (
-                        f"Triage ({config.similarity.cascade_tier2})"
-                    )
-                all_results.extend(t2_results)
+            all_results = engine.search(
+                standard_queries, ref_iterator, include_decoys=True
+            )
 
         # Global FDR calculation across all chunks for this experimental file
         target_scores = []
@@ -268,14 +215,7 @@ def _handle_file_results(
     export_format = config.export.format.lower()
     ext_map = {
         "csv": "csv",
-        "json": "json",
-        "xlsx": "xlsx",
-        "parquet": "parquet",
-        "pickle": "pkl",
-        "msp": "msp",
-        "mgf": "mgf",
         "mztab": "mztab",
-        "fbmn": "csv",  # FBMN uses CSV as its primary feature table
     }
     ext = ext_map.get(export_format, "csv")
 
@@ -287,24 +227,9 @@ def _handle_file_results(
 
     results_dict = cast(List[Dict[str, Any]], results)
     # Route to the correct exporter based on config.export.format
-    if export_format == "json":
-        io.save_match_results_to_json(results_dict, out_file, query_spectra=q_spectra)
-    elif export_format == "xlsx":
-        io.save_match_results_to_xlsx(results_dict, out_file, query_spectra=q_spectra)
-    elif export_format == "parquet":
-        io.save_match_results_to_parquet(
-            results_dict, out_file, query_spectra=q_spectra
-        )
-    elif export_format == "mztab":
+    if export_format == "mztab":
         io.save_match_results_to_mztab(results_dict, out_file, query_spectra=q_spectra)
-    elif export_format in ["csv", "fbmn"]:
-        io.save_match_results(results_dict, out_file, query_spectra=q_spectra)
     else:
-        # Fallback for other formats or unimplemented results exporters
-        logger.warning(
-            f"Export format '{export_format}' is not yet supported for result tables. Falling back to CSV."
-        )
-        out_file = out_file.with_suffix(".csv")
         io.save_match_results(results_dict, out_file, query_spectra=q_spectra)
 
     report_file = config.output_directory / f"{out_file.stem}.report.yaml"
@@ -366,8 +291,7 @@ def run_annotation_pipeline(
     3. Dispatch one task per experimental file to a process pool.
     4. Within each worker, search the processed queries against chunked
        reference spectra and apply per-file FDR filtering.
-    5. Save a CSV result file for each processed experimental input.
-    6. Optionally generate a GraphML molecular network from the aggregate run.
+    5. Save a result file for each processed experimental input.
 
     Parameters
     ----------
@@ -393,9 +317,7 @@ def run_annotation_pipeline(
     Notes
     -----
     Per-file worker failures are logged and skipped so that one problematic
-    experimental file does not necessarily abort the full batch. The
-    ``export`` configuration section is not used directly here; result tables
-    are currently written as CSV files via :func:`MassFlow.io.save_match_results`.
+    experimental file does not necessarily abort the full batch.
     """
     # 1. Load Library for main process
     if not config.input.library_path:
@@ -478,9 +400,6 @@ def run_annotation_pipeline(
     # 3. Process Each File
     config.output_directory.mkdir(parents=True, exist_ok=True)
 
-    all_queries: List[Spectrum] = []
-    all_results: List[SearchResult] = []
-
     logger.info(f"Processing {len(input_files)} experimental files...")
 
     if len(input_files) == 1:
@@ -493,14 +412,6 @@ def run_annotation_pipeline(
         _handle_file_results(
             processed_file, q_spectra, results, config, config_path=config_path
         )
-
-        if q_spectra:
-            if (
-                config.workflow.perform_networking
-                or config.export.format.lower() == "fbmn"
-            ):
-                all_queries.extend(q_spectra)
-                all_results.extend(results)
     else:
         with ProcessPoolExecutor(
             initializer=_init_worker,
@@ -522,51 +433,7 @@ def run_annotation_pipeline(
                         config,
                         config_path=config_path,
                     )
-
-                    if q_spectra:
-                        if (
-                            config.workflow.perform_networking
-                            or config.export.format.lower() == "fbmn"
-                        ):
-                            all_queries.extend(q_spectra)
-                            all_results.extend(results)
                 except Exception as e:
                     logger.error(f"Worker failed for {qf}: {e}")
-
-    # 4. Perform FBMN Export (Consensus MGF)
-    if config.export.format.lower() == "fbmn":
-        try:
-            mgf_out = config.output_directory / "consensus_spectra.mgf"
-            logger.info(f"Generating Consensus MGF for FBMN: {mgf_out}")
-            io.save_spectra_to_mgf(all_queries, mgf_out)
-        except Exception as e:
-            logger.error(f"FBMN MGF export failed: {e}", exc_info=True)
-
-    # 5. Perform Molecular Networking
-    if config.workflow.perform_networking:
-        try:
-            from MassFlow.networking import generate_molecular_network
-
-            if reference_spectra is None:
-                logger.warning(
-                    "Molecular networking requested with a streamed library. "
-                    "Reference nodes in the output GraphML will be created from results "
-                    "but will lack full spectral metadata."
-                )
-
-            network_out = config.output_directory / "molecular_network.graphml"
-            generate_molecular_network(
-                all_queries=all_queries,
-                all_references=reference_spectra or [],
-                all_results=all_results,
-                config=config,
-                output_path=network_out,
-            )
-        except ImportError:
-            logger.error(
-                "Networking dependencies are missing. Please install them with 'pip install massflow[network]'."
-            )
-        except Exception as e:
-            logger.error(f"Networking failed: {e}", exc_info=True)
 
     logger.info("Pipeline Finished.")

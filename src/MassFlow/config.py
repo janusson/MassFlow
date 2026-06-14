@@ -257,61 +257,15 @@ class ProcessingConfig(BaseModel):
 
 class SimilarityConfig(BaseModel):
     """
-    Settings for similarity scoring, ML model loading, and advanced engines.
+    Settings for similarity scoring with classical spectral matching algorithms.
 
-    Not every field applies to every algorithm. For example,
-    ``consensus_weights`` is only meaningful for the ``consensus`` engine,
-    cascade tier settings are only used for ``cascade``, and ``model_path`` is
-    required by ML-backed engines such as ``spec2vec`` and ``ms2deepscore``.
+    Supports cosine and modified cosine similarity backed by matchms.
     Legacy ``tolerance`` is retained for compatibility with existing configs.
-
-    New in this version:
-    - ``allow_consensus_fallback``: when True, the system will gracefully fall
-      back to a single 'cosine' engine if ``algorithm == "consensus"`` but no
-      ``consensus_weights`` are provided. When False, the factory will raise a
-      ValueError to enforce strict configuration.
     """
 
-    algorithm: Literal[
-        "cosine", "modified_cosine", "spec2vec", "ms2deepscore", "consensus", "cascade"
-    ] = Field(
+    algorithm: Literal["cosine", "modified_cosine"] = Field(
         default="cosine",
-        description="Core: 'cosine', 'modified_cosine'. Experimental: 'spec2vec', 'ms2deepscore', 'consensus', 'cascade'.",
-    )
-    consensus_weights: Optional[dict[str, float]] = Field(
-        default=None,
-        description="Experimental: Dictionary mapping algorithm names to their weights for consensus search.",
-    )
-
-    # Allow graceful fallback when consensus_weights is omitted. If set to False,
-    # requesting 'consensus' without weights will surface an explicit error.
-    allow_consensus_fallback: bool = Field(
-        default=True,
-        description="If True, fallback to a single 'cosine' engine when consensus_weights is None. If False, require explicit consensus_weights.",
-    )
-
-    # Cascade Routing Parameters (Experimental)
-    cascade_tier1: Literal["cosine", "modified_cosine"] = "cosine"
-    cascade_tier2: Literal["spec2vec", "ms2deepscore"] = "ms2deepscore"
-    cascade_lower_bound: float = 0.4
-    cascade_upper_bound: float = 0.85
-    model_path: Optional[Path] = Field(
-        default=None,
-        description="Experimental: Path to ML model file (e.g., gensim Word2Vec for Spec2Vec or PyTorch model for MS2DeepScore).",
-    )
-
-    # Evidence-Based Consensus Parameters
-    isotopic_credibility_weight: float = Field(
-        default=0.0,
-        description="Weight applied to the MS1 Isotopic Credibility Factor in consensus engines.",
-    )
-    penalize_impossible_neutral_losses: bool = Field(
-        default=False,
-        description="If True, candidates with physically impossible major neutral losses receive a severe score penalty.",
-    )
-    neutral_loss_penalty_factor: float = Field(
-        default=0.1,
-        description="Score multiplier applied when an impossible neutral loss is detected.",
+        description="Similarity algorithm: 'cosine' or 'modified_cosine'.",
     )
 
     # Fixed-unit Tolerances
@@ -339,25 +293,13 @@ class SimilarityConfig(BaseModel):
             raise ValueError(f"{info.field_name} cannot be negative. Received: {v}")
         return v
 
-    @field_validator(
-        "min_score", "fdr_threshold", "cascade_lower_bound", "cascade_upper_bound"
-    )
+    @field_validator("min_score", "fdr_threshold")
     @classmethod
     def validate_score_ranges(cls, v: float, info: ValidationInfo) -> float:
         """Ensure scores and thresholds are within [0.0, 1.0]."""
         if not (0.0 <= v <= 1.0):
             raise ValueError(
                 f"{info.field_name} must be between 0.0 and 1.0. Received: {v}"
-            )
-        return v
-
-    @field_validator("cascade_upper_bound")
-    @classmethod
-    def validate_cascade_range(cls, v: float, info: ValidationInfo) -> float:
-        """Ensure cascade upper bound is greater than lower bound."""
-        if "cascade_lower_bound" in info.data and v <= info.data["cascade_lower_bound"]:
-            raise ValueError(
-                f"cascade_upper_bound ({v}) must be greater than cascade_lower_bound ({info.data['cascade_lower_bound']})"
             )
         return v
 
@@ -372,42 +314,26 @@ class SimilarityConfig(BaseModel):
 
 class WorkflowConfig(BaseModel):
     """
-    High-level workflow feature flags (All current fields are Experimental).
+    High-level workflow feature flags.
 
-    In the current workflow implementation, ``perform_networking`` is the main
-    toggle consumed directly by :mod:`MassFlow.workflow`. The remaining fields
-    are schema-level placeholders for adjacent orchestration features.
+    These fields are schema-level placeholders for orchestration features.
     """
 
-    perform_peak_picking: bool = Field(
-        default=True, description="Experimental placeholder."
-    )
-    perform_alignment: bool = Field(
-        default=True, description="Experimental placeholder."
-    )
-    perform_networking: bool = Field(
-        default=False, description="Experimental: Generate GraphML molecular network."
-    )
-    export_consensus: bool = Field(
-        default=True, description="Experimental placeholder."
-    )
+    perform_peak_picking: bool = Field(default=True, description="Placeholder.")
+    perform_alignment: bool = Field(default=True, description="Placeholder.")
 
 
 class ExportConfig(BaseModel):
     """
-    Declared export preferences for downstream result handling.
+    Declared export preferences for result output.
 
-    The current annotation workflow writes per-file CSV result reports and, when
-    enabled, a GraphML molecular network. This model preserves a broader output
-    schema for future exporters and configuration compatibility. Note that only 'csv'
-    is currently part of the stable v1.0 contract; other formats are experimental.
+    The annotation workflow writes per-file result reports in the configured
+    format. Only 'csv' and 'mztab' are part of the stable v1.0 contract.
     """
 
-    format: Literal[
-        "csv", "pickle", "msp", "mgf", "json", "xlsx", "parquet", "fbmn", "mztab"
-    ] = Field(
+    format: Literal["csv", "mztab"] = Field(
         default="csv",
-        description="Stable: 'csv'. Experimental: 'pickle', 'msp', 'mgf', 'json', 'xlsx', 'parquet', 'fbmn', 'mztab'.",
+        description="Output format: 'csv' or 'mztab'.",
     )
 
 
@@ -416,7 +342,7 @@ class MassFlowConfig(BaseModel):
     Root configuration object loaded from MassFlow YAML files.
 
     This model is the contract passed between the CLI, workflow, processing,
-    similarity, and optional networking layers.
+    and similarity layers.
     """
 
     project: ProjectConfig = Field(default_factory=ProjectConfig)
@@ -520,12 +446,6 @@ class MassFlowConfig(BaseModel):
         if config_instance.input.library_path:
             config_instance.input.library_path = (
                 config_instance.input.library_path.expanduser()
-            )
-
-        # Expand user for relevant Path fields in SimilarityConfig
-        if config_instance.similarity.model_path:
-            config_instance.similarity.model_path = (
-                config_instance.similarity.model_path.expanduser()
             )
 
         return config_instance

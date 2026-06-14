@@ -25,7 +25,7 @@ Its core workflow is simple:
 2. load a reference library
 3. apply configurable `matchms` processing
 4. score query spectra against the library
-5. write per-file CSV or mzTab-M results (plus Consensus MGF for FBMN)
+5. write per-file CSV or mzTab-M results
 
 ## Stable vs experimental at a glance
 
@@ -36,10 +36,7 @@ Its core workflow is simple:
 | Open-format ingestion (`mzML`, `mzXML`, `MGF`, `MSP`) | Stable target | Vendor raw conversion is out of scope |
 | SQLite library workflows (`massflow db ...`) | Stable target | Recommended for reusable local libraries |
 | `cosine` and `modified_cosine` | Stable target | Best-supported scoring paths |
-| CSV, mzTab-M, and FBMN export | Stable target | Main reporting surfaces |
-| GraphML networking | Experimental | Optional and non-core |
-| `spec2vec`, `ms2deepscore`, `consensus`, `cascade` | Experimental | Higher setup and less stable support promise |
-| Orchestrator API | Experimental | Engine-agnostic data contracts and consensus routing for v1.1 ML integration |
+| CSV, mzTab-M export | Stable target | Main reporting surfaces |
 
 ## What MassFlow is for
 
@@ -49,7 +46,7 @@ MassFlow is designed for local, reproducible MS/MS annotation workflows where yo
 - keep preprocessing settings in a YAML file
 - use open formats such as `mzML`, `mzXML`, `MGF`, and `MSP`
 - reuse processed reference libraries through SQLite
-- export simple tabular results (CSV, mzTab-M) and FBMN compatibility files for downstream review
+- export simple tabular results (CSV, mzTab-M) for downstream review
 
 ## What is stable vs experimental
 
@@ -62,17 +59,7 @@ These are the parts to rely on first:
 - SQLite library workflows through `massflow db`
 - configurable `matchms`-based metadata and peak filtering
 - similarity search with `cosine` and `modified_cosine`
-- per-file CSV and mzTab-M result export, plus GNPS FBMN mode
-
-### Experimental features
-These exist in the codebase, but should not be treated as part of the stable `v1.0` contract yet:
-
-- GraphML molecular networking export
-- `spec2vec`
-- `ms2deepscore`
-- `consensus`
-- `cascade`
-- Orchestrator API (`MassFlow.models`, `MassFlow.consensus`) for engine-agnostic consensus routing. It establishes strict data contracts (`AnnotationHit`, `ConsensusInput`, `ConsensusResult`, `MolecularStructure`) and features a pure-Python `ConsensusEngine` with probabilistically-weighted score aggregation, configurable tie-breaking, and scientific credibility checks to flag orthogonal algorithmic discordance. It also introduces theoretical `isotopic_envelope` calculation and validation to accurately model M, M+1, and M+2 abundances.
+- per-file CSV and mzTab-M result export
 
 ## Documentation
 
@@ -148,8 +135,7 @@ similarity:
   fdr_threshold: 0.05
 
 export:
-  # Available formats: "csv", "mztab", "fbmn", "json", "parquet", "xlsx"
-  # Use "fbmn" to generate GNPS-compatible paired files (CSV + Consensus MGF)
+  # Available formats: "csv", "mztab"
   format: "csv"
 ```
 
@@ -161,13 +147,12 @@ uv run massflow annotate --config massflow_config.yaml
 
 ### 4. Check the results
 
-MassFlow writes one CSV (or your configured format) per experimental input file into `project.output_directory`. If `export.format: "fbmn"` is set, it also outputs a `consensus_spectra.mgf` in that same folder.
+MassFlow writes one CSV (or mzTab-M) file per experimental input into `project.output_directory`.
 
 For an input file named `example.mzML`, expect outputs like:
 
 - `results/standard_analysis/example_results.csv`
 - `results/standard_analysis/example_results.report.yaml`
-- `results/standard_analysis/consensus_spectra.mgf` (if FBMN format was specified)
 
 The CSV contains the annotation table itself.
 
@@ -304,8 +289,6 @@ input:
 
 The database layer stores spectra plus metadata and a category label, so categories such as `reference`, `personal`, `standards`, or `project_x` can help you keep local libraries organized.
 
-During the core peak processing pipeline, MassFlow performs a fast NumPy-based scan of the mass spectra to generate a `triage_flags` bitmask. For example, it scans for the presence of the Tyrosine immonium ion (136.076 Da ± 0.05 Da). This fast, pre-compute triage step allows the orchestrator to dynamically route structurally interesting query spectra to heavy machine learning models (like MS2DeepScore) without adding ML dependencies to the core ingestion pipeline.
-
 ## Processing controls
 
 MassFlow exposes common `matchms`-based processing steps through YAML settings.
@@ -326,18 +309,10 @@ This makes preprocessing reproducible and easier to review than ad hoc scripts.
 ## Similarity engines
 
 ### Stable search paths
-These are the clearest choices for the current core workflow:
+These are the choices for the current core workflow:
 
 - `cosine`
 - `modified_cosine`
-
-### Experimental search paths
-These require more caution and are not part of the stable release promise yet:
-
-- `spec2vec`
-- `ms2deepscore`
-- `consensus`
-- `cascade`
 
 If you need the broadest compatibility and simplest behavior, start with `cosine`.
 
@@ -362,8 +337,6 @@ engine = SimilarityEngine(config.similarity)
 results = engine.search(query_spectra, reference_spectra)
 ```
 
-For advanced algorithms such as `consensus` or `cascade`, use the configured engine factory in the package rather than constructing a plain `SimilarityEngine` directly.
-
 ## Testing
 
 Run the test suite with:
@@ -386,7 +359,7 @@ MassFlow is intentionally conservative at the I/O boundary.
 - `README.md`: quickstart and user-facing overview
 - `ARCHITECTURE.md`: module responsibilities and data flow
 - `docs/user-guide/`: technical manuals and metadata contracts
-- `docs/post-v1.0-roadmap.md`: future development and machine learning integrations
+- `docs/post-v1.0-roadmap.md`: future development
 
 ## License
 

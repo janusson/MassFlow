@@ -407,13 +407,11 @@ def test_process_single_file_tiny_library_fdr_sensitivity(
         assert results[0]["q_value"] == pytest.approx(expected_q_value)
 
 
-@pytest.mark.parametrize("export_format", ["csv", "json", "xlsx", "parquet"])
+@pytest.mark.parametrize("export_format", ["csv", "mztab"])
 @patch("MassFlow.workflow.ProcessPoolExecutor")
 @patch("MassFlow.workflow.processing.process_spectra")
 @patch("MassFlow.workflow.io.save_analysis_report")
-@patch("MassFlow.workflow.io.save_match_results_to_json")
-@patch("MassFlow.workflow.io.save_match_results_to_xlsx")
-@patch("MassFlow.workflow.io.save_match_results_to_parquet")
+@patch("MassFlow.workflow.io.save_match_results_to_mztab")
 @patch("MassFlow.workflow.io.save_match_results")
 @patch("MassFlow.workflow.get_similarity_engine")
 @patch("MassFlow.workflow.io.load_spectra")
@@ -421,9 +419,7 @@ def test_run_annotation_pipeline_export_routing(
     mock_load,
     mock_engine_cls,
     mock_save_csv,
-    mock_save_parquet,
-    mock_save_xlsx,
-    mock_save_json,
+    mock_save_mztab,
     mock_save_report,
     mock_process,
     mock_executor,
@@ -476,16 +472,8 @@ def test_run_annotation_pipeline_export_routing(
         mock_save_csv.assert_called_once_with(
             mock_results, expected_out_file, query_spectra=[mock_query]
         )
-    elif export_format == "json":
-        mock_save_json.assert_called_once_with(
-            mock_results, expected_out_file, query_spectra=[mock_query]
-        )
-    elif export_format == "xlsx":
-        mock_save_xlsx.assert_called_once_with(
-            mock_results, expected_out_file, query_spectra=[mock_query]
-        )
-    elif export_format == "parquet":
-        mock_save_parquet.assert_called_once_with(
+    elif export_format == "mztab":
+        mock_save_mztab.assert_called_once_with(
             mock_results, expected_out_file, query_spectra=[mock_query]
         )
 
@@ -493,158 +481,6 @@ def test_run_annotation_pipeline_export_routing(
     report_args = mock_save_report.call_args[0]
     assert report_args[0] == out_dir / "exp_results.report.yaml"
     assert report_args[1]["results_csv"] == str(expected_out_file)
-
-
-@patch("MassFlow.workflow._get_tier2_engine")
-@patch("MassFlow.workflow.get_similarity_engine")
-@patch("MassFlow.workflow.io.load_spectra")
-@patch("MassFlow.workflow.processing.process_spectra")
-def test_triage_routing_in_process_single_file(
-    mock_process,
-    mock_load,
-    mock_get_engine,
-    mock_get_tier2_engine,
-    tmp_path,
-):
-    """Test that queries with triage_flags are routed to the Tier 2 engine."""
-    from MassFlow.similarity import SimilarityEngine
-
-    config = MassFlowConfig(
-        project=ProjectConfig(output_directory=tmp_path),
-        input=InputConfig(input_path=Path("query.mgf"), library_path=Path("ref.msp")),
-        similarity=SimilarityConfig(fdr_threshold=1.0),
-    )
-
-    std_query = make_spectrum("query_std")
-    std_query.set("triage_flags", None)
-
-    triage_query = make_spectrum("query_triage")
-    triage_query.set("triage_flags", "Tyrosine_Loss")
-
-    ref_spec = make_spectrum("ref_1")
-
-    mock_load.side_effect = [[std_query, triage_query], [ref_spec], [ref_spec]]
-    mock_process.side_effect = lambda s, c: s
-
-    # Mock engines
-    mock_tier1 = MagicMock(spec=SimilarityEngine)
-    mock_tier1.search.return_value = [
-        {"query_id": "query_std", "score": 0.9, "is_decoy": False}
-    ]
-
-    mock_tier2 = MagicMock(spec=SimilarityEngine)
-    mock_tier2.search.return_value = [
-        {"query_id": "query_triage", "score": 0.95, "is_decoy": False}
-    ]
-
-    mock_get_engine.return_value = mock_tier1
-    mock_get_tier2_engine.return_value = mock_tier2
-
-    # Need to reset globals to avoid interference
-    import MassFlow.workflow as wf
-
-    wf._worker_engine = None
-    wf._worker_references = None
-    wf._worker_decoys = None
-
-    processed_file, spectra, results = _process_single_file(Path("query.mgf"), config)
-
-    # Assert load and process were called
-    assert mock_tier1.search.call_count == 1
-    assert mock_tier2.search.call_count == 1
-
-    tier1_args = mock_tier1.search.call_args[0]
-    tier2_args = mock_tier2.search.call_args[0]
-
-    assert len(tier1_args[0]) == 1
-    assert tier1_args[0][0] == std_query
-
-    assert len(tier2_args[0]) == 1
-    assert tier2_args[0][0] == triage_query
-
-    # Assert results contain the correct tier label
-    result_ids = {r["query_id"]: r.get("annotation_tier") for r in results}
-    assert result_ids["query_std"] is None
-    assert result_ids["query_triage"] == "Triage (ms2deepscore)"
-
-
-@patch("MassFlow.workflow.SimilarityEngine")
-def test_init_worker_and_get_tier2_engine(mock_engine_cls):
-    import MassFlow.workflow as wf
-    from MassFlow.config import MassFlowConfig, SimilarityConfig
-    from MassFlow.workflow import _get_tier2_engine, _init_worker
-
-    config = MassFlowConfig(
-        input={"input_path": ".", "library_path": "."},
-        similarity=SimilarityConfig(
-            cascade_tier2="ms2deepscore", model_path="mock_path"
-        ),
-    )
-    _init_worker(config, ["ref"], ["decoy"])
-    assert wf._worker_references == ["ref"]
-    assert wf._worker_decoys == ["decoy"]
-    assert wf._worker_engine is not None
-
-    tier2 = _get_tier2_engine(config)
-    assert tier2 is not None
-    # Test caching
-    assert _get_tier2_engine(config) is tier2
-
-
-@patch("MassFlow.workflow.get_similarity_engine")
-@patch("MassFlow.workflow.io.load_spectra")
-@patch("MassFlow.workflow.processing.process_spectra")
-def test_triage_routing_worker_initialized(
-    mock_process,
-    mock_load,
-    mock_get_engine,
-    tmp_path,
-):
-    import MassFlow.workflow as wf
-    from MassFlow.similarity import SimilarityEngine
-
-    config = MassFlowConfig(
-        project=ProjectConfig(output_directory=tmp_path),
-        input=InputConfig(input_path=Path("query.mgf"), library_path=Path("ref.msp")),
-        similarity=SimilarityConfig(fdr_threshold=1.0),
-    )
-
-    std_query = make_spectrum("query_std")
-    std_query.set("triage_flags", None)
-    triage_query = make_spectrum("query_triage")
-    triage_query.set("triage_flags", "Tyrosine_Loss")
-
-    mock_load.return_value = [std_query, triage_query]
-    mock_process.side_effect = lambda s, c: s
-
-    mock_tier1 = MagicMock(spec=SimilarityEngine)
-    mock_tier1.search.return_value = [
-        {"query_id": "query_std", "score": 0.9, "is_decoy": False}
-    ]
-
-    mock_tier2 = MagicMock(spec=SimilarityEngine)
-    mock_tier2.search.return_value = [
-        {"query_id": "query_triage", "score": 0.95, "is_decoy": False}
-    ]
-
-    mock_get_engine.return_value = mock_tier1
-    wf._worker_tier2_engine = mock_tier2
-
-    # Initialize workers
-    wf._worker_engine = mock_tier1
-    wf._worker_references = [make_spectrum("ref")]
-    wf._worker_decoys = [make_spectrum("decoy")]
-
-    processed_file, spectra, results = _process_single_file(Path("query.mgf"), config)
-
-    assert mock_tier1.search.call_count == 1
-    assert mock_tier2.search.call_count == 1
-
-    # clean up globals
-    wf._worker_engine = None
-    wf._worker_references = None
-    wf._worker_decoys = None
-    wf._worker_tier2_engine = None
 
 
 def test_run_annotation_pipeline_missing_library_path(tmp_path):

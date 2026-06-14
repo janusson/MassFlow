@@ -42,32 +42,21 @@ def test_ms1_prefilter_no_precursor():
     assert len(indices[0]) == 1  # Should match because filter is bypassed
 
 
-def test_similarity_engine_ml_model_errors():
-    # Test for FileNotFoundError on ML models when the file doesn't exist
-    with pytest.raises(FileNotFoundError):
-        SimilarityEngine(
-            SimilarityConfig(algorithm="spec2vec", model_path="nonexistent.model")
-        )
+def test_similarity_engine_unsupported_algorithm():
+    """Test that unsupported algorithms are rejected at the config level."""
+    from pydantic_core import ValidationError
 
-    with pytest.raises(FileNotFoundError):
-        SimilarityEngine(
-            SimilarityConfig(algorithm="ms2deepscore", model_path="nonexistent.model")
-        )
+    with pytest.raises(ValidationError, match="cosine.*modified_cosine"):
+        SimilarityConfig(algorithm="unsupported")
 
 
-def test_get_similarity_engine_fallback_and_cascade():
-    # Test consensus fallback
-    config = SimilarityConfig(algorithm="consensus", allow_consensus_fallback=True)
-    engine = get_similarity_engine(config)
-    from MassFlow.similarity import ConsensusEngine
+def test_get_similarity_engine_returns_correct_type():
+    """Test that the factory returns a SimilarityEngine for valid algorithms."""
+    engine = get_similarity_engine(SimilarityConfig(algorithm="cosine"))
+    assert isinstance(engine, SimilarityEngine)
 
-    assert isinstance(
-        engine, ConsensusEngine
-    )  # Falls back to a single 'cosine' engine wrapped in a ConsensusEngine
-
-    # Test unsupported algorithm
-    with pytest.raises(ValueError):
-        SimilarityEngine(SimilarityConfig(algorithm="unsupported"))
+    engine = get_similarity_engine(SimilarityConfig(algorithm="modified_cosine"))
+    assert isinstance(engine, SimilarityEngine)
 
 
 def test_fdr_edge_cases():

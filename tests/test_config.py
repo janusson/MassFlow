@@ -61,7 +61,7 @@ def test_load_from_yaml(tmp_path):
             ],
         },
         "similarity": {"algorithm": "modified_cosine", "min_score": 0.8},
-        "export": {"format": "json"},
+        "export": {"format": "csv"},
     }
 
     config_file = tmp_path / "config.yaml"
@@ -83,7 +83,7 @@ def test_load_from_yaml(tmp_path):
     assert config.processing.solvents[0].mz == 18.01
 
     assert config.similarity.algorithm == "modified_cosine"
-    assert config.export.format == "json"
+    assert config.export.format == "csv"
 
 
 def test_load_file_not_found():

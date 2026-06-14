@@ -2,9 +2,6 @@
 Integration test suite for MassFlow SimilarityEngine, focusing on ModifiedCosine.
 """
 
-from pathlib import Path
-from unittest.mock import patch
-
 import numpy as np
 import pytest
 from matchms import Spectrum
@@ -224,58 +221,6 @@ def test_min_matched_peaks_filtering() -> None:
     relaxed_results = [r for r in relaxed_results if not r.get("is_decoy")]
 
     assert len(relaxed_results) == 1, "Result with enough matched peaks was rejected."
-
-
-@pytest.mark.experimental
-def test_spec2vec_initialization():
-    """Verify spec2vec engine initialization handles mock models correctly."""
-    import sys
-    from unittest.mock import MagicMock
-
-    mock_gensim = MagicMock()
-    mock_spec2vec = MagicMock()
-
-    config = SimilarityConfig(algorithm="spec2vec", model_path=Path("dummy.model"))
-    with (
-        patch.dict(
-            sys.modules,
-            {
-                "gensim": mock_gensim,
-                "gensim.models": mock_gensim.models,
-                "spec2vec": mock_spec2vec,
-            },
-        ),
-        patch.object(Path, "exists", return_value=True),
-    ):
-        engine = SimilarityEngine(config)
-        mock_gensim.models.Word2Vec.load.assert_called_once_with("dummy.model")
-        mock_spec2vec.Spec2Vec.assert_called_once()
-        assert engine.similarity_function == mock_spec2vec.Spec2Vec.return_value
-
-
-@pytest.mark.experimental
-def test_ms2deepscore_initialization():
-    """Verify ms2deepscore engine initialization handles mock models correctly."""
-    import sys
-    from unittest.mock import MagicMock
-
-    mock_ms2deepscore = MagicMock()
-
-    config = SimilarityConfig(algorithm="ms2deepscore", model_path=Path("dummy.model"))
-    with (
-        patch.dict(
-            sys.modules,
-            {
-                "ms2deepscore": mock_ms2deepscore,
-                "ms2deepscore.models": mock_ms2deepscore.models,
-            },
-        ),
-        patch.object(Path, "exists", return_value=True),
-    ):
-        engine = SimilarityEngine(config)
-        mock_ms2deepscore.models.load_model.assert_called_once_with("dummy.model")
-        mock_ms2deepscore.MS2DeepScore.assert_called_once()
-        assert engine.similarity_function == mock_ms2deepscore.MS2DeepScore.return_value
 
 
 def test_calculate_fdr_basic():

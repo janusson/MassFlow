@@ -107,11 +107,8 @@ similarity:
   min_matched_peaks: 3
   fdr_threshold: 0.05
 
-workflow:
-  perform_networking: false
-
 export:
-  format: "xlsx"
+  format: "csv"
 """
     try:
         with open(output_path, "w") as f:
