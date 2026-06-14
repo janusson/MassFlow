@@ -1,9 +1,8 @@
-import pytest
 from rdkit import Chem
 from rdkit.Chem import Descriptors
 
 from MassFlow.cheminformatics import calculate_isotopic_envelope
-from MassFlow.models import MolecularStructure, SpectralPeaks, SpectrumMetadata
+from MassFlow.models import MolecularStructure, SpectrumMetadata
 
 
 # Helper to calculate theoretical m/z for [M+H]+
@@ -133,7 +132,3 @@ def test_invalid_smiles_graceful_failure():
     """
     struct = MolecularStructure(smiles="NOT_A_SMILES")
     assert struct.is_physically_valid is False
-
-    # Peaks validation check (already exists but good for coverage)
-    with pytest.raises(ValueError, match="Array length mismatch"):
-        SpectralPeaks(mz_array=[100.0], intensity_array=[1.0, 2.0])

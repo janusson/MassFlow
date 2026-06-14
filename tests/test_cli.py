@@ -181,15 +181,3 @@ def test_convert_general_error(mock_convert, mock_isdir):
         cli.app, ["convert", "--input", "fake_dir", "--output", "out_dir"]
     )
     assert result.exit_code == 1
-
-
-@patch(
-    "MassFlow.cli.visualize_graphml", side_effect=Exception("Viz Error"), create=True
-)
-def test_visualize_error(mock_viz):
-    runner = CliRunner()
-    with runner.isolated_filesystem():
-        with open("test.graphml", "w") as f:
-            f.write("<graphml></graphml>")
-        result = runner.invoke(cli.app, ["visualize", "test.graphml"])
-        assert result.exit_code == 1

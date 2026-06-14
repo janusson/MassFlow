@@ -85,16 +85,12 @@ Defines the output format.
 
 ```yaml
 export:
-  format: "fbmn"
+  format: "csv"
 ```
-*   `format`: The primary stable export formats are `"csv"`, `"mztab"`, and `"fbmn"`.
+*   `format`: The supported export formats are `"csv"` and `"mztab"`.
     *   **csv:** Simplest tabular format.
     *   **mztab:** Writes standard metabolomics tracking `.mztab` files.
-    *   **fbmn:** Exports a CSV feature table alongside a `consensus_spectra.mgf` to power downstream GNPS Feature-Based Molecular Networking workflows.
-    *   *Experimental Formats:* `"pickle"`, `"json"`, `"xlsx"`, `"parquet"`.
 
 ---
 
-## Experimental Sections
-
-You may see other fields generated in the template (such as `workflow.perform_networking` or ML model paths). These are reserved for [Experimental Features](../experimental/ml-engines.md) and are not part of the stable v1.0 pipeline contract.
+## Configuration Validation

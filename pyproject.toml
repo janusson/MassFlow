@@ -67,7 +67,6 @@ exclude = ["repro_isotope\\.py"]
 [tool.pytest.ini_options]
 markers = [
     "core: tests that must pass for the v1.0 stable release contract",
-    "experimental: tests for experimental, post-1.0, or optional features",
 ]
 
 [tool.coverage.run]

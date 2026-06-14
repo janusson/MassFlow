@@ -8,7 +8,7 @@ Morgan fingerprints.
 
 import math
 import re
-from collections import Counter, defaultdict
+from collections import defaultdict
 from functools import lru_cache
 from typing import Optional
 
@@ -195,9 +195,9 @@ def calculate_isotopic_envelope(
 ) -> list[tuple[float, float]]:
     """
     Calculate the theoretical isotopic envelope for a molecule, returning up to
-    `max_isopeaks` (e.g., M, M+1, M+2, M+3) normalized such that the base peak is 1.0.
+    ``max_isopeaks`` (e.g., M, M+1, M+2, M+3) normalized such that the base peak is 1.0.
 
-    Attempts to use RDKit's `rdMolDescriptors.GetIsotopicDistribution` if available.
+    Attempts to use RDKit's ``rdMolDescriptors.GetIsotopicDistribution`` if available.
     Otherwise, gracefully falls back to the high-precision pyteomics centroid approach.
 
     Parameters
@@ -337,7 +337,7 @@ def calculate_isotopic_envelope(
     max_abund = max(total_abundances.values())
 
     res = []
-    # Only keep the lowest `max_isopeaks` offsets (0, 1, 2, 3)
+    # Only keep the lowest ``max_isopeaks`` offsets (0, 1, 2, 3)
     for offset, items in sorted(bins.items())[:max_isopeaks]:
         total_a = sum(a for m, a in items)
         if total_a > 0:
@@ -390,36 +390,6 @@ def calculate_theoretical_mass(smiles: str, adduct: str = "[M+H]+") -> Optional[
     return (exact_mass + offset) / abs(charge)
 
 
-# Common neutral losses expressed as chemical formulas. The monoisotopic mass and
-# the {element: minimum_count} requirement are both derived from each formula at
-# module load via pyteomics, so there is a single source of truth and no parallel
-# hand-maintained dicts to drift out of sync.
-#
-# The element-count requirement (not mere presence) prevents false negatives such as
-# CO₂ loss (needs 2 O) passing on a 1-O molecule. For example, CO₂ requires at least
-# 2 oxygen atoms and PO₃ requires at least 3 oxygen atoms in the candidate's formula.
-_NEUTRAL_LOSS_FORMULAS = [
-    "H2O",
-    "NH3",
-    "CO",
-    "CO2",
-    "H2S",
-    "SO2",
-    "PO3",
-    "HCl",
-    "HBr",
-    "HF",
-]
-
-# Each entry is (monoisotopic_mass_da, {element: minimum_count}).
-# pmass.Composition(formula=f) yields a dict-like {element: count} mapping, which
-# doubles as both the exact-mass input and the element-count requirement.
-COMMON_NEUTRAL_LOSSES: list[tuple[float, dict[str, int]]] = [
-    (pmass.calculate_mass(formula=formula), dict(pmass.Composition(formula=formula)))
-    for formula in _NEUTRAL_LOSS_FORMULAS
-]
-
-
 def calculate_isotopic_similarity(
     exp_env: list[tuple[float, float]],
     theor_env: list[tuple[float, float]],
@@ -440,7 +410,7 @@ def calculate_isotopic_similarity(
     Returns
     -------
     float
-        Cosine similarity score (0.0 to 1.0).
+        Cosine similarity score between 0.0 and 1.0.
     """
     if not exp_env or not theor_env:
         return 0.0
@@ -478,98 +448,3 @@ def calculate_isotopic_similarity(
         return 0.0
 
     return dot_product / (norm_exp * norm_theor)
-
-
-def parse_elements_from_smiles(smiles: str) -> Counter:
-    """
-    Parse a SMILES string and return a Counter mapping each element symbol to
-    its atom count in the molecular formula (implicit H included).
-
-    Parameters
-    ----------
-    smiles : str
-        A valid SMILES string.
-
-    Returns
-    -------
-    collections.Counter
-        Element-to-count mapping, e.g. Counter({'C': 3, 'H': 8, 'O': 3}) for glycerol.
-        Returns an empty Counter if the SMILES is invalid or unparseable.
-
-    Examples
-    --------
-    >>> parse_elements_from_smiles("OCC(O)CO")  # glycerol C3H8O3
-    Counter({'H': 8, 'C': 3, 'O': 3})
-    """
-    mol = Chem.MolFromSmiles(smiles)
-    if not mol:
-        return Counter()
-    formula = rdMolDescriptors.CalcMolFormula(mol)
-    matches = re.findall(r"([A-Z][a-z]*)(\d*)", formula)
-    return Counter({element: int(count) if count else 1 for element, count in matches})
-
-
-def find_impossible_neutral_losses(
-    mz_array: list[float],
-    int_array: list[float],
-    precursor_mz: float,
-    smiles: str,
-    tolerance: float = 0.02,
-    intensity_threshold: float = 0.05,
-) -> list[tuple[float, float, dict[str, int]]]:
-    """
-    Identify observed neutral losses that are physically impossible given the molecular formula.
-
-    Element counts (not just presence) are compared against the minimum counts required by
-    each neutral loss fragment.  For example, CO₂ loss requires at least 2 oxygen atoms;
-    a candidate with only 1 oxygen is correctly flagged even though oxygen is present.
-
-    Parameters
-    ----------
-    mz_array : list of float
-        Fragment m/z array.
-    int_array : list of float
-        Fragment intensity array.
-    precursor_mz : float
-        Precursor m/z.
-    smiles : str
-        SMILES string of the candidate structure.
-    tolerance : float
-        m/z tolerance for matching neutral losses.
-    intensity_threshold : float
-        Minimum relative intensity (0.0 to 1.0) to consider a fragment peak.
-
-    Returns
-    -------
-    list of tuple
-        A list of impossible neutral losses detected, each as:
-        (observed_loss_da, exact_neutral_loss_da, required_element_counts)
-    """
-    element_counts = parse_elements_from_smiles(smiles)
-    if not element_counts:
-        return []
-
-    max_int = max(int_array) if len(int_array) > 0 else 0.0
-    if max_int == 0.0:
-        return []
-
-    impossible_losses = []
-
-    for mz, intensity in zip(mz_array, int_array):
-        if intensity / max_int < intensity_threshold:
-            continue
-
-        nl = precursor_mz - mz
-        if nl <= 0:
-            continue
-
-        for exact_mass, required_counts in COMMON_NEUTRAL_LOSSES:
-            if abs(nl - exact_mass) <= tolerance:
-                # Check that the candidate has at least the required count of each element.
-                if not all(
-                    element_counts.get(elem, 0) >= count
-                    for elem, count in required_counts.items()
-                ):
-                    impossible_losses.append((nl, exact_mass, required_counts))
-
-    return impossible_losses

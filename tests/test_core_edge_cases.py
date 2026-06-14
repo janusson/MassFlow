@@ -4,7 +4,6 @@ from matchms import Spectrum
 
 from MassFlow.config import ProcessingConfig, SimilarityConfig
 from MassFlow.processing import (
-    calculate_triage_flags,
     compute_spectral_metrics,
     metadata_processing,
     peak_processing,
@@ -127,20 +126,6 @@ def test_metadata_processing_instrument_injection():
     res = metadata_processing(spec, config)
     assert res.get("instrument") == "Orbitrap"
     assert res.get("ionmode") == "positive"
-
-
-def test_calculate_triage_flags_edge_cases(empty_spectrum):
-    # None spectrum
-    assert calculate_triage_flags(None) is None
-
-    # Empty spectrum (empty mz array)
-    res = calculate_triage_flags(empty_spectrum)
-    assert "triage_flags" not in res.metadata
-
-    # Spectrum with tyrosine but zero intensity
-    spec = Spectrum(mz=np.array([136.076]), intensities=np.array([0.0]), metadata={})
-    res = calculate_triage_flags(spec)
-    assert "triage_flags" not in res.metadata
 
 
 def test_peak_processing_edge_cases(empty_spectrum, zero_intensity_spectrum):

@@ -1,185 +1,18 @@
 """
-Data contracts and shared Pydantic models for the MassFlow Orchestrator API.
+Data contracts and shared Pydantic models for MassFlow.
 
-This module defines the engine-agnostic structures used to communicate between
-the core `MassFlow` pipeline and external Machine Learning similarity modules.
-These contracts enforce a uniform shape for annotation results, consensus groupings,
-and orchestration logic configuration, ensuring type safety without adding external
-dependencies like PyTorch or TensorFlow.
+This module defines the core scientific data structures used across the
+pipeline: molecular structure validation, spectral metadata with adduct-aware
+precursor mass verification, and theoretical isotopic distributions.
 """
 
-from typing import Dict, List, Literal, Optional
+from typing import List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from rdkit import Chem
 from rdkit.Chem import Descriptors
 
 from MassFlow.cheminformatics import ADDUCT_OFFSETS, calculate_isotopic_envelope
-
-
-class AnnotationHit(BaseModel):
-    """
-    A single spectral annotation result from a specific similarity engine.
-
-    This structure represents one potential match between an experimental query
-    and a reference library entry, agnostic of the underlying algorithm used.
-    """
-
-    engine_id: str = Field(
-        ..., description="Identifier for the engine (e.g., 'cosine', 'ms2deepscore')."
-    )
-    reference_id: str = Field(
-        ..., description="Unique identifier for the reference candidate."
-    )
-    score: float = Field(
-        ...,
-        description="The similarity score calculated by the engine (typically 0.0 to 1.0).",
-    )
-    rank: int = Field(
-        ..., description="The rank of this hit within the engine's specific result set."
-    )
-    inchikey: Optional[str] = Field(
-        default=None, description="InChIKey for structure-level aggregation."
-    )
-    smiles: Optional[str] = Field(
-        default=None, description="SMILES string of the candidate."
-    )
-
-
-class ConsensusInput(BaseModel):
-    """
-    A collection of all annotation hits for a single experimental query spectrum.
-
-    This contract groups all competing engine outputs for a specific query,
-    serving as the primary input payload for the `ConsensusEngine`.
-    """
-
-    query_id: str = Field(..., description="Unique identifier for the query spectrum.")
-    hits: List[AnnotationHit] = Field(
-        default_factory=list, description="All hits across all engines for this query."
-    )
-    experimental_spectrum: Optional["MassFlowSpectrum"] = Field(
-        default=None,
-        description="The complete experimental MS/MS spectrum used for credibility checks.",
-    )
-
-
-class AggregatedCandidate(BaseModel):
-    """
-    Internal orchestration structure mapping a specific reference candidate
-    to its scores and ranks across multiple engines.
-    """
-
-    reference_id: str
-    inchikey: Optional[str]
-    smiles: Optional[str]
-    consensus_score: float = 0.0
-    engine_scores: Dict[str, float] = Field(default_factory=dict)
-    engine_ranks: Dict[str, int] = Field(default_factory=dict)
-    credibility_factor: float = 1.0
-
-
-class ConsensusResult(BaseModel):
-    """
-    The final orchestrated output summarizing the consensus agreement across engines.
-    """
-
-    query_id: str
-    best_reference_id: Optional[str] = Field(
-        default=None,
-        description="The winning reference ID after consensus and tie-breaking.",
-    )
-    best_consensus_score: Optional[float] = Field(
-        default=None,
-        description="The final aggregated score for the winning candidate.",
-    )
-    flagged_for_review: bool = Field(
-        default=False,
-        description="True if top engines strongly disagree on the candidate or credibility checks fail.",
-    )
-    review_reason: Optional[str] = Field(
-        default=None, description="Explanation of the scientific credibility flag."
-    )
-    candidates: List[AggregatedCandidate] = Field(
-        default_factory=list,
-        description="List of all evaluated candidates sorted by score.",
-    )
-
-
-class ConsensusConfig(BaseModel):
-    """
-    Configuration for the consensus weighting and tie-breaking logic.
-
-    This configuration dictates how individual similarity engine outputs are aggregated into
-    a single consensus score. Tuning these parameters alters the balance between false positives
-    and false negatives in structural identification.
-    """
-
-    engine_weights: Dict[str, float] = Field(
-        ...,
-        description=(
-            "Mapping of engine_id to its relative weight (e.g., {'exact_mass': 0.6, 'ms2deepscore': 0.4}).\n\n"
-            "Scientific Justification:\n"
-            "These weights represent the prior probability of engine accuracy within the ensemble. "
-            "Weighting should reflect the known precision-recall trade-offs of the underlying engines. "
-            "For example, exact-mass-based or isotopic-envelope engines provide high precision (low false-positive rate) "
-            "and should receive higher priors for confident exact-structure identification. Conversely, "
-            "fragmentation-pattern-based Machine Learning models (e.g., MS2DeepScore, Spec2Vec) offer high recall "
-            "(sensitivity) for structural analogs but may suffer from lower precision for exact molecular matches. "
-            "Tuning these weights fundamentally defines the operating point on the Receiver Operating Characteristic (ROC) curve."
-        ),
-    )
-    tie_breaker_strategy: Literal[
-        "highest_rank", "average_score", "validator_engine"
-    ] = Field(
-        default="highest_rank",
-        description=(
-            "Strategy to resolve exact consensus score ties between competing candidate structures.\n\n"
-            "Scientific Justification:\n"
-            "- 'highest_rank': Defers to the candidate that achieved the single best rank across any individual engine, "
-            "leveraging the hypothesis that at least one scoring modality has captured the true orthogonal signal.\n"
-            "- 'average_score': Assumes ensemble stability; averages the raw scores, favoring candidates with broad but "
-            "moderate empirical agreement across all underlying feature spaces.\n"
-            "- 'validator_engine': Employs orthogonal validation by deferring to a specific, highly-trusted engine "
-            "(e.g., retreating to exact mass limits when fragmentation spectra yield ambiguous ties)."
-        ),
-    )
-    validator_engine: Optional[str] = Field(
-        default=None,
-        description="Engine ID to trust during a 'validator_engine' tie-break (e.g., 'exact_mass').",
-    )
-    flag_rank_discrepancy_threshold: int = Field(
-        default=5,
-        description=(
-            "Threshold for flagging a consensus result due to algorithmic disagreement.\n\n"
-            "Scientific Justification:\n"
-            "This parameter serves as a heuristic for 'orthogonal agreement failure' across engines. If a candidate is highly ranked "
-            "by one engine (e.g., rank 1) but falls below this threshold in another (e.g., rank > 5), it indicates severe "
-            "disagreement across orthogonal feature spaces (e.g., functional group similarity vs. backbone fragmentation). "
-            "These cases represent low-confidence hits that require manual expert review to prevent false discoveries "
-            "from propagating through automated downstream pipelines."
-        ),
-    )
-    isotopic_credibility_weight: float = Field(
-        default=0.0,
-        description=(
-            "Weight applied to the MS1 Isotopic Credibility Factor. If > 0, the consensus score is "
-            "adjusted by the cosine similarity between the experimental MS1 isotopic envelope and the "
-            "theoretical envelope predicted by the candidate's SMILES."
-        ),
-    )
-    penalize_impossible_neutral_losses: bool = Field(
-        default=True,
-        description=(
-            "If True, activates the Fragmentation Heuristic validator. Candidates whose SMILES "
-            "cannot physically produce the observed major neutral losses (e.g., losing H2O when "
-            "the formula lacks oxygen) receive a severe penalty."
-        ),
-    )
-    neutral_loss_penalty_factor: float = Field(
-        default=0.1,
-        description="Multiplier applied to the consensus score if an impossible neutral loss is detected.",
-    )
 
 
 class IsotopicDistribution(BaseModel):
@@ -331,37 +164,3 @@ class SpectrumMetadata(BaseModel):
             self.__dict__["is_physically_valid"] = False
 
         return self
-
-
-class SpectralPeaks(BaseModel):
-    """Schema for the raw spectral arrays."""
-
-    model_config = ConfigDict(
-        # Rust core optimizes `list[float]` serialization drastically
-        ser_json_bytes="utf8"
-    )
-
-    mz_array: List[float]
-    intensity_array: List[float]
-
-    @model_validator(mode="after")
-    def validate_arrays(self) -> "SpectralPeaks":
-        """Ensures array integrity."""
-        length = len(self.mz_array)
-        if length != len(self.intensity_array):
-            raise ValueError(
-                f"Array length mismatch: mz ({length}) vs intensity ({len(self.intensity_array)})"
-            )
-
-        # Ensure m/z is sorted (crucial for fast similarity searches later)
-        if not all(self.mz_array[i] <= self.mz_array[i + 1] for i in range(length - 1)):
-            raise ValueError("mz_array must be monotonically increasing.")
-
-        return self
-
-
-class MassFlowSpectrum(BaseModel):
-    """Top-level schema representing a complete MS/MS spectral record."""
-
-    metadata: SpectrumMetadata
-    peaks: SpectralPeaks

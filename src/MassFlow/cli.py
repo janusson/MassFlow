@@ -311,36 +311,6 @@ def run_db_merge(
         raise typer.Exit(1)
 
 
-@app.command("visualize")
-def run_visualize(
-    graphml_path: str = typer.Argument(..., help="Path to the .graphml file."),
-    output: str = typer.Option(
-        "network.html",
-        "--output",
-        "-o",
-        help="Path to save the output HTML visualization.",
-    ),
-):
-    """Generate an interactive HTML visualization from a GraphML network."""
-    try:
-        from MassFlow.visualization import visualize_graphml
-    except ImportError as e:
-        logger.error(f"Failed to load visualization module: {e}")
-        console.print(
-            "[bold red]Visualization dependencies are missing.[/bold red] Install them with: `uv pip install pyvis networkx`"
-        )
-        raise typer.Exit(1)
-
-    try:
-        visualize_graphml(graphml_path=graphml_path, output_html=output)
-        console.print(
-            f"[bold green]✓ Interactive visualization created at: {output}[/bold green]"
-        )
-    except Exception as e:
-        logger.error(f"Failed to generate visualization: {e}")
-        raise typer.Exit(1)
-
-
 @app.command("watch")
 def run_watch(
     config: str = typer.Option(
@@ -369,7 +339,7 @@ def run_watch(
 
     # Render layout builder
     def generate_results_table() -> Table:
-        """Reads recent CSV/Parquet results and formats them via Rich."""
+        """Reads recent CSV results and formats them via Rich."""
         table = Table(
             title="🛰️ MassFlow Interactive Annotation Results",
             caption="Listening for file changes... (Press Ctrl+C to exit)",
@@ -384,7 +354,7 @@ def run_watch(
 
         # Find the latest results file
         ext = cfg.export.format.lower()
-        search_ext = "csv" if ext == "fbmn" else ext
+        search_ext = ext
 
         # Simplified find latest
         files = glob.glob(str(output_dir / f"*_results.{search_ext}"))
@@ -397,11 +367,9 @@ def run_watch(
         try:
             if search_ext == "csv":
                 df = pl.read_csv(latest_file)
-            elif search_ext == "parquet":
-                df = pl.read_parquet(latest_file)
             else:
-                table.add_row("Unsupported preview format.", "...", "...", "...")
-                return table
+                # mzTab — treat as tab-delimited for preview
+                df = pl.read_csv(latest_file, separator="\t")
 
             # Limit preview to top 15 results
             df_preview = df.head(15)

@@ -147,45 +147,6 @@ def metadata_processing(
     return s
 
 
-def calculate_triage_flags(spectrum: Spectrum) -> Spectrum:
-    """
-    Compute structural triage flags (e.g., specific immonium ions) and attach
-    them to the spectrum metadata for downstream ML routing.
-    """
-    if spectrum is None or spectrum.peaks is None:
-        return spectrum
-
-    mz_array = spectrum.peaks.mz
-    intensity_array = spectrum.peaks.intensities
-
-    triage_flags = {}
-
-    # Fast NumPy-based Tyrosine immonium ion check
-    target_mz = 136.076
-    mz_tolerance = 0.05
-
-    # Ensure mz_array is not empty
-    if len(mz_array) > 0:
-        idx = np.searchsorted(mz_array, target_mz)
-        has_tyrosine = False
-
-        # Check the closest indices
-        for i in [idx - 1, idx]:
-            if 0 <= i < len(mz_array):
-                if abs(mz_array[i] - target_mz) <= mz_tolerance:
-                    if intensity_array[i] > 0:
-                        has_tyrosine = True
-                        break
-
-        if has_tyrosine:
-            triage_flags["has_tyrosine_fragment"] = True
-
-    if triage_flags:
-        spectrum.set("triage_flags", triage_flags)
-
-    return spectrum
-
-
 def peak_processing(spectrum: Spectrum, config: ProcessingConfig) -> Optional[Spectrum]:
     """
     Apply peak-level filters and normalization based on configuration.
@@ -233,10 +194,6 @@ def peak_processing(spectrum: Spectrum, config: ProcessingConfig) -> Optional[Sp
         s = normalize_intensities(s)
         if s is None:
             return None
-
-    # Compute and attach structural triage flags
-    if s is not None:
-        s = calculate_triage_flags(s)
 
     return s
 
@@ -354,12 +311,6 @@ def process_spectra_batch(
                 exc_info=True,
             )
             continue
-
-        # Vectorized Peak-level calculations (Neutral Loss & Offset)
-        # We attach these to the Spectrum metadata for use by similarity engines
-        nl, offsets = compute_spectral_metrics(spec.peaks.mz, spec.get("precursor_mz"))
-        spec.set("neutral_losses", nl)
-        spec.set("mz_offsets", offsets)
 
         processed_batch.append(spec)
 
