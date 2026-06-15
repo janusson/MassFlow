@@ -24,7 +24,7 @@ def make_mock_spectrum(spectrum_id: str, precursor_mz: float) -> Spectrum:
     Returns
     -------
     Spectrum
-        A matchms.Spectrum object with np.float64 precision arrays for mz and intensities.
+        A matchms.Spectrum object with np.float32 precision arrays for mz and intensities.
 
     Examples
     --------
@@ -33,8 +33,8 @@ def make_mock_spectrum(spectrum_id: str, precursor_mz: float) -> Spectrum:
     100.0
     """
     return Spectrum(
-        mz=np.array([100.0], dtype=np.float64),
-        intensities=np.array([1.0], dtype=np.float64),
+        mz=np.array([100.0], dtype=np.float32),
+        intensities=np.array([1.0], dtype=np.float32),
         metadata={"id": spectrum_id, "precursor_mz": precursor_mz},
     )
 

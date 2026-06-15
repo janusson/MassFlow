@@ -47,8 +47,8 @@ def _create_legacy_database(database_path: Path) -> None:
         """
     )
 
-    first_mz = np.array([100.0, 150.0, 200.0], dtype=np.float64)
-    first_intensities = np.array([0.1, 0.5, 1.0], dtype=np.float64)
+    first_mz = np.array([100.0, 150.0, 200.0], dtype=np.float32)
+    first_intensities = np.array([0.1, 0.5, 1.0], dtype=np.float32)
     first_metadata = (
         '{"id": "legacy_1", "compound_name": "Legacy One", "precursor_mz": 200.0}'
     )
@@ -57,8 +57,8 @@ def _create_legacy_database(database_path: Path) -> None:
         '{"mz": 200.0, "intensity": 1.0}]'
     )
 
-    second_mz = np.array([110.0, 160.0, 210.0], dtype=np.float64)
-    second_intensities = np.array([0.2, 0.6, 0.9], dtype=np.float64)
+    second_mz = np.array([110.0, 160.0, 210.0], dtype=np.float32)
+    second_intensities = np.array([0.2, 0.6, 0.9], dtype=np.float32)
     second_metadata = (
         '{"id": "legacy_2", "compound_name": "Legacy Two", "precursor_mz": 210.0}'
     )
@@ -226,10 +226,10 @@ def test_migrate_legacy_peaks_database_preserves_data(tmp_path: Path) -> None:
     assert first_row[3] == "legacy"
     assert '"Legacy One"' in first_row[4]
 
-    first_mz = np.frombuffer(first_row[5], dtype=np.float64)
-    first_intensities = np.frombuffer(first_row[6], dtype=np.float64)
-    assert first_mz.dtype == np.float64
-    assert first_intensities.dtype == np.float64
+    first_mz = np.frombuffer(first_row[5], dtype=np.float32)
+    first_intensities = np.frombuffer(first_row[6], dtype=np.float32)
+    assert first_mz.dtype == np.float32
+    assert first_intensities.dtype == np.float32
     assert np.allclose(first_mz, [100.0, 150.0, 200.0])
     assert np.allclose(first_intensities, [0.1, 0.5, 1.0])
 
@@ -239,10 +239,10 @@ def test_migrate_legacy_peaks_database_preserves_data(tmp_path: Path) -> None:
     assert second_row[3] == "legacy"
     assert '"Legacy Two"' in second_row[4]
 
-    second_mz = np.frombuffer(second_row[5], dtype=np.float64)
-    second_intensities = np.frombuffer(second_row[6], dtype=np.float64)
-    assert second_mz.dtype == np.float64
-    assert second_intensities.dtype == np.float64
+    second_mz = np.frombuffer(second_row[5], dtype=np.float32)
+    second_intensities = np.frombuffer(second_row[6], dtype=np.float32)
+    assert second_mz.dtype == np.float32
+    assert second_intensities.dtype == np.float32
     assert np.allclose(second_mz, [110.0, 160.0, 210.0])
     assert np.allclose(second_intensities, [0.2, 0.6, 0.9])
 

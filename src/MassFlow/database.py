@@ -6,7 +6,7 @@ MIGRATION NOTE
 MassFlow previously used a legacy SQLite schema in which the ``spectra`` table
 stored peak data in a single ``peaks`` column. The current schema stores
 fragment arrays explicitly as ``mz_array`` and ``intensity_array`` BLOB columns
-encoded as ``float64`` bytes.
+encoded as ``float32`` bytes.
 
 Legacy databases are no longer upgraded automatically. In particular, MassFlow
 will not silently drop or rewrite a legacy ``spectra`` table during database
@@ -322,7 +322,7 @@ def _decode_legacy_peaks_payload(
     peaks_payload: Any,
 ) -> tuple[np.ndarray, np.ndarray]:
     """
-    Decode a legacy ``peaks`` payload into float64 m/z and intensity arrays.
+    Decode a legacy ``peaks`` payload into float32 m/z and intensity arrays.
 
     Parameters
     ----------
@@ -334,7 +334,7 @@ def _decode_legacy_peaks_payload(
     Returns
     -------
     tuple[np.ndarray, np.ndarray]
-        Decoded ``mz_array`` and ``intensity_array`` as ``float64`` arrays.
+        Decoded ``mz_array`` and ``intensity_array`` as ``float32`` arrays.
 
     Raises
     ------
@@ -347,8 +347,8 @@ def _decode_legacy_peaks_payload(
     """
     if peaks_payload is None:
         return (
-            np.array([], dtype=np.float64),
-            np.array([], dtype=np.float64),
+            np.array([], dtype=np.float32),
+            np.array([], dtype=np.float32),
         )
 
     parsed_payload = peaks_payload
@@ -363,8 +363,8 @@ def _decode_legacy_peaks_payload(
         text_payload = parsed_payload.strip()
         if text_payload == "":
             return (
-                np.array([], dtype=np.float64),
-                np.array([], dtype=np.float64),
+                np.array([], dtype=np.float32),
+                np.array([], dtype=np.float32),
             )
 
         try:
@@ -381,15 +381,15 @@ def _decode_legacy_peaks_payload(
         if "peaks" in parsed_payload:
             parsed_payload = parsed_payload["peaks"]
         elif "mz" in parsed_payload and "intensity" in parsed_payload:
-            mz_array = np.asarray(parsed_payload["mz"], dtype=np.float64)
-            intensity_array = np.asarray(parsed_payload["intensity"], dtype=np.float64)
+            mz_array = np.asarray(parsed_payload["mz"], dtype=np.float32)
+            intensity_array = np.asarray(parsed_payload["intensity"], dtype=np.float32)
             if mz_array.shape != intensity_array.shape:
                 raise ValueError("Legacy peaks dictionary has mismatched array shapes.")
             return mz_array, intensity_array
         elif "mz_array" in parsed_payload and "intensity_array" in parsed_payload:
-            mz_array = np.asarray(parsed_payload["mz_array"], dtype=np.float64)
+            mz_array = np.asarray(parsed_payload["mz_array"], dtype=np.float32)
             intensity_array = np.asarray(
-                parsed_payload["intensity_array"], dtype=np.float64
+                parsed_payload["intensity_array"], dtype=np.float32
             )
             if mz_array.shape != intensity_array.shape:
                 raise ValueError("Legacy peaks dictionary has mismatched array shapes.")
@@ -400,8 +400,8 @@ def _decode_legacy_peaks_payload(
     if isinstance(parsed_payload, (list, tuple)):
         if len(parsed_payload) == 0:
             return (
-                np.array([], dtype=np.float64),
-                np.array([], dtype=np.float64),
+                np.array([], dtype=np.float32),
+                np.array([], dtype=np.float32),
             )
 
         first_item = parsed_payload[0]
@@ -417,26 +417,26 @@ def _decode_legacy_peaks_payload(
                 )
             mz_array = np.asarray(
                 [float(item["mz"]) for item in parsed_payload],
-                dtype=np.float64,
+                dtype=np.float32,
             )
             intensity_array = np.asarray(
                 [float(item["intensity"]) for item in parsed_payload],
-                dtype=np.float64,
+                dtype=np.float32,
             )
             return mz_array, intensity_array
 
         if isinstance(first_item, (list, tuple)) and len(first_item) >= 2:
             mz_values = [float(item[0]) for item in parsed_payload]
             intensity_values = [float(item[1]) for item in parsed_payload]
-            mz_array = np.asarray(mz_values, dtype=np.float64)
-            intensity_array = np.asarray(intensity_values, dtype=np.float64)
+            mz_array = np.asarray(mz_values, dtype=np.float32)
+            intensity_array = np.asarray(intensity_values, dtype=np.float32)
             return mz_array, intensity_array
 
         if len(parsed_payload) == 2 and all(
             isinstance(item, (list, tuple)) for item in parsed_payload
         ):
-            mz_array = np.asarray(parsed_payload[0], dtype=np.float64)
-            intensity_array = np.asarray(parsed_payload[1], dtype=np.float64)
+            mz_array = np.asarray(parsed_payload[0], dtype=np.float32)
+            intensity_array = np.asarray(parsed_payload[1], dtype=np.float32)
             if mz_array.shape != intensity_array.shape:
                 raise ValueError("Legacy peaks tuple has mismatched array shapes.")
             return mz_array, intensity_array
@@ -471,11 +471,11 @@ def _validate_decoded_legacy_arrays(
     --------
     >>> _validate_decoded_legacy_arrays(mz_array, intensity_array)
     """
-    if mz_array.dtype != np.float64:
-        mz_array = mz_array.astype(np.float64)
+    if mz_array.dtype != np.float32:
+        mz_array = mz_array.astype(np.float32)
 
-    if intensity_array.dtype != np.float64:
-        intensity_array = intensity_array.astype(np.float64)
+    if intensity_array.dtype != np.float32:
+        intensity_array = intensity_array.astype(np.float32)
 
     if mz_array.shape != intensity_array.shape:
         raise ValueError("Decoded legacy arrays have mismatched shapes.")
@@ -492,7 +492,7 @@ def _serialize_peak_arrays(
     intensity_array: np.ndarray,
 ) -> tuple[bytes, bytes]:
     """
-    Serialize validated fragment arrays as float64 BLOBs.
+    Serialize validated fragment arrays as float32 BLOBs.
 
     Parameters
     ----------
@@ -510,9 +510,9 @@ def _serialize_peak_arrays(
     --------
     >>> mz_blob, intensity_blob = _serialize_peak_arrays(mz_array, intensity_array)
     """
-    mz_float64 = np.asarray(mz_array, dtype=np.float64)
-    intensity_float64 = np.asarray(intensity_array, dtype=np.float64)
-    return mz_float64.tobytes(), intensity_float64.tobytes()
+    mz_float32 = np.asarray(mz_array, dtype=np.float32)
+    intensity_float32 = np.asarray(intensity_array, dtype=np.float32)
+    return mz_float32.tobytes(), intensity_float32.tobytes()
 
 
 def _create_backup_table_name() -> str:
@@ -783,10 +783,10 @@ def migrate_legacy_peaks_database(
         validation_rows = cursor.fetchall()
         for validation_row in validation_rows:
             migrated_mz_array = np.frombuffer(
-                validation_row["mz_array"], dtype=np.float64
+                validation_row["mz_array"], dtype=np.float32
             ).copy()
             migrated_intensity_array = np.frombuffer(
-                validation_row["intensity_array"], dtype=np.float64
+                validation_row["intensity_array"], dtype=np.float32
             ).copy()
             _validate_decoded_legacy_arrays(migrated_mz_array, migrated_intensity_array)
 
@@ -960,9 +960,9 @@ class SpectralDatabase:
             if spectrum is None:
                 continue
 
-            mz_array_raw = np.asarray(spectrum.peaks.mz, dtype=np.float64)
+            mz_array_raw = np.asarray(spectrum.peaks.mz, dtype=np.float32)
             intensity_array_raw = np.asarray(
-                spectrum.peaks.intensities, dtype=np.float64
+                spectrum.peaks.intensities, dtype=np.float32
             )
 
             # Fast scan for Tyrosine immonium ion (136.076 Da)
@@ -1081,8 +1081,8 @@ class SpectralDatabase:
         if "triage_flags" in row.keys() and row["triage_flags"]:
             triage = json.loads(row["triage_flags"])
             metadata.update(triage)
-        mz_array = np.frombuffer(row["mz_array"], dtype=np.float64).copy()
-        intensity_array = np.frombuffer(row["intensity_array"], dtype=np.float64).copy()
+        mz_array = np.frombuffer(row["mz_array"], dtype=np.float32).copy()
+        intensity_array = np.frombuffer(row["intensity_array"], dtype=np.float32).copy()
         return Spectrum(mz=mz_array, intensities=intensity_array, metadata=metadata)
 
     def get_total_spectra_count(self) -> int:

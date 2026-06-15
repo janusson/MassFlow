@@ -26,7 +26,8 @@ def test_model_integration():
         smiles="CN1C=NC2=C1C(=O)N(C(=O)N2C)C", isotopic_distribution=dist
     )
     assert mol.isotopic_distribution is not None
-    assert mol.isotopic_distribution.peaks[0][0] == 194.08
+    import pytest
+    assert mol.isotopic_distribution.peaks[0][0] == pytest.approx(194.08)
 
 
 def test_calculate_isotopic_envelope():

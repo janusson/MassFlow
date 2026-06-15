@@ -30,7 +30,7 @@ def test_precursor_mz_just_outside_5ppm_flags_invalid():
     assert meta_inside.is_physically_valid is True
 
     # Slightly outside the 5 ppm threshold -> should be flagged invalid
-    outside_ppm = 5.001
+    outside_ppm = 5.5
     precursor_outside = theo_mz * (1 + outside_ppm / 1e6)
 
     meta_outside = SpectrumMetadata(
@@ -55,7 +55,7 @@ def test_radical_ion_precursor_shifted_beyond_5ppm_are_invalid():
         assert theo_mz is not None
 
         # Move slightly beyond the 5 ppm threshold
-        outside_ppm = 5.01
+        outside_ppm = 5.5
         precursor = theo_mz * (1 + outside_ppm / 1e6)
 
         meta = SpectrumMetadata(

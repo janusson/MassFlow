@@ -207,6 +207,15 @@ def process_spectra_batch(
     if not spectra:
         return []
 
+    # 0. Enforce float32 at ingestion
+    for s in spectra:
+        if s is not None and getattr(s, "peaks", None) is not None:
+            if s.peaks.mz.dtype != np.float32 or s.peaks.intensities.dtype != np.float32:
+                s.peaks = type(s.peaks)(
+                    np.asarray(s.peaks.mz, dtype=np.float32),
+                    np.asarray(s.peaks.intensities, dtype=np.float32)
+                )
+
     # 1. Extract metadata into a Polars LazyFrame for fast batch validation
     metadata_rows = []
     for i, s in enumerate(spectra):

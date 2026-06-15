@@ -6,9 +6,15 @@ pipeline: molecular structure validation, spectral metadata with adduct-aware
 precursor mass verification, and theoretical isotopic distributions.
 """
 
-from typing import List, Literal, Optional
+from typing import Annotated, Any, List, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+import numpy as np
+from pydantic import BaseModel, ConfigDict, Field, PlainValidator, model_validator
+
+def _cast_float32(v: Any) -> float:
+    return float(np.float32(v)) if v is not None else None
+
+Float32 = Annotated[float, PlainValidator(_cast_float32)]
 from rdkit import Chem
 from rdkit.Chem import Descriptors
 
@@ -20,7 +26,7 @@ class IsotopicDistribution(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    peaks: List[tuple[float, float]] = Field(
+    peaks: List[tuple[Float32, Float32]] = Field(
         ...,
         description="List of (centroid_mass, relative_abundance) tuples representing the M, M+1, M+2... isotopic peaks.",
     )
@@ -37,13 +43,13 @@ class MolecularStructure(BaseModel):
     smiles: Optional[str] = Field(None, description="Canonical SMILES")
     inchi: Optional[str] = Field(None, description="Standard InChI")
     formula: Optional[str] = Field(None, description="Chemical formula")
-    exact_mass: Optional[float] = Field(
+    exact_mass: Optional[Float32] = Field(
         None, ge=0, description="Monoisotopic exact mass"
     )
     isotopic_distribution: Optional[IsotopicDistribution] = Field(
         None, description="Theoretical isotopic distribution (mass, abundance) pairs."
     )
-    isotopic_envelope: Optional[List[tuple[float, float]]] = Field(
+    isotopic_envelope: Optional[List[tuple[Float32, Float32]]] = Field(
         None, description="Theoretical isotopic envelope (M, M+1, M+2...)"
     )
     is_physically_valid: bool = Field(
@@ -104,16 +110,16 @@ class SpectrumMetadata(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     spectrum_id: str
-    precursor_mz: float = Field(..., gt=0)
-    retention_time: Optional[float] = Field(None, ge=0, description="RT in seconds")
+    precursor_mz: Float32 = Field(..., gt=0)
+    retention_time: Optional[Float32] = Field(None, ge=0, description="RT in seconds")
     charge: Optional[int] = Field(None, description="Ion charge state (e.g., 1, -1, 2)")
     ion_mode: Optional[Literal["positive", "negative", "neutral"]] = None
-    collision_energy: Optional[float] = None
+    collision_energy: Optional[Float32] = None
     adduct: Optional[str] = Field(
         None, description="Ionization adduct (e.g., [M+H]+, [M-H]-)"
     )
     molecule: Optional[MolecularStructure] = None
-    experimental_isotopic_envelope: Optional[List[tuple[float, float]]] = Field(
+    experimental_isotopic_envelope: Optional[List[tuple[Float32, Float32]]] = Field(
         default=None,
         description="Experimental MS1 isotopic envelope (mz, abundance) pairs if available.",
     )

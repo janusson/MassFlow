@@ -37,8 +37,8 @@ def _spectrum(
     }
     meta.update(extra_meta)
     return Spectrum(
-        mz=np.array(mz, dtype=np.float64),
-        intensities=np.array(intensities, dtype=np.float64),
+        mz=np.array(mz, dtype=np.float32),
+        intensities=np.array(intensities, dtype=np.float32),
         metadata=meta,
     )
 
@@ -194,8 +194,8 @@ def test_missing_precursor_fails_safely(caplog: pytest.LogCaptureFixture) -> Non
 
     # Deliberately omit precursor_mz from metadata
     query_bad = Spectrum(
-        mz=np.array([100.0, 200.0], dtype=np.float64),
-        intensities=np.array([1.0, 1.0], dtype=np.float64),
+        mz=np.array([100.0, 200.0], dtype=np.float32),
+        intensities=np.array([1.0, 1.0], dtype=np.float32),
         metadata={
             "id": "q_no_precursor",
             "compound_name": "bad_query",

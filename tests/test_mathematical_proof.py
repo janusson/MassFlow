@@ -25,8 +25,8 @@ def _make_spectrum(
 ) -> Spectrum:
     """Build a matchms.Spectrum with the mandatory metadata fields."""
     return Spectrum(
-        mz=np.array(mz, dtype=np.float64),
-        intensities=np.array(intensities, dtype=np.float64),
+        mz=np.array(mz, dtype=np.float32),
+        intensities=np.array(intensities, dtype=np.float32),
         metadata={
             "precursor_mz": precursor_mz,
             "id": spec_id,
