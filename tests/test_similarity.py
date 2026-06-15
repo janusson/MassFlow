@@ -290,3 +290,70 @@ def test_calculate_fdr_empty_arrays():
     # With monotonicity enforced by minimum.accumulate, q-values for both are 0.5
     np.testing.assert_allclose(q, np.array([0.5, 0.5]))
     assert np.all(t)
+
+
+def test_rt_tolerance_filtering() -> None:
+    """Verify that matches outside the retention time tolerance are rejected."""
+    query = Spectrum(
+        mz=np.array([100.0, 200.0, 300.0], dtype="float"),
+        intensities=np.array([1.0, 1.0, 1.0], dtype="float"),
+        metadata={"id": "query1", "precursor_mz": 400.0, "retention_time": 600.0},
+    )
+
+    # Reference within RT tolerance
+    ref_match = Spectrum(
+        mz=np.array([100.0, 200.0, 300.0], dtype="float"),
+        intensities=np.array([1.0, 1.0, 1.0], dtype="float"),
+        metadata={"id": "ref1", "precursor_mz": 400.0, "retention_time": 600.5},
+    )
+
+    # Reference outside RT tolerance
+    ref_nomatch = Spectrum(
+        mz=np.array([100.0, 200.0, 300.0], dtype="float"),
+        intensities=np.array([1.0, 1.0, 1.0], dtype="float"),
+        metadata={"id": "ref2", "precursor_mz": 400.0, "retention_time": 602.0},
+    )
+
+    # Reference with missing RT
+    ref_missing = Spectrum(
+        mz=np.array([100.0, 200.0, 300.0], dtype="float"),
+        intensities=np.array([1.0, 1.0, 1.0], dtype="float"),
+        metadata={"id": "ref3", "precursor_mz": 400.0},
+    )
+
+    config = SimilarityConfig(
+        algorithm="cosine",
+        ms1_tolerance=10.0,
+        ms2_tolerance=10.0,
+        rt_tolerance=1.0,
+        min_score=0.0,
+        min_matched_peaks=0,
+    )
+    engine = SimilarityEngine(config)
+
+    results = engine.search(
+        query_spectra=[query],
+        reference_spectra=[ref_match, ref_nomatch, ref_missing],
+        include_decoys=False,
+    )
+
+    matched_ids = {r["reference_id"] for r in results}
+
+    assert "ref1" in matched_ids, "Reference within RT tolerance was rejected."
+    assert "ref2" not in matched_ids, "Reference outside RT tolerance was not rejected."
+    assert "ref3" in matched_ids, "Reference with missing RT was rejected."
+
+    # Test with query missing RT
+    query_missing_rt = Spectrum(
+        mz=np.array([100.0, 200.0, 300.0], dtype="float"),
+        intensities=np.array([1.0, 1.0, 1.0], dtype="float"),
+        metadata={"id": "query2", "precursor_mz": 400.0},
+    )
+
+    results_missing = engine.search(
+        query_spectra=[query_missing_rt],
+        reference_spectra=[ref_nomatch],
+        include_decoys=False,
+    )
+
+    assert len(results_missing) == 1, "Query missing RT rejected a reference."
