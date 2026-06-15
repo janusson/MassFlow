@@ -237,7 +237,7 @@ def _build_results_dataframe(
         clean_results.append(clean_r)
 
     if query_spectra is not None:
-        q_ids, q_mzs, q_rts = [], [], []
+        q_ids, q_mzs, q_rts, q_adducts = [], [], [], []
         for q in query_spectra:
             q_ids.append(str(q.get("id")))
             q_mz = q.get("precursor_mz")
@@ -245,16 +245,22 @@ def _build_results_dataframe(
             q_mzs.append(float(q_mz) if q_mz is not None else None)
             q_rts.append(float(q_rt) if q_rt is not None else None)
 
+            # Extract adduct from query, fallback to None if not present
+            adduct_val = q.get("adduct")
+            q_adducts.append(str(adduct_val) if adduct_val is not None else None)
+
         base_df = pl.DataFrame(
             {
                 "query_id": q_ids,
                 "query_precursor_mz": q_mzs,
                 "query_retention_time": q_rts,
+                "adduct": q_adducts,
             },
             schema={
                 "query_id": pl.Utf8,
                 "query_precursor_mz": pl.Float64,
                 "query_retention_time": pl.Float64,
+                "adduct": pl.Utf8,
             },
         )
 
@@ -274,6 +280,34 @@ def _build_results_dataframe(
         if not clean_results:
             return None
         df = pl.DataFrame(clean_results)
+
+    # Ensure adduct column exists if query_spectra was not provided
+    if "adduct" not in df.columns:
+        df = df.with_columns(pl.lit(None).alias("adduct"))
+
+    # Ensure smiles and inchikey columns exist, and fill nulls with 'N/A' or empty strings
+    for col in ["smiles", "inchikey"]:
+        if col not in df.columns:
+            df = df.with_columns(pl.lit("N/A").alias(col))
+        else:
+            df = df.with_columns(
+                pl.when(pl.col(col).is_null() | (pl.col(col) == ""))
+                .then(pl.lit("N/A"))
+                .otherwise(pl.col(col))
+                .alias(col)
+            )
+
+    # Ensure mass_error_ppm column exists
+    if "mass_error_ppm" not in df.columns:
+        if "query_precursor_mz" in df.columns and "reference_precursor_mz" in df.columns:
+            df = df.with_columns(
+                pl.when(pl.col("query_precursor_mz").is_not_null() & pl.col("reference_precursor_mz").is_not_null() & (pl.col("reference_precursor_mz") > 0))
+                .then(((pl.col("query_precursor_mz") - pl.col("reference_precursor_mz")).abs() / pl.col("reference_precursor_mz")) * 1e6)
+                .otherwise(pl.lit(None).cast(pl.Float64))
+                .alias("mass_error_ppm")
+            )
+        else:
+            df = df.with_columns(pl.lit(None).cast(pl.Float64).alias("mass_error_ppm"))
 
     # Add Annotation_Status
     if "score" in df.columns:

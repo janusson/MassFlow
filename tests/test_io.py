@@ -170,5 +170,5 @@ def test_save_match_results_to_mztab(tmp_path):
     with open(out_path, "r") as f:
         content = f.read()
         assert "MTD\tmzTab-version\t2.0.0-M" in content
-        assert "SMH\tquery_id\treference_id\tscore\tAnnotation_Status" in content
-        assert "SML\tq1\tr1\t0.95\tMatched" in content
+        assert "SMH\tquery_id\treference_id\tscore\tadduct\tsmiles\tinchikey\tmass_error_ppm\tAnnotation_Status" in content
+        assert "SML\tq1\tr1\t0.95\t\tN/A\tN/A\t\tMatched" in content

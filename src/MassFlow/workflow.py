@@ -181,6 +181,14 @@ def _process_single_file(
             res["q_value"] = q_val
             res["p_value"] = p_val
 
+            # Calculate mass_error_ppm
+            q_mz = res.get("query_precursor_mz")
+            ref_mz = res.get("reference_precursor_mz")
+            if q_mz is not None and ref_mz is not None and ref_mz > 0:
+                res["mass_error_ppm"] = (abs(q_mz - ref_mz) / ref_mz) * 1e6
+            else:
+                res["mass_error_ppm"] = None
+
             # MODIFIED FILTERING:
             # If small library, use p-value for filtering instead of sparse q-value
             filter_metric = p_val if is_small_library else q_val
