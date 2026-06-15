@@ -14,6 +14,7 @@ single monolithic matrix, and false discovery rate filtering is applied after
 aggregating all chunk results for each experimental file.
 """
 
+import itertools
 import logging
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
@@ -88,26 +89,13 @@ def _process_single_file(
     """
     try:
         query_gen = io.load_spectra(query_file, file_format=config.input.format)
-        query_spectra = list(processing.process_spectra(query_gen, config.processing))
+        query_iter = iter(processing.process_spectra(query_gen, config.processing))
 
-        if not query_spectra:
-            return query_file, [], []
-
-        # Ensure unique IDs for nodes
         seen_ids = set()
-        for i, q in enumerate(query_spectra):
-            base_id = q.get("id")
-            if base_id is None:
-                new_id = f"{query_file.stem}_query_{i}"
-            else:
-                new_id = str(base_id)
-                counter = 1
-                while new_id in seen_ids:
-                    new_id = f"{base_id}_{counter}"
-                    counter += 1
+        query_idx = 0
 
-            q.set("id", new_id)
-            seen_ids.add(new_id)
+        all_query_spectra = []
+        all_results = []
 
         global _worker_engine, _worker_references, _worker_decoys
         engine = (
@@ -116,25 +104,55 @@ def _process_single_file(
             else get_similarity_engine(config.similarity)
         )
 
-        standard_queries = query_spectra
+        while True:
+            chunk = list(itertools.islice(query_iter, 1000))
+            if not chunk:
+                break
 
-        # Search against shared memory libraries if available (from Pool initializer)
-        if _worker_references is not None and _worker_decoys is not None:
-            all_references = _worker_references + _worker_decoys
-            all_results = engine.search(
-                standard_queries, all_references, include_decoys=False
-            )
-        else:
-            # Fallback for single-process testing or direct invocation, streaming the library
-            all_results = []
-            if config.input.library_path is None:
-                raise ValueError("Library path is not configured.")
-            ref_gen = io.load_spectra(config.input.library_path)
-            ref_iterator = processing.process_spectra(ref_gen, config.processing)
+            # Ensure unique IDs for nodes in the chunk
+            for q in chunk:
+                base_id = q.get("id")
+                if base_id is None:
+                    new_id = f"{query_file.stem}_query_{query_idx}"
+                else:
+                    new_id = str(base_id)
+                    counter = 1
+                    while new_id in seen_ids:
+                        new_id = f"{base_id}_{counter}"
+                        counter += 1
 
-            all_results = engine.search(
-                standard_queries, ref_iterator, include_decoys=True
-            )
+                q.set("id", new_id)
+                seen_ids.add(new_id)
+                query_idx += 1
+
+            # Accumulate query spectra (we need them for the exporter later)
+            all_query_spectra.extend(chunk)
+
+            # Search against shared memory libraries if available (from Pool initializer)
+            if _worker_references is not None and _worker_decoys is not None:
+                all_references = _worker_references + _worker_decoys
+                chunk_results = engine.search(
+                    chunk, all_references, include_decoys=False
+                )
+            else:
+                # Fallback for single-process testing or direct invocation, streaming the library
+                if config.input.library_path is None:
+                    raise ValueError("Library path is not configured.")
+                ref_gen = io.load_spectra(config.input.library_path)
+                ref_iterator = processing.process_spectra(ref_gen, config.processing)
+
+                chunk_results = engine.search(
+                    chunk, ref_iterator, include_decoys=True
+                )
+
+            all_results.extend(chunk_results)
+
+            # Clear the chunk variables to free up matrix memory before the next iteration
+            del chunk_results
+            del chunk
+
+        if not all_query_spectra:
+            return query_file, [], []
 
         # Global FDR calculation across all chunks for this experimental file
         target_scores = []
@@ -191,7 +209,7 @@ def _process_single_file(
         # Sort results descending by score
         fdr_filtered_results.sort(key=lambda x: x["score"], reverse=True)
 
-        return query_file, query_spectra, fdr_filtered_results
+        return query_file, all_query_spectra, fdr_filtered_results
 
     except Exception as e:
         logger.error(f"Failed to process {query_file}: {e}", exc_info=True)
