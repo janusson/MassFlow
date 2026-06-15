@@ -1,27 +1,43 @@
 project:
-  name: "MassFlow_Annotation_Test"
-  # Results will be saved in a subfolder named by the run
-  output_directory: "results/test_run"
+  name: "My_MassFlow_Analysis"
+  # All analysis results (CSV/mzTab + YAML report) will be written here
+  output_directory: "results/run_01"
 
 input:
-  # Automatically detects mzML, mzXML, MSP, MGF, etc.
-  input_path: "../MassFlow_Data/experiments/example_spectrum.MSP"
-  library_path: "../MassFlow_Data/libraries/ALL_GNPS.msp"
-  format: null
+  # Accepts either a single file or a directory to search recursively
+  input_path: "tutorial/tutorial_experimental.mgf"
+  # Can be an open-format spectral file (.msp, .mgf) or a compiled MassFlow SQLite db
+  library_path: "tutorial/tutorial_library.msp"
+  # Formats like mzml, mzxml, mgf, msp are supported. Vendor formats (.raw, .d) are unsupported.
+  format: "mzml"
 
-processing: # basic cleaning only
+processing:
+  # Normalizes metadata and automatically checks for acceptable adducts.
+  # E.g., [M+H]+, [M+Na]+, [M-H]-, etc.
   clean_metadata: true
-  normalize_intensity: true
+  # Remove low intensity noise from spectra
+  filter_by_intensity: true
+  noise_threshold: 1000.0
+  # Keep only the N most intense peaks to accelerate searching and reduce false positives
   reduce_to_top_n_peaks: true
   n_max: 100
+  # Normalize peak intensities (usually to base peak = 1.0)
+  normalize_intensity: true
 
 similarity:
+  # Similarity algorithm: 'cosine' or 'modified_cosine'
   algorithm: "cosine"
+  # Tolerance units. Can be "Da" (Daltons) or "ppm" (Parts Per Million)
+  tolerance_unit: "Da"
+  # Precursor (MS1) and Fragment (MS2) tolerances. Make sure these match the chosen unit!
   ms1_tolerance: 0.02
   ms2_tolerance: 0.02
   min_score: 0.7
+  min_matched_peaks: 3
+  # False Discovery Rate threshold. If you have a small library (<2000 spectra), this
+  # should be increased or ignored, as decoy stats are invalid for small N.
   fdr_threshold: 0.05
 
 export:
-  # Available formats: "csv", "mztab"
+  # Formats: "csv", "mztab". We recommend "csv" for easy Excel/Pandas review.
   format: "csv"

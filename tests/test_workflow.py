@@ -235,13 +235,26 @@ def test_run_annotation_pipeline_small_library_warning_threshold(
         ),
     )
 
-    with caplog.at_level(logging.WARNING):
+    # Capture standard output for the rich console
+    from unittest.mock import patch
+    import MassFlow.cli
+
+    with patch.object(MassFlow.cli.console, 'print') as mock_print:
         run_annotation_pipeline(config)
 
-    found_warning = any(
-        "CRITICAL SCIENTIFIC WARNING: SMALL LIBRARY DETECTED" in record.message
-        for record in caplog.records
-    )
+        output = ""
+        for call_args in mock_print.call_args_list:
+            args, kwargs = call_args
+            if args:
+                # The first argument is typically the Panel or string
+                panel_or_str = args[0]
+                # If it's a Panel, it has a renderable attribute which is the warning string
+                if hasattr(panel_or_str, "renderable"):
+                    output += str(panel_or_str.renderable)
+                else:
+                    output += str(panel_or_str)
+
+    found_warning = "CRITICAL SCIENTIFIC WARNING: SMALL LIBRARY DETECTED" in output
     assert found_warning is should_warn
     mock_save.assert_called_once()
     mock_save_report.assert_called_once()

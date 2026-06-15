@@ -280,7 +280,7 @@ def _write_analysis_report(
 
 def run_annotation_pipeline(
     config: MassFlowConfig, config_path: Path | str | None = None
-) -> None:
+) -> Dict[str, Any] | None:
     """
     Execute the full MassFlow annotation workflow.
 
@@ -336,35 +336,43 @@ def run_annotation_pipeline(
         decoy_spectra = None
     else:
         logger.info(f"Loading library: {config.input.library_path}")
-        ref_gen = io.load_spectra(config.input.library_path)
-        reference_spectra = list(processing.process_spectra(ref_gen, config.processing))
 
-        if not reference_spectra:
-            raise ValueError("No valid spectra found in library.")
+        from rich.progress import Progress, SpinnerColumn, TextColumn
+        from MassFlow.cli import console
 
-        logger.info(
-            f"Loaded {len(reference_spectra)} reference spectra. Generating decoys for FDR calculation..."
-        )
-        from MassFlow.similarity import generate_decoys
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+            transient=True,
+        ) as progress:
+            task = progress.add_task(f"Loading library from {Path(config.input.library_path).name}...", total=None)
+            ref_gen = io.load_spectra(config.input.library_path)
+            reference_spectra = list(processing.process_spectra(ref_gen, config.processing))
 
-        decoy_spectra = generate_decoys(reference_spectra)
+            if not reference_spectra:
+                raise ValueError("No valid spectra found in library.")
+
+            progress.update(task, description=f"Loaded {len(reference_spectra)} reference spectra. Generating decoys...")
+            from MassFlow.similarity import generate_decoys
+            decoy_spectra = generate_decoys(reference_spectra)
 
         if len(reference_spectra) < 2000:
-            logger.warning(
-                f"\n"
-                f"================================================================================\n"
-                f"CRITICAL SCIENTIFIC WARNING: SMALL LIBRARY DETECTED\n"
-                f"The library contains only {len(reference_spectra)} spectra. \n"
+            from rich.panel import Panel
+
+            warning_text = (
+                f"[bold red]CRITICAL SCIENTIFIC WARNING: SMALL LIBRARY DETECTED[/bold red]\n\n"
+                f"The library contains only [bold]{len(reference_spectra)}[/bold] spectra. \n"
                 f"Target-Decoy False Discovery Rate (FDR) statistics are fundamentally invalid on \n"
                 f"small sample sizes because the decoy null-distribution will be too sparse. \n"
-                f"A strict FDR threshold (currently set to {getattr(config.similarity, 'fdr_threshold', 0.01)}) will "
+                f"A strict FDR threshold (currently set to [bold]{getattr(config.similarity, 'fdr_threshold', 0.01)}[/bold]) will "
                 f"likely eliminate all true and putative matches as false positives.\n\n"
-                f"Recommendation:\n"
+                f"[bold yellow]Recommendation:[/bold yellow]\n"
                 f"1. Use a comprehensive library (e.g., GNPS, MoNA, NIST) for FDR validation.\n"
                 f"2. Or, if using a small specialized library, relax the `fdr_threshold` \n"
-                f"   (e.g., 0.1 or 1.0) in your config to evaluate raw Cosine scores directly.\n"
-                f"================================================================================\n"
+                f"   (e.g., 0.1 or 1.0) in your config to evaluate raw Cosine scores directly."
             )
+            console.print(Panel(warning_text, border_style="red", title="Warning", expand=False))
 
     # 2. Determine Input Files
     input_files = []
@@ -402,38 +410,70 @@ def run_annotation_pipeline(
 
     logger.info(f"Processing {len(input_files)} experimental files...")
 
-    if len(input_files) == 1:
-        # Optimization for single file: avoid ProcessPool overhead and pickling
-        qf = input_files[0]
-        # For single process, do not pre-populate worker references so the single-process
-        # code path exercises the same streaming and loading behavior as the multi-process
-        # path (keeps test expectations aligned with integration tests).
-        processed_file, q_spectra, results = _process_single_file(qf, config)
-        _handle_file_results(
-            processed_file, q_spectra, results, config, config_path=config_path
-        )
-    else:
-        with ProcessPoolExecutor(
-            initializer=_init_worker,
-            initargs=(config, reference_spectra, decoy_spectra),
-        ) as executor:
-            futures = {
-                executor.submit(_process_single_file, qf, config): qf
-                for qf in input_files
-            }
+    from rich.progress import Progress, BarColumn, TextColumn, TimeElapsedColumn
+    from MassFlow.cli import console
 
-            for future in as_completed(futures):
-                qf = futures[future]
-                try:
-                    processed_file, q_spectra, results = future.result()
-                    _handle_file_results(
-                        processed_file,
-                        q_spectra,
-                        results,
-                        config,
-                        config_path=config_path,
-                    )
-                except Exception as e:
-                    logger.error(f"Worker failed for {qf}: {e}")
+    total_queries = 0
+    total_matches = 0
+    results_summary = []
+
+    with Progress(
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        "[progress.percentage]{task.percentage:>3.0f}%",
+        TimeElapsedColumn(),
+        console=console,
+    ) as progress:
+        task = progress.add_task("Processing files...", total=len(input_files))
+
+        if len(input_files) == 1:
+            # Optimization for single file: avoid ProcessPool overhead and pickling
+            qf = input_files[0]
+            # For single process, do not pre-populate worker references so the single-process
+            # code path exercises the same streaming and loading behavior as the multi-process
+            # path (keeps test expectations aligned with integration tests).
+            processed_file, q_spectra, results = _process_single_file(qf, config)
+            _handle_file_results(
+                processed_file, q_spectra, results, config, config_path=config_path
+            )
+            total_queries += len(q_spectra)
+            total_matches += len(results)
+            results_summary.append((processed_file.name, len(q_spectra), len(results)))
+            progress.advance(task)
+        else:
+            with ProcessPoolExecutor(
+                initializer=_init_worker,
+                initargs=(config, reference_spectra, decoy_spectra),
+            ) as executor:
+                futures = {
+                    executor.submit(_process_single_file, qf, config): qf
+                    for qf in input_files
+                }
+
+                for future in as_completed(futures):
+                    qf = futures[future]
+                    try:
+                        processed_file, q_spectra, results = future.result()
+                        _handle_file_results(
+                            processed_file,
+                            q_spectra,
+                            results,
+                            config,
+                            config_path=config_path,
+                        )
+                        total_queries += len(q_spectra)
+                        total_matches += len(results)
+                        results_summary.append((processed_file.name, len(q_spectra), len(results)))
+                    except Exception as e:
+                        logger.error(f"Worker failed for {qf}: {e}")
+                    finally:
+                        progress.advance(task)
 
     logger.info("Pipeline Finished.")
+
+    return {
+        "total_files": len(input_files),
+        "total_queries": total_queries,
+        "total_matches": total_matches,
+        "results_summary": results_summary
+    }

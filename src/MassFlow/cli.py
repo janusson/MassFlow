@@ -84,30 +84,46 @@ def run_init(
 
     template = """project:
   name: "My_MassFlow_Analysis"
+  # All analysis results (CSV/mzTab + YAML report) will be written here
   output_directory: "results/run_01"
 
 input:
+  # Accepts either a single file or a directory to search recursively
   input_path: "../MassFlow_Data/experiments/"
+  # Can be an open-format spectral file (.msp, .mgf) or a compiled MassFlow SQLite db
   library_path: "../MassFlow_Data/libraries/example_library.msp"
+  # Formats like mzml, mzxml, mgf, msp are supported. Vendor formats (.raw, .d) are unsupported.
   format: "mzml"
 
 processing:
+  # Normalizes metadata and automatically checks for acceptable adducts.
+  # E.g., [M+H]+, [M+Na]+, [M-H]-, etc.
   clean_metadata: true
+  # Remove low intensity noise from spectra
   filter_by_intensity: true
   noise_threshold: 1000.0
+  # Keep only the N most intense peaks to accelerate searching and reduce false positives
   reduce_to_top_n_peaks: true
   n_max: 100
+  # Normalize peak intensities (usually to base peak = 1.0)
   normalize_intensity: true
 
 similarity:
+  # Similarity algorithm: 'cosine' or 'modified_cosine'
   algorithm: "cosine"
+  # Tolerance units. Can be "Da" (Daltons) or "ppm" (Parts Per Million)
+  tolerance_unit: "Da"
+  # Precursor (MS1) and Fragment (MS2) tolerances. Make sure these match the chosen unit!
   ms1_tolerance: 0.02
   ms2_tolerance: 0.02
   min_score: 0.7
   min_matched_peaks: 3
+  # False Discovery Rate threshold. If you have a small library (<2000 spectra), this
+  # should be increased or ignored, as decoy stats are invalid for small N.
   fdr_threshold: 0.05
 
 export:
+  # Formats: "csv", "mztab". We recommend "csv" for easy Excel/Pandas review.
   format: "csv"
 """
     try:
@@ -134,10 +150,27 @@ def run_annotate(
 
     try:
         cfg = MassFlowConfig.from_yaml(config)
-        run_annotation_pipeline(cfg, config_path=config)
+        summary = run_annotation_pipeline(cfg, config_path=config)
+
         console.print(
-            f"[bold green]✓ Annotation complete![/bold green] Results saved to {cfg.project.output_directory}"
+            f"[bold green]✓ Annotation complete![/bold green] Results saved to {cfg.project.output_directory}\n"
         )
+
+        if summary:
+            from rich.table import Table
+
+            table = Table(title="Annotation Run Summary", expand=True)
+            table.add_column("Experimental File", style="cyan", no_wrap=True)
+            table.add_column("Total Queries Processed", justify="right", style="magenta")
+            table.add_column("Matches Found", justify="right", style="green")
+
+            for result in summary.get("results_summary", []):
+                file_name, queries, matches = result
+                table.add_row(file_name, str(queries), str(matches))
+
+            console.print(table)
+            console.print()
+
     except Exception as e:
         logger.error(f"Annotation failed: {e}")
         raise typer.Exit(1)
@@ -210,7 +243,16 @@ def run_db_build(
         raw_spectra = io.load_spectra(Path(input))
         cleaned_spectra = processing.process_spectra(raw_spectra, cfg.processing)
 
-        added = db.add_spectra(cleaned_spectra, category=category)
+        from rich.progress import Progress, SpinnerColumn, TextColumn
+
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+            transient=True,
+        ) as progress:
+            progress.add_task(f"Building database from {Path(input).name}...", total=None)
+            added = db.add_spectra(cleaned_spectra, category=category)
 
         if added == 0:
             raise ValueError(f"No valid spectra were extracted from {input}.")
