@@ -578,9 +578,20 @@ class SimilarityEngine:
             q_mz = q.get("precursor_mz")
             q_mz_val = float(q_mz) if q_mz is not None else None
             q_adduct: str | None = q.get("adduct")  # type: ignore[assignment]
+            q_rt = q.get("retention_time")
 
             for idx in final_indices:
                 ref = all_references[idx]
+
+                # --- RT filtering gate ---
+                if hasattr(self.config, "rt_tolerance") and self.config.rt_tolerance is not None:
+                    ref_rt = ref.get("retention_time")
+                    if not _is_missing(q_rt) and not _is_missing(ref_rt):
+                        try:
+                            if abs(float(q_rt) - float(ref_rt)) > self.config.rt_tolerance:
+                                continue
+                        except (ValueError, TypeError):
+                            pass
 
                 # --- Adduct-mode compatibility gate ---
                 ref_adduct: str | None = ref.get("adduct")  # type: ignore[assignment]

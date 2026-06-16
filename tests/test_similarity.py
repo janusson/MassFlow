@@ -173,6 +173,74 @@ def test_ms1_tolerance_filtering(cocaine_spectrum: Spectrum) -> None:
     assert len(relaxed_results) == 1, "Query inside MS1 tolerance was rejected."
 
 
+def test_rt_tolerance_filtering(cocaine_spectrum: Spectrum) -> None:
+    """Verify that queries outside the RT tolerance are rejected, and missing RTs are handled safely."""
+    orig_precursor = float(cocaine_spectrum.get("precursor_mz"))
+
+    ref_metadata = cocaine_spectrum.metadata.copy()
+    ref_metadata["retention_time"] = 6.0
+    ref_spectrum = Spectrum(
+        mz=cocaine_spectrum.peaks.mz,
+        intensities=cocaine_spectrum.peaks.intensities,
+        metadata=ref_metadata,
+    )
+
+    query_metadata = cocaine_spectrum.metadata.copy()
+    query_metadata["retention_time"] = 5.0
+    query_metadata["id"] = "shifted_rt"
+
+    query_spectrum = Spectrum(
+        mz=cocaine_spectrum.peaks.mz,
+        intensities=cocaine_spectrum.peaks.intensities,
+        metadata=query_metadata,
+    )
+
+    # Config with 0.5 min tolerance (should reject)
+    strict_config = SimilarityConfig(
+        algorithm="cosine", ms1_tolerance=30.0, min_score=0.0, rt_tolerance=0.5
+    )
+    strict_engine = SimilarityEngine(strict_config)
+
+    strict_results = strict_engine.search(
+        query_spectra=[query_spectrum], reference_spectra=[ref_spectrum]
+    )
+    strict_results = [r for r in strict_results if not r.get("is_decoy")]
+
+    assert len(strict_results) == 0, "Query outside RT tolerance was not rejected."
+
+    # Config with 2.0 min tolerance (should accept)
+    relaxed_config = SimilarityConfig(
+        algorithm="cosine", ms1_tolerance=30.0, min_score=0.0, rt_tolerance=2.0
+    )
+    relaxed_engine = SimilarityEngine(relaxed_config)
+
+    relaxed_results = relaxed_engine.search(
+        query_spectra=[query_spectrum], reference_spectra=[ref_spectrum]
+    )
+    relaxed_results = [r for r in relaxed_results if not r.get("is_decoy")]
+
+    assert len(relaxed_results) == 1, "Query inside RT tolerance was rejected."
+
+    # Query with missing RT (should accept)
+    query_metadata_no_rt = cocaine_spectrum.metadata.copy()
+    if "retention_time" in query_metadata_no_rt:
+        del query_metadata_no_rt["retention_time"]
+    query_metadata_no_rt["id"] = "no_rt"
+
+    query_spectrum_no_rt = Spectrum(
+        mz=cocaine_spectrum.peaks.mz,
+        intensities=cocaine_spectrum.peaks.intensities,
+        metadata=query_metadata_no_rt,
+    )
+
+    missing_rt_results = strict_engine.search(
+        query_spectra=[query_spectrum_no_rt], reference_spectra=[ref_spectrum]
+    )
+    missing_rt_results = [r for r in missing_rt_results if not r.get("is_decoy")]
+
+    assert len(missing_rt_results) == 1, "Query with missing RT was incorrectly rejected."
+
+
 def test_min_matched_peaks_filtering() -> None:
     """Verify that matches with fewer than min_matched_peaks are rejected."""
     query = Spectrum(
