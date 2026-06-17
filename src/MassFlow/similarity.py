@@ -586,6 +586,17 @@ class SimilarityEngine:
                 ref_adduct: str | None = ref.get("adduct")  # type: ignore[assignment]
                 if not _adduct_modes_compatible(ref_adduct, q_adduct):
                     continue
+
+                # --- Retention Time Gate ---
+                if getattr(self.config, "rt_tolerance", None) is not None:
+                    # Satisfy mypy that rt_tolerance is definitely float
+                    rt_tol: float = self.config.rt_tolerance  # type: ignore[assignment]
+                    q_rt = q.get("retention_time")
+                    ref_rt = ref.get("retention_time")
+                    if not _is_missing(q_rt) and not _is_missing(ref_rt):
+                        if abs(float(q_rt) - float(ref_rt)) > rt_tol:
+                            continue
+
                 score_val = float(numeric_scores[idx, i])
                 match_val = int(matches_count[idx, i])
 
