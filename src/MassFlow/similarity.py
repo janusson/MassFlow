@@ -579,6 +579,9 @@ class SimilarityEngine:
             q_mz_val = float(q_mz) if q_mz is not None else None
             q_adduct: str | None = q.get("adduct")  # type: ignore[assignment]
 
+            q_rt = q.get("retention_time")
+            q_rt_val = float(q_rt) if not _is_missing(q_rt) else None
+
             for idx in final_indices:
                 ref = all_references[idx]
 
@@ -586,6 +589,16 @@ class SimilarityEngine:
                 ref_adduct: str | None = ref.get("adduct")  # type: ignore[assignment]
                 if not _adduct_modes_compatible(ref_adduct, q_adduct):
                     continue
+
+                # --- Retention Time compatibility gate ---
+                if self.config.rt_tolerance is not None and q_rt_val is not None:
+                    ref_rt = ref.get("retention_time")
+                    ref_rt_val = float(ref_rt) if not _is_missing(ref_rt) else None
+                    if ref_rt_val is not None:
+                        # config.rt_tolerance is in minutes, RT metadata is in seconds
+                        if abs(q_rt_val - ref_rt_val) > self.config.rt_tolerance * 60:
+                            continue
+
                 score_val = float(numeric_scores[idx, i])
                 match_val = int(matches_count[idx, i])
 

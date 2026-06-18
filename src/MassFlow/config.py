@@ -280,6 +280,10 @@ class SimilarityConfig(BaseModel):
         default=0.02, description="Fragment mass tolerance in Da"
     )
 
+    rt_tolerance: Optional[float] = Field(
+        default=None, description="Retention time tolerance in minutes"
+    )
+
     min_score: float = 0.6
     analog_search: bool = False
     min_matched_peaks: int = 3
