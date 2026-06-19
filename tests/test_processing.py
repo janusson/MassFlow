@@ -139,6 +139,7 @@ def test_metadata_processing_with_config(mock_spectrum):
     """Test metadata injection from config."""
     config = ProcessingConfig(instrument="Orbitrap", mode="negative")
     processed = processing.metadata_processing(mock_spectrum, config)
+    assert processed is not None
     assert processed.get("instrument") == "Orbitrap"
     assert processed.get("ionmode") == "negative"
 
@@ -151,6 +152,7 @@ def test_metadata_processing_derivations():
         metadata={"name": "Compound [M+H]+", "adduct": "[M+H]+"},
     )
     processed = processing.metadata_processing(spec)
+    assert processed is not None
     assert processed.get("ionmode") == "positive"
     assert processed.get("charge") == 1
 
@@ -171,6 +173,7 @@ def test_peak_processing_noise_threshold(noisy_spectrum):
 
     # Should keep 50.0, 100.0, 50.0 (indices 2, 3, 4) -> m/z 200, 300, 1500
     expected_mzs = [200.0, 300.0, 1500.0]
+    assert processed is not None
     assert np.allclose(processed.peaks.mz, expected_mzs)
 
 
@@ -189,6 +192,7 @@ def test_peak_processing_fallback_min_intensity(noisy_spectrum):
 
     # Should keep 50.0, 100.0, 50.0
     expected_mzs = [200.0, 300.0, 1500.0]
+    assert processed is not None
     assert np.allclose(processed.peaks.mz, expected_mzs)
 
 
@@ -270,6 +274,7 @@ def test_metadata_processing_toggles_disabled():
     processed = processing.metadata_processing(spec, config)
 
     # Assertions to ensure it was NOT cleaned
+    assert processed is not None
     assert processed.get("compound_name") == "   MESSY NAME [M+H]+  "
     assert processed.get("charge") is None  # Never derived
 
@@ -297,6 +302,7 @@ def test_peak_processing_toggles_disabled():
     processed = processing.peak_processing(spec, config)
 
     # Assertions to ensure peaks were untouched
+    assert processed is not None
     assert len(processed.peaks.mz) == 3
     assert np.allclose(processed.peaks.mz, [10.0, 100.0, 2000.0])
     assert np.allclose(processed.peaks.intensities, [1.0, 10.0, 100.0])

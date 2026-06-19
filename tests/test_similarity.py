@@ -23,8 +23,9 @@ def cocaine_spectrum() -> Spectrum:
     from matchms.reference_spectra.cocaine import cocaine
 
     spec = cocaine()
-    if spec.get("precursor_mz") is None:
-        pytest.fail("Found Cocaine spectrum, but missing precursor_mz.")
+    assert (
+        spec.get("precursor_mz") is not None
+    ), "Found Cocaine spectrum, but missing precursor_mz."
     return spec
 
 
@@ -47,7 +48,9 @@ def methylene_homolog(cocaine_spectrum: Spectrum) -> Spectrum:
 
     orig_mz = cocaine_spectrum.peaks.mz
     orig_ints = cocaine_spectrum.peaks.intensities
-    orig_precursor = float(cocaine_spectrum.get("precursor_mz"))
+    precursor_mz = cocaine_spectrum.get("precursor_mz")
+    assert precursor_mz is not None
+    orig_precursor = float(precursor_mz)
 
     shifted_mz = orig_mz + shift
     shifted_precursor = orig_precursor + shift
@@ -133,7 +136,9 @@ def test_ms1_tolerance_filtering(cocaine_spectrum: Spectrum) -> None:
     """Verify that queries outside the MS1 tolerance are rejected."""
     # Create a query with a precursor mz shifted by 20 ppm
     shift_ppm = 20.0
-    orig_precursor = float(cocaine_spectrum.get("precursor_mz"))
+    precursor_mz = cocaine_spectrum.get("precursor_mz")
+    assert precursor_mz is not None
+    orig_precursor = float(precursor_mz)
     shift_da = orig_precursor * (shift_ppm / 1e6)
 
     new_metadata = cocaine_spectrum.metadata.copy()

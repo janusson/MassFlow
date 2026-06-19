@@ -284,6 +284,10 @@ class SimilarityConfig(BaseModel):
     analog_search: bool = False
     min_matched_peaks: int = 3
     fdr_threshold: float = 0.01
+    rt_tolerance: Optional[float] = Field(
+        default=None,
+        description="Optional: Retention time tolerance in minutes. When set, query-reference pairs with an RT difference exceeding this value are rejected.",
+    )
 
     @field_validator("ms1_tolerance", "ms2_tolerance")
     @classmethod

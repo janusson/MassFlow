@@ -9,7 +9,7 @@ It is designed to fail fast on invalid data while logging detailed diagnostics.
 """
 
 import logging
-from typing import Iterator, List, Optional, Tuple
+from typing import Iterable, Iterator, List, Optional, Tuple
 
 import numpy as np
 import polars as pl
@@ -64,7 +64,7 @@ def compute_spectral_metrics(
 
 
 def metadata_processing(
-    spectrum: Spectrum, config: Optional[ProcessingConfig] = None
+    spectrum: Optional[Spectrum], config: Optional[ProcessingConfig] = None
 ) -> Optional[Spectrum]:
     """
     Standardize and repair spectrum metadata using matchms filters.
@@ -147,7 +147,9 @@ def metadata_processing(
     return s
 
 
-def peak_processing(spectrum: Spectrum, config: ProcessingConfig) -> Optional[Spectrum]:
+def peak_processing(
+    spectrum: Optional[Spectrum], config: ProcessingConfig
+) -> Optional[Spectrum]:
     """
     Apply peak-level filters and normalization based on configuration.
     """
@@ -318,7 +320,7 @@ def process_spectra_batch(
 
 
 def process_spectra(
-    spectra: Iterator[Spectrum], config: ProcessingConfig
+    spectra: Iterable[Spectrum], config: ProcessingConfig
 ) -> Iterator[Spectrum]:
     """
     Orchestrate the full spectral processing pipeline.

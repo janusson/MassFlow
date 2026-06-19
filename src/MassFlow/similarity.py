@@ -28,6 +28,26 @@ from MassFlow.config import SimilarityConfig
 logger = logging.getLogger(__name__)
 
 
+def calculate_mass_error_ppm(query_mz: float, ref_mz: float) -> float:
+    """Calculate the mass error in parts-per-million (ppm).
+
+    Mass error (ppm) = |query_mz - ref_mz| / ref_mz * 1e6
+
+    Parameters
+    ----------
+    query_mz : float
+        The precursor m/z of the query spectrum.
+    ref_mz : float
+        The precursor m/z of the reference spectrum.
+
+    Returns
+    -------
+    float
+        The absolute mass error in ppm.
+    """
+    return abs(query_mz - ref_mz) / ref_mz * 1e6
+
+
 def yield_fixed_chunks(
     spectra: Iterable[Spectrum], chunk_size: int = 10000
 ) -> Iterator[List[Spectrum]]:
@@ -586,6 +606,18 @@ class SimilarityEngine:
                 ref_adduct: str | None = ref.get("adduct")  # type: ignore[assignment]
                 if not _adduct_modes_compatible(ref_adduct, q_adduct):
                     continue
+
+                # --- Retention time filtering ---
+                if self.config.rt_tolerance is not None:
+                    q_rt = q.get("retention_time")
+                    ref_rt = ref.get("retention_time")
+                    if (
+                        q_rt is not None
+                        and ref_rt is not None
+                        and abs(float(q_rt) - float(ref_rt)) > self.config.rt_tolerance
+                    ):
+                        continue
+
                 score_val = float(numeric_scores[idx, i])
                 match_val = int(matches_count[idx, i])
 
