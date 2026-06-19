@@ -1,8 +1,10 @@
 import time
-import numpy as np
 from pathlib import Path
-from MassFlow.database import SpectralDatabase
+
+import numpy as np
 from matchms import Spectrum
+
+from MassFlow.database import SpectralDatabase
 
 
 def create_mock_spectrum(mz):
@@ -35,12 +37,13 @@ def benchmark():
     target_min, target_max = 500.0, 500.1
     for spec in db.get_spectra():
         mz = spec.get("precursor_mz")
-        if target_min <= mz <= target_max:
+        if mz is not None and target_min <= mz <= target_max:
             count += 1
     print(f"Found {count} spectra in {time.time() - start:.4f}s")
 
     # Test 2: Add index and use SQL range query
     print("\nTest 2: Adding index and using SQL range query")
+    assert db.conn is not None
     cursor = db.conn.cursor()
     cursor.execute("CREATE INDEX idx_precursor_mz ON spectra(precursor_mz)")
     db.conn.commit()

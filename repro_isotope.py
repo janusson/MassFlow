@@ -13,7 +13,7 @@ print(f"Formula: {rdMolDescriptors.CalcMolFormula(mol)}")
 
 if hasattr(rdMolDescriptors, "GetIsotopicDistribution"):
     print("RDKit has GetIsotopicDistribution")
-    dist = rdMolDescriptors.GetIsotopicDistribution(mol)
+    dist = rdMolDescriptors.GetIsotopicDistribution(mol)  # type: ignore[attr-defined]
     print(f"RDKit Distribution: {list(dist)}")
     for item in dist:
         if hasattr(item, "mass"):
@@ -43,7 +43,9 @@ if pmass:
     }
     print(f"Base counts: {base_counts}")
 
-    counts = defaultdict(lambda: defaultdict(int))
+    counts: defaultdict[str, defaultdict[int, int]] = defaultdict(
+        lambda: defaultdict(int)
+    )
     for atom in mol.GetAtoms():
         symbol = atom.GetSymbol()
         isotope = atom.GetIsotope()

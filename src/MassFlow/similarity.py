@@ -18,7 +18,10 @@ import numpy as np
 from matchms import Spectrum, calculate_scores
 
 try:
-    from matchms.similarity import CosineGreedy, ModifiedCosine
+    from matchms.similarity import (
+        CosineGreedy,  # type: ignore[attr-defined]
+        ModifiedCosine,  # type: ignore[attr-defined]
+    )
 except ImportError:
     from matchms.similarity import CosineGreedy
     from matchms.similarity import ModifiedCosineGreedy as ModifiedCosine
@@ -171,16 +174,23 @@ def _ms1_prefilter(
     resolution_ppm: Optional[float] = None,
 ) -> tuple[np.ndarray, ...]:
     """Perform MS1 precursor m/z pre-filtering using Da tolerance or optionally PPM resolution."""
-    ref_mzs_raw = [s.get("precursor_mz") for s in all_references]
-    query_mzs_raw = [q.get("precursor_mz") for q in query_spectra]
+    ref_mzs_raw: list[Optional[float]] = [s.get("precursor_mz") for s in all_references]  # type: ignore[assignment]
+    query_mzs_raw: list[Optional[float]] = [
+        q.get("precursor_mz") for q in query_spectra
+    ]  # type: ignore[assignment]
 
     # Track missing precursors to allow them to bypass the MS1 filter
     ref_missing = np.array([_is_missing(r) for r in ref_mzs_raw], dtype=bool)
     query_missing = np.array([_is_missing(q) for q in query_mzs_raw], dtype=bool)
 
-    ref_mzs = np.array([float(r) if not _is_missing(r) else 0.0 for r in ref_mzs_raw])
+    ref_mzs = np.array(
+        [float(r) if r is not None and not _is_missing(r) else 0.0 for r in ref_mzs_raw]
+    )
     query_mzs = np.array(
-        [float(q) if not _is_missing(q) else 0.0 for q in query_mzs_raw]
+        [
+            float(q) if q is not None and not _is_missing(q) else 0.0
+            for q in query_mzs_raw
+        ]
     )
 
     if resolution_ppm is not None:
@@ -548,6 +558,10 @@ class SimilarityEngine:
         results: List[SearchResult] = []
 
         # Extract score and matched-peaks columns from the structured array
+        assert scores_array is not None, "scores_array should not be None"
+        assert (
+            scores_array.dtype.names is not None
+        ), "Expected structured array with named fields"
         score_cols = [c for c in scores_array.dtype.names if "score" in c.lower()]
         match_cols = [c for c in scores_array.dtype.names if "matches" in c.lower()]
 
