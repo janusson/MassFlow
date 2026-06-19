@@ -295,3 +295,31 @@ def test_calculate_fdr_empty_arrays():
     # With monotonicity enforced by minimum.accumulate, q-values for both are 0.5
     np.testing.assert_allclose(q, np.array([0.5, 0.5]))
     assert np.all(t)
+
+def test_rt_tolerance_valid_and_invalid():
+    from MassFlow.config import SimilarityConfig
+    from MassFlow.similarity import get_similarity_engine
+
+    config = SimilarityConfig(rt_tolerance=1.0, algorithm="cosine", ms2_tolerance=0.1, min_matched_peaks=0, min_score=0.0)
+    engine = get_similarity_engine(config)
+
+    # 1. Invalid string RT should not crash, should be ignored
+    q1 = Spectrum(mz=np.array([100.0]), intensities=np.array([1.0]), metadata={"retention_time": "NA"})
+    ref1 = Spectrum(mz=np.array([100.0]), intensities=np.array([1.0]), metadata={"retention_time": 10.0})
+
+    # 2. Valid RTs within tolerance should pass
+    q2 = Spectrum(mz=np.array([100.0]), intensities=np.array([1.0]), metadata={"retention_time": 10.5})
+    ref2 = Spectrum(mz=np.array([100.0]), intensities=np.array([1.0]), metadata={"retention_time": 10.0})
+
+    # 3. Valid RTs outside tolerance should be filtered
+    q3 = Spectrum(mz=np.array([100.0]), intensities=np.array([1.0]), metadata={"retention_time": 11.5})
+    ref3 = Spectrum(mz=np.array([100.0]), intensities=np.array([1.0]), metadata={"retention_time": 10.0})
+
+    res1 = engine.search([q1], [ref1], include_decoys=False)
+    assert len(res1) == 1
+
+    res2 = engine.search([q2], [ref2], include_decoys=False)
+    assert len(res2) == 1
+
+    res3 = engine.search([q3], [ref3], include_decoys=False)
+    assert len(res3) == 0
