@@ -295,3 +295,67 @@ def test_calculate_fdr_empty_arrays():
     # With monotonicity enforced by minimum.accumulate, q-values for both are 0.5
     np.testing.assert_allclose(q, np.array([0.5, 0.5]))
     assert np.all(t)
+
+def test_rt_tolerance_filtering() -> None:
+    """Verify that matches outside rt_tolerance are rejected and missing RTs are handled gracefully."""
+    config = SimilarityConfig(
+        algorithm="cosine",
+        ms2_tolerance=0.05,
+        min_score=0.0,
+        min_matched_peaks=0,
+        rt_tolerance=0.5,
+    )
+    engine = SimilarityEngine(config)
+
+    query = Spectrum(
+        mz=np.array([100.0, 200.0]),
+        intensities=np.array([1.0, 1.0]),
+        metadata={"id": "query1", "precursor_mz": 400.0, "retention_time": 5.0},
+    )
+
+    # Ref 1: Within tolerance (4.6) -> Accepted
+    ref1 = Spectrum(
+        mz=np.array([100.0, 200.0]),
+        intensities=np.array([1.0, 1.0]),
+        metadata={"id": "ref1", "precursor_mz": 400.0, "retention_time": 4.6},
+    )
+
+    # Ref 2: Outside tolerance (5.6) -> Rejected
+    ref2 = Spectrum(
+        mz=np.array([100.0, 200.0]),
+        intensities=np.array([1.0, 1.0]),
+        metadata={"id": "ref2", "precursor_mz": 400.0, "retention_time": 5.6},
+    )
+
+    # Ref 3: Missing retention time -> Accepted (bypass)
+    ref3 = Spectrum(
+        mz=np.array([100.0, 200.0]),
+        intensities=np.array([1.0, 1.0]),
+        metadata={"id": "ref3", "precursor_mz": 400.0},
+    )
+
+    # Ref 4: Invalid retention time -> Accepted (bypass)
+    ref4 = Spectrum(
+        mz=np.array([100.0, 200.0]),
+        intensities=np.array([1.0, 1.0]),
+        metadata={"id": "ref4", "precursor_mz": 400.0, "retention_time": ""},
+    )
+
+    results = engine.search([query], [ref1, ref2, ref3, ref4], include_decoys=False)
+
+    accepted_ids = {r["reference_id"] for r in results}
+    assert "ref1" in accepted_ids, "Reference within rt_tolerance should be accepted."
+    assert "ref2" not in accepted_ids, "Reference outside rt_tolerance should be rejected."
+    assert "ref3" in accepted_ids, "Reference missing retention_time should be accepted."
+    assert "ref4" in accepted_ids, "Reference with invalid retention_time should be accepted."
+
+    # Test Query missing RT -> Everything accepted
+    query_no_rt = Spectrum(
+        mz=np.array([100.0, 200.0]),
+        intensities=np.array([1.0, 1.0]),
+        metadata={"id": "query2", "precursor_mz": 400.0, "retention_time": ""},
+    )
+
+    results_no_rt = engine.search([query_no_rt], [ref1, ref2, ref3, ref4], include_decoys=False)
+    accepted_no_rt_ids = {r["reference_id"] for r in results_no_rt}
+    assert len(accepted_no_rt_ids) == 4, "Query with missing RT should accept all references."
