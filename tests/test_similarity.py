@@ -295,3 +295,63 @@ def test_calculate_fdr_empty_arrays():
     # With monotonicity enforced by minimum.accumulate, q-values for both are 0.5
     np.testing.assert_allclose(q, np.array([0.5, 0.5]))
     assert np.all(t)
+
+
+def test_rt_tolerance_filtering():
+    """Verify retention time filtering and safe ignoring of invalid RT values."""
+    query = Spectrum(
+        mz=np.array([100.0, 200.0], dtype="float"),
+        intensities=np.array([1.0, 1.0], dtype="float"),
+        metadata={"id": "query1", "precursor_mz": 400.0, "retention_time": 5.0},
+    )
+
+    # Valid match within RT tolerance
+    ref_match = Spectrum(
+        mz=np.array([100.0, 200.0], dtype="float"),
+        intensities=np.array([1.0, 1.0], dtype="float"),
+        metadata={"id": "ref_match", "precursor_mz": 400.0, "retention_time": 5.5},
+    )
+
+    # Match outside RT tolerance
+    ref_outside = Spectrum(
+        mz=np.array([100.0, 200.0], dtype="float"),
+        intensities=np.array([1.0, 1.0], dtype="float"),
+        metadata={"id": "ref_outside", "precursor_mz": 400.0, "retention_time": 7.0},
+    )
+
+    # Missing RT
+    ref_missing = Spectrum(
+        mz=np.array([100.0, 200.0], dtype="float"),
+        intensities=np.array([1.0, 1.0], dtype="float"),
+        metadata={"id": "ref_missing", "precursor_mz": 400.0},
+    )
+
+    # Invalid RT (string that can't be cast to float)
+    ref_invalid = Spectrum(
+        mz=np.array([100.0, 200.0], dtype="float"),
+        intensities=np.array([1.0, 1.0], dtype="float"),
+        metadata={"id": "ref_invalid", "precursor_mz": 400.0, "retention_time": "unknown"},
+    )
+
+    config = SimilarityConfig(
+        algorithm="cosine",
+        resolution_ppm=10.0,
+        ms1_tolerance=0.0,
+        min_matched_peaks=1,
+        min_score=0.0,
+        rt_tolerance=1.0,
+    )
+    engine = SimilarityEngine(config)
+
+    references = [ref_match, ref_outside, ref_missing, ref_invalid]
+    results = engine.search(query_spectra=[query], reference_spectra=references)
+
+    # Filter out decoys for easier assertion
+    target_results = [r for r in results if not r["is_decoy"]]
+
+    matched_ids = [r["reference_id"] for r in target_results]
+
+    assert "ref_match" in matched_ids, "Valid RT match was incorrectly rejected."
+    assert "ref_outside" not in matched_ids, "Match outside RT tolerance was not rejected."
+    assert "ref_missing" in matched_ids, "Missing RT match was incorrectly rejected."
+    assert "ref_invalid" in matched_ids, "Invalid RT match was incorrectly rejected."
