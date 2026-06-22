@@ -295,3 +295,57 @@ def test_calculate_fdr_empty_arrays():
     # With monotonicity enforced by minimum.accumulate, q-values for both are 0.5
     np.testing.assert_allclose(q, np.array([0.5, 0.5]))
     assert np.all(t)
+
+def test_rt_tolerance_filtering() -> None:
+    """Verify that matches outside the RT tolerance are rejected, and invalid RTs are handled gracefully."""
+    query_base = Spectrum(
+        mz=np.array([100.0, 200.0, 300.0], dtype="float"),
+        intensities=np.array([1.0, 1.0, 1.0], dtype="float"),
+        metadata={"id": "query1", "precursor_mz": 400.0, "retention_time": 5.0},
+    )
+
+    ref_match = Spectrum(
+        mz=np.array([100.0, 200.0, 300.0], dtype="float"),
+        intensities=np.array([1.0, 1.0, 1.0], dtype="float"),
+        metadata={"id": "ref_match", "precursor_mz": 400.0, "retention_time": 5.1},
+    )
+
+    ref_mismatch = Spectrum(
+        mz=np.array([100.0, 200.0, 300.0], dtype="float"),
+        intensities=np.array([1.0, 1.0, 1.0], dtype="float"),
+        metadata={"id": "ref_mismatch", "precursor_mz": 400.0, "retention_time": 6.5},
+    )
+
+    ref_invalid_rt = Spectrum(
+        mz=np.array([100.0, 200.0, 300.0], dtype="float"),
+        intensities=np.array([1.0, 1.0, 1.0], dtype="float"),
+        metadata={"id": "ref_invalid", "precursor_mz": 400.0, "retention_time": "N/A"},
+    )
+
+    ref_missing_rt = Spectrum(
+        mz=np.array([100.0, 200.0, 300.0], dtype="float"),
+        intensities=np.array([1.0, 1.0, 1.0], dtype="float"),
+        metadata={"id": "ref_missing", "precursor_mz": 400.0},
+    )
+
+    config = SimilarityConfig(
+        algorithm="cosine",
+        ms1_tolerance=0.1,
+        min_matched_peaks=1,
+        min_score=0.0,
+        rt_tolerance=0.5,
+    )
+    engine = SimilarityEngine(config)
+
+    results = engine.search(
+        query_spectra=[query_base],
+        reference_spectra=[ref_match, ref_mismatch, ref_invalid_rt, ref_missing_rt],
+        include_decoys=False,
+    )
+
+    matched_ids = {r["reference_id"] for r in results}
+
+    assert "ref_match" in matched_ids, "Valid RT match was incorrectly rejected."
+    assert "ref_mismatch" not in matched_ids, "Invalid RT match was incorrectly accepted."
+    assert "ref_invalid" in matched_ids, "Spectrum with invalid RT should have bypassed the filter."
+    assert "ref_missing" in matched_ids, "Spectrum with missing RT should have bypassed the filter."
