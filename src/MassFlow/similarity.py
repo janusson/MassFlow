@@ -626,8 +626,8 @@ class SimilarityEngine:
                     q_rt = q.get("retention_time")
                     ref_rt = ref.get("retention_time")
                     if (
-                        q_rt is not None
-                        and ref_rt is not None
+                        not _is_missing(q_rt)
+                        and not _is_missing(ref_rt)
                         and abs(float(q_rt) - float(ref_rt)) > self.config.rt_tolerance
                     ):
                         continue
