@@ -110,3 +110,30 @@ def test_retention_time_filtering() -> None:
         f"rejected at tolerance 0.2 min, but {len(target_results)} "
         f"match(es) were returned."
     )
+
+def test_retention_time_missing_ignored() -> None:
+    mz = np.array([86.09, 132.10], dtype="float")
+    intensities = np.array([100.0, 200.0], dtype="float")
+    precursor_mz = 132.10
+
+    ref = Spectrum(
+        mz=mz.copy(), intensities=intensities.copy(),
+        metadata={"id": "ref", "precursor_mz": precursor_mz, "retention_time": "NaN"}
+    )
+    query = Spectrum(
+        mz=mz.copy(), intensities=intensities.copy(),
+        metadata={"id": "query", "precursor_mz": precursor_mz, "retention_time": 3.1}
+    )
+
+    config = SimilarityConfig(
+        algorithm="cosine",
+        ms2_tolerance=0.02,
+        min_score=0.0,
+        min_matched_peaks=1,
+        rt_tolerance=0.2,
+    )
+    engine = SimilarityEngine(config)
+
+    results = engine.search([query], [ref])
+    target_results = [r for r in results if not r.get("is_decoy")]
+    assert len(target_results) == 1
