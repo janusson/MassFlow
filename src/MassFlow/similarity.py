@@ -625,12 +625,16 @@ class SimilarityEngine:
                 if self.config.rt_tolerance is not None:
                     q_rt = q.get("retention_time")
                     ref_rt = ref.get("retention_time")
-                    if (
-                        q_rt is not None
-                        and ref_rt is not None
-                        and abs(float(q_rt) - float(ref_rt)) > self.config.rt_tolerance
-                    ):
-                        continue
+                    if q_rt is not None and ref_rt is not None:
+                        try:
+                            q_rt_val = float(q_rt)
+                            ref_rt_val = float(ref_rt)
+                            if not np.isnan(q_rt_val) and not np.isnan(ref_rt_val):
+                                if abs(q_rt_val - ref_rt_val) > self.config.rt_tolerance:
+                                    continue
+                        except (ValueError, TypeError):
+                            # Ignore RT filtering if metadata is invalid (e.g. "N/A", "None")
+                            pass
 
                 score_val = float(numeric_scores[idx, i])
                 match_val = int(matches_count[idx, i])

@@ -295,3 +295,94 @@ def test_calculate_fdr_empty_arrays():
     # With monotonicity enforced by minimum.accumulate, q-values for both are 0.5
     np.testing.assert_allclose(q, np.array([0.5, 0.5]))
     assert np.all(t)
+
+
+def test_rt_tolerance_filtering() -> None:
+    """Verify that matches outside the RT tolerance are rejected and missing/invalid values are handled."""
+    # Strict 0.5 min tolerance for RT
+    config = SimilarityConfig(
+        algorithm="cosine",
+        ms1_tolerance=0.0,
+        min_score=0.0,
+        min_matched_peaks=1,
+        rt_tolerance=0.5,
+    )
+    engine = SimilarityEngine(config)
+
+    # Base query
+    query = Spectrum(
+        mz=np.array([100.0, 200.0], dtype="float"),
+        intensities=np.array([1.0, 1.0], dtype="float"),
+        metadata={"id": "query1", "precursor_mz": 400.0, "retention_time": 5.0},
+    )
+
+    # Reference exact match
+    ref_exact = Spectrum(
+        mz=np.array([100.0, 200.0], dtype="float"),
+        intensities=np.array([1.0, 1.0], dtype="float"),
+        metadata={"id": "ref_exact", "precursor_mz": 400.0, "retention_time": 5.0},
+    )
+
+    # Reference within tolerance
+    ref_within = Spectrum(
+        mz=np.array([100.0, 200.0], dtype="float"),
+        intensities=np.array([1.0, 1.0], dtype="float"),
+        metadata={"id": "ref_within", "precursor_mz": 400.0, "retention_time": 5.4},
+    )
+
+    # Reference outside tolerance
+    ref_outside = Spectrum(
+        mz=np.array([100.0, 200.0], dtype="float"),
+        intensities=np.array([1.0, 1.0], dtype="float"),
+        metadata={"id": "ref_outside", "precursor_mz": 400.0, "retention_time": 5.6},
+    )
+
+    # Reference with missing RT
+    ref_missing = Spectrum(
+        mz=np.array([100.0, 200.0], dtype="float"),
+        intensities=np.array([1.0, 1.0], dtype="float"),
+        metadata={"id": "ref_missing", "precursor_mz": 400.0},
+    )
+
+    # Reference with NaN RT
+    ref_nan = Spectrum(
+        mz=np.array([100.0, 200.0], dtype="float"),
+        intensities=np.array([1.0, 1.0], dtype="float"),
+        metadata={"id": "ref_nan", "precursor_mz": 400.0, "retention_time": np.nan},
+    )
+
+    # Reference with string "N/A" RT
+    ref_str = Spectrum(
+        mz=np.array([100.0, 200.0], dtype="float"),
+        intensities=np.array([1.0, 1.0], dtype="float"),
+        metadata={"id": "ref_str", "precursor_mz": 400.0, "retention_time": "N/A"},
+    )
+
+    # Run searches individually
+    res_exact = [r for r in engine.search([query], [ref_exact]) if not r.get("is_decoy")]
+    assert len(res_exact) == 1, "Result exactly matching RT was rejected."
+
+    res_within = [r for r in engine.search([query], [ref_within]) if not r.get("is_decoy")]
+    assert len(res_within) == 1, "Result within RT tolerance was rejected."
+
+    res_outside = [r for r in engine.search([query], [ref_outside]) if not r.get("is_decoy")]
+    assert len(res_outside) == 0, "Result outside RT tolerance was not rejected."
+
+    res_missing = [r for r in engine.search([query], [ref_missing]) if not r.get("is_decoy")]
+    assert len(res_missing) == 1, "Result with missing RT was incorrectly rejected."
+
+    res_nan = [r for r in engine.search([query], [ref_nan]) if not r.get("is_decoy")]
+    assert len(res_nan) == 1, "Result with NaN RT was incorrectly rejected."
+
+    res_str = [r for r in engine.search([query], [ref_str]) if not r.get("is_decoy")]
+    assert len(res_str) == 1, "Result with string 'N/A' RT was incorrectly rejected."
+
+    # Test query with missing RT
+    query_missing = Spectrum(
+        mz=np.array([100.0, 200.0], dtype="float"),
+        intensities=np.array([1.0, 1.0], dtype="float"),
+        metadata={"id": "query_missing", "precursor_mz": 400.0},
+    )
+
+    res_query_missing = [r for r in engine.search([query_missing], [ref_outside]) if not r.get("is_decoy")]
+    assert len(res_query_missing) == 1, "Result should be accepted if query RT is missing."
