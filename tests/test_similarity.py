@@ -295,3 +295,57 @@ def test_calculate_fdr_empty_arrays():
     # With monotonicity enforced by minimum.accumulate, q-values for both are 0.5
     np.testing.assert_allclose(q, np.array([0.5, 0.5]))
     assert np.all(t)
+
+
+def test_rt_tolerance_filtering() -> None:
+    """Verify that RT tolerance filtering works and gracefully handles missing data."""
+    query = Spectrum(
+        mz=np.array([100.0]), intensities=np.array([1.0]),
+        metadata={"id": "q1", "precursor_mz": 400.0, "retention_time": 5.0}
+    )
+
+    # Reference exactly matching RT
+    ref_match = Spectrum(
+        mz=np.array([100.0]), intensities=np.array([1.0]),
+        metadata={"id": "r1", "precursor_mz": 400.0, "retention_time": 5.1}
+    )
+
+    # Reference outside RT tolerance
+    ref_reject = Spectrum(
+        mz=np.array([100.0]), intensities=np.array([1.0]),
+        metadata={"id": "r2", "precursor_mz": 400.0, "retention_time": 6.0}
+    )
+
+    # Reference with missing RT
+    ref_missing = Spectrum(
+        mz=np.array([100.0]), intensities=np.array([1.0]),
+        metadata={"id": "r3", "precursor_mz": 400.0}
+    )
+
+    # Reference with invalid RT string
+    ref_invalid = Spectrum(
+        mz=np.array([100.0]), intensities=np.array([1.0]),
+        metadata={"id": "r4", "precursor_mz": 400.0, "retention_time": "N/A"}
+    )
+
+    config = SimilarityConfig(
+        algorithm="cosine",
+        ms1_tolerance=0.1,
+        min_score=0.0,
+        min_matched_peaks=0,
+        rt_tolerance=0.5
+    )
+    engine = SimilarityEngine(config)
+
+    results = engine.search(
+        query_spectra=[query],
+        reference_spectra=[ref_match, ref_reject, ref_missing, ref_invalid],
+        include_decoys=False
+    )
+
+    matched_ids = [r["reference_id"] for r in results]
+
+    assert "r1" in matched_ids, "Match within RT tolerance should be kept."
+    assert "r2" not in matched_ids, "Match outside RT tolerance should be rejected."
+    assert "r3" in matched_ids, "Missing RT should bypass filter."
+    assert "r4" in matched_ids, "Unparseable RT should bypass filter."
