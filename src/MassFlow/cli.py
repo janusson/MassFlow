@@ -19,10 +19,8 @@ from typing import List, Optional
 
 import typer
 from rich.console import Console
-from rich.live import Live
 from rich.table import Table
 from rich.text import Text
-from watchfiles import watch
 
 from MassFlow import __version__
 from MassFlow.log_config import setup_structured_logging
@@ -320,10 +318,22 @@ def run_watch(
     """
     Watch the workspace for file changes and re-run the annotation pipeline dynamically.
     Outputs high-tech Rich tables that gracefully handle pane resizing in Tmux/Zellij.
+
+    Requires the optional 'watch' extra: pip install massflow[watch]
     """
+    try:
+        from watchfiles import watch  # noqa: F811
+    except ImportError:
+        console.print(
+            "[bold red]Error:[/bold red] The watch command requires the optional 'watchfiles' package.\n"
+            "Install it with: pip install massflow[watch]"
+        )
+        raise typer.Exit(1)
+
     import glob
 
     import polars as pl
+    from rich.live import Live
 
     from MassFlow.config import MassFlowConfig
     from MassFlow.workflow import run_annotation_pipeline
@@ -341,7 +351,7 @@ def run_watch(
     def generate_results_table() -> Table:
         """Reads recent CSV results and formats them via Rich."""
         table = Table(
-            title="🛰️ MassFlow Interactive Annotation Results",
+            title="MassFlow Interactive Annotation Results",
             caption="Listening for file changes... (Press Ctrl+C to exit)",
             expand=True,
             show_lines=False,
@@ -368,7 +378,7 @@ def run_watch(
             if search_ext == "csv":
                 df = pl.read_csv(latest_file)
             else:
-                # mzTab — treat as tab-delimited for preview
+                # mzTab - treat as tab-delimited for preview
                 df = pl.read_csv(latest_file, separator="\t")
 
             # Limit preview to top 15 results

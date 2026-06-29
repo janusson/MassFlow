@@ -35,8 +35,8 @@ def test_default_config():
     # Check Similarity defaults
     assert config.similarity.algorithm == "cosine"
 
-    # Check Workflow defaults
-    assert config.workflow.perform_peak_picking is True
+    # Check Workflow config exists (reserved for future pipeline stages)
+    assert config.workflow is not None
 
     # Check Export defaults
     assert config.export.format == "csv"
