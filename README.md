@@ -113,10 +113,11 @@ project:
   output_directory: "results/standard_analysis"
 
 input:
-  file_path: "data/experiments/experiment.mzML"
+  input_path: "data/experiments/experiment.mzML"
   library_path: "data/libraries/library.msp"
   format: "mzml"
 
+similarity:
 processing:
   clean_metadata: true
   filter_by_intensity: true
@@ -208,7 +209,7 @@ project:
   output_directory: "results/standard_analysis"
 
 input:
-  file_path: "data/experiments/COE001_16ppm_5uL.mzML"
+  input_path: "data/experiments/COE001_16ppm_5uL.mzML"
   library_path: "data/libraries/example_library.msp"
   format: "mzml"
 
@@ -282,7 +283,7 @@ After that, set your config to use the merged library:
 
 ```yaml
 input:
-  file_path: "data/experiments/COE001_16ppm_5uL.mzML"
+  input_path: "data/experiments/COE001_16ppm_5uL.mzML"
   library_path: "results/master_user_library.db"
   format: "mzml"
 ```
