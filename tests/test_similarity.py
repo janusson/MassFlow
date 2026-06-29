@@ -295,3 +295,69 @@ def test_calculate_fdr_empty_arrays():
     # With monotonicity enforced by minimum.accumulate, q-values for both are 0.5
     np.testing.assert_allclose(q, np.array([0.5, 0.5]))
     assert np.all(t)
+
+def test_rt_tolerance_filtering() -> None:
+    """Verify that retention time tolerance correctly filters out mismatches."""
+    # Create configuration with rt_tolerance
+    config = SimilarityConfig(
+        algorithm="cosine",
+        ms1_tolerance=0.1,
+        ms2_tolerance=0.1,
+        rt_tolerance=1.0,
+        min_score=0.0,
+        min_matched_peaks=1,
+    )
+    engine = SimilarityEngine(config)
+
+    # Base query
+    q = Spectrum(
+        mz=np.array([100.0], dtype="float"),
+        intensities=np.array([1.0], dtype="float"),
+        metadata={"id": "query1", "precursor_mz": 400.0, "retention_time": 5.0},
+    )
+
+    # Missing query RT (should bypass)
+    q_missing = Spectrum(
+        mz=np.array([100.0], dtype="float"),
+        intensities=np.array([1.0], dtype="float"),
+        metadata={"id": "query2", "precursor_mz": 400.0, "retention_time": "NaN"},
+    )
+    q_missing.metadata["retention_time"] = "NaN" # Ensure matchms doesn't convert it to float('nan') or None
+
+    # Reference within RT tolerance
+    ref_close = Spectrum(
+        mz=np.array([100.0], dtype="float"),
+        intensities=np.array([1.0], dtype="float"),
+        metadata={"id": "ref1", "precursor_mz": 400.0, "retention_time": 5.5},
+    )
+
+    # Reference outside RT tolerance
+    ref_far = Spectrum(
+        mz=np.array([100.0], dtype="float"),
+        intensities=np.array([1.0], dtype="float"),
+        metadata={"id": "ref2", "precursor_mz": 400.0, "retention_time": 6.5},
+    )
+
+    # Reference with missing RT (should bypass)
+    ref_missing = Spectrum(
+        mz=np.array([100.0], dtype="float"),
+        intensities=np.array([1.0], dtype="float"),
+        metadata={"id": "ref3", "precursor_mz": 400.0, "retention_time": "N/A"},
+    )
+    ref_missing.metadata["retention_time"] = "N/A" # bypass string cleaning
+
+    # 1. Test close match (should match)
+    res_close = [r for r in engine.search([q], [ref_close]) if not r["is_decoy"]]
+    assert len(res_close) == 1, "Close RT should match"
+
+    # 2. Test far match (should reject)
+    res_far = [r for r in engine.search([q], [ref_far]) if not r["is_decoy"]]
+    assert len(res_far) == 0, "Far RT should be rejected"
+
+    # 3. Test query with missing RT (should match regardless of ref)
+    res_q_miss = [r for r in engine.search([q_missing], [ref_far]) if not r["is_decoy"]]
+    assert len(res_q_miss) == 1, "Missing query RT should bypass filter"
+
+    # 4. Test ref with missing RT (should match regardless of query)
+    res_ref_miss = [r for r in engine.search([q], [ref_missing]) if not r["is_decoy"]]
+    assert len(res_ref_miss) == 1, "Missing ref RT should bypass filter"
