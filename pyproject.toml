@@ -6,8 +6,6 @@ readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.13"
 dependencies = [
-    "aider>=0.2.6",
-    "click",
     "lxml",
     "matchms>=0.27.0",
     "numpy>=1.26.4",
@@ -22,7 +20,6 @@ dependencies = [
     # Pinned for macOS 15 dyld compatibility with matchms transitive dep
     "scipy>=1.15.0",
     "typer>=0.25.1",
-    "watchfiles>=1.1.1",
 ]
 
 [project.optional-dependencies]
@@ -32,6 +29,9 @@ dev = [
 ]
 chem = [
     "rdkit>=2025.9.6",
+]
+watch = [
+    "watchfiles>=1.1.1",
 ]
 
 [project.scripts]

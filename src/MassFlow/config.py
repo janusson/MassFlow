@@ -318,13 +318,14 @@ class SimilarityConfig(BaseModel):
 
 class WorkflowConfig(BaseModel):
     """
-    High-level workflow feature flags.
+    High-level workflow feature flags (reserved for future pipeline stages).
 
-    These fields are schema-level placeholders for orchestration features.
+    This model currently has no active fields; all orchestration is handled
+    directly by :mod:`MassFlow.workflow`. Fields will be added here as new
+    pipeline stages (e.g. peak picking, retention-time alignment) are implemented.
     """
 
-    perform_peak_picking: bool = Field(default=True, description="Placeholder.")
-    perform_alignment: bool = Field(default=True, description="Placeholder.")
+    pass
 
 
 class ExportConfig(BaseModel):
