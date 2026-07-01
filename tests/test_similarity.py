@@ -295,3 +295,97 @@ def test_calculate_fdr_empty_arrays():
     # With monotonicity enforced by minimum.accumulate, q-values for both are 0.5
     np.testing.assert_allclose(q, np.array([0.5, 0.5]))
     assert np.all(t)
+
+def test_rt_tolerance_filtering() -> None:
+    """Verify that matches outside the RT tolerance are rejected."""
+    query = Spectrum(
+        mz=np.array([100.0, 200.0], dtype="float"),
+        intensities=np.array([1.0, 1.0], dtype="float"),
+        metadata={"id": "query_rt", "precursor_mz": 400.0, "retention_time": 5.0},
+    )
+
+    ref_inside = Spectrum(
+        mz=np.array([100.0, 200.0], dtype="float"),
+        intensities=np.array([1.0, 1.0], dtype="float"),
+        metadata={"id": "ref_inside", "precursor_mz": 400.0, "retention_time": 5.1},
+    )
+
+    ref_outside = Spectrum(
+        mz=np.array([100.0, 200.0], dtype="float"),
+        intensities=np.array([1.0, 1.0], dtype="float"),
+        metadata={"id": "ref_outside", "precursor_mz": 400.0, "retention_time": 5.5},
+    )
+
+    config = SimilarityConfig(
+        algorithm="cosine",
+        rt_tolerance=0.2,
+        min_score=0.0,
+        min_matched_peaks=2,
+    )
+    engine = SimilarityEngine(config)
+
+    results = engine.search(
+        query_spectra=[query], reference_spectra=[ref_inside, ref_outside], include_decoys=False
+    )
+
+    assert len(results) == 1, "Expected only 1 match due to RT tolerance filtering."
+    assert results[0]["reference_id"] == "ref_inside", "Expected ref_inside to be matched."
+
+
+def test_rt_tolerance_missing_metadata() -> None:
+    """Verify that RT tolerance check is ignored if metadata is missing or invalid."""
+    query_missing = Spectrum(
+        mz=np.array([100.0, 200.0], dtype="float"),
+        intensities=np.array([1.0, 1.0], dtype="float"),
+        metadata={"id": "query_missing", "precursor_mz": 400.0},
+    )
+
+    query_invalid = Spectrum(
+        mz=np.array([100.0, 200.0], dtype="float"),
+        intensities=np.array([1.0, 1.0], dtype="float"),
+        metadata={"id": "query_invalid", "precursor_mz": 400.0, "retention_time": "N/A"},
+    )
+
+    ref_valid = Spectrum(
+        mz=np.array([100.0, 200.0], dtype="float"),
+        intensities=np.array([1.0, 1.0], dtype="float"),
+        metadata={"id": "ref_valid", "precursor_mz": 400.0, "retention_time": 5.5},
+    )
+
+    ref_missing = Spectrum(
+        mz=np.array([100.0, 200.0], dtype="float"),
+        intensities=np.array([1.0, 1.0], dtype="float"),
+        metadata={"id": "ref_missing", "precursor_mz": 400.0},
+    )
+
+
+    config = SimilarityConfig(
+        algorithm="cosine",
+        rt_tolerance=0.2,
+        min_score=0.0,
+        min_matched_peaks=2,
+    )
+    engine = SimilarityEngine(config)
+
+    # Missing query RT should match valid ref
+    results_missing = engine.search(
+        query_spectra=[query_missing], reference_spectra=[ref_valid], include_decoys=False
+    )
+    assert len(results_missing) == 1, "Expected match when query RT is missing."
+
+    # Invalid string query RT should match valid ref
+    results_invalid = engine.search(
+        query_spectra=[query_invalid], reference_spectra=[ref_valid], include_decoys=False
+    )
+    assert len(results_invalid) == 1, "Expected match when query RT is an invalid string."
+
+    # Valid query RT should match missing ref RT
+    query_valid = Spectrum(
+        mz=np.array([100.0, 200.0], dtype="float"),
+        intensities=np.array([1.0, 1.0], dtype="float"),
+        metadata={"id": "query_valid", "precursor_mz": 400.0, "retention_time": 1.0},
+    )
+    results_ref_missing = engine.search(
+        query_spectra=[query_valid], reference_spectra=[ref_missing], include_decoys=False
+    )
+    assert len(results_ref_missing) == 1, "Expected match when ref RT is missing."
