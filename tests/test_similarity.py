@@ -228,6 +228,57 @@ def test_min_matched_peaks_filtering() -> None:
     assert len(relaxed_results) == 1, "Result with enough matched peaks was rejected."
 
 
+def test_rt_tolerance_filtering() -> None:
+    """Verify that matches outside the RT tolerance are rejected, and missing RTs are handled safely."""
+    query = Spectrum(
+        mz=np.array([100.0, 200.0, 300.0], dtype="float"),
+        intensities=np.array([1.0, 1.0, 1.0], dtype="float"),
+        metadata={"id": "query1", "precursor_mz": 400.0, "retention_time": 5.0},
+    )
+
+    # Within tolerance
+    ref_accept = Spectrum(
+        mz=np.array([100.0, 200.0, 300.0], dtype="float"),
+        intensities=np.array([1.0, 1.0, 1.0], dtype="float"),
+        metadata={"id": "ref1", "precursor_mz": 400.0, "retention_time": 5.2},
+    )
+
+    # Outside tolerance
+    ref_reject = Spectrum(
+        mz=np.array([100.0, 200.0, 300.0], dtype="float"),
+        intensities=np.array([1.0, 1.0, 1.0], dtype="float"),
+        metadata={"id": "ref2", "precursor_mz": 400.0, "retention_time": 6.0},
+    )
+
+    # Missing RT in reference
+    ref_missing = Spectrum(
+        mz=np.array([100.0, 200.0, 300.0], dtype="float"),
+        intensities=np.array([1.0, 1.0, 1.0], dtype="float"),
+        metadata={"id": "ref3", "precursor_mz": 400.0, "retention_time": "N/A"},
+    )
+
+    # Configuration with rt_tolerance = 0.5
+    config = SimilarityConfig(
+        algorithm="cosine",
+        ms1_tolerance=0.0,
+        rt_tolerance=0.5,
+        min_score=0.0,
+    )
+    engine = SimilarityEngine(config)
+
+    # Search against all references (disable decoys for pure target test)
+    results = engine.search(
+        query_spectra=[query],
+        reference_spectra=[ref_accept, ref_reject, ref_missing],
+        include_decoys=False,
+    )
+
+    result_ids = [r["reference_id"] for r in results]
+    assert "ref1" in result_ids, "Reference within RT tolerance was rejected."
+    assert "ref2" not in result_ids, "Reference outside RT tolerance was not rejected."
+    assert "ref3" in result_ids, "Reference with missing RT was wrongly rejected."
+
+
 def test_calculate_fdr_basic():
     """Verify basic q-value calculations on a synthetic target/decoy distribution."""
     target_scores = np.array([0.9, 0.8, 0.7, 0.6])
