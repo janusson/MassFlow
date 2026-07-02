@@ -56,8 +56,8 @@ def test_load_from_yaml(tmp_path):
             "instrument": "QTOF",
             "mode": "positive",
             "solvents": [
-                {"name": "Water", "mz": 18.01},
-                {"name": "Methanol", "mz": 32.04},
+                {"name": "Water", "formula": "H2O"},
+                {"name": "Methanol", "formula": "CH4O"},
             ],
         },
         "similarity": {"algorithm": "modified_cosine", "min_score": 0.8},
@@ -80,7 +80,10 @@ def test_load_from_yaml(tmp_path):
     assert config.processing.mode == "positive"
     assert len(config.processing.solvents) == 2
     assert config.processing.solvents[0].name == "Water"
-    assert config.processing.solvents[0].mz == 18.01
+    # Mass auto-derived from formula "H2O" by pyteomics
+    assert abs(config.processing.solvents[0].mz - 18.010565) < 0.001
+    assert config.processing.solvents[1].name == "Methanol"
+    assert abs(config.processing.solvents[1].mz - 32.026215) < 0.001
 
     assert config.similarity.algorithm == "modified_cosine"
     assert config.export.format == "csv"

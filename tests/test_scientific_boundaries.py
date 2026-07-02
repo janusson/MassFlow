@@ -1,15 +1,16 @@
 from rdkit import Chem
-from rdkit.Chem import Descriptors
 
-from MassFlow.cheminformatics import calculate_isotopic_envelope
+from MassFlow.cheminformatics import (
+    _mol_to_pyteomics_formula,
+    calculate_isotopic_envelope,
+    calculate_theoretical_mass,
+)
 from MassFlow.models import MolecularStructure, SpectrumMetadata
 
 
-# Helper to calculate theoretical m/z for [M+H]+
+# Helper to calculate theoretical m/z for [M+H]+ using pyteomics SSOT.
 def get_theoretical_mz(smiles):
-    mol = Chem.MolFromSmiles(smiles)
-    exact_mass = Descriptors.ExactMolWt(mol)
-    return (exact_mass + 1.007276) / 1.0
+    return calculate_theoretical_mass(smiles, "[M+H]+")
 
 
 def test_boundary_5ppm_validation():
@@ -19,7 +20,10 @@ def test_boundary_5ppm_validation():
     """
     smiles = "C1=CC=CC=C1"  # Benzene
     mol = Chem.MolFromSmiles(smiles)
-    exact_mass = Descriptors.ExactMolWt(mol)
+    formula = _mol_to_pyteomics_formula(mol)
+    import pyteomics.mass as pmass
+
+    exact_mass = pmass.calculate_mass(formula=formula)
 
     # 4.9 ppm shift
     mass_4_9_ppm = exact_mass * (1 + 4.9 / 1e6)
@@ -37,19 +41,24 @@ def test_radical_cations_anions():
     Test radical species [M]+. and [M]-.
     These use the ELECTRON_MASS offset (~0.000549) in ADDUCT_OFFSETS.
     """
+    import pyteomics.mass as pmass
+
+    from MassFlow.cheminformatics import ADDUCT_OFFSETS
+
     # Naphthalene radical cation
     smiles = "C1=CC=C2C=CC=CC2=C1"
     mol = Chem.MolFromSmiles(smiles)
-    exact_mass = Descriptors.ExactMolWt(mol)
+    formula = _mol_to_pyteomics_formula(mol)
+    exact_mass = pmass.calculate_mass(formula=formula)
 
     # Theoretical [M]+. is exact_mass - electron_mass
     # ADDUCT_OFFSETS["[M]+"] = -0.000549
-    theoretical_mz = exact_mass - 0.0005485799
+    theoretical_mz = exact_mass + ADDUCT_OFFSETS["[M]+"]
 
     # Correct m/z
     meta_pos = SpectrumMetadata(
         spectrum_id="rad_pos",
-        precursor_mz=theoretical_mz,
+        precursor_mz=round(theoretical_mz, 6),
         charge=1,
         adduct="[M]+",
         molecule=MolecularStructure(smiles=smiles),
@@ -59,10 +68,10 @@ def test_radical_cations_anions():
     # Radical anion [M]-.
     # Theoretical [M]-. is exact_mass + electron_mass
     # ADDUCT_OFFSETS["[M]-"] = 0.000549
-    theoretical_mz_neg = exact_mass + 0.0005485799
+    theoretical_mz_neg = exact_mass + ADDUCT_OFFSETS["[M]-"]
     meta_neg = SpectrumMetadata(
         spectrum_id="rad_neg",
-        precursor_mz=theoretical_mz_neg,
+        precursor_mz=round(theoretical_mz_neg, 6),
         charge=-1,
         adduct="[M]-",
         molecule=MolecularStructure(smiles=smiles),

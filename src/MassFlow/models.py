@@ -8,11 +8,15 @@ precursor mass verification, and theoretical isotopic distributions.
 
 from typing import List, Literal, Optional
 
+import pyteomics.mass as pmass
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from rdkit import Chem
-from rdkit.Chem import Descriptors
 
-from MassFlow.cheminformatics import ADDUCT_OFFSETS, calculate_isotopic_envelope
+from MassFlow.cheminformatics import (
+    ADDUCT_OFFSETS,
+    _mol_to_pyteomics_formula,
+    calculate_isotopic_envelope,
+)
 
 
 class IsotopicDistribution(BaseModel):
@@ -71,9 +75,10 @@ class MolecularStructure(BaseModel):
                 # GRACEFUL FALLBACK: Flag as invalid, do not crash
                 self.__dict__["is_physically_valid"] = False
 
-        # 2. Validate / Compute Exact Mass
+        # 2. Validate / Compute Exact Mass (pyteomics SSOT)
         if mol:
-            calculated_mass = Descriptors.ExactMolWt(mol)  # type: ignore[attr-defined]
+            formula = _mol_to_pyteomics_formula(mol)
+            calculated_mass = pmass.calculate_mass(formula=formula)
 
             if self.exact_mass is not None:
                 # Enforce strict 5 ppm mass error threshold for structural integrity

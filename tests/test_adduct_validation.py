@@ -1,7 +1,9 @@
+"""Adduct validation tests using pyteomics as the single source of truth."""
+
+from MassFlow.cheminformatics import calculate_theoretical_mass
 from MassFlow.models import MolecularStructure, SpectrumMetadata
 
 # Caffeine is used as the base molecule for these tests.
-# Its monoisotopic exact mass is ~194.080376.
 CAFFEINE_SMILES = "CN1C=NC2=C1C(=O)N(C(=O)N2C)C"
 
 
@@ -10,10 +12,12 @@ def get_caffeine() -> MolecularStructure:
 
 
 def test_adduct_m_plus_na_valid():
-    # Exact mass: 194.080376 + Na offset: 22.989221 = 217.069597
+    # Theoretical m/z derived from pyteomics via calculate_theoretical_mass.
+    theo_mz = calculate_theoretical_mass(CAFFEINE_SMILES, "[M+Na]+")
+    assert theo_mz is not None
     SpectrumMetadata(
         spectrum_id="test_na_valid",
-        precursor_mz=217.069597,
+        precursor_mz=round(theo_mz, 6),
         charge=1,
         adduct="[M+Na]+",
         molecule=get_caffeine(),
@@ -21,10 +25,11 @@ def test_adduct_m_plus_na_valid():
 
 
 def test_adduct_m_plus_nh4_valid():
-    # Exact mass: 194.080376 + NH4 offset: 18.033826 = 212.114202
+    theo_mz = calculate_theoretical_mass(CAFFEINE_SMILES, "[M+NH4]+")
+    assert theo_mz is not None
     SpectrumMetadata(
         spectrum_id="test_nh4_valid",
-        precursor_mz=212.114202,
+        precursor_mz=round(theo_mz, 6),
         charge=1,
         adduct="[M+NH4]+",
         molecule=get_caffeine(),
@@ -32,10 +37,11 @@ def test_adduct_m_plus_nh4_valid():
 
 
 def test_adduct_m_minus_h_valid():
-    # Exact mass: 194.080376 + [M-H]- offset: -1.007276 = 193.073100
+    theo_mz = calculate_theoretical_mass(CAFFEINE_SMILES, "[M-H]-")
+    assert theo_mz is not None
     SpectrumMetadata(
         spectrum_id="test_m_minus_h_valid",
-        precursor_mz=193.073100,
+        precursor_mz=round(theo_mz, 6),
         charge=-1,
         adduct="[M-H]-",
         molecule=get_caffeine(),
@@ -43,9 +49,10 @@ def test_adduct_m_minus_h_valid():
 
 
 def test_adduct_m_plus_na_invalid_ppm():
-    # Theoretical m/z is 217.069597.
-    # Adding 0.005 to mz deviates by ~23 ppm, which should fail the strict 5 ppm tolerance.
-    invalid_mz = 217.069597 + 0.005
+    theo_mz = calculate_theoretical_mass(CAFFEINE_SMILES, "[M+Na]+")
+    assert theo_mz is not None
+    # Adding ~5 ppm error to theoretical m/z pushes past the tolerance.
+    invalid_mz = theo_mz * (1 + 5.1 / 1e6)
     meta = SpectrumMetadata(
         spectrum_id="spec_1",
         precursor_mz=invalid_mz,
@@ -57,9 +64,9 @@ def test_adduct_m_plus_na_invalid_ppm():
 
 
 def test_adduct_m_plus_nh4_invalid_ppm():
-    # Theoretical m/z is 212.114202
-    # Subtracting 0.005 is ~23.5 ppm error
-    invalid_mz = 212.114202 - 0.005
+    theo_mz = calculate_theoretical_mass(CAFFEINE_SMILES, "[M+NH4]+")
+    assert theo_mz is not None
+    invalid_mz = theo_mz * (1 + 5.1 / 1e6)
     meta = SpectrumMetadata(
         spectrum_id="spec_1",
         precursor_mz=invalid_mz,
@@ -71,10 +78,11 @@ def test_adduct_m_plus_nh4_invalid_ppm():
 
 
 def test_adduct_default_positive_mode():
-    # Should default to [M+H]+ (offset 1.007276, mz 195.087652)
+    theo_mz = calculate_theoretical_mass(CAFFEINE_SMILES, "[M+H]+")
+    assert theo_mz is not None
     meta = SpectrumMetadata(
         spectrum_id="test_default_pos",
-        precursor_mz=195.087652,
+        precursor_mz=round(theo_mz, 6),
         charge=1,
         ion_mode="positive",
         molecule=get_caffeine(),
@@ -83,10 +91,11 @@ def test_adduct_default_positive_mode():
 
 
 def test_adduct_default_negative_mode():
-    # Should default to [M-H]- (offset -1.007276, mz 193.073100)
+    theo_mz = calculate_theoretical_mass(CAFFEINE_SMILES, "[M-H]-")
+    assert theo_mz is not None
     meta = SpectrumMetadata(
         spectrum_id="test_default_neg",
-        precursor_mz=193.073100,
+        precursor_mz=round(theo_mz, 6),
         charge=-1,
         ion_mode="negative",
         molecule=get_caffeine(),

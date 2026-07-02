@@ -13,6 +13,7 @@ from typing import Iterable, Iterator, List, Optional, Tuple
 
 import numpy as np
 import polars as pl
+import pyteomics.mass as pmass
 from matchms import Spectrum
 from matchms.filtering import (
     clean_compound_name,
@@ -32,6 +33,10 @@ from matchms.filtering import (
 )
 
 from MassFlow.config import ProcessingConfig
+
+# Neutral monoisotopic mass of water (H2O), computed once at import time from
+# pyteomics to guarantee SSOT consistency across the codebase.
+_WATER_MASS: float = pmass.calculate_mass(formula="H2O")
 
 logger = logging.getLogger(__name__)
 
@@ -266,7 +271,7 @@ def process_spectra_batch(
     filtered_lf = filtered_lf.with_columns(
         [
             (pl.col("precursor_mz") % 1).alias("mz_nominal_offset"),
-            (pl.col("precursor_mz") - 18.01).alias("theoretical_water_loss"),
+            (pl.col("precursor_mz") - _WATER_MASS).alias("theoretical_water_loss"),
         ]
     )
 

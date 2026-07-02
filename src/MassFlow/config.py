@@ -16,6 +16,7 @@ orchestrating modules.
 from pathlib import Path
 from typing import List, Literal, Optional, Union
 
+import pyteomics.mass as pmass
 import yaml
 from pydantic import (
     AliasChoices,
@@ -25,6 +26,7 @@ from pydantic import (
     ValidationError,
     ValidationInfo,
     field_validator,
+    model_validator,
 )
 
 
@@ -90,6 +92,11 @@ class SolventConfig(BaseModel):
     """
     Named solvent/adduct mass used as optional contextual processing metadata.
 
+    The monoisotopic mass is always derived from ``pyteomics``. When a
+    ``formula`` is provided it supersedes any raw ``mz`` value; when only
+    ``mz`` is given the model stores it as-is (typically for solvents whose
+    exact composition is not a simple chemical formula).
+
     These values are stored in the configuration schema for downstream
     extensions and user metadata, but they are not currently consumed directly
     by the core annotation workflow in this repository snapshot.
@@ -97,13 +104,36 @@ class SolventConfig(BaseModel):
 
     name: str
     formula: Optional[str] = None
-    mz: float
+    mz: Optional[float] = None
+
+    @model_validator(mode="after")
+    def derive_mass_from_formula(self) -> "SolventConfig":
+        """Derive ``mz`` from ``formula`` via pyteomics when a formula is present.
+
+        If both ``formula`` and ``mz`` are provided and the computed value
+        disagrees with the user-supplied ``mz`` beyond ~10 mDa, we raise an
+        error to catch transcription mistakes in configuration files.
+        """
+        if self.formula:
+            computed = pmass.calculate_mass(formula=self.formula)
+            if self.mz is not None:
+                if abs(self.mz - computed) > 0.01:
+                    raise ValueError(
+                        f"Solvent '{self.name}': provided mz ({self.mz}) disagrees "
+                        f"with pyteomics mass ({computed}) for formula '{self.formula}'."
+                    )
+            self.mz = computed
+        elif self.mz is None:
+            raise ValueError(
+                f"Solvent '{self.name}': either 'formula' or 'mz' must be provided."
+            )
+        return self
 
     @field_validator("mz")
     @classmethod
-    def validate_mz(cls, v: float) -> float:
+    def validate_mz(cls, v: float | None) -> float | None:
         """Ensure solvent m/z is not negative."""
-        if v < 0:
+        if v is not None and v < 0:
             raise ValueError(f"Solvent m/z cannot be negative. Received: {v}")
         return v
 

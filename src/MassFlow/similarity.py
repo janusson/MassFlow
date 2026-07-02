@@ -173,7 +173,13 @@ def _ms1_prefilter(
     ms1_tolerance: float,
     resolution_ppm: Optional[float] = None,
 ) -> tuple[np.ndarray, ...]:
-    """Perform MS1 precursor m/z pre-filtering using Da tolerance or optionally PPM resolution."""
+    """Perform MS1 precursor m/z pre-filtering using Da tolerance or optionally PPM resolution.
+
+    For PPM mode, the half-window is computed as ``resolution_ppm * query_mz / 1e6``
+    (i.e., using the query m/z as the denominator). This matches the pre-filter gate
+    documented by ``calculate_mass_error_ppm`` to within second-order error for
+    typical sub-100-ppm tolerances.
+    """
     ref_mzs_raw: list[Optional[float]] = [s.get("precursor_mz") for s in all_references]  # type: ignore[assignment]
     query_mzs_raw: list[Optional[float]] = [
         q.get("precursor_mz") for q in query_spectra
@@ -193,66 +199,43 @@ def _ms1_prefilter(
         ]
     )
 
-    if resolution_ppm is not None:
-        # For each query, find references where |ref_mz - query_mz| / query_mz <= ppm_tolerance
-        # This is more efficient than a full matrix operation for sparse results.
-        query_mzs_indexed = list(enumerate(query_mzs))
-        ref_mzs_sorted_indices = np.argsort(ref_mzs)
-        ref_mzs_sorted = ref_mzs[ref_mzs_sorted_indices]
+    # Use binary search for O(Q * log(R)) complexity, avoiding O(R * Q) dense arrays.
+    # Both Da and PPM tolerance paths share the same logic, differing only in the
+    # half-window size computed per query.
+    query_mzs_indexed = list(enumerate(query_mzs))
+    ref_mzs_sorted_indices = np.argsort(ref_mzs)
+    ref_mzs_sorted = ref_mzs[ref_mzs_sorted_indices]
 
-        rows: List[int] = []
-        cols: List[int] = []
-        for query_idx, query_mz in query_mzs_indexed:
-            if query_mz > 0:
-                ppm_tol_da = resolution_ppm * query_mz / 1e6
-                min_mz, max_mz = query_mz - ppm_tol_da, query_mz + ppm_tol_da
+    rows: List[int] = []
+    cols: List[int] = []
+    for query_idx, query_mz in query_mzs_indexed:
+        if query_mz > 0:
+            if resolution_ppm is not None:
+                # Use the query m/z as the reference for the ppm → Da conversion
+                # (see docstring note on denominator convention).
+                half_window = resolution_ppm * query_mz / 1e6
+            else:
+                half_window = ms1_tolerance
 
-                start_idx = np.searchsorted(ref_mzs_sorted, min_mz, side="left")
-                end_idx = np.searchsorted(ref_mzs_sorted, max_mz, side="right")
+            min_mz = query_mz - half_window
+            max_mz = query_mz + half_window
 
-                original_indices = ref_mzs_sorted_indices[start_idx:end_idx]
-                rows.extend(original_indices)
-                cols.extend([query_idx] * len(original_indices))
+            start_idx = np.searchsorted(ref_mzs_sorted, min_mz, side="left")
+            end_idx = np.searchsorted(ref_mzs_sorted, max_mz, side="right")
 
-        # Also include spectra with missing precursors, as they bypass the filter
-        for i in np.where(ref_missing)[0]:
-            rows.extend([i] * len(query_mzs))
-            cols.extend(range(len(query_mzs)))
-        for i in np.where(query_missing)[0]:
-            rows.extend(range(len(ref_mzs)))
-            cols.extend([i] * len(ref_mzs))
+            original_indices = ref_mzs_sorted_indices[start_idx:end_idx]
+            rows.extend(original_indices)
+            cols.extend([query_idx] * len(original_indices))
 
-        return np.array(rows), np.array(cols)
+    # Also include spectra with missing precursors, as they bypass the filter
+    for i in np.where(ref_missing)[0]:
+        rows.extend([i] * len(query_mzs))
+        cols.extend(range(len(query_mzs)))
+    for i in np.where(query_missing)[0]:
+        rows.extend(range(len(ref_mzs)))
+        cols.extend([i] * len(ref_mzs))
 
-    else:
-        # For each query, find references where |ref_mz - query_mz| <= ms1_tolerance
-        # This uses binary search, which is O(Q * log(R)) and avoids O(R * Q) dense array memory allocation
-        query_mzs_indexed = list(enumerate(query_mzs))
-        ref_mzs_sorted_indices = np.argsort(ref_mzs)
-        ref_mzs_sorted = ref_mzs[ref_mzs_sorted_indices]
-
-        rows_abs: List[int] = []
-        cols_abs: List[int] = []
-        for query_idx, query_mz in query_mzs_indexed:
-            if query_mz > 0:
-                min_mz, max_mz = query_mz - ms1_tolerance, query_mz + ms1_tolerance
-
-                start_idx = np.searchsorted(ref_mzs_sorted, min_mz, side="left")
-                end_idx = np.searchsorted(ref_mzs_sorted, max_mz, side="right")
-
-                original_indices = ref_mzs_sorted_indices[start_idx:end_idx]
-                rows_abs.extend(original_indices)
-                cols_abs.extend([query_idx] * len(original_indices))
-
-        # Also include spectra with missing precursors, as they bypass the filter
-        for i in np.where(ref_missing)[0]:
-            rows_abs.extend([i] * len(query_mzs))
-            cols_abs.extend(range(len(query_mzs)))
-        for i in np.where(query_missing)[0]:
-            rows_abs.extend(range(len(ref_mzs)))
-            cols_abs.extend([i] * len(ref_mzs))
-
-        return np.array(rows_abs), np.array(cols_abs)
+    return np.array(rows), np.array(cols)
 
 
 def generate_decoys(spectra: List[Spectrum], random_seed: int = 42) -> List[Spectrum]:
@@ -274,18 +257,28 @@ def generate_decoys(spectra: List[Spectrum], random_seed: int = 42) -> List[Spec
             decoy_metadata["compound_name"] = f"{name}_decoy"
 
         shuffled_intensities = spec.peaks.intensities.copy()
+        n_peaks = len(shuffled_intensities)
+
         # If there are fewer than 2 unique intensity values, shuffling is ineffective.
-        # Instead, taper the array to break structural correlation.
-        if len(np.unique(shuffled_intensities)) < 2 and len(shuffled_intensities) > 1:
-            shuffled_intensities = shuffled_intensities * np.linspace(
-                1.0, 0.1, len(shuffled_intensities)
-            )
+        # Instead, apply a random taper to break structural correlation. We use
+        # randomised uniform multipliers (0.5–1.0) shuffled independently so the
+        # resulting pattern is not systematically correlated with m/z order.
+        if len(np.unique(shuffled_intensities)) < 2 and n_peaks > 1:
+            taper = rng.uniform(0.5, 1.0, size=n_peaks)
+            rng.shuffle(taper)
+            shuffled_intensities = shuffled_intensities * taper
         else:
             original_intensities = shuffled_intensities.copy()
             rng.shuffle(shuffled_intensities)
-            # Post-shuffle check to ensure it's not identical (for low peak counts)
+            # Post-shuffle check to ensure it's not identical (for low peak counts).
+            # If the shuffle accidentally produced the original ordering, roll by one
+            # position and add small random jitter for very sparse spectra to prevent
+            # accidental structural correlation through matched m/z positions.
             if np.array_equal(shuffled_intensities, original_intensities):
                 shuffled_intensities = np.roll(shuffled_intensities, 1)
+            if n_peaks <= 5:
+                jitter = rng.uniform(0.95, 1.05, size=n_peaks)
+                shuffled_intensities = shuffled_intensities * jitter
 
         decoy_spec = Spectrum(
             mz=spec.peaks.mz.copy(),
@@ -301,15 +294,21 @@ def calculate_empirical_p_values(
 ) -> np.ndarray:
     """
     Calculate empirical p-values for target scores against a decoy null distribution.
+
+    Uses binary search on sorted decoy scores for O(N log M) time and O(1) extra
+    memory, avoiding the O(N × M) intermediate array that could exhaust RAM for
+    very large libraries.
     """
     if len(decoy_scores) == 0:
         return np.ones_like(target_scores)
 
-    # Vectorized computation of instances where decoy score >= target score
-    greater_equal_decoys = np.sum(decoy_scores >= target_scores[:, None], axis=1)
+    sorted_decoys = np.sort(decoy_scores)
+    # For each target score, count how many decoy scores are >= it via binary search.
+    positions = np.searchsorted(sorted_decoys, target_scores, side="left")
+    greater_equal = len(decoy_scores) - positions
 
     # Apply +1 pseudo-count to numerator and denominator
-    p_values = (greater_equal_decoys + 1) / (len(decoy_scores) + 1)
+    p_values = (greater_equal.astype(float) + 1.0) / (len(decoy_scores) + 1.0)
     return p_values
 
 
@@ -526,7 +525,20 @@ class SimilarityEngine:
                 )
 
         else:
-            # Calculate scores natively for modified cosine
+            # Calculate scores natively for modified cosine (or cosine without sparse_array).
+            # Log an informational message if the user explicitly configured PPM-based
+            # MS1 pre-filtering, which is not applied during modified cosine scoring.
+            # (ms1_tolerance defaults to 0.02, so only warn on the opt-in resolution_ppm.)
+            if self.config.algorithm == "modified_cosine" and (
+                getattr(self.config, "resolution_ppm", None) is not None
+            ):
+                logger.info(
+                    "resolution_ppm is configured but is not applied during "
+                    "modified_cosine scoring. Modified cosine uses the precursor "
+                    "mass difference to align fragments, so an MS1 window is not a "
+                    "strict gate. To pre-filter by precursor mass before scoring, "
+                    "use 'cosine'."
+                )
             try:
                 scores_obj = calculate_scores(
                     references=all_references,  # type: ignore

@@ -33,9 +33,16 @@ def test_generate_decoys_edge_cases():
     assert len(decoys[0].peaks.intensities) == 1
 
     assert decoys[1].metadata["compound_name"] == "Test_decoy"
-    # Intensities should be tapered
-    assert decoys[1].peaks.intensities[0] == 1.0
-    assert decoys[1].peaks.intensities[-1] < 1.0
+    # Intensities should be altered (randomised taper for uniform-intensity spectra).
+    # The old deterministic linspace taper is replaced with shuffled uniform
+    # multipliers, so no individual position is guaranteed a fixed value.
+    d2_ints = decoys[1].peaks.intensities
+    assert not np.array_equal(
+        d2_ints, spec2.peaks.intensities
+    ), "Decoy intensities must differ from target intensities"
+    assert (
+        len(np.unique(d2_ints.round(decimals=4))) > 1
+    ), "Tapered intensities should not all be equal"
 
 
 def test_similarity_engine_empty_search():
