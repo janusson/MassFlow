@@ -295,3 +295,64 @@ def test_calculate_fdr_empty_arrays():
     # With monotonicity enforced by minimum.accumulate, q-values for both are 0.5
     np.testing.assert_allclose(q, np.array([0.5, 0.5]))
     assert np.all(t)
+
+def test_rt_tolerance_filtering():
+    """Verify that RT tolerance filtering correctly rejects and accepts matches."""
+    q_mz = np.array([100.0, 200.0], dtype="float")
+    q_ints = np.array([1.0, 1.0], dtype="float")
+
+    # Match RT exactly
+    ref1 = Spectrum(
+        mz=q_mz,
+        intensities=q_ints,
+        metadata={"id": "ref1", "precursor_mz": 400.0, "retention_time": 5.0},
+    )
+
+    # Match RT within tolerance
+    ref2 = Spectrum(
+        mz=q_mz,
+        intensities=q_ints,
+        metadata={"id": "ref2", "precursor_mz": 400.0, "retention_time": 5.2},
+    )
+
+    # Match RT outside tolerance
+    ref3 = Spectrum(
+        mz=q_mz,
+        intensities=q_ints,
+        metadata={"id": "ref3", "precursor_mz": 400.0, "retention_time": 5.8},
+    )
+
+    # Missing/Malformed RT (should bypass filter)
+    ref4 = Spectrum(
+        mz=q_mz,
+        intensities=q_ints,
+        metadata={"id": "ref4", "precursor_mz": 400.0, "retention_time": "N/A"},
+    )
+
+    # query spectrum with RT 5.0
+    query = Spectrum(
+        mz=q_mz,
+        intensities=q_ints,
+        metadata={"id": "query1", "precursor_mz": 400.0, "retention_time": 5.0},
+    )
+
+    # Config with 0.5 RT tolerance
+    config = SimilarityConfig(
+        algorithm="cosine",
+        rt_tolerance=0.5,
+        min_matched_peaks=2,
+        min_score=0.0,
+    )
+    engine = SimilarityEngine(config)
+
+    results = engine.search(
+        query_spectra=[query], reference_spectra=[ref1, ref2, ref3, ref4], include_decoys=False
+    )
+
+    # We should have matches for ref1, ref2, and ref4. ref3 should be filtered out.
+    matched_ids = [r["reference_id"] for r in results]
+
+    assert "ref1" in matched_ids, "Exact RT match was incorrectly rejected."
+    assert "ref2" in matched_ids, "Match within RT tolerance was incorrectly rejected."
+    assert "ref3" not in matched_ids, "Match outside RT tolerance was incorrectly accepted."
+    assert "ref4" in matched_ids, "Match with missing RT was incorrectly rejected."
