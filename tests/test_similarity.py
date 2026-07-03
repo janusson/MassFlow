@@ -178,6 +178,67 @@ def test_ms1_tolerance_filtering(cocaine_spectrum: Spectrum) -> None:
     assert len(relaxed_results) == 1, "Query inside MS1 tolerance was rejected."
 
 
+def test_rt_tolerance_filtering() -> None:
+    """Verify that matches exceeding rt_tolerance are rejected and missing RTs are safely ignored."""
+    # Query with valid RT
+    query = Spectrum(
+        mz=np.array([100.0, 200.0], dtype="float"),
+        intensities=np.array([1.0, 1.0], dtype="float"),
+        metadata={"id": "q1", "precursor_mz": 400.0, "retention_time": 5.0},
+    )
+
+    # Reference within RT tolerance
+    ref_match = Spectrum(
+        mz=np.array([100.0, 200.0], dtype="float"),
+        intensities=np.array([1.0, 1.0], dtype="float"),
+        metadata={"id": "r1", "precursor_mz": 400.0, "retention_time": 5.2},
+    )
+
+    # Reference outside RT tolerance
+    ref_mismatch = Spectrum(
+        mz=np.array([100.0, 200.0], dtype="float"),
+        intensities=np.array([1.0, 1.0], dtype="float"),
+        metadata={"id": "r2", "precursor_mz": 400.0, "retention_time": 6.5},
+    )
+
+    # Reference missing RT (should not be filtered)
+    ref_missing = Spectrum(
+        mz=np.array([100.0, 200.0], dtype="float"),
+        intensities=np.array([1.0, 1.0], dtype="float"),
+        metadata={"id": "r3", "precursor_mz": 400.0},
+    )
+
+    # Reference malformed RT string (should not be filtered)
+    ref_malformed = Spectrum(
+        mz=np.array([100.0, 200.0], dtype="float"),
+        intensities=np.array([1.0, 1.0], dtype="float"),
+        metadata={"id": "r4", "precursor_mz": 400.0, "retention_time": "NaN"},
+    )
+
+    config = SimilarityConfig(
+        algorithm="cosine",
+        ms1_tolerance=10.0,
+        ms2_tolerance=10.0,
+        rt_tolerance=1.0,
+        min_matched_peaks=1,
+        min_score=0.0,
+    )
+    engine = SimilarityEngine(config)
+
+    results = engine.search(
+        query_spectra=[query],
+        reference_spectra=[ref_match, ref_mismatch, ref_missing, ref_malformed],
+        include_decoys=False,
+    )
+
+    matched_ids = [r["reference_id"] for r in results]
+
+    assert "r1" in matched_ids, "Valid RT match was incorrectly rejected."
+    assert "r2" not in matched_ids, "RT mismatch was incorrectly accepted."
+    assert "r3" in matched_ids, "Missing RT was incorrectly rejected."
+    assert "r4" in matched_ids, "Malformed RT was incorrectly rejected."
+
+
 def test_min_matched_peaks_filtering() -> None:
     """Verify that matches with fewer than min_matched_peaks are rejected."""
     query = Spectrum(
