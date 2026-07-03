@@ -14,7 +14,7 @@ from typing import Optional
 
 import pyteomics.mass as pmass
 from rdkit import Chem, DataStructs
-from rdkit.Chem import Descriptors, rdMolDescriptors
+from rdkit.Chem import rdMolDescriptors
 
 # Electron rest mass (Da). pyteomics deliberately omits the electron from neutral
 # atomic compositions, so we apply it explicitly when an ion gains or loses charge.
@@ -348,10 +348,85 @@ def calculate_isotopic_envelope(
     return res
 
 
+def _mol_to_pyteomics_formula(mol: Chem.rdchem.Mol) -> str:
+    """
+    Convert an RDKit molecule to a formula string compatible with pyteomics.
+
+    For standard (non-isotopically-labeled) molecules this simply delegates to
+    ``rdMolDescriptors.CalcMolFormula``. For isotope-labeled molecules the
+    formula is constructed manually with pyteomics' ``{ELEMENT}[MASS]COUNT``
+    notation (e.g. ``C{13}6H6``) so that ``pmass.calculate_mass`` returns the
+    correct isotopically-weighted monoisotopic mass.
+
+    Parameters
+    ----------
+    mol : rdkit.Chem.rdchem.Mol
+        A parsed RDKit molecule.
+
+    Returns
+    -------
+    str
+        A pyteomics-compatible chemical formula.
+    """
+    has_isotope = any(atom.GetIsotope() > 0 for atom in mol.GetAtoms())
+    if not has_isotope:
+        return rdMolDescriptors.CalcMolFormula(mol)
+
+    # Isotope-labelled: build the formula with pyteomics isotope notation.
+    # Get the base formula from an isotope-zeroed copy to pick up implicit H.
+    mol_no_iso = Chem.Mol(mol)
+    for atom in mol_no_iso.GetAtoms():
+        atom.SetIsotope(0)
+    base_formula = rdMolDescriptors.CalcMolFormula(mol_no_iso)
+
+    base_matches = re.findall(r"([A-Z][a-z]*)(\d*)", base_formula)
+    base_counts: dict[str, int] = {
+        elem: int(count) if count else 1 for elem, count in base_matches
+    }
+
+    counts: defaultdict[str, defaultdict[int, int]] = defaultdict(
+        lambda: defaultdict(int)
+    )
+    for atom in mol.GetAtoms():
+        symbol = atom.GetSymbol()
+        isotope = atom.GetIsotope()
+        counts[symbol][isotope] += 1
+
+    parts: list[str] = []
+    for symbol in sorted(base_counts.keys()):
+        total = base_counts[symbol]
+        if symbol in counts:
+            # Add isotopically-labeled atoms first: C{13}6
+            iso_items = [
+                (iso, counts[symbol][iso])
+                for iso in sorted(counts[symbol].keys())
+                if iso > 0
+            ]
+            for iso, cnt in iso_items:
+                parts.append(f"{symbol}{{{iso}}}{cnt}")
+            # Non-labeled atoms
+            non_iso_count = counts[symbol].get(0, 0)
+            if non_iso_count > 0:
+                parts.append(f"{symbol}{non_iso_count}")
+            # Remainder from base formula (e.g. implicit H not captured explicitly)
+            sum_counts = non_iso_count + sum(cnt for _, cnt in iso_items)
+            if sum_counts < total:
+                parts.append(f"{symbol}{total - sum_counts}")
+        else:
+            parts.append(f"{symbol}{total}")
+
+    return "".join(parts)
+
+
 @lru_cache(maxsize=16384)
 def calculate_theoretical_mass(smiles: str, adduct: str = "[M+H]+") -> Optional[float]:
     """
     Calculate the theoretical exact mass for a chemical structure given an adduct.
+
+    The neutral monoisotopic mass is computed strictly via ``pyteomics.mass``
+    from the molecular formula derived by RDKit. This guarantees a single source
+    of truth for all atomic weights and eliminates the drift between RDKit's
+    ``ExactMolWt`` and the pyteomics-derived adduct offsets.
 
     Parameters
     ----------
@@ -374,7 +449,9 @@ def calculate_theoretical_mass(smiles: str, adduct: str = "[M+H]+") -> Optional[
     if not mol:
         return None
 
-    exact_mass = Descriptors.ExactMolWt(mol)  # type: ignore[attr-defined]
+    # Derive pyteomics-compatible formula and compute mass through pyteomics only.
+    formula = _mol_to_pyteomics_formula(mol)
+    neutral_mass = pmass.calculate_mass(formula=formula)
 
     definition = _ADDUCT_DEFS.get(adduct)
     if definition is None:
@@ -387,7 +464,7 @@ def calculate_theoretical_mass(smiles: str, adduct: str = "[M+H]+") -> Optional[
 
     # Divide by the absolute charge so multiply-charged adducts (e.g. [M+2H]2+)
     # report the observed m/z rather than the neutral mass.
-    return (exact_mass + offset) / abs(charge)
+    return (neutral_mass + offset) / abs(charge)
 
 
 def calculate_isotopic_similarity(

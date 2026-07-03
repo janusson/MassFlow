@@ -178,6 +178,67 @@ def test_ms1_tolerance_filtering(cocaine_spectrum: Spectrum) -> None:
     assert len(relaxed_results) == 1, "Query inside MS1 tolerance was rejected."
 
 
+def test_rt_tolerance_filtering() -> None:
+    """Verify that matches exceeding rt_tolerance are rejected and missing RTs are safely ignored."""
+    # Query with valid RT
+    query = Spectrum(
+        mz=np.array([100.0, 200.0], dtype="float"),
+        intensities=np.array([1.0, 1.0], dtype="float"),
+        metadata={"id": "q1", "precursor_mz": 400.0, "retention_time": 5.0},
+    )
+
+    # Reference within RT tolerance
+    ref_match = Spectrum(
+        mz=np.array([100.0, 200.0], dtype="float"),
+        intensities=np.array([1.0, 1.0], dtype="float"),
+        metadata={"id": "r1", "precursor_mz": 400.0, "retention_time": 5.2},
+    )
+
+    # Reference outside RT tolerance
+    ref_mismatch = Spectrum(
+        mz=np.array([100.0, 200.0], dtype="float"),
+        intensities=np.array([1.0, 1.0], dtype="float"),
+        metadata={"id": "r2", "precursor_mz": 400.0, "retention_time": 6.5},
+    )
+
+    # Reference missing RT (should not be filtered)
+    ref_missing = Spectrum(
+        mz=np.array([100.0, 200.0], dtype="float"),
+        intensities=np.array([1.0, 1.0], dtype="float"),
+        metadata={"id": "r3", "precursor_mz": 400.0},
+    )
+
+    # Reference malformed RT string (should not be filtered)
+    ref_malformed = Spectrum(
+        mz=np.array([100.0, 200.0], dtype="float"),
+        intensities=np.array([1.0, 1.0], dtype="float"),
+        metadata={"id": "r4", "precursor_mz": 400.0, "retention_time": "NaN"},
+    )
+
+    config = SimilarityConfig(
+        algorithm="cosine",
+        ms1_tolerance=10.0,
+        ms2_tolerance=10.0,
+        rt_tolerance=1.0,
+        min_matched_peaks=1,
+        min_score=0.0,
+    )
+    engine = SimilarityEngine(config)
+
+    results = engine.search(
+        query_spectra=[query],
+        reference_spectra=[ref_match, ref_mismatch, ref_missing, ref_malformed],
+        include_decoys=False,
+    )
+
+    matched_ids = [r["reference_id"] for r in results]
+
+    assert "r1" in matched_ids, "Valid RT match was incorrectly rejected."
+    assert "r2" not in matched_ids, "RT mismatch was incorrectly accepted."
+    assert "r3" in matched_ids, "Missing RT was incorrectly rejected."
+    assert "r4" in matched_ids, "Malformed RT was incorrectly rejected."
+
+
 def test_min_matched_peaks_filtering() -> None:
     """Verify that matches with fewer than min_matched_peaks are rejected."""
     query = Spectrum(
@@ -226,6 +287,57 @@ def test_min_matched_peaks_filtering() -> None:
     relaxed_results = [r for r in relaxed_results if not r.get("is_decoy")]
 
     assert len(relaxed_results) == 1, "Result with enough matched peaks was rejected."
+
+
+def test_rt_tolerance_filtering() -> None:
+    """Verify that matches outside the RT tolerance are rejected, and missing RTs are handled safely."""
+    query = Spectrum(
+        mz=np.array([100.0, 200.0, 300.0], dtype="float"),
+        intensities=np.array([1.0, 1.0, 1.0], dtype="float"),
+        metadata={"id": "query1", "precursor_mz": 400.0, "retention_time": 5.0},
+    )
+
+    # Within tolerance
+    ref_accept = Spectrum(
+        mz=np.array([100.0, 200.0, 300.0], dtype="float"),
+        intensities=np.array([1.0, 1.0, 1.0], dtype="float"),
+        metadata={"id": "ref1", "precursor_mz": 400.0, "retention_time": 5.2},
+    )
+
+    # Outside tolerance
+    ref_reject = Spectrum(
+        mz=np.array([100.0, 200.0, 300.0], dtype="float"),
+        intensities=np.array([1.0, 1.0, 1.0], dtype="float"),
+        metadata={"id": "ref2", "precursor_mz": 400.0, "retention_time": 6.0},
+    )
+
+    # Missing RT in reference
+    ref_missing = Spectrum(
+        mz=np.array([100.0, 200.0, 300.0], dtype="float"),
+        intensities=np.array([1.0, 1.0, 1.0], dtype="float"),
+        metadata={"id": "ref3", "precursor_mz": 400.0, "retention_time": "N/A"},
+    )
+
+    # Configuration with rt_tolerance = 0.5
+    config = SimilarityConfig(
+        algorithm="cosine",
+        ms1_tolerance=0.0,
+        rt_tolerance=0.5,
+        min_score=0.0,
+    )
+    engine = SimilarityEngine(config)
+
+    # Search against all references (disable decoys for pure target test)
+    results = engine.search(
+        query_spectra=[query],
+        reference_spectra=[ref_accept, ref_reject, ref_missing],
+        include_decoys=False,
+    )
+
+    result_ids = [r["reference_id"] for r in results]
+    assert "ref1" in result_ids, "Reference within RT tolerance was rejected."
+    assert "ref2" not in result_ids, "Reference outside RT tolerance was not rejected."
+    assert "ref3" in result_ids, "Reference with missing RT was wrongly rejected."
 
 
 def test_calculate_fdr_basic():
@@ -296,96 +408,63 @@ def test_calculate_fdr_empty_arrays():
     np.testing.assert_allclose(q, np.array([0.5, 0.5]))
     assert np.all(t)
 
-def test_rt_tolerance_filtering() -> None:
-    """Verify that matches outside the RT tolerance are rejected."""
+def test_rt_tolerance_filtering():
+    """Verify that RT tolerance filtering correctly rejects and accepts matches."""
+    q_mz = np.array([100.0, 200.0], dtype="float")
+    q_ints = np.array([1.0, 1.0], dtype="float")
+
+    # Match RT exactly
+    ref1 = Spectrum(
+        mz=q_mz,
+        intensities=q_ints,
+        metadata={"id": "ref1", "precursor_mz": 400.0, "retention_time": 5.0},
+    )
+
+    # Match RT within tolerance
+    ref2 = Spectrum(
+        mz=q_mz,
+        intensities=q_ints,
+        metadata={"id": "ref2", "precursor_mz": 400.0, "retention_time": 5.2},
+    )
+
+    # Match RT outside tolerance
+    ref3 = Spectrum(
+        mz=q_mz,
+        intensities=q_ints,
+        metadata={"id": "ref3", "precursor_mz": 400.0, "retention_time": 5.8},
+    )
+
+    # Missing/Malformed RT (should bypass filter)
+    ref4 = Spectrum(
+        mz=q_mz,
+        intensities=q_ints,
+        metadata={"id": "ref4", "precursor_mz": 400.0, "retention_time": "N/A"},
+    )
+
+    # query spectrum with RT 5.0
     query = Spectrum(
-        mz=np.array([100.0, 200.0], dtype="float"),
-        intensities=np.array([1.0, 1.0], dtype="float"),
-        metadata={"id": "query_rt", "precursor_mz": 400.0, "retention_time": 5.0},
+        mz=q_mz,
+        intensities=q_ints,
+        metadata={"id": "query1", "precursor_mz": 400.0, "retention_time": 5.0},
     )
 
-    ref_inside = Spectrum(
-        mz=np.array([100.0, 200.0], dtype="float"),
-        intensities=np.array([1.0, 1.0], dtype="float"),
-        metadata={"id": "ref_inside", "precursor_mz": 400.0, "retention_time": 5.1},
-    )
-
-    ref_outside = Spectrum(
-        mz=np.array([100.0, 200.0], dtype="float"),
-        intensities=np.array([1.0, 1.0], dtype="float"),
-        metadata={"id": "ref_outside", "precursor_mz": 400.0, "retention_time": 5.5},
-    )
-
+    # Config with 0.5 RT tolerance
     config = SimilarityConfig(
         algorithm="cosine",
-        rt_tolerance=0.2,
-        min_score=0.0,
+        rt_tolerance=0.5,
         min_matched_peaks=2,
+        min_score=0.0,
     )
     engine = SimilarityEngine(config)
 
     results = engine.search(
-        query_spectra=[query], reference_spectra=[ref_inside, ref_outside], include_decoys=False
+        query_spectra=[query], reference_spectra=[ref1, ref2, ref3, ref4], include_decoys=False
     )
 
-    assert len(results) == 1, "Expected only 1 match due to RT tolerance filtering."
-    assert results[0]["reference_id"] == "ref_inside", "Expected ref_inside to be matched."
+    # We should have matches for ref1, ref2, and ref4. ref3 should be filtered out.
+    matched_ids = [r["reference_id"] for r in results]
 
-
-def test_rt_tolerance_missing_metadata() -> None:
-    """Verify that RT tolerance check is ignored if metadata is missing or invalid."""
-    query_missing = Spectrum(
-        mz=np.array([100.0, 200.0], dtype="float"),
-        intensities=np.array([1.0, 1.0], dtype="float"),
-        metadata={"id": "query_missing", "precursor_mz": 400.0},
-    )
-
-    query_invalid = Spectrum(
-        mz=np.array([100.0, 200.0], dtype="float"),
-        intensities=np.array([1.0, 1.0], dtype="float"),
-        metadata={"id": "query_invalid", "precursor_mz": 400.0, "retention_time": "N/A"},
-    )
-
-    ref_valid = Spectrum(
-        mz=np.array([100.0, 200.0], dtype="float"),
-        intensities=np.array([1.0, 1.0], dtype="float"),
-        metadata={"id": "ref_valid", "precursor_mz": 400.0, "retention_time": 5.5},
-    )
-
-    ref_missing = Spectrum(
-        mz=np.array([100.0, 200.0], dtype="float"),
-        intensities=np.array([1.0, 1.0], dtype="float"),
-        metadata={"id": "ref_missing", "precursor_mz": 400.0},
-    )
-
-
-    config = SimilarityConfig(
-        algorithm="cosine",
-        rt_tolerance=0.2,
-        min_score=0.0,
-        min_matched_peaks=2,
-    )
-    engine = SimilarityEngine(config)
-
-    # Missing query RT should match valid ref
-    results_missing = engine.search(
-        query_spectra=[query_missing], reference_spectra=[ref_valid], include_decoys=False
-    )
-    assert len(results_missing) == 1, "Expected match when query RT is missing."
-
-    # Invalid string query RT should match valid ref
-    results_invalid = engine.search(
-        query_spectra=[query_invalid], reference_spectra=[ref_valid], include_decoys=False
-    )
-    assert len(results_invalid) == 1, "Expected match when query RT is an invalid string."
-
-    # Valid query RT should match missing ref RT
-    query_valid = Spectrum(
-        mz=np.array([100.0, 200.0], dtype="float"),
-        intensities=np.array([1.0, 1.0], dtype="float"),
-        metadata={"id": "query_valid", "precursor_mz": 400.0, "retention_time": 1.0},
-    )
-    results_ref_missing = engine.search(
-        query_spectra=[query_valid], reference_spectra=[ref_missing], include_decoys=False
-    )
-    assert len(results_ref_missing) == 1, "Expected match when ref RT is missing."
+    assert "ref1" in matched_ids, "Exact RT match was incorrectly rejected."
+    assert "ref2" in matched_ids, "Match within RT tolerance was incorrectly rejected."
+    assert "ref3" not in matched_ids, "Match outside RT tolerance was incorrectly accepted."
+    assert "ref4" in matched_ids, "Match with missing RT was incorrectly rejected."

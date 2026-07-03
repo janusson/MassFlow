@@ -172,7 +172,17 @@ def _process_single_file(
 
             score = res["score"]
             if len(asc_scores) > 0:
-                q_val = float(np.interp(score, asc_scores, asc_q))
+                # Conservative step-function lookup: assign the q-value of the
+                # nearest score threshold at or below the query score. This
+                # avoids the approximation error of linear interpolation on a
+                # monotonic step function.
+                idx = int(np.searchsorted(asc_scores, score, side="right")) - 1
+                if idx < 0:
+                    q_val = 1.0
+                elif idx >= len(asc_q):
+                    q_val = float(asc_q[-1])
+                else:
+                    q_val = float(asc_q[idx])
             else:
                 q_val = 1.0
 
@@ -182,8 +192,14 @@ def _process_single_file(
             res["p_value"] = p_val
 
             # MODIFIED FILTERING:
-            # If small library, use p-value for filtering instead of sparse q-value
-            filter_metric = p_val if is_small_library else q_val
+            # If small library, apply a Bonferroni correction to the empirical
+            # p-value to control the family-wise error rate, since raw p-values
+            # do not control FDR across multiple tests.
+            if is_small_library:
+                n_tests = max(len(target_scores_arr), 1)
+                filter_metric = min(p_val * n_tests, 1.0)
+            else:
+                filter_metric = q_val
 
             if filter_metric <= fdr_threshold:
                 fdr_filtered_results.append(res)
