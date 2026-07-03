@@ -319,6 +319,14 @@ class SimilarityConfig(BaseModel):
         description="Optional: Retention time tolerance in minutes. When set, query-reference pairs with an RT difference exceeding this value are rejected.",
     )
 
+    @field_validator("rt_tolerance")
+    @classmethod
+    def validate_rt_tolerance(cls, v: Optional[float], info: ValidationInfo) -> Optional[float]:
+        """Ensure rt_tolerance is not negative."""
+        if v is not None and v < 0:
+            raise ValueError(f"{info.field_name} cannot be negative. Received: {v}")
+        return v
+
     @field_validator("ms1_tolerance", "ms2_tolerance")
     @classmethod
     def validate_mass_tolerances(cls, v: float, info: ValidationInfo) -> float:
