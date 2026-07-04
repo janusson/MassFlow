@@ -289,7 +289,7 @@ def test_min_matched_peaks_filtering() -> None:
     assert len(relaxed_results) == 1, "Result with enough matched peaks was rejected."
 
 
-def test_rt_tolerance_filtering() -> None:
+def test_rt_tolerance_filtering_strict() -> None:
     """Verify that matches outside the RT tolerance are rejected, and missing RTs are handled safely."""
     query = Spectrum(
         mz=np.array([100.0, 200.0, 300.0], dtype="float"),
@@ -408,7 +408,7 @@ def test_calculate_fdr_empty_arrays():
     np.testing.assert_allclose(q, np.array([0.5, 0.5]))
     assert np.all(t)
 
-def test_rt_tolerance_filtering():
+def test_rt_tolerance_filtering_exact():
     """Verify that RT tolerance filtering correctly rejects and accepts matches."""
     q_mz = np.array([100.0, 200.0], dtype="float")
     q_ints = np.array([1.0, 1.0], dtype="float")
