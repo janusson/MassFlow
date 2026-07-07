@@ -571,9 +571,9 @@ class SimilarityEngine:
 
         # Extract score and matched-peaks columns from the structured array
         assert scores_array is not None, "scores_array should not be None"
-        assert (
-            scores_array.dtype.names is not None
-        ), "Expected structured array with named fields"
+        assert scores_array.dtype.names is not None, (
+            "Expected structured array with named fields"
+        )
         score_cols = [c for c in scores_array.dtype.names if "score" in c.lower()]
         match_cols = [c for c in scores_array.dtype.names if "matches" in c.lower()]
 

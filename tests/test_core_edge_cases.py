@@ -37,12 +37,12 @@ def test_generate_decoys_edge_cases():
     # The old deterministic linspace taper is replaced with shuffled uniform
     # multipliers, so no individual position is guaranteed a fixed value.
     d2_ints = decoys[1].peaks.intensities
-    assert not np.array_equal(
-        d2_ints, spec2.peaks.intensities
-    ), "Decoy intensities must differ from target intensities"
-    assert (
-        len(np.unique(d2_ints.round(decimals=4))) > 1
-    ), "Tapered intensities should not all be equal"
+    assert not np.array_equal(d2_ints, spec2.peaks.intensities), (
+        "Decoy intensities must differ from target intensities"
+    )
+    assert len(np.unique(d2_ints.round(decimals=4))) > 1, (
+        "Tapered intensities should not all be equal"
+    )
 
 
 def test_similarity_engine_empty_search():

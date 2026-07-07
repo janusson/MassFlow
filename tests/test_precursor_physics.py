@@ -108,19 +108,19 @@ def test_ppm_tolerance_boundary() -> None:
 
     passing_ids = {r["query_id"] for r in results}
 
-    assert (
-        "q_475ppm" in passing_ids
-    ), "4.75 ppm query should pass the 5.0 ppm MS1 pre-filter"
-    assert (
-        "q_625ppm" not in passing_ids
-    ), "6.25 ppm query must be rejected by the 5.0 ppm MS1 pre-filter"
+    assert "q_475ppm" in passing_ids, (
+        "4.75 ppm query should pass the 5.0 ppm MS1 pre-filter"
+    )
+    assert "q_625ppm" not in passing_ids, (
+        "6.25 ppm query must be rejected by the 5.0 ppm MS1 pre-filter"
+    )
 
     # The passing query should have a perfect cosine score (identical peaks)
     passing_hits = [r for r in results if r["query_id"] == "q_475ppm"]
     assert len(passing_hits) == 1
-    assert math.isclose(
-        float(passing_hits[0]["score"]), 1.0, rel_tol=1e-6
-    ), f"Passing query expected cosine=1.0, got {passing_hits[0]['score']}"
+    assert math.isclose(float(passing_hits[0]["score"]), 1.0, rel_tol=1e-6), (
+        f"Passing query expected cosine=1.0, got {passing_hits[0]['score']}"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -170,9 +170,9 @@ def test_adduct_mismatch() -> None:
     # The adduct-mode mismatch means the pair should produce no results.
     # Even though the peak lists are identical, opposite ionisation modes
     # are physically incompatible.
-    assert (
-        len(results) == 0
-    ), f"Adduct-mismatched pair must be rejected, got {len(results)} result(s)"
+    assert len(results) == 0, (
+        f"Adduct-mismatched pair must be rejected, got {len(results)} result(s)"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -223,9 +223,9 @@ def test_missing_precursor_fails_safely(caplog: pytest.LogCaptureFixture) -> Non
     # However, the result should not contain a meaningful cosine score for a
     # spectrum that lacks basic physical metadata.
     for r in results:
-        assert (
-            r["query_precursor_mz"] is None
-        ), "Query without precursor_mz should have None in results"
+        assert r["query_precursor_mz"] is None, (
+            "Query without precursor_mz should have None in results"
+        )
 
     # Verify we didn't crash — reaching here means success.
     assert True

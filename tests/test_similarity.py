@@ -23,9 +23,9 @@ def cocaine_spectrum() -> Spectrum:
     from matchms.reference_spectra.cocaine import cocaine
 
     spec = cocaine()
-    assert (
-        spec.get("precursor_mz") is not None
-    ), "Found Cocaine spectrum, but missing precursor_mz."
+    assert spec.get("precursor_mz") is not None, (
+        "Found Cocaine spectrum, but missing precursor_mz."
+    )
     return spec
 
 
@@ -114,12 +114,12 @@ def test_modified_cosine_integration(
     )
     mod_cosine_results = [r for r in mod_cosine_results if not r.get("is_decoy")]
 
-    assert (
-        len(cosine_results) == 0
-    ), "CosineGreedy search returned a result object despite MS1 mismatch."
-    assert (
-        len(mod_cosine_results) == 1
-    ), "ModifiedCosine search returned no result object."
+    assert len(cosine_results) == 0, (
+        "CosineGreedy search returned a result object despite MS1 mismatch."
+    )
+    assert len(mod_cosine_results) == 1, (
+        "ModifiedCosine search returned no result object."
+    )
 
     mod_cosine_score = mod_cosine_results[0]["score"]
 
@@ -268,9 +268,9 @@ def test_min_matched_peaks_filtering() -> None:
     )
     strict_results = [r for r in strict_results if not r.get("is_decoy")]
 
-    assert (
-        len(strict_results) == 0
-    ), "Result with too few matched peaks was not rejected."
+    assert len(strict_results) == 0, (
+        "Result with too few matched peaks was not rejected."
+    )
 
     relaxed_config = SimilarityConfig(
         algorithm="cosine",
@@ -385,9 +385,9 @@ def test_calculate_fdr_monotonicity():
 
     sorted_scores, q_values, is_target = calculate_fdr(target_scores, decoy_scores)
 
-    assert np.all(
-        np.diff(sorted_scores) <= 0
-    ), "Scores are not sorted in descending order"
+    assert np.all(np.diff(sorted_scores) <= 0), (
+        "Scores are not sorted in descending order"
+    )
     assert np.all(np.diff(q_values) >= 0), "Q-values are not monotonically increasing"
 
 
@@ -469,7 +469,7 @@ def test_rt_tolerance_filtering_exact_and_missing():
 
     assert "ref1" in matched_ids, "Exact RT match was incorrectly rejected."
     assert "ref2" in matched_ids, "Match within RT tolerance was incorrectly rejected."
-    assert (
-        "ref3" not in matched_ids
-    ), "Match outside RT tolerance was incorrectly accepted."
+    assert "ref3" not in matched_ids, (
+        "Match outside RT tolerance was incorrectly accepted."
+    )
     assert "ref4" in matched_ids, "Match with missing RT was incorrectly rejected."

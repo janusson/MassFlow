@@ -78,9 +78,9 @@ def test_perfect_match() -> None:
     engine = SimilarityEngine(config)
 
     score = _single_hit_score(engine, query, ref)
-    assert math.isclose(
-        score, 1.0, rel_tol=1e-6
-    ), f"Perfect match expected cosine=1.0000, got {score}"
+    assert math.isclose(score, 1.0, rel_tol=1e-6), (
+        f"Perfect match expected cosine=1.0000, got {score}"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -110,9 +110,9 @@ def test_orthogonal_miss() -> None:
     engine = SimilarityEngine(config)
 
     score = _single_hit_score(engine, query, ref)
-    assert math.isclose(
-        score, 0.0, abs_tol=1e-9
-    ), f"Orthogonal miss expected cosine=0.0000, got {score}"
+    assert math.isclose(score, 0.0, abs_tol=1e-9), (
+        f"Orthogonal miss expected cosine=0.0000, got {score}"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -147,9 +147,9 @@ def test_predictable_partial() -> None:
     # best-scoring peak pair at 100.0 (both have intensity 1.0), then at 200.0
     # the query has 0.0 intensity → skipped, at 300.0 the reference has 0.0
     # intensity → skipped. So only one peak pair contributes: score = 1*1 / (√2 * √2) = 0.5.
-    assert math.isclose(
-        score, 0.5, rel_tol=1e-6
-    ), f"Partial overlap expected cosine=0.5000, got {score}"
+    assert math.isclose(score, 0.5, rel_tol=1e-6), (
+        f"Partial overlap expected cosine=0.5000, got {score}"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -183,9 +183,9 @@ def test_exact_shift() -> None:
     cosine_engine = SimilarityEngine(cosine_config)
 
     cosine_score = _single_hit_score(cosine_engine, query, ref)
-    assert math.isclose(
-        cosine_score, 0.0, abs_tol=1e-9
-    ), f"Exact-shift cosine expected 0.0000, got {cosine_score}"
+    assert math.isclose(cosine_score, 0.0, abs_tol=1e-9), (
+        f"Exact-shift cosine expected 0.0000, got {cosine_score}"
+    )
 
     # --- Modified cosine ---
     # Modified cosine accounts for the precursor mass difference (166 − 150 = 16).
@@ -200,6 +200,6 @@ def test_exact_shift() -> None:
     mod_cosine_engine = SimilarityEngine(mod_cosine_config)
 
     mod_score = _single_hit_score(mod_cosine_engine, query, ref)
-    assert math.isclose(
-        mod_score, 1.0, rel_tol=1e-6
-    ), f"Exact-shift modified cosine expected 1.0000, got {mod_score}"
+    assert math.isclose(mod_score, 1.0, rel_tol=1e-6), (
+        f"Exact-shift modified cosine expected 1.0000, got {mod_score}"
+    )
