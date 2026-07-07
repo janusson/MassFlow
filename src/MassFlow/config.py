@@ -321,7 +321,9 @@ class SimilarityConfig(BaseModel):
 
     @field_validator("rt_tolerance")
     @classmethod
-    def validate_rt_tolerance(cls, v: Optional[float], info: ValidationInfo) -> Optional[float]:
+    def validate_rt_tolerance(
+        cls, v: Optional[float], info: ValidationInfo
+    ) -> Optional[float]:
         """Ensure rt_tolerance is not negative."""
         if v is not None and v < 0:
             raise ValueError(f"{info.field_name} cannot be negative. Received: {v}")

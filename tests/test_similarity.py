@@ -289,8 +289,8 @@ def test_min_matched_peaks_filtering() -> None:
     assert len(relaxed_results) == 1, "Result with enough matched peaks was rejected."
 
 
-def test_rt_tolerance_filtering() -> None:
-    """Verify that matches outside the RT tolerance are rejected, and missing RTs are handled safely."""
+def test_rt_tolerance_filtering_strict() -> None:
+    """Verify that matches outside a narrow RT tolerance (0.5 min) are rejected."""
     query = Spectrum(
         mz=np.array([100.0, 200.0, 300.0], dtype="float"),
         intensities=np.array([1.0, 1.0, 1.0], dtype="float"),
@@ -408,8 +408,9 @@ def test_calculate_fdr_empty_arrays():
     np.testing.assert_allclose(q, np.array([0.5, 0.5]))
     assert np.all(t)
 
-def test_rt_tolerance_filtering():
-    """Verify that RT tolerance filtering correctly rejects and accepts matches."""
+
+def test_rt_tolerance_filtering_exact_and_missing():
+    """Verify RT filtering handles exact matches, tolerance boundaries, and missing RTs."""
     q_mz = np.array([100.0, 200.0], dtype="float")
     q_ints = np.array([1.0, 1.0], dtype="float")
 
@@ -458,7 +459,9 @@ def test_rt_tolerance_filtering():
     engine = SimilarityEngine(config)
 
     results = engine.search(
-        query_spectra=[query], reference_spectra=[ref1, ref2, ref3, ref4], include_decoys=False
+        query_spectra=[query],
+        reference_spectra=[ref1, ref2, ref3, ref4],
+        include_decoys=False,
     )
 
     # We should have matches for ref1, ref2, and ref4. ref3 should be filtered out.
@@ -466,5 +469,7 @@ def test_rt_tolerance_filtering():
 
     assert "ref1" in matched_ids, "Exact RT match was incorrectly rejected."
     assert "ref2" in matched_ids, "Match within RT tolerance was incorrectly rejected."
-    assert "ref3" not in matched_ids, "Match outside RT tolerance was incorrectly accepted."
+    assert (
+        "ref3" not in matched_ids
+    ), "Match outside RT tolerance was incorrectly accepted."
     assert "ref4" in matched_ids, "Match with missing RT was incorrectly rejected."
