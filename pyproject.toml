@@ -6,6 +6,7 @@ readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.13"
 dependencies = [
+    "grpcio>=1.60.0",
     "lxml",
     "matchms>=0.27.0",
     "numpy>=1.26.4",
@@ -30,6 +31,15 @@ dev = [
 chem = [
     "rdkit>=2025.9.6",
 ]
+ml = [
+    "torch>=2.0.0",
+    "gensim>=4.3.0",
+    "spec2vec>=0.8.0",
+    "ms2deepscore>=1.0.0",
+]
+zarr = [
+    "zarr>=3.0",
+]
 watch = [
     "watchfiles>=1.1.1",
 ]
@@ -46,7 +56,9 @@ build-backend = "hatchling.build"
 
 [dependency-groups]
 dev = [
+    "grpcio-tools>=1.60.0",
     "pytest>=9.0.2",
+    "pytest-asyncio",
     "mkdocs<2.0",
     "mkdocs-material",
     "mkdocstrings",

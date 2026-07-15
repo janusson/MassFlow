@@ -204,10 +204,15 @@ def load_spectra(
     elif fmt == "mzxml":
         loader = load_from_mzxml(str(path), metadata_harmonization=False)
     elif fmt in ["db", "sqlite"]:
-        from MassFlow.database import SpectralDatabase
+        from MassFlow.storage import create_spectral_store
 
-        db = SpectralDatabase(path)
-        loader = db.get_spectra()
+        store = create_spectral_store(path, backend="sqlite")
+        loader = store.get_spectra()
+    elif fmt == "zarr":
+        from MassFlow.storage import create_spectral_store
+
+        store = create_spectral_store(path, backend="zarr")
+        loader = store.get_spectra()
     else:
         raise ValueError(f"Format '{fmt}' is not supported by MassFlow.")
 

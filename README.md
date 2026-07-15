@@ -10,7 +10,7 @@ MassFlow is built on three core pillars:
 2. **Portability**: Vendor-agnostic, open-format ingestion (`.mzML`, `.mgf`) keeps your data pipeline flexible.
 3. **Performance**: Vectorized calculations and local SQLite backends allow for rapid, memory-aware searching.
 
-### TL;DR - Run it in two steps:
+### Two-step workflow:
 ```shell
 # 1. Generate a default config file
 uv run massflow init
@@ -26,6 +26,17 @@ Its core workflow is simple:
 3. apply configurable `matchms` processing
 4. score query spectra against the library
 5. write per-file CSV or mzTab-M results
+
+```mermaid
+graph LR
+    Config[YAML Config] --> CLI{MassFlow CLI}
+    Input[Experimental<br/>mzML / MGF] --> CLI
+    Library[Reference<br/>MSP / DB] --> CLI
+    CLI --> Processed[Processed Spectra]
+    Processed --> Sim[Similarity Search<br/>cosine / modified_cosine]
+    Sim --> FDR[FDR Filtering]
+    FDR --> Out[CSV / mzTab-M<br/>+ YAML Report]
+```
 
 ## Stable vs experimental at a glance
 
@@ -179,6 +190,16 @@ example_query_0,304.0,,,,Unknown
 
 ## How the program works
 
+```mermaid
+graph TD
+    Config[1. Load YAML Config] --> Ref[2. Load & Process<br/>Reference Library]
+    Config --> Exp[3. Load & Process<br/>Experimental Spectra]
+    Ref --> Score[4. Score Queries<br/>Against Library]
+    Exp --> Score
+    Score --> Decoy[5. Generate Decoys<br/>& Estimate FDR]
+    Decoy --> Filter[6. Filter & Export<br/>CSV + YAML Report]
+```
+
 At a high level, the annotation workflow does this:
 
 1. load the YAML config
@@ -226,6 +247,18 @@ uv run massflow annotate --config massflow_config.yaml
 ## Database workflows
 
 For repeated analyses, you can preprocess a library into SQLite.
+
+```mermaid
+graph LR
+    MSP[MSP / MGF<br/>Library] --> Build[db build]
+    Build --> DB[(SQLite DB)]
+    DB --> Inspect[db inspect]
+    DB --> Annotate[annotate --config]
+    DB1[(lib1.db)] --> Merge[db merge]
+    DB2[(lib2.db)] --> Merge
+    Merge --> Merged[(merged.db)]
+    Merged --> Annotate
+```
 
 ### Build a database
 

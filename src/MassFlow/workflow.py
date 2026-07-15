@@ -27,15 +27,23 @@ from MassFlow.config import MassFlowConfig
 from MassFlow.similarity import (
     SearchResult,
     SimilarityEngine,
+    _MLEngineBase,
     calculate_fdr,
     get_similarity_engine,
 )
 
 logger = logging.getLogger(__name__)
 
-_worker_engine: SimilarityEngine | None = None
+_worker_engine: SimilarityEngine | _MLEngineBase | None = None
 _worker_references: List[Spectrum] | None = None
 _worker_decoys: List[Spectrum] | None = None
+
+# L2 Cache – pre-computed numpy arrays for the worker hot path.
+# These are populated once in _init_worker and consumed by _process_single_file
+# to avoid repeated spectrum-object property lookups and any pyteomics calls
+# inside the inner similarity-scoring loops.
+_worker_ref_precursor_mzs: np.ndarray | None = None
+_worker_ref_is_decoy: np.ndarray | None = None
 
 
 def _init_worker(
@@ -44,20 +52,47 @@ def _init_worker(
     decoys: List[Spectrum] | None,
 ) -> None:
     """
-    Initialize a worker-local similarity engine and share pre-processed libraries.
+    Initialize a worker-local similarity engine and pre-compute hot-path arrays.
 
     Each subprocess instantiates its own engine from the shared configuration so
     large model state is not serialized. References and decoys are passed once
-    at initialization to avoid repetitive disk I/O.
+    at initialization. In addition, precursor m/z values and decoy flags are
+    extracted into flat ``numpy.float64`` arrays so that the inner similarity
+    loops never touch Spectrum objects or call pyteomics.
     """
     from MassFlow.log_config import setup_structured_logging
 
     setup_structured_logging(level=logging.INFO)
 
     global _worker_engine, _worker_references, _worker_decoys
+    global _worker_ref_precursor_mzs, _worker_ref_is_decoy
+
     _worker_engine = get_similarity_engine(config.similarity)
     _worker_references = references
     _worker_decoys = decoys
+
+    # --- Pre-compute L2 hot-path arrays ------------------------------------
+    # Combine targets + decoys into one flat collection for array extraction.
+    _all_refs: list[Spectrum] = []
+    if references:
+        _all_refs.extend(references)
+    if decoys:
+        _all_refs.extend(decoys)
+
+    if _all_refs:
+        n_targets = len(references) if references else 0
+        n_all = len(_all_refs)
+        mzs = np.empty(n_all, dtype=np.float64)
+        is_decoy = np.zeros(n_all, dtype=bool)
+        for i, s in enumerate(_all_refs):
+            pmz = s.get("precursor_mz")
+            mzs[i] = float(pmz) if pmz is not None and not np.isnan(float(pmz)) else 0.0
+            is_decoy[i] = bool(s.get("is_decoy", False)) or (i >= n_targets)
+        _worker_ref_precursor_mzs = mzs
+        _worker_ref_is_decoy = is_decoy
+    else:
+        _worker_ref_precursor_mzs = None
+        _worker_ref_is_decoy = None
 
 
 def _process_single_file(
@@ -110,6 +145,7 @@ def _process_single_file(
             seen_ids.add(new_id)
 
         global _worker_engine, _worker_references, _worker_decoys
+        global _worker_ref_precursor_mzs, _worker_ref_is_decoy
         engine = (
             _worker_engine
             if _worker_engine is not None
@@ -122,7 +158,11 @@ def _process_single_file(
         if _worker_references is not None and _worker_decoys is not None:
             all_references = _worker_references + _worker_decoys
             all_results = engine.search(
-                standard_queries, all_references, include_decoys=False
+                standard_queries,
+                all_references,
+                include_decoys=False,
+                ref_precursor_mzs=_worker_ref_precursor_mzs,
+                ref_is_decoy=_worker_ref_is_decoy,
             )
         else:
             # Fallback for single-process testing or direct invocation, streaming the library

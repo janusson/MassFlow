@@ -1,0 +1,184 @@
+syntax = "proto3";
+
+package massflow.v1.streaming;
+
+import "google/protobuf/empty.proto";
+
+// ---------------------------------------------------------------------------
+// Data Messages
+// ---------------------------------------------------------------------------
+
+// SpectrumPacket carries all data for a single MS2 spectrum acquired by an
+// instrument in real time.  All floating-point scientific values use double
+// precision (float64) per MassFlow's data-integrity convention.
+message SpectrumPacket {
+  // Unique identifier for this spectrum (e.g. scan number or UUID).
+  string spectrum_id = 1;
+
+  // Mass-to-charge ratios of fragment peaks.
+  repeated double mz_array = 2;
+
+  // Intensities of fragment peaks, aligned 1:1 with mz_array.
+  repeated double intensity_array = 3;
+
+  // Precursor ion m/z (required; must be > 0).
+  double precursor_mz = 4;
+
+  // Retention time in seconds.  Omitted (default 0) if unavailable.
+  double retention_time_seconds = 5;
+
+  // Ion charge state (signed integer, e.g. +1, -1, +2).
+  int32 charge = 6;
+
+  // Ionisation mode: "positive", "negative", or empty string.
+  string ion_mode = 7;
+
+  // Adduct string in standardised notation (e.g. "[M+H]+", "[M-H]-").
+  string adduct = 8;
+
+  // Normalised collision energy (arbitrary units, instrument-dependent).
+  double collision_energy = 9;
+
+  // Acquisition timestamp as nanoseconds since Unix epoch (or relative to
+  // run start).  Useful for latency tracking and ordering.
+  uint64 acquisition_timestamp_ns = 10;
+}
+
+// ---------------------------------------------------------------------------
+// Result Messages
+// ---------------------------------------------------------------------------
+
+// A single top-N annotation hit returned to the client.
+message AnnotationHit {
+  // Identifier of the matched reference spectrum.
+  string reference_id = 1;
+
+  // Human-readable name of the reference compound (if available).
+  string reference_name = 2;
+
+  // Canonical SMILES string for the matched compound.
+  string smiles = 3;
+
+  // Standard InChI key for the matched compound.
+  string inchikey = 4;
+
+  // Similarity score in [0.0, 1.0] (higher is better).
+  double score = 5;
+
+  // Number of fragment peaks that matched between query and reference.
+  int32 matched_peaks = 6;
+
+  // Mass error between query and reference precursor m/z in ppm.
+  double precursor_mz_error_ppm = 7;
+
+  // Annotation confidence tier (e.g. "level_1", "level_2", "tentative").
+  string annotation_tier = 8;
+
+  // Optional structural similarity score from ML engines.
+  double structural_similarity = 9;
+}
+
+// AnnotationResponse is sent back to the client after each spectrum is
+// processed.  It carries either a list of top-N hits or an error status.
+message AnnotationResponse {
+  // Echoes the spectrum_id from the request for correlation.
+  string spectrum_id = 1;
+
+  // High-level status: "annotated", "no_match", or "error".
+  string status = 2;
+
+  // Optional error detail when status == "error".
+  string error_message = 3;
+
+  // Top-N consensus matches sorted by descending score.
+  repeated AnnotationHit top_hits = 4;
+
+  // Estimated FDR q-value for the top hit (NaN if not calculable).
+  double fdr_q_value = 5;
+
+  // Server-side processing latency in microseconds.
+  uint64 processing_latency_us = 6;
+}
+
+// ---------------------------------------------------------------------------
+// Control & Status Messages
+// ---------------------------------------------------------------------------
+
+// ControlMessage allows the client to configure the server mid-stream
+// without tearing down the gRPC connection.
+message ControlMessage {
+  enum Command {
+    COMMAND_UNSPECIFIED = 0;
+    // (Re)load the similarity configuration from the supplied YAML bytes.
+    COMMAND_SET_CONFIG = 1;
+    // (Re)load the reference library from the supplied path.
+    COMMAND_LOAD_LIBRARY = 2;
+    // Start accepting spectra (resume after a previous STOP).
+    COMMAND_START = 3;
+    // Pause annotation (queue is preserved but not drained).
+    COMMAND_STOP = 4;
+  }
+
+  Command command = 1;
+
+  // YAML configuration bytes (for SET_CONFIG).
+  bytes config_yaml = 2;
+
+  // File-system path to a reference library (for LOAD_LIBRARY).
+  string library_path = 3;
+}
+
+// StreamRequest is the top-level envelope for messages sent by the
+// instrument client.  Use oneof so the same stream can carry both spectra
+// and control commands.
+message StreamRequest {
+  oneof payload {
+    SpectrumPacket spectrum = 1;
+    ControlMessage control = 2;
+  }
+}
+
+// Live status snapshot returned by the unary GetStatus RPC.
+message ServerStatus {
+  // Number of spectra currently queued for processing.
+  int32 queue_depth = 1;
+
+  // Cumulative spectra ingested since the server started.
+  uint64 spectra_ingested = 2;
+
+  // Cumulative spectra that produced a non-empty annotation.
+  uint64 spectra_annotated = 3;
+
+  // Spectra dropped due to queue overflow (should trend toward zero).
+  uint64 spectra_dropped = 4;
+
+  // Rolling-average processing latency in microseconds.
+  double avg_latency_us = 5;
+
+  // Estimated spectra per second being processed.
+  double throughput_hz = 6;
+
+  // Whether the server is currently accepting spectra.
+  bool is_active = 7;
+}
+
+// ---------------------------------------------------------------------------
+// Service Definition
+// ---------------------------------------------------------------------------
+
+// MassFlowStreaming provides real-time spectral annotation over gRPC.
+//
+// The primary RPC is StreamSpectra, a bidirectional stream that allows an
+// instrument acquisition client to push MS2 spectra to the server and
+// receive structural annotations as soon as they are computed.
+//
+// The unary GetStatus RPC is intended for health checks and monitoring
+// dashboards.
+service MassFlowStreaming {
+  // Bidirectional streaming: client sends spectra + control messages,
+  // server returns annotations in real time.
+  rpc StreamSpectra(stream StreamRequest) returns (stream AnnotationResponse);
+
+  // Unary health / status probe.
+  rpc GetStatus(google.protobuf.Empty) returns (ServerStatus);
+}

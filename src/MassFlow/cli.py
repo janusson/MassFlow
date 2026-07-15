@@ -181,7 +181,9 @@ def run_db_build(
         ..., "--input", help="Path to input spectral library file."
     ),
     output: str = typer.Option(
-        ..., "--output", help="Path to output SQLite database file."
+        ...,
+        "--output",
+        help="Path to output database file (.db for SQLite, .zarr directory for Zarr).",
     ),
     config: str = typer.Option(
         ...,
@@ -191,24 +193,33 @@ def run_db_build(
     category: str = typer.Option(
         "default", "--category", help="Tag for categorization inside the database."
     ),
+    backend: str = typer.Option(
+        "sqlite", "--backend", help="Storage backend: 'sqlite' (default) or 'zarr'."
+    ),
 ):
-    """Process a raw library file and store it in an optimized SQLite database."""
+    """Process a raw library file and store it in an optimized database."""
     try:
         from MassFlow import io, processing
         from MassFlow.config import MassFlowConfig
-        from MassFlow.database import SpectralDatabase
+        from MassFlow.storage import create_spectral_store
 
         logger.info(f"Loading configuration from {config}")
         cfg = MassFlowConfig.from_yaml(config)
 
-        logger.info(f"Initializing database at {output}")
-        db = SpectralDatabase(output)
+        # Resolve backend from config if available, CLI flag takes precedence
+        effective_backend = backend
+        if backend == "sqlite" and cfg.input.storage_backend != "sqlite":
+            effective_backend = cfg.input.storage_backend
+
+        logger.info(f"Initializing {effective_backend} store at {output}")
+        store = create_spectral_store(Path(output), backend=effective_backend)
 
         logger.info(f"Streaming and processing spectra from {input}")
         raw_spectra = io.load_spectra(Path(input))
         cleaned_spectra = processing.process_spectra(raw_spectra, cfg.processing)
 
-        added = db.add_spectra(cleaned_spectra, category=category)
+        added = store.add_spectra(cleaned_spectra, category=category)
+        store.close()
 
         if added == 0:
             raise ValueError(f"No valid spectra were extracted from {input}.")
@@ -223,14 +234,23 @@ def run_db_build(
 
 @db_app.command("inspect")
 def run_db_inspect(
-    file: str = typer.Argument(..., help="SQLite spectral database file."),
+    file: str = typer.Argument(
+        ..., help="Spectral database file (.db or .zarr directory)."
+    ),
 ):
     """Inspect a local spectral database to view statistics."""
     try:
-        from MassFlow.database import SpectralDatabase
+        from MassFlow.storage import create_spectral_store
 
-        db = SpectralDatabase(file)
-        total = db.get_total_spectra_count()
+        # Auto-detect backend from path
+        path = Path(file)
+        if path.suffix == ".zarr" or (path.is_dir() and (path / ".zgroup").exists()):
+            backend = "zarr"
+        else:
+            backend = "sqlite"
+
+        store = create_spectral_store(path, backend=backend)
+        total = store.get_total_spectra_count()
 
         table = Table(title=f"Database Inspection: {file}", show_header=False)
         table.add_column("Property", style="cyan", no_wrap=True)
@@ -241,8 +261,8 @@ def run_db_inspect(
             console.print(table)
             return
 
-        mz_min, mz_max = db.get_precursor_mz_range()
-        cat_counts = db.get_category_counts()
+        mz_min, mz_max = store.get_precursor_mz_range()
+        cat_counts = store.get_category_counts()
 
         table.add_row("Total Spectra", str(total))
         table.add_row("Precursor m/z Range", f"{mz_min:.4f} to {mz_max:.4f}")
@@ -269,25 +289,37 @@ def run_db_inspect(
 @db_app.command("merge")
 def run_db_merge(
     inputs: List[str] = typer.Option(
-        ..., "--inputs", help="Paths to input SQLite database files."
+        ..., "--inputs", help="Paths to input database files (.db or .zarr)."
     ),
     output: str = typer.Option(
-        ..., "--output", help="Path to output merged SQLite database file."
+        ..., "--output", help="Path to output merged database file (.db or .zarr)."
+    ),
+    backend: str = typer.Option(
+        "sqlite",
+        "--backend",
+        help="Storage backend for output: 'sqlite' (default) or 'zarr'.",
     ),
 ):
     """Merge multiple local spectral databases into a single new database."""
     try:
-        from MassFlow.database import SpectralDatabase
+        from MassFlow.storage import create_spectral_store
 
-        logger.info(f"Initializing merged database at {output}")
-        out_db = SpectralDatabase(output)
+        logger.info(f"Initializing merged {backend} database at {output}")
+        out_store = create_spectral_store(Path(output), backend=backend)
 
         total_added = 0
         for input_db_path in inputs:
             logger.info(f"Streaming from input database: {input_db_path}")
-            in_db = SpectralDatabase(input_db_path)
+            in_path = Path(input_db_path)
+            if in_path.suffix == ".zarr" or (
+                in_path.is_dir() and (in_path / ".zgroup").exists()
+            ):
+                in_backend = "zarr"
+            else:
+                in_backend = "sqlite"
+            in_store = create_spectral_store(in_path, backend=in_backend)
 
-            added = out_db.add_spectra(in_db.get_spectra(), category="merged")
+            added = out_store.add_spectra(in_store.get_spectra(), category="merged")
             total_added += added
 
             if added == 0:
@@ -295,7 +327,7 @@ def run_db_merge(
             else:
                 logger.info(f"Added {added} spectra from {input_db_path}")
 
-            in_db.close()
+            in_store.close()
 
         if total_added == 0:
             raise ValueError("No valid spectra were merged from the input databases.")
@@ -303,9 +335,60 @@ def run_db_merge(
         console.print(
             f"[bold green]✓ Successfully merged {total_added} spectra into {output}.[/bold green]"
         )
-        out_db.close()
+        out_store.close()
     except Exception as e:
         logger.error(f"Database merge failed: {e}", exc_info=True)
+        raise typer.Exit(1)
+
+
+@app.command("serve")
+def run_serve(
+    config: str = typer.Option(
+        ..., "--config", help="Path to configuration YAML file."
+    ),
+    host: str = typer.Option(
+        "[::]", "--host", help="Bind address (default: [::] for all interfaces)."
+    ),
+    port: int = typer.Option(50051, "--port", help="TCP port (default: 50051)."),
+    queue_capacity: int = typer.Option(
+        2048, "--queue-capacity", help="Max buffered spectra before backpressure."
+    ),
+    queue_drop_on_full: bool = typer.Option(
+        False,
+        "--queue-drop-on-full",
+        help="Drop packets instead of blocking when the queue is full.",
+    ),
+    top_n: int = typer.Option(
+        5, "--top-n", help="Number of top annotation hits per spectrum."
+    ),
+):
+    """
+    Start the gRPC streaming server for real-time spectral annotation.
+
+    The server listens for instrument clients sending MS2 spectra over gRPC
+    and returns structural annotations as they are computed.
+
+    Prerequisites: run ``scripts/protoc_gen.sh`` to compile the protobuf stubs.
+    """
+    import asyncio
+
+    from MassFlow.streaming.server import run_server
+
+    try:
+        asyncio.run(
+            run_server(
+                config_path=config,
+                host=host,
+                port=port,
+                queue_capacity=queue_capacity,
+                queue_drop_on_full=queue_drop_on_full,
+                top_n=top_n,
+            )
+        )
+    except KeyboardInterrupt:
+        console.print("\n[bold yellow]Server stopped by user.[/bold yellow]")
+    except Exception as e:
+        logger.error(f"Server failed: {e}", exc_info=True)
         raise typer.Exit(1)
 
 

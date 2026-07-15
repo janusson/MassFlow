@@ -30,6 +30,72 @@ from MassFlow.config import SimilarityConfig
 
 logger = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
+# Optional machine-learning imports
+# ---------------------------------------------------------------------------
+# Deep learning and vector-based similarity engines (spec2vec, ms2deepscore,
+# consensus, cascade) depend on PyTorch, Gensim, Spec2Vec, and MS2DeepScore.
+# These are provided via the ``[ml]`` extra and are NOT required for the core
+# classical scoring pipeline (cosine / modified_cosine).
+
+_ML_INSTALL_MSG = (
+    "This scoring engine requires the machine-learning extras. "
+    "Install them with: pip install massflow[ml]"
+)
+
+_HAS_TORCH = False
+_HAS_GENSIM = False
+_HAS_SPEC2VEC = False
+_HAS_MS2DEEPSCORE = False
+_HAS_ML = False
+
+try:
+    import torch  # noqa: F401
+
+    _HAS_TORCH = True
+except ImportError:
+    pass
+
+try:
+    import gensim  # noqa: F401
+
+    _HAS_GENSIM = True
+except ImportError:
+    pass
+
+try:
+    import spec2vec  # noqa: F401
+
+    _HAS_SPEC2VEC = True
+except ImportError:
+    pass
+
+try:
+    import ms2deepscore  # noqa: F401
+
+    _HAS_MS2DEEPSCORE = True
+except ImportError:
+    pass
+
+_HAS_ML = _HAS_TORCH and _HAS_GENSIM and _HAS_SPEC2VEC and _HAS_MS2DEEPSCORE
+
+if not _HAS_ML:
+    missing = []
+    if not _HAS_TORCH:
+        missing.append("torch")
+    if not _HAS_GENSIM:
+        missing.append("gensim")
+    if not _HAS_SPEC2VEC:
+        missing.append("spec2vec")
+    if not _HAS_MS2DEEPSCORE:
+        missing.append("ms2deepscore")
+    logger.info(
+        "Machine-learning extras not fully available (missing: %s). "
+        "Classical cosine / modified_cosine scoring remains fully functional. "
+        "Install ML engines with: pip install massflow[ml]",
+        ", ".join(missing),
+    )
+
 
 def calculate_mass_error_ppm(query_mz: float, ref_mz: float) -> float:
     """Calculate the mass error in parts-per-million (ppm).
@@ -78,10 +144,21 @@ def _handle_lazy_reference_spectra(func):
         min_score=None,
         top_n=None,
         include_decoys=True,
+        **kwargs,
     ):
         if not isinstance(reference_spectra, (list, tuple)):
             all_results = []
             processed_count = 0
+
+            # When chunking, pre-computed ref_precursor_mzs / ref_is_decoy
+            # arrays are aligned with the *full* library, not individual chunks.
+            # Strip them to avoid incorrect indexing in sub-calls.
+            chunk_kwargs = {
+                k: v
+                for k, v in kwargs.items()
+                if k not in ("ref_precursor_mzs", "ref_is_decoy")
+            }
+
             for chunk in yield_fixed_chunks(reference_spectra, chunk_size=10000):
                 if not chunk:
                     continue
@@ -99,6 +176,7 @@ def _handle_lazy_reference_spectra(func):
                         min_score=min_score,
                         top_n=top_n,
                         include_decoys=include_decoys,
+                        **chunk_kwargs,
                     )
                 )
 
@@ -114,7 +192,13 @@ def _handle_lazy_reference_spectra(func):
                 return final_res
             return all_results
         return func(
-            self, query_spectra, reference_spectra, min_score, top_n, include_decoys
+            self,
+            query_spectra,
+            reference_spectra,
+            min_score,
+            top_n,
+            include_decoys,
+            **kwargs,
         )
 
     return wrapper
@@ -137,6 +221,7 @@ class SearchResult(TypedDict):
     p_value: float | None
     annotation_tier: str | None
     structural_similarity: float | None
+    mass_error_ppm: float | None
     score_breakdown: dict[str, float] | None
 
 
@@ -228,6 +313,72 @@ def _ms1_prefilter(
             cols.extend([query_idx] * len(original_indices))
 
     # Also include spectra with missing precursors, as they bypass the filter
+    for i in np.where(ref_missing)[0]:
+        rows.extend([i] * len(query_mzs))
+        cols.extend(range(len(query_mzs)))
+    for i in np.where(query_missing)[0]:
+        rows.extend(range(len(ref_mzs)))
+        cols.extend([i] * len(ref_mzs))
+
+    return np.array(rows), np.array(cols)
+
+
+def _ms1_prefilter_arrays(
+    ref_mzs: np.ndarray,
+    query_spectra: List[Spectrum],
+    ms1_tolerance: float,
+    resolution_ppm: Optional[float] = None,
+) -> tuple[np.ndarray, ...]:
+    """Perform MS1 precursor m/z pre-filtering using pre-computed reference arrays.
+
+    This is the L2-cached variant of ``_ms1_prefilter``. Instead of extracting
+    precursor_mz from Spectrum objects, it consumes a flat ``float64`` numpy
+    array produced during ``_init_worker``. Query precursor values are still
+    extracted from the (typically small) query set; they are not pre-cached
+    because the query list is per-file and relatively small.
+
+    Returns the same (rows, cols) sparse index arrays as ``_ms1_prefilter``.
+    """
+    query_mzs_raw: list[Optional[float]] = [
+        q.get("precursor_mz")
+        for q in query_spectra  # type: ignore[assignment]
+    ]
+    query_missing = np.array([_is_missing(q) for q in query_mzs_raw], dtype=bool)
+    query_mzs = np.array(
+        [
+            float(q) if q is not None and not _is_missing(q) else 0.0
+            for q in query_mzs_raw
+        ]
+    )
+
+    # References with mz <= 0 are treated as missing.
+    ref_missing = ref_mzs <= 0.0
+    ref_mzs_safe = np.where(ref_missing, 0.0, ref_mzs)
+
+    query_mzs_indexed = list(enumerate(query_mzs))
+    ref_mzs_sorted_indices = np.argsort(ref_mzs_safe)
+    ref_mzs_sorted = ref_mzs_safe[ref_mzs_sorted_indices]
+
+    rows: List[int] = []
+    cols: List[int] = []
+    for query_idx, query_mz in query_mzs_indexed:
+        if query_mz > 0:
+            if resolution_ppm is not None:
+                half_window = resolution_ppm * query_mz / 1e6
+            else:
+                half_window = ms1_tolerance
+
+            min_mz = query_mz - half_window
+            max_mz = query_mz + half_window
+
+            start_idx = np.searchsorted(ref_mzs_sorted, min_mz, side="left")
+            end_idx = np.searchsorted(ref_mzs_sorted, max_mz, side="right")
+
+            original_indices = ref_mzs_sorted_indices[start_idx:end_idx]
+            rows.extend(original_indices)
+            cols.extend([query_idx] * len(original_indices))
+
+    # Include spectra with missing precursors (bypass filter)
     for i in np.where(ref_missing)[0]:
         rows.extend([i] * len(query_mzs))
         cols.extend(range(len(query_mzs)))
@@ -444,6 +595,8 @@ class SimilarityEngine:
         min_score: float | None = None,
         top_n: int | None = None,
         include_decoys: bool = True,
+        ref_precursor_mzs: np.ndarray | None = None,
+        ref_is_decoy: np.ndarray | None = None,
     ) -> List[SearchResult]:
         """Run a similarity search of query spectra against a reference library.
 
@@ -470,6 +623,15 @@ class SimilarityEngine:
             If True, generate and search against decoy spectra for FDR calculation.
             If False, search only against the provided reference_spectra. Default
             is True.
+        ref_precursor_mzs : np.ndarray or None, optional
+            Pre-computed flat ``float64`` array of reference precursor m/z values,
+            aligned with ``reference_spectra``. When provided, the MS1 pre-filter
+            uses this array directly instead of extracting precursor_mz from
+            Spectrum objects, eliminating per-call pyteomics/object overhead.
+        ref_is_decoy : np.ndarray or None, optional
+            Pre-computed flat ``bool`` array indicating which references are decoys.
+            When provided alongside ``ref_precursor_mzs``, the array length must
+            match ``len(reference_spectra)``.
 
         Returns
         -------
@@ -494,15 +656,24 @@ class SimilarityEngine:
 
         n_queries = len(query_spectra)
 
-        # MS1 Pre-filtering for cosine with sparse array support
+        # MS1 Pre-filtering for cosine with sparse array support.
+        # When ref_precursor_mzs is provided (L2 cache), use it directly to
+        # avoid Spectrum-object property lookups in the hot path.
         if self.config.algorithm == "cosine" and hasattr(
             self.similarity_function, "sparse_array"
         ):
             ms1_tol = getattr(self.config, "ms1_tolerance", 0.02)
             res_ppm = getattr(self.config, "resolution_ppm", None)
-            idx_row, idx_col = _ms1_prefilter(
-                all_references, query_spectra, ms1_tol, res_ppm
-            )
+
+            if ref_precursor_mzs is not None:
+                # Optimized path: use pre-computed numpy arrays
+                idx_row, idx_col = _ms1_prefilter_arrays(
+                    ref_precursor_mzs, query_spectra, ms1_tol, res_ppm
+                )
+            else:
+                idx_row, idx_col = _ms1_prefilter(
+                    all_references, query_spectra, ms1_tol, res_ppm
+                )
 
             if len(idx_row) > 0:
                 sparse_results = self.similarity_function.sparse_array(
@@ -648,6 +819,8 @@ class SimilarityEngine:
                 ref_mz_val = float(ref_mz) if ref_mz is not None else None
 
                 is_decoy = bool(ref.get("is_decoy", False)) or (idx >= n_targets)
+                if ref_is_decoy is not None and idx < len(ref_is_decoy):
+                    is_decoy = bool(ref_is_decoy[idx])
 
                 results.append(
                     {
@@ -669,6 +842,7 @@ class SimilarityEngine:
                         "p_value": None,  # Will be updated by empirical p-value calculation
                         "annotation_tier": None,
                         "structural_similarity": None,
+                        "mass_error_ppm": None,
                         "score_breakdown": None,
                     }
                 )
@@ -676,11 +850,226 @@ class SimilarityEngine:
         return results
 
 
-def get_similarity_engine(config: SimilarityConfig) -> SimilarityEngine:
-    """Factory function to instantiate the similarity engine.
+# =============================================================================
+# Machine-learning similarity engines (require the ``[ml]`` extra)
+# =============================================================================
+#
+# These engines leverage PyTorch, Gensim, Spec2Vec, and MS2DeepScore to provide
+# deep-learning and vector-based spectral similarity scoring. They all expose a
+# ``.search()`` method that returns the same ``List[SearchResult]`` type as the
+# classical ``SimilarityEngine``, so downstream pipelines interact with them
+# identically whether the ml extra is installed or not.
+#
+# When called without the required libraries, each engine raises a clear
+# ``RuntimeError`` directing the user to install ``massflow[ml]``.
 
-    Returns a `SimilarityEngine` configured with the algorithm specified
-    in the config (cosine or modified_cosine).
+
+class _MLEngineBase:
+    """Base class for ML-based similarity scoring engines.
+
+    Subclasses must implement ``_build_model()`` and override ``search()``.
+    The public interface is intentionally compatible with ``SimilarityEngine``
+    so that the factory and workflow layers can treat them uniformly.
+    """
+
+    def __init__(self, config: SimilarityConfig):
+        self.config = config
+        self._check_dependencies()
+        self._build_model()
+
+    def _check_dependencies(self) -> None:
+        """Verify that required ML libraries are available."""
+        if not _HAS_ML:
+            raise RuntimeError(_ML_INSTALL_MSG)
+
+    def _build_model(self) -> None:
+        """Build or load the underlying ML model. Override in subclasses."""
+
+    def search(
+        self,
+        query_spectra: List[Spectrum],
+        reference_spectra: Iterable[Spectrum],
+        min_score: float | None = None,
+        top_n: int | None = None,
+        include_decoys: bool = True,
+        ref_precursor_mzs: np.ndarray | None = None,
+        ref_is_decoy: np.ndarray | None = None,
+    ) -> List[SearchResult]:
+        """Run similarity search. Override in subclasses."""
+        raise NotImplementedError("Subclasses must implement search()")
+
+
+class Spec2VecEngine(_MLEngineBase):
+    """Spec2Vec-based similarity scoring engine.
+
+    Uses Gensim Word2Vec models trained on mass spectral peaks to compute
+    spectrum-level embeddings and cosine similarity between embedded vectors.
+
+    Requires: ``pip install massflow[ml]``
+    """
+
+    def _build_model(self) -> None:
+        """Initialize the Spec2Vec model.
+
+        The model is loaded lazily via spec2vec's ``SpectrumDocument`` and
+        ``GensimToSpec2Vec`` adapters. Actual model weights are loaded on
+        first use to keep import times low.
+        """
+        # Placeholder for Spec2Vec model initialization.
+        # Model loading is deferred to the first search() call to allow the
+        # factory to return quickly.  Real implementations should load the
+        # pre-trained model file here or in a lazy property.
+        self._model_loaded = False
+
+    def search(
+        self,
+        query_spectra: List[Spectrum],
+        reference_spectra: Iterable[Spectrum],
+        min_score: float | None = None,
+        top_n: int | None = None,
+        include_decoys: bool = True,
+        ref_precursor_mzs: np.ndarray | None = None,
+        ref_is_decoy: np.ndarray | None = None,
+    ) -> List[SearchResult]:
+        """Run Spec2Vec similarity search.
+
+        Raises
+        ------
+        RuntimeError
+            If the ``[ml]`` extra is not installed.
+        """
+        # This is a structured stub that produces the correct interface contract.
+        # Real implementations compute Spec2Vec embeddings, perform a cosine
+        # similarity search, apply min_score/top_n filtering, and return
+        # ``SearchResult`` dicts.
+        raise RuntimeError("Spec2Vec search is not yet implemented. " + _ML_INSTALL_MSG)
+
+
+class MS2DeepScoreEngine(_MLEngineBase):
+    """MS2DeepScore-based deep learning similarity scoring engine.
+
+    Uses a Siamese neural network (PyTorch) trained on binned mass spectra to
+    predict Tanimoto-like similarity scores directly from spectral pairs.
+
+    Requires: ``pip install massflow[ml]``
+    """
+
+    def _build_model(self) -> None:
+        """Initialize the MS2DeepScore model.
+
+        The Siamese network weights are loaded from a pre-trained checkpoint.
+        Model loading is deferred to the first ``search()`` call.
+        """
+        self._model_loaded = False
+
+    def search(
+        self,
+        query_spectra: List[Spectrum],
+        reference_spectra: Iterable[Spectrum],
+        min_score: float | None = None,
+        top_n: int | None = None,
+        include_decoys: bool = True,
+        ref_precursor_mzs: np.ndarray | None = None,
+        ref_is_decoy: np.ndarray | None = None,
+    ) -> List[SearchResult]:
+        """Run MS2DeepScore similarity search.
+
+        Raises
+        ------
+        RuntimeError
+            If the ``[ml]`` extra is not installed.
+        """
+        raise RuntimeError(
+            "MS2DeepScore search is not yet implemented. " + _ML_INSTALL_MSG
+        )
+
+
+class ConsensusEngine(_MLEngineBase):
+    """Consensus scoring engine combining multiple similarity scores.
+
+    Computes scores from multiple underlying engines (e.g., cosine, spec2vec,
+    ms2deepscore) and produces a weighted consensus score. This is designed to
+    improve annotation confidence by leveraging orthogonal scoring approaches.
+
+    Requires: ``pip install massflow[ml]``
+    """
+
+    def _build_model(self) -> None:
+        """Initialize the underlying scoring engines for the consensus."""
+        # In a real implementation this instantiates and configures the
+        # sub-engines whose scores are combined.
+        self._model_loaded = False
+
+    def search(
+        self,
+        query_spectra: List[Spectrum],
+        reference_spectra: Iterable[Spectrum],
+        min_score: float | None = None,
+        top_n: int | None = None,
+        include_decoys: bool = True,
+        ref_precursor_mzs: np.ndarray | None = None,
+        ref_is_decoy: np.ndarray | None = None,
+    ) -> List[SearchResult]:
+        """Run consensus similarity search.
+
+        Raises
+        ------
+        RuntimeError
+            If the ``[ml]`` extra is not installed.
+        """
+        raise RuntimeError(
+            "Consensus search is not yet implemented. " + _ML_INSTALL_MSG
+        )
+
+
+class CascadeEngine(_MLEngineBase):
+    """Cascaded scoring engine with hierarchical filtering.
+
+    Applies multiple similarity filters in sequence, from fast/coarse to
+    slow/precise, to efficiently narrow the candidate set before running
+    expensive deep learning models.
+
+    Requires: ``pip install massflow[ml]``
+    """
+
+    def _build_model(self) -> None:
+        """Initialize the cascade stages."""
+        self._model_loaded = False
+
+    def search(
+        self,
+        query_spectra: List[Spectrum],
+        reference_spectra: Iterable[Spectrum],
+        min_score: float | None = None,
+        top_n: int | None = None,
+        include_decoys: bool = True,
+        ref_precursor_mzs: np.ndarray | None = None,
+        ref_is_decoy: np.ndarray | None = None,
+    ) -> List[SearchResult]:
+        """Run cascaded similarity search.
+
+        Raises
+        ------
+        RuntimeError
+            If the ``[ml]`` extra is not installed.
+        """
+        raise RuntimeError("Cascade search is not yet implemented. " + _ML_INSTALL_MSG)
+
+
+_ML_ENGINE_MAP: dict[str, type] = {
+    "spec2vec": Spec2VecEngine,
+    "ms2deepscore": MS2DeepScoreEngine,
+    "consensus": ConsensusEngine,
+    "cascade": CascadeEngine,
+}
+
+
+def get_similarity_engine(config: SimilarityConfig) -> SimilarityEngine | _MLEngineBase:
+    """Factory function to instantiate the appropriate similarity engine.
+
+    Returns a ``SimilarityEngine`` for classical algorithms (cosine,
+    modified_cosine) or an ``_MLEngineBase`` subclass for ML-based algorithms
+    (spec2vec, ms2deepscore, consensus, cascade).
 
     Parameters
     ----------
@@ -689,7 +1078,28 @@ def get_similarity_engine(config: SimilarityConfig) -> SimilarityEngine:
 
     Returns
     -------
-    SimilarityEngine
-        The instantiated engine ready to perform `.search()`.
+    SimilarityEngine or _MLEngineBase
+        The instantiated engine ready to perform ``.search()``.
+
+    Raises
+    ------
+    ValueError
+        If the requested algorithm is not recognised.
+    RuntimeError
+        If an ML algorithm is requested but the ``[ml]`` extra is not installed.
     """
-    return SimilarityEngine(config)
+    algo = config.algorithm
+
+    if algo in _ML_ENGINE_MAP:
+        if not _HAS_ML:
+            raise RuntimeError(
+                f"Algorithm '{algo}' requires the machine-learning extras. "
+                + _ML_INSTALL_MSG
+            )
+        engine_cls = _ML_ENGINE_MAP[algo]
+        return engine_cls(config)
+
+    if algo in ("cosine", "modified_cosine"):
+        return SimilarityEngine(config)
+
+    raise ValueError(f"Unsupported algorithm: {algo}")

@@ -10,10 +10,11 @@ def test_precursor_mz_just_outside_5ppm_flags_invalid():
     """
     Ensure SpectrumMetadata enforces the strict 5.0 ppm tolerance.
     A precursor mz shifted by just under 5 ppm should be valid; just over should be invalid.
+    Uses formula-based mass calculation.
     """
-    smiles = "C1=CC=CC=C1"  # Benzene
+    formula = "C6H6"  # Benzene
 
-    theo_mz = calculate_theoretical_mass(smiles, "[M+H]+")
+    theo_mz = calculate_theoretical_mass(formula=formula)
     assert theo_mz is not None
 
     # Slightly inside the 5 ppm threshold -> should be considered valid
@@ -25,7 +26,7 @@ def test_precursor_mz_just_outside_5ppm_flags_invalid():
         precursor_mz=precursor_inside,
         charge=1,
         adduct="[M+H]+",
-        molecule=MolecularStructure(smiles=smiles),
+        molecule=MolecularStructure(formula=formula),
     )
     assert meta_inside.is_physically_valid is True
 
@@ -38,7 +39,7 @@ def test_precursor_mz_just_outside_5ppm_flags_invalid():
         precursor_mz=precursor_outside,
         charge=1,
         adduct="[M+H]+",
-        molecule=MolecularStructure(smiles=smiles),
+        molecule=MolecularStructure(formula=formula),
     )
     assert meta_outside.is_physically_valid is False
 
@@ -46,12 +47,12 @@ def test_precursor_mz_just_outside_5ppm_flags_invalid():
 def test_radical_ion_precursor_shifted_beyond_5ppm_are_invalid():
     """
     Edge-case: radical cations/anions use very small electron-mass offsets.
-    Verify that tiny mass shifts that push error >5 ppm are still detected.
+    Uses formula-based mass calculation.
     """
-    smiles = "C1=CC=C2C=CC=CC2=C1"  # Naphthalene
+    formula = "C10H8"  # Naphthalene
 
     for adduct, charge in (("[M]+", 1), ("[M]-", -1)):
-        theo_mz = calculate_theoretical_mass(smiles, adduct)
+        theo_mz = calculate_theoretical_mass(formula=formula, adduct=adduct)
         assert theo_mz is not None
 
         # Move slightly beyond the 5 ppm threshold
@@ -63,31 +64,28 @@ def test_radical_ion_precursor_shifted_beyond_5ppm_are_invalid():
             precursor_mz=precursor,
             charge=charge,
             adduct=adduct,
-            molecule=MolecularStructure(smiles=smiles),
+            molecule=MolecularStructure(formula=formula),
         )
         assert meta.is_physically_valid is False
 
 
 def test_isotopic_similarity_shifted_beyond_tolerance_returns_zero():
     """
-    Highly-halogenated molecules (e.g., many Cl/Br) have distinctive M+2/M+4 peaks.
-    If experimental peaks are uniformly shifted beyond the mz_tolerance used for
-    envelope alignment, the isotopic similarity should fall to 0.0.
+    Highly-halogenated molecules have distinctive M+2/M+4 peaks.
+    Uses formula-based calculation (no RDKit required).
     """
-    smiles = "C1(Cl)=C(Cl)C(Cl)=C(Cl)C(Cl)=C1Cl"  # Hexachlorobenzene
+    formula = "C6Cl6"  # Hexachlorobenzene
 
-    theor_env = calculate_isotopic_envelope(smiles, max_isopeaks=4)
+    theor_env = calculate_isotopic_envelope(formula=formula, max_isopeaks=4)
     assert len(theor_env) > 0
 
-    # Shift all experimental peaks by +0.06 Da which is just outside the default 0.05 Da tolerance
+    # Shift all experimental peaks by +0.06 Da (outside default 0.05 Da tolerance)
     exp_env_shifted = [(mz + 0.06, abund) for mz, abund in theor_env]
 
     sim = calculate_isotopic_similarity(exp_env_shifted, theor_env)
-
-    # No peaks should align within the default tolerance, resulting in 0.0 similarity
     assert sim == 0.0
 
-    # Sanity check: a small shift within the tolerance should produce a non-zero similarity
+    # Sanity check: a small shift within the tolerance should produce non-zero similarity
     exp_env_small_shift = [(mz + 0.049, abund) for mz, abund in theor_env]
     sim_small = calculate_isotopic_similarity(exp_env_small_shift, theor_env)
     assert sim_small > 0.0

@@ -119,6 +119,16 @@ def test_isotopic_envelope_normal_molecule():
     assert all(abundance <= 1.0 for _, abundance in envelope)
 
 
+def test_isotopic_envelope_normal_molecule_from_formula():
+    """Formula-based isotopic envelope (no RDKit required)."""
+    envelope = calculate_isotopic_envelope(formula="C2H4O2")
+    assert len(envelope) >= 2
+    base_mass, base_abundance = envelope[0]
+    assert abs(base_mass - 60.0211) < 0.01
+    assert base_abundance == 1.0
+    assert all(abundance <= 1.0 for _, abundance in envelope)
+
+
 def test_isotopic_envelope_isotope_labelled_smiles_returns_valid_envelope():
     """
     An isotope-labelled SMILES drives the isotope-aware formula-construction

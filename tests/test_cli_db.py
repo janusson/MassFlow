@@ -82,12 +82,12 @@ def test_run_db_merge_empty(mock_logger, mock_db_class):
 
 
 @patch("MassFlow.config.MassFlowConfig.from_yaml")
-@patch("MassFlow.database.SpectralDatabase")
+@patch("MassFlow.storage.create_spectral_store")
 @patch("MassFlow.io.load_spectra")
 @patch("MassFlow.processing.process_spectra")
-def test_run_db_build(mock_process, mock_load, mock_db_class, mock_config):
-    mock_db = mock_db_class.return_value
-    mock_db.add_spectra.return_value = 10
+def test_run_db_build(mock_process, mock_load, mock_store_factory, mock_config):
+    mock_store = mock_store_factory.return_value
+    mock_store.add_spectra.return_value = 10
 
     mock_process.return_value = iter([MagicMock()])
     mock_load.return_value = iter([MagicMock()])
@@ -110,20 +110,20 @@ def test_run_db_build(mock_process, mock_load, mock_db_class, mock_config):
     )
 
     assert result.exit_code == 0
-    mock_db.add_spectra.assert_called_once()
-    assert mock_db.add_spectra.call_args[1]["category"] == "test"
+    mock_store.add_spectra.assert_called_once()
+    assert mock_store.add_spectra.call_args[1]["category"] == "test"
 
 
 @patch("MassFlow.config.MassFlowConfig.from_yaml")
-@patch("MassFlow.database.SpectralDatabase")
+@patch("MassFlow.storage.create_spectral_store")
 @patch("MassFlow.io.load_spectra")
 @patch("MassFlow.processing.process_spectra")
 @patch("MassFlow.cli.logger")
 def test_run_db_build_empty(
-    mock_logger, mock_process, mock_load, mock_db_class, mock_config
+    mock_logger, mock_process, mock_load, mock_store_factory, mock_config
 ):
-    mock_db = mock_db_class.return_value
-    mock_db.add_spectra.return_value = 0
+    mock_store = mock_store_factory.return_value
+    mock_store.add_spectra.return_value = 0
 
     runner = CliRunner()
     result = runner.invoke(

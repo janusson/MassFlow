@@ -19,6 +19,9 @@ except importlib.metadata.PackageNotFoundError:
 __all__ = [
     "MassFlowConfig",
     "SpectralDatabase",
+    "SpectralStore",
+    "ZarrSpectralStore",
+    "create_spectral_store",
     "load_spectra",
     "process_spectra",
     "run_annotation_pipeline",
@@ -28,7 +31,9 @@ __all__ = [
     "io",
     "processing",
     "similarity",
+    "storage",
     "workflow",
+    "zarr_store",
     "__version__",
 ]
 
@@ -42,6 +47,18 @@ def __getattr__(name):
         from .database import SpectralDatabase
 
         return SpectralDatabase
+    elif name == "SpectralStore":
+        from .storage import SpectralStore
+
+        return SpectralStore
+    elif name == "ZarrSpectralStore":
+        from .zarr_store import ZarrSpectralStore
+
+        return ZarrSpectralStore
+    elif name == "create_spectral_store":
+        from .storage import create_spectral_store
+
+        return create_spectral_store
     elif name == "load_spectra":
         from .io import load_spectra
 

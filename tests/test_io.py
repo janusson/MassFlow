@@ -68,10 +68,11 @@ def test_load_spectra_mzxml(mock_spectrum, tmp_path):
 
 
 def test_load_spectra_db(mock_spectrum, tmp_path):
-    # SpectralDatabase is imported inside the function, so we patch where it is defined
-    with patch("MassFlow.database.SpectralDatabase") as MockDB:
-        mock_instance = MockDB.return_value
-        mock_instance.get_spectra.return_value = iter([mock_spectrum])
+    # io.load_spectra now uses create_spectral_store factory.
+    # Patch the factory to return a mock store.
+    with patch("MassFlow.storage.create_spectral_store") as mock_factory:
+        mock_store = mock_factory.return_value
+        mock_store.get_spectra.return_value = iter([mock_spectrum])
 
         p = tmp_path / "test.db"
         p.touch()
@@ -80,7 +81,7 @@ def test_load_spectra_db(mock_spectrum, tmp_path):
 
         assert len(result) == 1
         assert result[0].get("id") == "spec1"
-        MockDB.assert_called_with(p)
+        mock_factory.assert_called_with(p, backend="sqlite")
 
 
 def test_load_spectra_proprietary_error(tmp_path):

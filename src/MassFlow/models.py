@@ -4,19 +4,35 @@ Data contracts and shared Pydantic models for MassFlow.
 This module defines the core scientific data structures used across the
 pipeline: molecular structure validation, spectral metadata with adduct-aware
 precursor mass verification, and theoretical isotopic distributions.
+
+RDKit is an **optional** dependency.  When unavailable the models fall back
+to ``formula``-based mass validation via pyteomics, and the classical
+cosine-scoring pipeline continues without interruption.
 """
 
+import logging
 from typing import List, Literal, Optional
 
-import pyteomics.mass as pmass
 from pydantic import BaseModel, ConfigDict, Field, model_validator
-from rdkit import Chem
+
+# ---------------------------------------------------------------------------
+# Optional RDKit import
+# ---------------------------------------------------------------------------
+try:
+    from rdkit import Chem
+
+    _HAS_RDKIT = True
+except ImportError:  # pragma: no cover -- tested via the "no rdkit" CI variant
+    _HAS_RDKIT = False
 
 from MassFlow.cheminformatics import (
-    ADDUCT_OFFSETS,
-    _mol_to_pyteomics_formula,
-    calculate_isotopic_envelope,
+    _formula_to_isotopic_envelope,
+    _formula_to_monoisotopic_mass,
+    _smiles_to_formula,
+    compute_adduct_offset,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class IsotopicDistribution(BaseModel):
@@ -26,7 +42,10 @@ class IsotopicDistribution(BaseModel):
 
     peaks: List[tuple[float, float]] = Field(
         ...,
-        description="List of (centroid_mass, relative_abundance) tuples representing the M, M+1, M+2... isotopic peaks.",
+        description=(
+            "List of (centroid_mass, relative_abundance) tuples representing "
+            "the M, M+1, M+2... isotopic peaks."
+        ),
     )
 
 
@@ -52,53 +71,78 @@ class MolecularStructure(BaseModel):
     )
     is_physically_valid: bool = Field(
         default=True,
-        description="False if strict 5 ppm mass validation fails or SMILES is unparseable.",
+        description=(
+            "False if strict 5 ppm mass validation fails, SMILES is "
+            "unparseable, or the formula cannot be resolved."
+        ),
     )
 
     @model_validator(mode="after")
     def validate_and_compute_mass(self) -> "MolecularStructure":
         """
-        Validates the chemical structure via RDKit.
-        Calculates exact mass if missing, or validates it against the provided mass.
+        Validate the chemical structure and compute/verify exact mass.
+
+        **Priority order for formula resolution:**
+
+        1. If ``formula`` is present, use it directly with pyteomics
+           (works with or without RDKit).
+        2. If ``smiles`` or ``inchi`` is present and RDKit is available,
+           derive the formula from the structural representation.
+        3. If neither a formula nor a parsable structure is available,
+           set ``is_physically_valid = True`` and skip the 5 ppm check
+           (the spectrum can still participate in classical cosine scoring).
         """
+        resolved_formula: Optional[str] = self.formula
         mol = None
 
-        # 1. Parse Structure
-        if self.smiles:
-            mol = Chem.MolFromSmiles(self.smiles)
-            if not mol:
-                # GRACEFUL FALLBACK: Flag as invalid, do not crash
-                self.__dict__["is_physically_valid"] = False
-        elif self.inchi:
-            mol = Chem.MolFromInchi(self.inchi)
-            if not mol:
-                # GRACEFUL FALLBACK: Flag as invalid, do not crash
-                self.__dict__["is_physically_valid"] = False
-
-        # 2. Validate / Compute Exact Mass (pyteomics SSOT)
-        if mol:
-            formula = _mol_to_pyteomics_formula(mol)
-            calculated_mass = pmass.calculate_mass(formula=formula)
-
-            if self.exact_mass is not None:
-                # Enforce strict 5 ppm mass error threshold for structural integrity
-                ppm_error = (
-                    abs(self.exact_mass - calculated_mass) / calculated_mass * 1e6
-                )
-                if ppm_error > 5.0:
-                    # GRACEFUL FALLBACK: Bypass 5 ppm crash
+        # ── Resolve formula ────────────────────────────────────────────
+        if not resolved_formula and _HAS_RDKIT:
+            if self.smiles:
+                mol = Chem.MolFromSmiles(self.smiles)
+                if mol:
+                    resolved_formula = _smiles_to_formula(self.smiles)
+                else:
                     self.__dict__["is_physically_valid"] = False
-            else:
-                # Auto-fill missing exact mass
-                self.exact_mass = calculated_mass
+            elif self.inchi:
+                mol = Chem.MolFromInchi(self.inchi)
+                if mol:
+                    from rdkit.Chem import rdMolDescriptors
 
-            # Auto-fill missing formula
-            if not self.formula:
-                self.formula = Chem.rdMolDescriptors.CalcMolFormula(mol)
+                    resolved_formula = rdMolDescriptors.CalcMolFormula(mol)
+                else:
+                    self.__dict__["is_physically_valid"] = False
 
-            # Auto-fill isotopic envelope
-            if self.smiles and not self.isotopic_envelope and self.is_physically_valid:
-                self.isotopic_envelope = calculate_isotopic_envelope(self.smiles)
+        # ── No formula resolvable: skip 5 ppm check, allow spectrum ────
+        if resolved_formula is None:
+            logger.debug(
+                "No formula or parsable structure for spectrum; "
+                "skipping 5 ppm mass validation."
+            )
+            # Still try to auto-fill formula from molecule if already parsed
+            if mol is not None and _HAS_RDKIT:
+                from rdkit.Chem import rdMolDescriptors
+
+                self.formula = rdMolDescriptors.CalcMolFormula(mol)
+            return self
+
+        # ── Compute / validate exact mass via pyteomics SSOT ───────────
+        calculated_mass = _formula_to_monoisotopic_mass(resolved_formula)
+
+        if self.exact_mass is not None:
+            ppm_error = abs(self.exact_mass - calculated_mass) / calculated_mass * 1e6
+            if ppm_error > 5.0:
+                self.__dict__["is_physically_valid"] = False
+        else:
+            # Auto-fill missing exact mass
+            self.exact_mass = calculated_mass
+
+        # Auto-fill missing formula
+        if not self.formula:
+            self.formula = resolved_formula
+
+        # Auto-fill isotopic envelope from formula (works without RDKit)
+        if not self.isotopic_envelope and self.is_physically_valid:
+            self.isotopic_envelope = _formula_to_isotopic_envelope(resolved_formula)
 
         return self
 
@@ -130,8 +174,16 @@ class SpectrumMetadata(BaseModel):
     @model_validator(mode="after")
     def validate_precursor_mass_logic(self) -> "SpectrumMetadata":
         """
-        Ensures the precursor m/z physically aligns with the exact mass, charge,
+        Ensure the precursor m/z physically aligns with the exact mass, charge,
         and specific adduct within a strict 5 ppm tolerance.
+
+        **Fallback behaviour when RDKit is unavailable:**
+
+        - If the molecule's ``formula`` field is populated, the 5 ppm check
+          proceeds using pyteomics directly.
+        - If neither a formula nor RDKit is available, the validation is
+          skipped gracefully and the spectrum is allowed to proceed to
+          classical cosine scoring.
         """
         # Assign default adduct based on ion_mode if not provided
         if not self.adduct:
@@ -144,28 +196,27 @@ class SpectrumMetadata(BaseModel):
         if self.molecule and not self.molecule.is_physically_valid:
             self.__dict__["is_physically_valid"] = False
 
-        # Graceful fallback: Skip strict validation if structural data is missing
+        # Skip strict validation if structural data is missing
         if not (
             self.molecule and self.molecule.exact_mass and self.charge and self.adduct
         ):
             return self
 
         # Graceful fallback: Bypass exact mass validation for non-standard adducts
-        if self.adduct not in ADDUCT_OFFSETS:
+        offset = compute_adduct_offset(self.adduct)
+        if offset is None:
             self.__dict__["is_physically_valid"] = False
             return self
 
         exact_mass = self.molecule.exact_mass
         charge = self.charge
-        offset = ADDUCT_OFFSETS[self.adduct]
 
-        # Theoretical m/z calculation. ADDUCT_OFFSETS assume z=+/-1 for the offset mass.
+        # Theoretical m/z calculation using pyteomics Composition-derived offset.
         theoretical_mz = (exact_mass + offset) / abs(charge)
 
         # Enforce strict 5 ppm tolerance
         ppm_error = abs(self.precursor_mz - theoretical_mz) / theoretical_mz * 1e6
         if ppm_error > 5.0:
-            # GRACEFUL FALLBACK: Bypass 5 ppm crash
             self.__dict__["is_physically_valid"] = False
 
         return self

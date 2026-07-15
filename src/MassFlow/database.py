@@ -49,6 +49,8 @@ from typing import Any, Optional, Union
 import numpy as np
 from matchms import Spectrum
 
+from MassFlow.storage import SpectralStore
+
 CURRENT_SPECTRA_COLUMNS = {
     "id",
     "original_id",
@@ -834,7 +836,7 @@ def migrate_legacy_peaks_to_arrays(
     return migrate_legacy_peaks_database(db_path)
 
 
-class SpectralDatabase:
+class SpectralDatabase(SpectralStore):
     """
     Manage a local SQLite database for persistent storage of mass spectra.
 
@@ -862,11 +864,19 @@ class SpectralDatabase:
         db_path: Union[str, Path],
         allow_destructive_upgrade: bool = False,
     ):
-        self.db_path = Path(db_path)
+        # Let SpectralStore.__init__ set self.store_path and call
+        # self._initialize() (no-op for SpectralDatabase — SQLite setup
+        # happens explicitly below).
+        super().__init__(Path(db_path))
+        # Keep legacy alias for backward compatibility
+        self.db_path = self.store_path
         self.conn: Optional[sqlite3.Connection] = None
         self.allow_destructive_upgrade = allow_destructive_upgrade
         self._connect()
         self._initialize_tables()
+
+    def _initialize(self) -> None:
+        """No-op; SQLite setup is handled in __init__ via _connect/_initialize_tables."""
 
     def _connect(self) -> None:
         """
@@ -1160,6 +1170,78 @@ class SpectralDatabase:
             float(row[0]) if row[0] is not None else 0.0,
             float(row[1]) if row[1] is not None else 0.0,
         )
+
+    def get_spectrum_by_id(self, spectrum_id: str) -> Optional[Spectrum]:
+        """
+        Retrieve a single spectrum by its unique identifier (``original_id``).
+
+        Parameters
+        ----------
+        spectrum_id : str
+            The ``original_id`` of the desired spectrum.
+
+        Returns
+        -------
+        Spectrum or None
+            The matching spectrum, or ``None`` if not found.
+        """
+        if not self.conn:
+            raise ConnectionError("Database not connected.")
+        cursor = self.conn.cursor()
+        cursor.execute(
+            "SELECT * FROM spectra WHERE original_id = ? LIMIT 1",
+            (spectrum_id,),
+        )
+        row = cursor.fetchone()
+        if row is None:
+            return None
+        return self._row_to_spectrum(row)
+
+    def batch_get_arrays(
+        self,
+        spectrum_ids: Optional[list[str]] = None,
+    ) -> tuple[list[np.ndarray], list[np.ndarray]]:
+        """
+        Retrieve m/z and intensity arrays in batch.
+
+        For the SQLite BLOB backend this iterates over all (or the requested)
+        spectra and deserialises each BLOB. The Zarr backend is significantly
+        faster for this operation due to zero-copy chunk reads.
+
+        Parameters
+        ----------
+        spectrum_ids : list of str or None
+            Specific spectrum IDs to retrieve. If ``None``, all spectra are
+            returned.
+
+        Returns
+        -------
+        tuple[list[np.ndarray], list[np.ndarray]]
+            Aligned lists of ``float64`` m/z and intensity arrays.
+        """
+        if not self.conn:
+            raise ConnectionError("Database not connected.")
+
+        mz_arrays: list[np.ndarray] = []
+        intensity_arrays: list[np.ndarray] = []
+
+        cursor = self.conn.cursor()
+        if spectrum_ids is not None:
+            placeholders = ",".join(["?"] * len(spectrum_ids))
+            cursor.execute(
+                f"SELECT mz_array, intensity_array FROM spectra WHERE original_id IN ({placeholders})",
+                spectrum_ids,
+            )
+        else:
+            cursor.execute("SELECT mz_array, intensity_array FROM spectra")
+
+        for row in cursor.fetchall():
+            mz_arrays.append(np.frombuffer(row["mz_array"], dtype=np.float64).copy())
+            intensity_arrays.append(
+                np.frombuffer(row["intensity_array"], dtype=np.float64).copy()
+            )
+
+        return mz_arrays, intensity_arrays
 
     def close(self) -> None:
         """

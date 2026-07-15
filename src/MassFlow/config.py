@@ -13,6 +13,7 @@ whether certain workflow toggles are currently implemented, are enforced in the
 orchestrating modules.
 """
 
+import logging
 from pathlib import Path
 from typing import List, Literal, Optional, Union
 
@@ -28,6 +29,79 @@ from pydantic import (
     field_validator,
     model_validator,
 )
+
+logger = logging.getLogger(__name__)
+
+
+def register_custom_modifications(modifications: dict) -> None:
+    """Register user-defined chemical modifications into pyteomics' internal registries.
+
+    This single-initialization function injects custom residues, adducts, or
+    non-standard offsets into ``pyteomics.mass.std_aa_comp`` and/or
+    ``pyteomics.mass.std_ion_comp`` so that all downstream mass calculations
+    (including ``pmass.calculate_mass``) recognise them natively.
+
+    Each entry in *modifications* must be a dict with at least a ``formula``
+    key (chemical formula string, e.g. ``"C2H3O"``). An optional ``type`` key
+    controls the target registry: ``"aa"`` (default) for amino-acid residues
+    stored in ``std_aa_comp``, or ``"ion"`` for ion-fragment offsets stored
+    in ``std_ion_comp``.
+
+    Parameters
+    ----------
+    modifications : dict
+        Mapping of modification names to definition dicts. Each definition
+        dict may contain:
+
+        - **formula** (*str*, required): pyteomics-compatible chemical formula.
+        - **type** (*str*, optional): ``"aa"`` (default) or ``"ion"``.
+
+    Examples
+    --------
+    >>> register_custom_modifications({
+    ...     "pS": {"formula": "HO3P", "type": "aa"},
+    ...     "Ac": {"formula": "C2H2O", "type": "aa"},
+    ...     "custom_loss": {"formula": "H-2O-1", "type": "ion"},
+    ... })
+    """
+    if not modifications:
+        return
+
+    for name, definition in modifications.items():
+        if not isinstance(definition, dict):
+            logger.warning(
+                "Skipping modification '%s': definition must be a dict, got %s",
+                name,
+                type(definition).__name__,
+            )
+            continue
+
+        formula = definition.get("formula")
+        if not formula:
+            logger.warning(
+                "Skipping modification '%s': missing required 'formula' key.", name
+            )
+            continue
+
+        mod_type = definition.get("type", "aa")
+
+        try:
+            comp = pmass.Composition(formula=formula)
+        except Exception as exc:
+            logger.error(
+                "Cannot register modification '%s': invalid formula '%s' — %s",
+                name,
+                formula,
+                exc,
+            )
+            continue
+
+        if mod_type == "ion":
+            pmass.std_ion_comp[name] = comp
+            logger.debug("Registered ion modification '%s' → %s", name, dict(comp))
+        else:
+            pmass.std_aa_comp[name] = comp
+            logger.debug("Registered aa modification '%s' → %s", name, dict(comp))
 
 
 class LineNumberLoader(yaml.SafeLoader):
@@ -77,6 +151,14 @@ class InputConfig(BaseModel):
     streaming_threshold_mb: int = Field(
         default=500,
         description="Threshold (in MB) above which the library is streamed from disk instead of loaded into memory.",
+    )
+    storage_backend: Literal["sqlite", "zarr"] = Field(
+        default="sqlite",
+        description=(
+            "Storage backend for spectral libraries. "
+            "'sqlite' (default) uses SQLite BLOBs for v1.0 stable workflows. "
+            "'zarr' uses compressed Zarr arrays for cloud-optimized horizontal scaling."
+        ),
     )
 
     @property
@@ -287,15 +369,35 @@ class ProcessingConfig(BaseModel):
 
 class SimilarityConfig(BaseModel):
     """
-    Settings for similarity scoring with classical spectral matching algorithms.
+    Settings for similarity scoring with classical and ML-based algorithms.
 
-    Supports cosine and modified cosine similarity backed by matchms.
+    Classical algorithms (always available):
+        - ``cosine``: CosineGreedy via matchms
+        - ``modified_cosine``: ModifiedCosine via matchms
+
+    Machine-learning algorithms (require ``pip install massflow[ml]``):
+        - ``spec2vec``: Spec2Vec embeddings via Gensim
+        - ``ms2deepscore``: MS2DeepScore via PyTorch
+        - ``consensus``: Consensus scoring combining multiple engines
+        - ``cascade``: Cascaded scoring with hierarchical filtering
+
     Legacy ``tolerance`` is retained for compatibility with existing configs.
     """
 
-    algorithm: Literal["cosine", "modified_cosine"] = Field(
+    algorithm: Literal[
+        "cosine",
+        "modified_cosine",
+        "spec2vec",
+        "ms2deepscore",
+        "consensus",
+        "cascade",
+    ] = Field(
         default="cosine",
-        description="Similarity algorithm: 'cosine' or 'modified_cosine'.",
+        description=(
+            "Similarity algorithm: 'cosine', 'modified_cosine' (always available), "
+            "'spec2vec', 'ms2deepscore', 'consensus', or 'cascade' "
+            "(require massflow[ml])."
+        ),
     )
 
     # Fixed-unit Tolerances
@@ -482,6 +584,12 @@ class MassFlowConfig(BaseModel):
             raise ValueError(
                 "Configuration validation failed:\n" + "\n".join(error_messages)
             ) from e
+
+        # Register any user-defined chemical modifications into pyteomics
+        # before any spectral processing occurs.
+        _mods = data.get("modifications")
+        if _mods and isinstance(_mods, dict):
+            register_custom_modifications(_mods)
 
         # Expand user for relevant Path fields in InputConfig
         if config_instance.input.input_path:
