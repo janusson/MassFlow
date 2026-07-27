@@ -7,7 +7,12 @@ import pytest
 from matchms import Spectrum
 
 from MassFlow.config import SimilarityConfig
-from MassFlow.similarity import SimilarityEngine, calculate_fdr
+from MassFlow.similarity import (
+    CascadeEngine,
+    ConsensusEngine,
+    SimilarityEngine,
+    calculate_fdr,
+)
 
 
 @pytest.fixture(scope="module")
@@ -473,3 +478,484 @@ def test_rt_tolerance_filtering_exact_and_missing():
         "Match outside RT tolerance was incorrectly accepted."
     )
     assert "ref4" in matched_ids, "Match with missing RT was incorrectly rejected."
+
+
+# ---------------------------------------------------------------------------
+# ConsensusEngine tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def consensus_query() -> Spectrum:
+    """Simple two-peak query spectrum for consensus testing."""
+    return Spectrum(
+        mz=np.array([100.0, 200.0], dtype="float"),
+        intensities=np.array([1.0, 1.0], dtype="float"),
+        metadata={"id": "cons_q", "precursor_mz": 400.0},
+    )
+
+
+@pytest.fixture(scope="module")
+def consensus_ref_match() -> Spectrum:
+    """Reference spectrum identical to the query (high-score match)."""
+    return Spectrum(
+        mz=np.array([100.0, 200.0], dtype="float"),
+        intensities=np.array([1.0, 1.0], dtype="float"),
+        metadata={
+            "id": "cons_r1",
+            "precursor_mz": 400.0,
+            "compound_name": "Match",
+        },
+    )
+
+
+@pytest.fixture(scope="module")
+def consensus_ref_partial() -> Spectrum:
+    """Reference sharing only one peak with the query (partial match)."""
+    return Spectrum(
+        mz=np.array([100.0, 300.0], dtype="float"),
+        intensities=np.array([1.0, 1.0], dtype="float"),
+        metadata={
+            "id": "cons_r2",
+            "precursor_mz": 400.0,
+            "compound_name": "Partial",
+        },
+    )
+
+
+def test_consensus_basic_weighted_scoring(
+    consensus_query: Spectrum,
+    consensus_ref_match: Spectrum,
+    consensus_ref_partial: Spectrum,
+) -> None:
+    """Verify that the consensus score is a weighted average of sub-engine scores."""
+    config = SimilarityConfig(
+        algorithm="consensus",
+        ms1_tolerance=10.0,
+        ms2_tolerance=0.02,
+        min_score=0.0,
+        min_matched_peaks=1,
+        consensus_weights={"cosine": 0.5, "modified_cosine": 0.5},
+    )
+    engine = ConsensusEngine(config)
+
+    results = engine.search(
+        query_spectra=[consensus_query],
+        reference_spectra=[consensus_ref_match, consensus_ref_partial],
+        include_decoys=False,
+    )
+
+    # Should have results for both references
+    result_ids = {r["reference_id"] for r in results}
+    assert "cons_r1" in result_ids, "High-score reference missing from consensus."
+    assert "cons_r2" in result_ids, "Partial-match reference missing from consensus."
+
+    for r in results:
+        # score_breakdown should contain individual engine scores
+        assert r["score_breakdown"] is not None
+        breakdown = r["score_breakdown"]
+        assert "cosine" in breakdown or "modified_cosine" in breakdown, (
+            f"score_breakdown missing engine keys: {breakdown}"
+        )
+
+        # The consensus score should fall between the min and max sub-scores
+        sub_scores = list(breakdown.values())
+        if len(sub_scores) >= 2:
+            assert min(sub_scores) <= r["score"] <= max(sub_scores), (
+                f"Consensus score {r['score']} not between sub-scores {sub_scores}"
+            )
+
+        # structural_similarity holds the best individual score (tie-break)
+        assert r["structural_similarity"] is not None
+        assert r["structural_similarity"] == max(sub_scores), (
+            f"structural_similarity {r['structural_similarity']} "
+            f"!= max sub-score {max(sub_scores)}"
+        )
+
+
+def test_consensus_min_engines_filter(
+    consensus_query: Spectrum,
+    consensus_ref_match: Spectrum,
+) -> None:
+    """Verify that consensus_min_engines filters out single-engine results."""
+    # Only cosine is configured; min_engines=2 should yield zero results
+    config = SimilarityConfig(
+        algorithm="consensus",
+        ms1_tolerance=10.0,
+        ms2_tolerance=0.02,
+        min_score=0.0,
+        min_matched_peaks=1,
+        consensus_weights={"cosine": 1.0},
+        consensus_min_engines=2,
+    )
+    engine = ConsensusEngine(config)
+
+    results = engine.search(
+        query_spectra=[consensus_query],
+        reference_spectra=[consensus_ref_match],
+        include_decoys=False,
+    )
+
+    assert len(results) == 0, (
+        f"Expected 0 results with min_engines=2 > 1 available, got {len(results)}"
+    )
+
+
+def test_consensus_empty_inputs() -> None:
+    """Verify consensus returns empty list for empty queries or references."""
+    config = SimilarityConfig(algorithm="consensus")
+    engine = ConsensusEngine(config)
+
+    assert engine.search([], []) == []
+
+    query = Spectrum(
+        mz=np.array([100.0]),
+        intensities=np.array([1.0]),
+        metadata={"id": "q", "precursor_mz": 400.0},
+    )
+    assert engine.search([query], []) == []
+
+
+def test_consensus_score_breakdown_structure(
+    consensus_query: Spectrum,
+    consensus_ref_match: Spectrum,
+) -> None:
+    """Verify score_breakdown dict is correctly populated per result."""
+    config = SimilarityConfig(
+        algorithm="consensus",
+        ms1_tolerance=10.0,
+        ms2_tolerance=0.02,
+        min_score=0.0,
+        min_matched_peaks=1,
+        consensus_weights={"cosine": 0.6, "modified_cosine": 0.4},
+    )
+    engine = ConsensusEngine(config)
+
+    results = engine.search(
+        query_spectra=[consensus_query],
+        reference_spectra=[consensus_ref_match],
+        include_decoys=False,
+    )
+
+    assert len(results) >= 1, f"Expected at least 1 result, got {len(results)}"
+
+    r = results[0]
+    breakdown = r["score_breakdown"]
+    assert isinstance(breakdown, dict), (
+        f"score_breakdown is {type(breakdown)}, expected dict"
+    )
+    assert len(breakdown) >= 1, f"score_breakdown empty: {breakdown}"
+
+    # All sub-scores should be in [0, 1]
+    for algo, score in breakdown.items():
+        assert 0.0 <= score <= 1.0, f"Sub-score for '{algo}' out of range: {score}"
+
+    # Verify the consensus score is the weighted average
+    total_weight = sum(config.consensus_weights.get(a, 0.0) for a in breakdown)
+    if total_weight > 0:
+        expected = (
+            sum(
+                score * config.consensus_weights.get(a, 0.0)
+                for a, score in breakdown.items()
+            )
+            / total_weight
+        )
+        assert abs(r["score"] - expected) < 1e-6, (
+            f"Consensus score {r['score']} != weighted avg {expected}"
+        )
+
+
+def test_consensus_min_score_threshold(
+    consensus_query: Spectrum,
+    consensus_ref_match: Spectrum,
+) -> None:
+    """Verify that the min_score threshold filters consensus results."""
+    config = SimilarityConfig(
+        algorithm="consensus",
+        ms1_tolerance=10.0,
+        ms2_tolerance=0.02,
+        min_score=0.999,  # Very high threshold
+        min_matched_peaks=1,
+        consensus_weights={"cosine": 0.5, "modified_cosine": 0.5},
+    )
+    engine = ConsensusEngine(config)
+
+    results = engine.search(
+        query_spectra=[consensus_query],
+        reference_spectra=[consensus_ref_match],
+        include_decoys=False,
+    )
+
+    # With min_score=0.999, even perfect matches may be filtered
+    # (depending on floating point and matchms tolerance).
+    # The key assertion: no result should have score < 0.999.
+    for r in results:
+        assert r["score"] >= 0.999, (
+            f"Result score {r['score']} below min_score threshold 0.999"
+        )
+
+
+def test_consensus_top_n(
+    consensus_query: Spectrum,
+    consensus_ref_match: Spectrum,
+    consensus_ref_partial: Spectrum,
+) -> None:
+    """Verify that top_n limits results per query in consensus output."""
+    config = SimilarityConfig(
+        algorithm="consensus",
+        ms1_tolerance=10.0,
+        ms2_tolerance=0.02,
+        min_score=0.0,
+        min_matched_peaks=1,
+        consensus_weights={"cosine": 0.5, "modified_cosine": 0.5},
+    )
+    engine = ConsensusEngine(config)
+
+    results = engine.search(
+        query_spectra=[consensus_query],
+        reference_spectra=[consensus_ref_match, consensus_ref_partial],
+        include_decoys=False,
+        top_n=1,
+    )
+
+    assert len(results) == 1, f"Expected 1 result with top_n=1, got {len(results)}"
+
+
+# ---------------------------------------------------------------------------
+# CascadeEngine tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def cascade_query() -> Spectrum:
+    """Query spectrum for cascade testing (identical to ref_match)."""
+    return Spectrum(
+        mz=np.array([100.0, 200.0, 300.0], dtype="float"),
+        intensities=np.array([1.0, 1.0, 1.0], dtype="float"),
+        metadata={"id": "casc_q", "precursor_mz": 400.0},
+    )
+
+
+@pytest.fixture(scope="module")
+def cascade_ref_strong() -> Spectrum:
+    """Reference with identical peaks (high score in both stages)."""
+    return Spectrum(
+        mz=np.array([100.0, 200.0, 300.0], dtype="float"),
+        intensities=np.array([1.0, 1.0, 1.0], dtype="float"),
+        metadata={
+            "id": "casc_r1",
+            "precursor_mz": 400.0,
+            "compound_name": "Strong",
+        },
+    )
+
+
+@pytest.fixture(scope="module")
+def cascade_ref_weak() -> Spectrum:
+    """Reference with only one matching peak (weak score)."""
+    return Spectrum(
+        mz=np.array([100.0, 500.0, 600.0], dtype="float"),
+        intensities=np.array([1.0, 1.0, 1.0], dtype="float"),
+        metadata={
+            "id": "casc_r2",
+            "precursor_mz": 400.0,
+            "compound_name": "Weak",
+        },
+    )
+
+
+def test_cascade_sequential_filtering(
+    cascade_query: Spectrum,
+    cascade_ref_strong: Spectrum,
+    cascade_ref_weak: Spectrum,
+) -> None:
+    """Verify that cascade stage 1 filters out weak matches before stage 2."""
+    # Stage 1 (cosine) with lower_bound=0.5 should pass the strong match
+    # but filter out the weak match. Stage 2 (modified_cosine) only sees
+    # the strong reference.
+    config = SimilarityConfig(
+        algorithm="cascade",
+        ms1_tolerance=10.0,
+        ms2_tolerance=0.02,
+        min_score=0.0,
+        min_matched_peaks=1,
+        cascade_lower_bound=0.5,
+        cascade_upper_bound=0.0,
+        cascade_stages=["cosine", "modified_cosine"],
+    )
+    engine = CascadeEngine(config)
+
+    results = engine.search(
+        query_spectra=[cascade_query],
+        reference_spectra=[cascade_ref_strong, cascade_ref_weak],
+        include_decoys=False,
+    )
+
+    result_ids = {r["reference_id"] for r in results}
+    assert "casc_r1" in result_ids, "Strong match should survive cascade."
+    assert "casc_r2" not in result_ids, "Weak match should be filtered at stage 1."
+
+
+def test_cascade_empty_inputs() -> None:
+    """Verify cascade returns empty list for empty queries or references."""
+    config = SimilarityConfig(algorithm="cascade")
+    engine = CascadeEngine(config)
+
+    assert engine.search([], []) == []
+
+    query = Spectrum(
+        mz=np.array([100.0]),
+        intensities=np.array([1.0]),
+        metadata={"id": "q", "precursor_mz": 400.0},
+    )
+    assert engine.search([query], []) == []
+
+
+def test_cascade_early_exit_no_survivors(
+    cascade_query: Spectrum,
+    cascade_ref_weak: Spectrum,
+) -> None:
+    """Verify cascade returns empty when no candidates survive stage 1."""
+    config = SimilarityConfig(
+        algorithm="cascade",
+        ms1_tolerance=10.0,
+        ms2_tolerance=0.02,
+        min_score=0.0,
+        min_matched_peaks=3,  # weak ref only has 1 matching peak
+        cascade_lower_bound=0.7,  # high threshold
+        cascade_upper_bound=0.0,
+        cascade_stages=["cosine", "modified_cosine"],
+    )
+    engine = CascadeEngine(config)
+
+    results = engine.search(
+        query_spectra=[cascade_query],
+        reference_spectra=[cascade_ref_weak],
+        include_decoys=False,
+    )
+
+    assert len(results) == 0, (
+        f"Expected 0 results when no candidates survive stage 1, got {len(results)}"
+    )
+
+
+def test_cascade_upper_bound_final_filter(
+    cascade_query: Spectrum,
+    cascade_ref_strong: Spectrum,
+    cascade_ref_weak: Spectrum,
+) -> None:
+    """Verify that cascade_upper_bound is applied as the final-stage threshold."""
+    # Stage 1 passes both with lower_bound=0.0.
+    # Stage 2 applies upper_bound=0.999 which should filter everything
+    # since no real score reaches exactly 1.0.
+    config = SimilarityConfig(
+        algorithm="cascade",
+        ms1_tolerance=10.0,
+        ms2_tolerance=0.02,
+        min_score=0.0,
+        min_matched_peaks=1,
+        cascade_lower_bound=0.0,
+        cascade_upper_bound=0.999,
+        cascade_stages=["cosine", "modified_cosine"],
+    )
+    engine = CascadeEngine(config)
+
+    results = engine.search(
+        query_spectra=[cascade_query],
+        reference_spectra=[cascade_ref_strong, cascade_ref_weak],
+        include_decoys=False,
+    )
+
+    # With a 0.999 upper bound, scores may or may not pass depending on
+    # floating-point precision. The key property is that no result should
+    # have score < 0.999.
+    for r in results:
+        assert r["score"] >= 0.999, (
+            f"Result score {r['score']} below cascade_upper_bound 0.999"
+        )
+
+
+def test_cascade_top_n(
+    cascade_query: Spectrum,
+    cascade_ref_strong: Spectrum,
+    cascade_ref_weak: Spectrum,
+) -> None:
+    """Verify that top_n limits results in cascade output."""
+    config = SimilarityConfig(
+        algorithm="cascade",
+        ms1_tolerance=10.0,
+        ms2_tolerance=0.02,
+        min_score=0.0,
+        min_matched_peaks=1,
+        cascade_lower_bound=0.0,
+        cascade_upper_bound=0.0,
+        cascade_stages=["cosine"],  # single stage for simplicity
+    )
+    engine = CascadeEngine(config)
+
+    results = engine.search(
+        query_spectra=[cascade_query],
+        reference_spectra=[cascade_ref_strong, cascade_ref_weak],
+        include_decoys=False,
+        top_n=1,
+    )
+
+    assert len(results) == 1, f"Expected 1 result with top_n=1, got {len(results)}"
+
+
+def test_cascade_single_stage(
+    cascade_query: Spectrum,
+    cascade_ref_strong: Spectrum,
+) -> None:
+    """Verify cascade with a single stage works as a pass-through."""
+    config = SimilarityConfig(
+        algorithm="cascade",
+        ms1_tolerance=10.0,
+        ms2_tolerance=0.02,
+        min_score=0.0,
+        min_matched_peaks=1,
+        cascade_lower_bound=0.3,
+        cascade_upper_bound=0.0,
+        cascade_stages=["cosine"],
+    )
+    engine = CascadeEngine(config)
+
+    results = engine.search(
+        query_spectra=[cascade_query],
+        reference_spectra=[cascade_ref_strong],
+        include_decoys=False,
+    )
+
+    assert len(results) >= 1, (
+        f"Single-stage cascade should return results, got {len(results)}"
+    )
+
+
+def test_cascade_min_score_override(
+    cascade_query: Spectrum,
+    cascade_ref_strong: Spectrum,
+) -> None:
+    """Verify that explicit min_score overrides cascade_upper_bound."""
+    config = SimilarityConfig(
+        algorithm="cascade",
+        ms1_tolerance=10.0,
+        ms2_tolerance=0.02,
+        min_score=0.0,
+        min_matched_peaks=1,
+        cascade_lower_bound=0.0,
+        cascade_upper_bound=0.999,  # very strict
+        cascade_stages=["cosine"],
+    )
+    engine = CascadeEngine(config)
+
+    # Override with a low threshold
+    results = engine.search(
+        query_spectra=[cascade_query],
+        reference_spectra=[cascade_ref_strong],
+        include_decoys=False,
+        min_score=0.0,
+    )
+
+    assert len(results) >= 1, (
+        f"min_score override should bypass cascade_upper_bound, got {len(results)}"
+    )

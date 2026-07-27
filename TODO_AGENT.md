@@ -1,1 +1,0 @@
-- [ ] Implement AGENTS.md workflow in Zed

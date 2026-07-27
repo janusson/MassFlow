@@ -2,7 +2,7 @@
 
 [![Documentation](https://img.shields.io/badge/docs-available-blue.svg)](https://ericjanusson.github.io/MassFlow/)
 
-MassFlow is a config-first Python toolkit for local tandem mass spectrometry (MS/MS) annotation. It is designed to be **dead easy to run** locally, producing highly reproducible scientific outputs.
+MassFlow is a program for local tandem mass spectrometry (MS/MS) annotation. It is designed to be config-first Python toolkit for local  **very easy to run** locally, producing highly reproducible outputs.
 
 ### The MassFlow Way
 MassFlow is built on three core pillars:
@@ -10,13 +10,14 @@ MassFlow is built on three core pillars:
 2. **Portability**: Vendor-agnostic, open-format ingestion (`.mzML`, `.mgf`) keeps your data pipeline flexible.
 3. **Performance**: Vectorized calculations and local SQLite backends allow for rapid, memory-aware searching.
 
-### Two-step workflow:
+### Try it in 30 seconds:
 ```shell
-# 1. Generate a default config file
-uv run massflow init
+# One-liner to generate tutorial data, build the database, and run annotation
+uv run massflow tutorial
 
-# 2. Run your annotation pipeline
-uv run massflow annotate --config massflow_config.yaml
+# Then follow the printed commands to build the DB and annotate
+uv run massflow db build --input tutorial/tutorial_library.msp --output tutorial/results/compiled_library.db --config tutorial/tutorial_config.yaml --category library
+uv run massflow annotate --config tutorial/tutorial_config.yaml
 ```
 
 Its core workflow is simple:
@@ -42,6 +43,7 @@ graph LR
 
 | Surface | Status | Notes |
 | --- | --- | --- |
+| `massflow tutorial` | Stable target | Generates synthetic data for evaluation; see the [Usage Guide](docs/user-guide/usage.md) |
 | `massflow annotate --config ...` | Stable target | Main documented workflow |
 | YAML configuration | Stable target | Prefer `library_path`; `reference_library` is deprecated and remains accepted only as a backward-compatible alias during the transition |
 | Open-format ingestion (`mzML`, `mzXML`, `MGF`, `MSP`) | Stable target | Vendor raw conversion is out of scope |
@@ -64,6 +66,7 @@ MassFlow is designed for local, reproducible MS/MS annotation workflows where yo
 ### Core workflow for `v1.0`
 These are the parts to rely on first:
 
+- `massflow tutorial` — generates synthetic data for instant evaluation
 - `massflow annotate --config ...`
 - YAML configuration loading and validation
 - open-format ingestion for `mzML`, `mzXML`, `MGF`, and `MSP`
@@ -89,6 +92,18 @@ git clone https://github.com/ejanusson/massflow && cd massflow && uv sync
 ```
 
 ## Quickstart
+
+### 0. Try it instantly with tutorial data
+
+If you don't have MS/MS files handy, generate a synthetic dataset and run the full pipeline in under a minute:
+
+```shell
+uv run massflow tutorial
+```
+
+This creates a `tutorial/` directory with a reference library, experimental queries, and a pre-configured YAML config. Follow the printed next-steps commands to build the database and run the annotation — no external files required.
+
+For a complete walkthrough, see the [Usage Guide](docs/user-guide/usage.md).
 
 ### 1. Choose your inputs
 
@@ -128,7 +143,6 @@ input:
   library_path: "data/libraries/library.msp"
   format: "mzml"
 
-similarity:
 processing:
   clean_metadata: true
   filter_by_intensity: true
@@ -316,7 +330,7 @@ After that, set your config to use the merged library:
 
 ```yaml
 input:
-  input_path: "data/experiments/COE001_16ppm_5uL.mzML"
+  input_path: "data/experiments/experiment_file.mzML"
   library_path: "results/master_user_library.db"
   format: "mzml"
 ```

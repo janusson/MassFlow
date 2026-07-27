@@ -421,6 +421,39 @@ class SimilarityConfig(BaseModel):
         description="Optional: Retention time tolerance in minutes. When set, query-reference pairs with an RT difference exceeding this value are rejected.",
     )
 
+    # --- Consensus engine settings (used when algorithm='consensus') ---
+    consensus_weights: dict[str, float] = Field(
+        default_factory=lambda: {"cosine": 0.5, "modified_cosine": 0.5},
+        description=(
+            "Per-engine weights for consensus scoring. Keys are algorithm names "
+            "('cosine', 'modified_cosine', 'spec2vec', 'ms2deepscore'). "
+            "Weights are normalised internally; only relative proportions matter."
+        ),
+    )
+    consensus_min_engines: int = Field(
+        default=1,
+        ge=1,
+        description="Minimum number of sub-engines that must score a candidate for it to be retained.",
+    )
+
+    # --- Cascade engine settings (used when algorithm='cascade') ---
+    cascade_lower_bound: float = Field(
+        default=0.3,
+        ge=0.0,
+        le=1.0,
+        description="Score threshold applied at each cascade stage to pass candidates forward.",
+    )
+    cascade_upper_bound: float = Field(
+        default=0.7,
+        ge=0.0,
+        le=1.0,
+        description="Final score threshold applied after the last cascade stage.",
+    )
+    cascade_stages: list[str] = Field(
+        default_factory=lambda: ["cosine", "modified_cosine"],
+        description="Ordered list of algorithms used as cascade stages, from fastest to slowest.",
+    )
+
     @field_validator("rt_tolerance")
     @classmethod
     def validate_rt_tolerance(

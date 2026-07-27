@@ -31,16 +31,19 @@ def test_db_inspect_error(mock_db):
     assert result.exit_code == 1
 
 
-@patch("MassFlow.database.SpectralDatabase")
-def test_run_db_merge(mock_db_class):
+@patch("MassFlow.storage.create_spectral_store")
+def test_run_db_merge(mock_create_store):
+    """run_db_merge should merge from two input databases and exit 0."""
     mock_in_db = MagicMock()
     mock_out_db = MagicMock()
 
-    # Return out_db for the first call (output), then in_db for inputs
-    mock_db_class.side_effect = [mock_out_db, mock_in_db, mock_in_db]
-
-    mock_in_db.get_spectra.return_value = iter([MagicMock()])
+    # Make the SQLite fast-path fall through to the iterator path.
+    mock_out_db.merge_from_sqlite.side_effect = NotImplementedError("fallback")
     mock_out_db.add_spectra.return_value = 1
+    mock_in_db.get_spectra.return_value = iter([MagicMock()])
+
+    # First call creates the output store; subsequent calls open input stores.
+    mock_create_store.side_effect = [mock_out_db, mock_in_db, mock_in_db]
 
     runner = CliRunner()
     result = runner.invoke(
@@ -57,7 +60,7 @@ def test_run_db_merge(mock_db_class):
         ],
     )
 
-    assert result.exit_code == 0
+    assert result.exit_code == 0, f"CLI failed: {result.output}"
     assert mock_out_db.add_spectra.call_count == 2
     mock_in_db.close.assert_called()
     mock_out_db.close.assert_called_once()

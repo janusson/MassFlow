@@ -164,7 +164,7 @@ def _handle_lazy_reference_spectra(func):
                     continue
 
                 processed_count += len(chunk)
-                logger.info(
+                logger.debug(
                     f"Streaming library... scored against {processed_count} reference spectra so far."
                 )
 
@@ -994,11 +994,89 @@ class ConsensusEngine(_MLEngineBase):
     Requires: ``pip install massflow[ml]``
     """
 
+    def _check_dependencies(self) -> None:
+        """Override base check: log a warning instead of raising.
+
+        Consensus can operate with only classical sub-engines (cosine,
+        modified_cosine) even when ML extras are partially missing.
+        Individual sub-engine availability is handled in ``_build_model``.
+        """
+        if not _HAS_ML:
+            logger.warning(
+                "ML extras are not fully available; consensus scoring "
+                "will be limited to classical sub-engines. %s",
+                _ML_INSTALL_MSG,
+            )
+
     def _build_model(self) -> None:
-        """Initialize the underlying scoring engines for the consensus."""
-        # In a real implementation this instantiates and configures the
-        # sub-engines whose scores are combined.
-        self._model_loaded = False
+        """Initialize the underlying scoring engines for the consensus.
+
+        Creates sub-engines for each algorithm listed in
+        ``config.consensus_weights``.  Classical engines (cosine,
+        modified_cosine) are always available; ML engines (spec2vec,
+        ms2deepscore) are only instantiated when their dependencies are
+        present.  Engines that fail to build are silently skipped.
+        """
+        self._sub_engines: dict[str, SimilarityEngine | _MLEngineBase] = {}
+        self._sub_weights: dict[str, float] = {}
+
+        weights = self.config.consensus_weights
+
+        for algo, weight in weights.items():
+            if weight <= 0:
+                continue
+
+            sub_cfg = SimilarityConfig(
+                algorithm=algo,  # type: ignore[arg-type]
+                ms1_tolerance=self.config.ms1_tolerance,
+                ms2_tolerance=self.config.ms2_tolerance,
+                resolution_ppm=self.config.resolution_ppm,
+                min_score=0.0,
+                min_matched_peaks=0,
+                rt_tolerance=self.config.rt_tolerance,
+            )
+
+            engine: SimilarityEngine | _MLEngineBase | None = None
+
+            if algo in ("cosine", "modified_cosine"):
+                try:
+                    engine = SimilarityEngine(sub_cfg)
+                except Exception as exc:
+                    logger.warning(
+                        "Failed to build classical sub-engine '%s': %s", algo, exc
+                    )
+            elif algo == "spec2vec" and _HAS_SPEC2VEC:
+                try:
+                    engine = Spec2VecEngine(sub_cfg)
+                except Exception as exc:
+                    logger.warning("Failed to build spec2vec sub-engine: %s", exc)
+            elif algo == "ms2deepscore" and _HAS_MS2DEEPSCORE:
+                try:
+                    engine = MS2DeepScoreEngine(sub_cfg)
+                except Exception as exc:
+                    logger.warning("Failed to build ms2deepscore sub-engine: %s", exc)
+            else:
+                logger.debug(
+                    "Skipping sub-engine '%s': not available or dependencies missing.",
+                    algo,
+                )
+
+            if engine is not None:
+                self._sub_engines[algo] = engine
+                self._sub_weights[algo] = weight
+
+        if not self._sub_engines:
+            logger.warning(
+                "No sub-engines could be initialised for consensus scoring. "
+                "Searches will return empty results."
+            )
+        else:
+            logger.info(
+                "Consensus engine initialised with sub-engines: %s",
+                list(self._sub_engines.keys()),
+            )
+
+        self._model_loaded = bool(self._sub_engines)
 
     def search(
         self,
@@ -1010,16 +1088,158 @@ class ConsensusEngine(_MLEngineBase):
         ref_precursor_mzs: np.ndarray | None = None,
         ref_is_decoy: np.ndarray | None = None,
     ) -> List[SearchResult]:
-        """Run consensus similarity search.
+        """Run consensus similarity search across configured sub-engines.
 
-        Raises
-        ------
-        RuntimeError
-            If the ``[ml]`` extra is not installed.
+        Each sub-engine scores the query-reference pairs independently.
+        Results are aggregated per ``(query_id, reference_id)`` and a
+        weighted-average consensus score is computed.  Only pairs scored by
+        at least ``consensus_min_engines`` sub-engines are retained.
+
+        Parameters
+        ----------
+        query_spectra : List[matchms.Spectrum]
+            Experimental spectra to annotate.
+        reference_spectra : Iterable[matchms.Spectrum]
+            Reference library spectra.
+        min_score : float or None
+            Override for the final consensus-score threshold.
+        top_n : int or None
+            Maximum hits per query after consensus aggregation.
+        include_decoys : bool
+            Whether sub-engines should generate and score decoys.
+        ref_precursor_mzs : np.ndarray or None
+            Pre-computed reference precursor m/z array (passed through).
+        ref_is_decoy : np.ndarray or None
+            Pre-computed reference decoy flags (passed through).
+
+        Returns
+        -------
+        List[SearchResult]
+            Aggregated and weighted consensus results.
         """
-        raise RuntimeError(
-            "Consensus search is not yet implemented. " + _ML_INSTALL_MSG
-        )
+        if not self._sub_engines:
+            return []
+
+        if not query_spectra or not reference_spectra:
+            return []
+
+        ref_list = list(reference_spectra)
+        cutoff = min_score if min_score is not None else self.config.min_score
+        min_engines = self.config.consensus_min_engines
+
+        # ------------------------------------------------------------------
+        # Phase 1: run every available sub-engine and collect raw results
+        # ------------------------------------------------------------------
+        # engine_results: list of (algo, weight, list of SearchResult)
+        engine_results: list[tuple[str, float, list[SearchResult]]] = []
+
+        for algo, engine in self._sub_engines.items():
+            weight = self._sub_weights[algo]
+            try:
+                raw = engine.search(
+                    query_spectra=query_spectra,
+                    reference_spectra=ref_list,
+                    min_score=0.0,  # collect all hits; filter later
+                    top_n=None,
+                    include_decoys=include_decoys,
+                    ref_precursor_mzs=ref_precursor_mzs,
+                    ref_is_decoy=ref_is_decoy,
+                )
+                engine_results.append((algo, weight, raw))
+                logger.debug("Sub-engine '%s' returned %d raw results.", algo, len(raw))
+            except Exception as exc:
+                logger.warning(
+                    "Sub-engine '%s' failed during search, skipping: %s",
+                    algo,
+                    exc,
+                )
+
+        if not engine_results:
+            return []
+
+        # ------------------------------------------------------------------
+        # Phase 2: aggregate by (query_id, reference_id)
+        # ------------------------------------------------------------------
+        # bucket[key] = {"scores": {algo: score}, "template": SearchResult}
+        buckets: dict[tuple[str, str], dict] = {}
+
+        for algo, _weight, results in engine_results:
+            for res in results:
+                key = (res["query_id"], res["reference_id"])
+                if key not in buckets:
+                    buckets[key] = {"scores": {}, "template": res}
+                buckets[key]["scores"][algo] = res["score"]
+
+        # ------------------------------------------------------------------
+        # Phase 3: compute weighted consensus scores
+        # ------------------------------------------------------------------
+        aggregated: list[SearchResult] = []
+
+        for (_qid, _rid), bucket in buckets.items():
+            scores_by_algo: dict[str, float] = bucket["scores"]
+
+            if len(scores_by_algo) < min_engines:
+                continue
+
+            total_weight = 0.0
+            weighted_sum = 0.0
+            for algo, score in scores_by_algo.items():
+                w = self._sub_weights.get(algo, 0.0)
+                total_weight += w
+                weighted_sum += score * w
+
+            if total_weight == 0:
+                continue
+
+            consensus_score = weighted_sum / total_weight
+
+            if consensus_score < cutoff:
+                continue
+
+            template = bucket["template"]
+            best_individual = max(scores_by_algo.values())
+
+            aggregated.append(
+                SearchResult(
+                    query_id=template["query_id"],
+                    query_precursor_mz=template["query_precursor_mz"],
+                    reference_id=template["reference_id"],
+                    reference_name=template["reference_name"],
+                    reference_precursor_mz=template["reference_precursor_mz"],
+                    score=float(consensus_score),
+                    matched_peaks=template["matched_peaks"],
+                    smiles=template["smiles"],
+                    inchikey=template["inchikey"],
+                    is_decoy=template["is_decoy"],
+                    q_value=template["q_value"],
+                    p_value=template["p_value"],
+                    annotation_tier=template["annotation_tier"],
+                    structural_similarity=float(best_individual),
+                    mass_error_ppm=template["mass_error_ppm"],
+                    score_breakdown=dict(scores_by_algo),
+                )
+            )
+
+        # ------------------------------------------------------------------
+        # Phase 4: apply top_n per query (sort by consensus score desc,
+        #           then by best individual score desc as tie-break)
+        # ------------------------------------------------------------------
+        if top_n is not None:
+            by_query: dict[str, list[SearchResult]] = defaultdict(list)
+            for res in aggregated:
+                by_query[res["query_id"]].append(res)
+
+            aggregated = []
+            for _qid, hits in by_query.items():
+                hits.sort(
+                    key=lambda r: (
+                        -r["score"],
+                        -(r.get("structural_similarity") or 0),
+                    )
+                )
+                aggregated.extend(hits[:top_n])
+
+        return aggregated
 
 
 class CascadeEngine(_MLEngineBase):
@@ -1032,9 +1252,81 @@ class CascadeEngine(_MLEngineBase):
     Requires: ``pip install massflow[ml]``
     """
 
+    def _check_dependencies(self) -> None:
+        """Override base check: log a warning instead of raising.
+
+        Cascade can operate with only classical stages (cosine,
+        modified_cosine) even when ML extras are partially missing.
+        Individual stage availability is handled in ``_build_model``.
+        """
+        if not _HAS_ML:
+            logger.warning(
+                "ML extras are not fully available; cascade scoring "
+                "will be limited to classical stages. %s",
+                _ML_INSTALL_MSG,
+            )
+
     def _build_model(self) -> None:
-        """Initialize the cascade stages."""
-        self._model_loaded = False
+        """Initialize the cascade stages in order.
+
+        Each stage in ``config.cascade_stages`` is instantiated as a
+        sub-engine.  Classical engines (cosine, modified_cosine) are always
+        available; ML engines require their respective dependencies.
+        Stages that fail to build are skipped.
+        """
+        self._stages: list[tuple[str, SimilarityEngine | _MLEngineBase]] = []
+
+        for algo in self.config.cascade_stages:
+            sub_cfg = SimilarityConfig(
+                algorithm=algo,  # type: ignore[arg-type]
+                ms1_tolerance=self.config.ms1_tolerance,
+                ms2_tolerance=self.config.ms2_tolerance,
+                resolution_ppm=self.config.resolution_ppm,
+                min_score=0.0,
+                min_matched_peaks=0,
+                rt_tolerance=self.config.rt_tolerance,
+            )
+
+            engine: SimilarityEngine | _MLEngineBase | None = None
+
+            if algo in ("cosine", "modified_cosine"):
+                try:
+                    engine = SimilarityEngine(sub_cfg)
+                except Exception as exc:
+                    logger.warning("Failed to build cascade stage '%s': %s", algo, exc)
+            elif algo == "spec2vec" and _HAS_SPEC2VEC:
+                try:
+                    engine = Spec2VecEngine(sub_cfg)
+                except Exception as exc:
+                    logger.warning("Failed to build spec2vec cascade stage: %s", exc)
+            elif algo == "ms2deepscore" and _HAS_MS2DEEPSCORE:
+                try:
+                    engine = MS2DeepScoreEngine(sub_cfg)
+                except Exception as exc:
+                    logger.warning(
+                        "Failed to build ms2deepscore cascade stage: %s", exc
+                    )
+            else:
+                logger.debug(
+                    "Skipping cascade stage '%s': not available or dependencies missing.",
+                    algo,
+                )
+
+            if engine is not None:
+                self._stages.append((algo, engine))
+
+        if not self._stages:
+            logger.warning(
+                "No cascade stages could be initialised. "
+                "Searches will return empty results."
+            )
+        else:
+            logger.info(
+                "Cascade engine initialised with stages: %s",
+                [a for a, _ in self._stages],
+            )
+
+        self._model_loaded = bool(self._stages)
 
     def search(
         self,
@@ -1046,14 +1338,154 @@ class CascadeEngine(_MLEngineBase):
         ref_precursor_mzs: np.ndarray | None = None,
         ref_is_decoy: np.ndarray | None = None,
     ) -> List[SearchResult]:
-        """Run cascaded similarity search.
+        """Run cascaded similarity search with sequential filtering.
 
-        Raises
-        ------
-        RuntimeError
-            If the ``[ml]`` extra is not installed.
+        Each stage in the cascade scores the query-reference pairs with an
+        increasingly strict threshold.  After each stage, only reference
+        spectra that produced at least one hit above the stage threshold
+        are passed to the next stage.  This narrows the candidate set
+        progressively, reserving expensive models for the most promising
+        candidates.
+
+        **Threshold semantics**
+
+        * ``cascade_lower_bound`` is used as the ``min_score`` for every
+          stage *except the last*.
+        * ``cascade_upper_bound`` (or the explicit ``min_score`` override)
+          is used as ``min_score`` for the **last** stage only.
+
+        Parameters
+        ----------
+        query_spectra : List[matchms.Spectrum]
+            Experimental spectra to annotate.
+        reference_spectra : Iterable[matchms.Spectrum]
+            Reference library spectra.
+        min_score : float or None
+            Override for the final-stage (cascade_upper_bound) threshold.
+        top_n : int or None
+            Maximum hits per query in the final output.
+        include_decoys : bool
+            Whether sub-engines should generate and score decoys.
+        ref_precursor_mzs : np.ndarray or None
+            Pre-computed reference precursor m/z array (passed through).
+        ref_is_decoy : np.ndarray or None
+            Pre-computed reference decoy flags (passed through).
+
+        Returns
+        -------
+        List[SearchResult]
+            Final-stage results after cascaded filtering.
         """
-        raise RuntimeError("Cascade search is not yet implemented. " + _ML_INSTALL_MSG)
+        if not self._stages:
+            return []
+
+        if not query_spectra or not reference_spectra:
+            return []
+
+        ref_list = list(reference_spectra)
+        lower_bound = self.config.cascade_lower_bound
+        upper_bound = (
+            min_score if min_score is not None else self.config.cascade_upper_bound
+        )
+
+        # ------------------------------------------------------------------
+        # Phase 1: run stages sequentially, winnowing the reference set
+        # ------------------------------------------------------------------
+        current_refs: list[Spectrum] = ref_list
+        current_ref_precursor_mzs = ref_precursor_mzs
+        current_ref_is_decoy = ref_is_decoy
+
+        for stage_idx, (algo, engine) in enumerate(self._stages):
+            is_last = stage_idx == len(self._stages) - 1
+            stage_threshold = upper_bound if is_last else lower_bound
+
+            try:
+                stage_results = engine.search(
+                    query_spectra=query_spectra,
+                    reference_spectra=current_refs,
+                    min_score=stage_threshold,
+                    top_n=None,  # collect all for candidate filtering
+                    include_decoys=False,  # decoys handled once at the end
+                    ref_precursor_mzs=current_ref_precursor_mzs,
+                    ref_is_decoy=current_ref_is_decoy,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Cascade stage %d ('%s') failed, stopping cascade: %s",
+                    stage_idx + 1,
+                    algo,
+                    exc,
+                )
+                # If a non-final stage fails we cannot continue filtering.
+                if not is_last:
+                    return []
+                # If the final stage fails, return what we have from the
+                # previous stage (handled below).
+                stage_results = []
+
+            if is_last:
+                # Final stage: these are the results to return (after
+                # applying top_n).
+                final_results = stage_results
+            else:
+                # Intermediate stage: collect reference IDs that survived
+                # and use them to filter the reference set for the next
+                # stage.
+                surviving_ref_ids: set[str] = set()
+                for res in stage_results:
+                    surviving_ref_ids.add(res["reference_id"])
+
+                if not surviving_ref_ids:
+                    # No candidates passed this stage; stop early.
+                    logger.debug(
+                        "Cascade stage %d ('%s'): no candidates survived; "
+                        "stopping cascade.",
+                        stage_idx + 1,
+                        algo,
+                    )
+                    return []
+
+                logger.debug(
+                    "Cascade stage %d ('%s'): %d candidates survived (of %d).",
+                    stage_idx + 1,
+                    algo,
+                    len(surviving_ref_ids),
+                    len(current_refs),
+                )
+
+                # Filter reference list and aligned arrays
+                filtered_refs: list[Spectrum] = []
+                filtered_indices: list[int] = []
+                for i, ref in enumerate(current_refs):
+                    ref_id = str(ref.get("id"))
+                    if ref_id in surviving_ref_ids:
+                        filtered_refs.append(ref)
+                        filtered_indices.append(i)
+
+                current_refs = filtered_refs
+
+                # Align pre-computed arrays if they were provided
+                if current_ref_precursor_mzs is not None:
+                    current_ref_precursor_mzs = current_ref_precursor_mzs[
+                        filtered_indices
+                    ]
+                if current_ref_is_decoy is not None:
+                    current_ref_is_decoy = current_ref_is_decoy[filtered_indices]
+
+        # ------------------------------------------------------------------
+        # Phase 2: apply top_n to final results
+        # ------------------------------------------------------------------
+        if top_n is not None:
+            by_query: dict[str, list[SearchResult]] = defaultdict(list)
+            for res in final_results:
+                by_query[res["query_id"]].append(res)
+
+            final_results = []
+            for _qid, hits in by_query.items():
+                hits.sort(key=lambda r: -r["score"])
+                final_results.extend(hits[:top_n])
+
+        return final_results
 
 
 _ML_ENGINE_MAP: dict[str, type] = {

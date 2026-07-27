@@ -15,6 +15,7 @@ aggregating all chunk results for each experimental file.
 """
 
 import logging
+import sys
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any, Dict, List, Tuple, cast
@@ -46,6 +47,49 @@ _worker_ref_precursor_mzs: np.ndarray | None = None
 _worker_ref_is_decoy: np.ndarray | None = None
 
 
+def _emit_small_library_warning(lib_size: int, fdr_threshold: float) -> None:
+    """Emit a critical scientific warning about small-library FDR invalidity.
+
+    In an interactive terminal the warning is rendered as a visually distinct
+    Rich Panel.  When output is piped or redirected a clean single log line is
+    emitted instead.  Only one rendering path is taken — never both.
+    """
+    msg = (
+        f"CRITICAL SCIENTIFIC WARNING: SMALL LIBRARY DETECTED\n"
+        f"The library contains only {lib_size} spectra.\n"
+        f"Target-Decoy False Discovery Rate (FDR) statistics are fundamentally\n"
+        f"invalid on small sample sizes because the decoy null-distribution\n"
+        f"will be too sparse. A strict FDR threshold (currently set to\n"
+        f"{fdr_threshold}) will likely eliminate all true and putative matches\n"
+        f"as false positives.\n"
+        f"\n"
+        f"Recommendation:\n"
+        f"1. Use a comprehensive library (e.g., GNPS, MoNA, NIST) for FDR\n"
+        f"   validation.\n"
+        f"2. Or, if using a small specialized library, relax the\n"
+        f"   `fdr_threshold` (e.g., 0.1 or 1.0) in your config to evaluate\n"
+        f"   raw Cosine scores directly."
+    )
+
+    if sys.stderr.isatty():
+        # Interactive: show a styled Rich Panel only.
+        from rich.console import Console
+        from rich.panel import Panel
+
+        console = Console(stderr=True)
+        console.print(
+            Panel(
+                msg,
+                title="[bold yellow]Warning[/bold yellow]",
+                border_style="red",
+                highlight=True,
+            )
+        )
+    else:
+        # Piped / redirected: emit a clean structured log line.
+        logger.warning(msg)
+
+
 def _init_worker(
     config: MassFlowConfig,
     references: List[Spectrum] | None,
@@ -62,7 +106,7 @@ def _init_worker(
     """
     from MassFlow.log_config import setup_structured_logging
 
-    setup_structured_logging(level=logging.INFO)
+    setup_structured_logging(level=logging.INFO, force_json=True)
 
     global _worker_engine, _worker_references, _worker_decoys
     global _worker_ref_precursor_mzs, _worker_ref_is_decoy
@@ -299,8 +343,6 @@ def _handle_file_results(
         config_path=config_path,
     )
 
-    logger.info(f"Results saved to {out_file}")
-
 
 def _write_analysis_report(
     report_path: Path,
@@ -405,21 +447,14 @@ def run_annotation_pipeline(
 
         decoy_spectra = generate_decoys(reference_spectra)
 
-        if len(reference_spectra) < 2000:
-            logger.warning(
-                f"\n"
-                f"================================================================================\n"
-                f"CRITICAL SCIENTIFIC WARNING: SMALL LIBRARY DETECTED\n"
-                f"The library contains only {len(reference_spectra)} spectra. \n"
-                f"Target-Decoy False Discovery Rate (FDR) statistics are fundamentally invalid on \n"
-                f"small sample sizes because the decoy null-distribution will be too sparse. \n"
-                f"A strict FDR threshold (currently set to {getattr(config.similarity, 'fdr_threshold', 0.01)}) will "
-                f"likely eliminate all true and putative matches as false positives.\n\n"
-                f"Recommendation:\n"
-                f"1. Use a comprehensive library (e.g., GNPS, MoNA, NIST) for FDR validation.\n"
-                f"2. Or, if using a small specialized library, relax the `fdr_threshold` \n"
-                f"   (e.g., 0.1 or 1.0) in your config to evaluate raw Cosine scores directly.\n"
-                f"================================================================================\n"
+        # Only warn when both conditions are met:
+        # 1. Library is small (< 2000 spectra)
+        # 2. User has actually requested strict FDR (threshold < 0.1)
+        fdr_threshold = getattr(config.similarity, "fdr_threshold", 0.01)
+        if len(reference_spectra) < 2000 and fdr_threshold < 0.1:
+            _emit_small_library_warning(
+                len(reference_spectra),
+                fdr_threshold,
             )
 
     # 2. Determine Input Files

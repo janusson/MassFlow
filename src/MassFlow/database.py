@@ -1197,6 +1197,115 @@ class SpectralDatabase(SpectralStore):
             return None
         return self._row_to_spectrum(row)
 
+    def merge_from_sqlite(
+        self,
+        source_db_path: Path,
+        category: str = "merged",
+    ) -> int:
+        """
+        Fast-path merge: bulk INSERT from another SQLite database via ATTACH.
+
+        Bypasses the row-by-row ``get_spectra()`` / ``add_spectra()`` iteration
+        loop by using SQLite's ``ATTACH DATABASE`` to perform a single
+        ``INSERT INTO ... SELECT FROM`` operation. This is orders of magnitude
+        faster for merging multi-gigabyte ``.db`` files.
+
+        The source ``id`` (auto-increment) column is intentionally excluded;
+        the target database assigns fresh ``id`` values to avoid conflicts.
+        Column mismatches between source and target are handled gracefully:
+        missing columns in the source are filled with sensible defaults,
+        and extra columns in the source are ignored.
+
+        Parameters
+        ----------
+        source_db_path : Path
+            File-system path to the source SQLite ``.db`` file.
+        category : str, optional
+            Category label applied to all imported spectra rows.
+
+        Returns
+        -------
+        int
+            Number of spectra rows inserted into the target database.
+
+        Raises
+        ------
+        ConnectionError
+            If the database connection is not active.
+        sqlite3.Error
+            If the source database cannot be attached or queried.
+
+        Notes
+        -----
+        This method is only available for the SQLite backend. Cross-backend
+        merges (e.g. Zarr → SQLite) should use the iterator-based
+        ``get_spectra()`` / ``add_spectra()`` fallback path.
+
+        Examples
+        --------
+        >>> target = SpectralDatabase("merged.db")
+        >>> count = target.merge_from_sqlite(Path("source.db"), category="merged")
+        >>> target.close()
+        """
+        if not self.conn:
+            raise ConnectionError("Database not connected.")
+
+        source_abs = str(source_db_path.resolve())
+        cursor = self.conn.cursor()
+
+        # Determine columns present in the source (attached) database.
+        cursor.execute(f"ATTACH DATABASE '{source_abs}' AS _merge_source")
+
+        try:
+            cursor.execute("PRAGMA _merge_source.table_info(spectra)")
+            source_cols = [str(row[1]) for row in cursor.fetchall()]
+
+            target_cols = get_spectra_table_columns(self.conn)
+
+            # Build the column list for the INSERT.
+            # - Exclude 'id' (auto-increment; target assigns fresh values).
+            # - Include all other target columns that also exist in the source.
+            # - Replace 'category' with the literal value provided by the caller.
+            # - COALESCE 'triage_flags' to '{}' when the source column is NULL.
+            common_cols = [c for c in target_cols if c in source_cols and c != "id"]
+
+            if not common_cols:
+                cursor.execute("DETACH DATABASE _merge_source")
+                return 0
+
+            select_parts: list[str] = []
+            for col in common_cols:
+                if col == "category":
+                    # Use the caller-supplied category literal.
+                    escaped = category.replace("'", "''")
+                    select_parts.append(f"'{escaped}'")
+                elif col == "triage_flags":
+                    select_parts.append(
+                        "COALESCE(_merge_source.spectra.triage_flags, '{}')"
+                    )
+                else:
+                    select_parts.append(f"_merge_source.spectra.{col}")
+
+            insert_cols = ", ".join(common_cols)
+            select_expr = ", ".join(select_parts)
+
+            query = (
+                f"INSERT INTO spectra ({insert_cols}) "
+                f"SELECT {select_expr} "
+                f"FROM _merge_source.spectra"
+            )
+
+            cursor.execute(query)
+            self.conn.commit()
+
+            return cursor.rowcount
+        finally:
+            # Always detach, even if an error occurred during the merge.
+            try:
+                cursor.execute("DETACH DATABASE _merge_source")
+            except sqlite3.Error:
+                pass
+
     def batch_get_arrays(
         self,
         spectrum_ids: Optional[list[str]] = None,

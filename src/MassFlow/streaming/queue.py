@@ -102,14 +102,24 @@ class BoundedQueue:
     def is_full(self) -> bool:
         return self._queue.qsize() >= self._capacity
 
-    async def put(self, packet: QueuedPacket) -> None:
+    async def put(self, packet: QueuedPacket, timeout: float | None = None) -> None:
         """Enqueue a packet, blocking if the queue is full (backpressure).
 
         This is the recommended method for typical streaming where
         dropping packets is unacceptable.  The caller coroutine is
         suspended until a consumer drains enough items.
 
-        A ``None`` packet acts as a poison-pill for the consumer.
+        Parameters
+        ----------
+        packet : QueuedPacket
+            The spectral packet to enqueue.  A ``None`` packet acts as a
+            poison-pill for the consumer.
+        timeout : float or None
+            Maximum seconds to wait for queue space when backpressure is
+            active (``drop_on_full=False``).  If the timeout expires, the
+            packet is discarded, ``total_dropped`` is incremented, and a
+            critical warning is logged.  ``None`` means block indefinitely
+            (original behaviour).
         """
         if self.is_full and self._drop_on_full:
             self._stats.total_dropped += 1
@@ -123,7 +133,26 @@ class BoundedQueue:
                 f"Queue full ({self._capacity}); spectrum {packet.spectrum_id} dropped."
             )
 
-        await self._queue.put(packet)
+        if timeout is not None and self.is_full:
+            # Backpressure with a deadline: wait for space or drop.
+            try:
+                await asyncio.wait_for(self._queue.put(packet), timeout=timeout)
+            except asyncio.TimeoutError:
+                self._stats.total_dropped += 1
+                logger.critical(
+                    (
+                        "Queue backpressure timeout (%.1f s) at depth %d/%d; "
+                        "discarding spectrum %s. Consumer may be stalled."
+                    ),
+                    timeout,
+                    self._stats.current_depth,
+                    self._capacity,
+                    packet.spectrum_id,
+                )
+                return
+        else:
+            await self._queue.put(packet)
+
         self._stats.total_ingested += 1
         self._stats.current_depth = self._queue.qsize()
 

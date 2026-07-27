@@ -62,7 +62,7 @@ Docs & files to consult first
 - README.md (quickstart & commands)
 - docs/ARCHITECTURE.md (detailed flow and component responsibilities)
 - CONTRIBUTING.md (development setup, test examples, conventions)
-- CLAUDE.md (concise project context and developer preferences)
+- AGENTS.md (AI agent governance and coding standards)
 - .github/workflows/ci.yml (CI commands and coverage threshold)
 
 ---

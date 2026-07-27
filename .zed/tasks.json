@@ -1,0 +1,82 @@
+[
+  {
+    "label": "make help",
+    "command": "make",
+    "args": ["help"],
+    "cwd": "/Users/ericjanusson/Programming/MassFlow",
+    "use_new_terminal": false,
+    "hide": "on_success"
+  },
+  {
+    "label": "make lint",
+    "command": "make",
+    "args": ["lint"],
+    "cwd": "/Users/ericjanusson/Programming/MassFlow",
+    "use_new_terminal": false,
+    "hide": "on_success"
+  },
+  {
+    "label": "make format-check",
+    "command": "make",
+    "args": ["format-check"],
+    "cwd": "/Users/ericjanusson/Programming/MassFlow",
+    "use_new_terminal": false,
+    "hide": "on_success"
+  },
+  {
+    "label": "make format",
+    "command": "make",
+    "args": ["format"],
+    "cwd": "/Users/ericjanusson/Programming/MassFlow",
+    "use_new_terminal": false,
+    "hide": "on_success"
+  },
+  {
+    "label": "make typecheck",
+    "command": "make",
+    "args": ["typecheck"],
+    "cwd": "/Users/ericjanusson/Programming/MassFlow",
+    "use_new_terminal": false,
+    "hide": "on_success"
+  },
+  {
+    "label": "make test",
+    "command": "make",
+    "args": ["test"],
+    "cwd": "/Users/ericjanusson/Programming/MassFlow",
+    "use_new_terminal": false,
+    "hide": "on_success"
+  },
+  {
+    "label": "make test-cov",
+    "command": "make",
+    "args": ["test-cov"],
+    "cwd": "/Users/ericjanusson/Programming/MassFlow",
+    "use_new_terminal": false,
+    "hide": "never"
+  },
+  {
+    "label": "make build",
+    "command": "make",
+    "args": ["build"],
+    "cwd": "/Users/ericjanusson/Programming/MassFlow",
+    "use_new_terminal": false,
+    "hide": "on_success"
+  },
+  {
+    "label": "make clean",
+    "command": "make",
+    "args": ["clean"],
+    "cwd": "/Users/ericjanusson/Programming/MassFlow",
+    "use_new_terminal": false,
+    "hide": "on_success"
+  },
+  {
+    "label": "make all",
+    "command": "make",
+    "args": ["all"],
+    "cwd": "/Users/ericjanusson/Programming/MassFlow",
+    "use_new_terminal": false,
+    "hide": "never"
+  }
+]

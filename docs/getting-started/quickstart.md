@@ -19,6 +19,20 @@ graph LR
 
 ---
 
+## 0. Try It Instantly with Tutorial Data
+
+If you want to evaluate MassFlow right now without hunting down MS/MS files, use the built-in tutorial generator:
+
+```shell
+uv run massflow tutorial
+```
+
+This creates a `tutorial/` directory with everything you need: a reference library, experimental queries, and a pre-configured YAML config. Then follow the printed next-steps commands to build the database and run an annotation — all in under a minute.
+
+For a complete walkthrough, see the [Usage Guide](../user-guide/usage.md).
+
+---
+
 ## 1. Choose Your Inputs
 
 You need:

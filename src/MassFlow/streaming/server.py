@@ -91,6 +91,11 @@ class MassFlowStreamingServicer(pb_grpc.MassFlowStreamingServicer):
         If ``True``, packets are dropped with an error status when the
         queue is full.  If ``False``, the server blocks the gRPC stream
         until space is available.
+    queue_put_timeout : float or None
+        Maximum seconds to wait for queue space when backpressure is
+        active (``queue_drop_on_full=False``).  ``None`` means block
+        indefinitely.  Default 5.0 s protects against consumer stalls
+        during live acquisition.
     top_n : int
         Number of top annotation hits to return per spectrum.
     """
@@ -100,10 +105,12 @@ class MassFlowStreamingServicer(pb_grpc.MassFlowStreamingServicer):
         config: MassFlowConfig,
         queue_capacity: int = 2048,
         queue_drop_on_full: bool = False,
+        queue_put_timeout: float | None = 5.0,
         top_n: int = 5,
     ) -> None:
         self._config = config
         self._top_n = top_n
+        self._queue_put_timeout = queue_put_timeout
         self._queue = BoundedQueue(
             capacity=queue_capacity, drop_on_full=queue_drop_on_full
         )
@@ -276,7 +283,7 @@ class MassFlowStreamingServicer(pb_grpc.MassFlowStreamingServicer):
         )
 
         try:
-            await self._queue.put(qp)
+            await self._queue.put(qp, timeout=self._queue_put_timeout)
         except Exception:
             logger.exception("Failed to enqueue spectrum %s.", packet.spectrum_id)
 
@@ -360,6 +367,7 @@ async def serve(
     port: int = 50051,
     queue_capacity: int = 2048,
     queue_drop_on_full: bool = False,
+    queue_put_timeout: float | None = 5.0,
     top_n: int = 5,
     max_workers: int = 10,
 ) -> grpc.aio.Server:
@@ -377,6 +385,10 @@ async def serve(
         Maximum buffered spectra before backpressure.
     queue_drop_on_full : bool
         Drop packets instead of blocking when the queue is full.
+    queue_put_timeout : float or None
+        Maximum seconds to wait for queue space when backpressure is
+        active (``queue_drop_on_full=False``).  ``None`` means block
+        indefinitely.  Default 5.0 s protects against consumer stalls.
     top_n : int
         Number of top annotation hits per spectrum.
     max_workers : int
@@ -403,6 +415,7 @@ async def serve(
         config=config,
         queue_capacity=queue_capacity,
         queue_drop_on_full=queue_drop_on_full,
+        queue_put_timeout=queue_put_timeout,
         top_n=top_n,
     )
     pb_grpc.add_MassFlowStreamingServicer_to_server(servicer, server)
@@ -421,6 +434,7 @@ async def run_server(
     port: int = 50051,
     queue_capacity: int = 2048,
     queue_drop_on_full: bool = False,
+    queue_put_timeout: float | None = 5.0,
     top_n: int = 5,
 ) -> None:
     """Convenience entry-point: load config, start server, wait forever."""
@@ -431,6 +445,7 @@ async def run_server(
         port=port,
         queue_capacity=queue_capacity,
         queue_drop_on_full=queue_drop_on_full,
+        queue_put_timeout=queue_put_timeout,
         top_n=top_n,
     )
 

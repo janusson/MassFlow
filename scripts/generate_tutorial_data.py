@@ -1,11 +1,51 @@
+"""Generate synthetic tutorial data for MassFlow onboarding.
+
+Creates a self-contained ``tutorial/`` directory with:
+- ``tutorial_library.msp`` – reference steroid spectra (Testosterone, Progesterone, Cortisol)
+- ``tutorial_experimental.mgf`` – experimental queries (matches, analogues, and noise)
+- ``tutorial_config.yaml`` – pre-configured analysis parameters
+
+Usage (standalone)::
+
+    uv run python scripts/generate_tutorial_data.py
+
+Usage (via CLI)::
+
+    uv run massflow tutorial
+"""
+
+from __future__ import annotations
+
+import shutil
 from pathlib import Path
+from typing import TypedDict
 
 import numpy as np
 from matchms import Spectrum
 from matchms.exporting import save_as_mgf, save_as_msp
 
 
-def create_steroid_spectrum(name, precursor_mz, peaks, inchikey, smiles):
+class SteroidSpec(TypedDict):
+    """Typed descriptor for a single steroid reference spectrum."""
+
+    name: str
+    precursor_mz: float
+    peaks: list[tuple[float, float]]
+    inchikey: str
+    smiles: str
+
+
+# ── Spectrum builder ──────────────────────────────────────────────────────────
+
+
+def create_steroid_spectrum(
+    name: str,
+    precursor_mz: float,
+    peaks: list[tuple[float, float]],
+    inchikey: str,
+    smiles: str,
+) -> Spectrum:
+    """Build a matchms ``Spectrum`` with steroid metadata."""
     mz, intensities = zip(*peaks)
     return Spectrum(
         mz=np.array(mz, dtype="float"),
@@ -22,13 +62,35 @@ def create_steroid_spectrum(name, precursor_mz, peaks, inchikey, smiles):
     )
 
 
-def main():
-    tutorial_dir = Path("tutorial")
-    tutorial_dir.mkdir(exist_ok=True)
+# ── Main generator ────────────────────────────────────────────────────────────
 
-    # Define some "real" steroid data
-    # Peaks are (m/z, intensity)
-    steroids_lib = [
+
+def main(clean_first: bool = False) -> dict[str, Path]:
+    """Generate the tutorial data set.
+
+    Parameters
+    ----------
+    clean_first : bool
+        If ``True``, delete any existing ``tutorial/`` directory before
+        regenerating.
+
+    Returns
+    -------
+    dict[str, Path]
+        Mapping of logical names to their absolute ``Path`` objects:
+        ``library``, ``experimental``, ``config``.
+    """
+    tutorial_dir = Path("tutorial")
+    results_dir = tutorial_dir / "results"
+
+    if clean_first and tutorial_dir.exists():
+        shutil.rmtree(tutorial_dir)
+
+    tutorial_dir.mkdir(exist_ok=True)
+    results_dir.mkdir(exist_ok=True)
+
+    # ── Reference library: steroid standards ──────────────────────────────
+    steroids_lib: list[SteroidSpec] = [
         {
             "name": "Testosterone",
             "precursor_mz": 289.216,
@@ -72,15 +134,17 @@ def main():
     ]
 
     lib_spectra = [create_steroid_spectrum(**s) for s in steroids_lib]
-    save_as_msp(lib_spectra, str(tutorial_dir / "tutorial_library.msp"))
 
-    # Create experimental data
-    # 1. Exact match for Testosterone
-    # 2. Match for Progesterone with some noise and slight m/z shifts
-    # 3. A "modified" Cortisol (e.g. Cortisone, but we'll just shift peaks to show modified cosine)
-    # 4. An unknown noise spectrum
+    library_path = tutorial_dir / "tutorial_library.msp"
+    save_as_msp(lib_spectra, str(library_path))
 
-    exp_spectra = []
+    # ── Experimental queries ──────────────────────────────────────────────
+    # 1. Exact match for Testosterone (slight noise)
+    # 2. Match for Progesterone (noise and mild m/z shifts)
+    # 3. "Modified" Cortisol (shifted peaks to exercise modified cosine)
+    # 4. Noise spectrum (should not match anything)
+
+    exp_spectra: list[Spectrum] = []
 
     # 1. Testosterone Match
     exp_spectra.append(
@@ -112,11 +176,10 @@ def main():
         )
     )
 
-    # 3. Modified Cortisol (Cortisone-like, shift +2 Da or similar for demo)
-    # We'll just take cortisol and shift it to simulate a related molecule
+    # 3. Modified Cortisol (Cortisone-like, shift +2.016 Da for demo)
     exp_spectra.append(
         Spectrum(
-            mz=lib_spectra[2].peaks.mz + 2.016,  # Simulating a small modification
+            mz=lib_spectra[2].peaks.mz + 2.016,
             intensities=lib_spectra[2].peaks.intensities,
             metadata={
                 "precursor_mz": 363.217 + 2.016,
@@ -139,16 +202,18 @@ def main():
         )
     )
 
-    save_as_mgf(exp_spectra, str(tutorial_dir / "tutorial_experimental.mgf"))
+    experimental_path = tutorial_dir / "tutorial_experimental.mgf"
+    save_as_mgf(exp_spectra, str(experimental_path))
 
-    # Create tutorial config
+    # ── Tutorial configuration ────────────────────────────────────────────
     config_content = """project:
   name: "MassFlow_Tutorial"
   output_directory: "tutorial/results"
 
 input:
-  file_path: "tutorial/tutorial_experimental.mgf"
+  input_path: "tutorial/tutorial_experimental.mgf"
   library_path: "tutorial/tutorial_library.msp"
+  format: "mgf"
 
 processing:
   clean_metadata: true
@@ -162,12 +227,60 @@ similarity:
   ms2_tolerance: 0.02
   tolerance_unit: "Da"
   min_score: 0.1
+  fdr_threshold: 1.0
+
+export:
+  format: "csv"
 """
-    with open(tutorial_dir / "tutorial_config.yaml", "w") as f:
+    config_path = tutorial_dir / "tutorial_config.yaml"
+    with open(config_path, "w") as f:
         f.write(config_content)
 
-    print("Tutorial data and config generated in /tutorial")
+    return {
+        "library": library_path.resolve(),
+        "experimental": experimental_path.resolve(),
+        "config": config_path.resolve(),
+    }
 
+
+# ── Display helpers ───────────────────────────────────────────────────────────
+
+
+def _print_next_steps(
+    library_path: Path, experimental_path: Path, config_path: Path
+) -> None:
+    """Print a formatted "Next Steps" block so users know what to run next."""
+    sep = "─" * 60
+    print(f"\n{sep}")
+    print("  ✓  Tutorial data generated successfully!")
+    print(f"{sep}")
+    print(f"  Reference library : {library_path}")
+    print(f"  Experimental data : {experimental_path}")
+    print(f"  Configuration     : {config_path}")
+    print(f"{sep}")
+    print()
+    print("  Next Steps — copy and run these commands:")
+    print()
+    print("  # 1. Build the SQLite reference database")
+    print("  uv run massflow db build \\")
+    print("      --input tutorial/tutorial_library.msp \\")
+    print("      --output tutorial/results/compiled_library.db \\")
+    print("      --config tutorial/tutorial_config.yaml \\")
+    print("      --category library")
+    print()
+    print("  # 2. Annotate experimental spectra against the database")
+    print("  uv run massflow annotate --config tutorial/tutorial_config.yaml")
+    print()
+    print(f"{sep}")
+    print()
+
+
+# ── CLI entry point ───────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    main()
+    paths = main()
+    _print_next_steps(
+        library_path=paths["library"],
+        experimental_path=paths["experimental"],
+        config_path=paths["config"],
+    )

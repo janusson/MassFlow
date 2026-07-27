@@ -41,7 +41,7 @@ Every new feature, bug fix, or behavior change **must** include:
 | Test Type | Description | Pattern to Follow |
 |---|---|---|
 | **Unit tests** | Validate function-level correctness with hand-crafted, deterministic inputs | `tests/test_mathematical_proof.py` |
-| **Boundary/failure-mode tests** | Test the edges of physical limits (5 ppm threshold, zero peaks, empty spectra, missing metadata) | `tests/test_scientific_boundaries.py`, `tests/test_failure_modes.py` |
+| **Boundary/failure-mode tests** | Test the edges of physical limits (5 ppm threshold, zero peaks, empty spectra, missing metadata) | `tests/test_scientific_boundaries.py`, `tests/test_scientific_failures.py` |
 | **Physics validation** | Prove that precursor m/z filtering, adduct compatibility, and isotopic checks prevent physically impossible matches | `tests/test_precursor_physics.py` |
 
 ### 2.3 What Must Never Be Mocked
@@ -259,7 +259,7 @@ uv run massflow db merge --databases <a.db> <b.db> --output merged.db
 ## 9. When in Doubt
 
 1. **Read the existing tests first.** The test files in `tests/` are the most reliable specification of expected behavior.
-2. **Consult `CONTRIBUTING.md`** for development workflow, `ARCHITECTURE.md` for component responsibilities, and `CLAUDE.md` for project context.
+2. **Consult `CONTRIBUTING.md`** for development workflow, and `ARCHITECTURE.md` for component responsibilities.
 3. **Run the test suite** before and after your change. If coverage drops below 80%, add tests.
 4. **Respect stable vs experimental boundaries.** If a change affects the v1.0 stable contract (`cosine`, `modified_cosine`, `massflow annotate`, `massflow db`), it requires extra scrutiny.
 5. **Ask before guessing.** If the docs, tests, and code disagree, raise the inconsistency rather than picking one arbitrarily.

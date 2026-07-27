@@ -12,6 +12,7 @@ Covers:
 from __future__ import annotations
 
 import asyncio
+from contextlib import contextmanager
 
 import numpy as np
 import pytest
@@ -349,6 +350,186 @@ class TestBoundedQueue:
 
         with pytest.raises(ValueError, match="positive"):
             BoundedQueue(capacity=0)
+
+    @pytest.mark.asyncio
+    async def test_put_timeout_success(self):
+        """put() with a timeout succeeds when consumer drains in time."""
+        from MassFlow.streaming.queue import BoundedQueue, QueuedPacket
+
+        q = BoundedQueue(capacity=1, drop_on_full=False)
+
+        # Fill the queue.
+        await q.put(
+            QueuedPacket(
+                spectrum_id="scan_001",
+                mz_array=[100.0],
+                intensity_array=[999.0],
+                precursor_mz=350.0,
+                retention_time_seconds=0.0,
+                charge=1,
+                ion_mode="positive",
+                adduct="",
+                collision_energy=0.0,
+                acquisition_timestamp_ns=0,
+            )
+        )
+
+        # Start a consumer that drains after a short delay.
+        async def delayed_consumer():
+            await asyncio.sleep(0.2)
+            item = await q.get()
+            if item is not None:
+                q.task_done()
+
+        consumer_task = asyncio.create_task(delayed_consumer())
+
+        # This put should block briefly then succeed once the consumer drains.
+        await q.put(
+            QueuedPacket(
+                spectrum_id="scan_002",
+                mz_array=[200.0],
+                intensity_array=[888.0],
+                precursor_mz=400.0,
+                retention_time_seconds=0.0,
+                charge=1,
+                ion_mode="positive",
+                adduct="",
+                collision_energy=0.0,
+                acquisition_timestamp_ns=0,
+            ),
+            timeout=2.0,
+        )
+
+        await consumer_task
+        assert q.stats.total_ingested == 2
+        assert q.stats.total_dropped == 0
+
+    @pytest.mark.asyncio
+    async def test_put_timeout_drop(self):
+        """put() with a timeout drops the packet and logs when timeout expires."""
+        import logging
+
+        from MassFlow.streaming.queue import BoundedQueue, QueuedPacket
+
+        q = BoundedQueue(capacity=1, drop_on_full=False)
+
+        # Fill the queue.
+        await q.put(
+            QueuedPacket(
+                spectrum_id="scan_001",
+                mz_array=[100.0],
+                intensity_array=[999.0],
+                precursor_mz=350.0,
+                retention_time_seconds=0.0,
+                charge=1,
+                ion_mode="positive",
+                adduct="",
+                collision_energy=0.0,
+                acquisition_timestamp_ns=0,
+            )
+        )
+
+        # Attempt a second put with a short timeout — no consumer is draining.
+        with self._capture_log("MassFlow.streaming.queue", logging.CRITICAL) as log_cm:
+            await q.put(
+                QueuedPacket(
+                    spectrum_id="scan_dropped",
+                    mz_array=[300.0],
+                    intensity_array=[777.0],
+                    precursor_mz=500.0,
+                    retention_time_seconds=0.0,
+                    charge=1,
+                    ion_mode="positive",
+                    adduct="",
+                    collision_energy=0.0,
+                    acquisition_timestamp_ns=0,
+                ),
+                timeout=0.1,
+            )
+
+        # Packet should have been dropped, not ingested.
+        assert q.stats.total_ingested == 1
+        assert q.stats.total_dropped == 1
+
+        # A critical log must mention the spectrum_id.
+        assert log_cm.output
+        assert "scan_dropped" in log_cm.output[0]
+
+    @pytest.mark.asyncio
+    async def test_put_none_timeout_preserves_old_behaviour(self):
+        """put() with timeout=None blocks indefinitely (backward compat)."""
+        from MassFlow.streaming.queue import BoundedQueue, QueuedPacket
+
+        q = BoundedQueue(capacity=1, drop_on_full=False)
+
+        await q.put(
+            QueuedPacket(
+                spectrum_id="scan_001",
+                mz_array=[100.0],
+                intensity_array=[999.0],
+                precursor_mz=350.0,
+                retention_time_seconds=0.0,
+                charge=1,
+                ion_mode="positive",
+                adduct="",
+                collision_energy=0.0,
+                acquisition_timestamp_ns=0,
+            )
+        )
+
+        # Attempt a put without timeout — should block.
+        async def put_extra():
+            await q.put(
+                QueuedPacket(
+                    spectrum_id="scan_002",
+                    mz_array=[200.0],
+                    intensity_array=[888.0],
+                    precursor_mz=400.0,
+                    retention_time_seconds=0.0,
+                    charge=1,
+                    ion_mode="positive",
+                    adduct="",
+                    collision_energy=0.0,
+                    acquisition_timestamp_ns=0,
+                )
+            )
+
+        put_task = asyncio.create_task(put_extra())
+        await asyncio.sleep(0.1)
+        assert not put_task.done(), (
+            "put without timeout should block when queue is full"
+        )
+
+        # Drain to unblock.
+        item = await q.get()
+        assert item is not None
+        q.task_done()
+
+        await asyncio.wait_for(put_task, timeout=2.0)
+        assert q.stats.total_ingested == 2
+        assert q.stats.total_dropped == 0
+
+    @staticmethod
+    @contextmanager
+    def _capture_log(logger_name: str, level: int):
+        """Context manager that captures log records at *level* or above."""
+        import logging
+
+        class _CaptureHandler(logging.Handler):
+            def __init__(self):
+                super().__init__(level=level)
+                self.output: list[str] = []
+
+            def emit(self, record: logging.LogRecord) -> None:
+                self.output.append(self.format(record))
+
+        handler = _CaptureHandler()
+        logger = logging.getLogger(logger_name)
+        logger.addHandler(handler)
+        try:
+            yield handler
+        finally:
+            logger.removeHandler(handler)
 
 
 # ---------------------------------------------------------------------------

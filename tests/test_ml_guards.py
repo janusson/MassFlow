@@ -130,17 +130,31 @@ class TestMLEngineDegradation:
 
     @pytest.mark.parametrize(
         "engine_cls",
-        [Spec2VecEngine, MS2DeepScoreEngine, ConsensusEngine, CascadeEngine],
+        [Spec2VecEngine, MS2DeepScoreEngine],
     )
     def test_direct_init_raises_runtime_error_without_ml(
         self, engine_cls: type
     ) -> None:
-        """Direct init of ML engines must raise RuntimeError without ml extras."""
+        """Direct init of Spec2Vec/MS2DeepScore must raise RuntimeError without ml."""
         if _HAS_ML:
             pytest.skip("ML extras are installed; degradation test not applicable")
 
         with pytest.raises(RuntimeError, match="machine-learning extras"):
             engine_cls(SimilarityConfig(algorithm="spec2vec"))
+
+    @pytest.mark.parametrize(
+        "engine_cls",
+        [ConsensusEngine, CascadeEngine],
+    )
+    def test_direct_init_degraded_without_ml(self, engine_cls: type) -> None:
+        """Consensus/Cascade engines degrade gracefully, logging a warning."""
+        if _HAS_ML:
+            pytest.skip("ML extras are installed; degradation test not applicable")
+
+        # These engines should NOT raise – they log a warning and continue
+        # with classical sub-engines only.
+        engine = engine_cls(SimilarityConfig(algorithm="spec2vec"))
+        assert isinstance(engine, engine_cls)
 
     @pytest.mark.skipif(not _HAS_ML, reason="ML extras not installed")
     @pytest.mark.parametrize(

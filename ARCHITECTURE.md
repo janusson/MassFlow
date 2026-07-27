@@ -21,6 +21,7 @@ separate modules so the main annotation path stays predictable and testable.
 
 For `v1.0`, the stable product contract is centered on:
 
+- `massflow tutorial` — generates synthetic tutorial data for local evaluation
 - `massflow annotate --config ...`
 - SQLite-backed library workflows through `massflow db`
 - open-format ingestion for `mzML`, `mzXML`, `MGF`, and `MSP`
@@ -54,8 +55,10 @@ graph LR
 
 - `src/MassFlow/cli.py`
   - Defines the CLI commands:
+    - `tutorial`
     - `annotate`
     - `init`
+    - `convert`
     - `db build`
     - `db inspect`
     - `db merge`
@@ -303,6 +306,7 @@ Although the config model includes broader export fields (JSON, Excel, Parquet),
 
 These are the features the docs should treat as the main supported path:
 
+- `massflow tutorial` — generates synthetic tutorial data for local evaluation
 - `massflow annotate --config ...`
 - YAML configuration via `MassFlowConfig`
 - open-format ingestion for `mzML`, `mzXML`, `MGF`, and `MSP`
@@ -389,7 +393,7 @@ project:
   output_directory: "results/standard_analysis"
 
 input:
-  file_path: "data/experiments/experiment.mzML"
+  input_path: "data/experiments/experiment.mzML"
   library_path: "data/libraries/library.msp"
   format: "mzml"
 

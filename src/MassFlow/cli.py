@@ -120,6 +120,69 @@ export:
         raise typer.Exit(1)
 
 
+@app.command("tutorial")
+def run_tutorial(
+    clean: bool = typer.Option(
+        False,
+        "--clean",
+        help="Delete any existing tutorial/ directory before regenerating.",
+    ),
+):
+    """Generate synthetic tutorial data for evaluating MassFlow locally.
+
+    Creates a self-contained ``tutorial/`` directory with:
+    - ``tutorial_library.msp`` – reference steroid spectra
+    - ``tutorial_experimental.mgf`` – experimental queries with matches,
+      analogues, and noise
+    - ``tutorial_config.yaml`` – pre-configured analysis parameters
+
+    After generation, follow the printed next-steps commands to build the
+    SQLite database and run the annotation pipeline.
+    """
+    import importlib.util
+    import sys
+
+    from rich.panel import Panel
+
+    try:
+        # Import the tutorial generator script as a module.
+        script_path = (
+            Path(__file__).resolve().parent.parent.parent
+            / "scripts"
+            / "generate_tutorial_data.py"
+        )
+        spec = importlib.util.spec_from_file_location(
+            "generate_tutorial_data", str(script_path)
+        )
+        if spec is None or spec.loader is None:
+            logger.error(f"Could not load tutorial generator from {script_path}")
+            raise typer.Exit(1)
+
+        module = importlib.util.module_from_spec(spec)
+        sys.modules["generate_tutorial_data"] = module
+        spec.loader.exec_module(module)
+
+        paths = module.main(clean_first=clean)
+        module._print_next_steps(
+            library_path=paths["library"],
+            experimental_path=paths["experimental"],
+            config_path=paths["config"],
+        )
+
+        console.print(
+            Panel.fit(
+                "[bold green]Tutorial data is ready![/bold green]\n"
+                "Follow the printed commands above to build the database "
+                "and run the annotation pipeline.",
+                title="MassFlow Tutorial",
+                border_style="green",
+            )
+        )
+    except Exception as e:
+        logger.error(f"Tutorial generation failed: {e}")
+        raise typer.Exit(1)
+
+
 @app.command("annotate")
 def run_annotate(
     config: str = typer.Option(
@@ -302,6 +365,7 @@ def run_db_merge(
 ):
     """Merge multiple local spectral databases into a single new database."""
     try:
+        from MassFlow.database import SpectralDatabase
         from MassFlow.storage import create_spectral_store
 
         logger.info(f"Initializing merged {backend} database at {output}")
@@ -309,31 +373,77 @@ def run_db_merge(
 
         total_added = 0
         for input_db_path in inputs:
-            logger.info(f"Streaming from input database: {input_db_path}")
+            logger.info(f"Merging from input database: {input_db_path}")
             in_path = Path(input_db_path)
+
+            # Determine input backend.
             if in_path.suffix == ".zarr" or (
                 in_path.is_dir() and (in_path / ".zgroup").exists()
             ):
                 in_backend = "zarr"
             else:
                 in_backend = "sqlite"
+
+            # ----------------------------------------------------------------
+            # Fast-path: SQLite -> SQLite merge via ATTACH DATABASE bulk
+            # INSERT.  Bypasses the row-by-row get_spectra()/add_spectra()
+            # iteration loop, yielding orders-of-magnitude speedup for large
+            # .db files.
+            # ----------------------------------------------------------------
+            if (
+                in_backend == "sqlite"
+                and backend == "sqlite"
+                and isinstance(out_store, SpectralDatabase)
+            ):
+                try:
+                    added = out_store.merge_from_sqlite(in_path, category="merged")
+                except Exception as exc:
+                    logger.error(
+                        "Fast-path SQLite merge failed for %s: %s. "
+                        "Falling back to iterator-based merge.",
+                        in_path,
+                        exc,
+                    )
+                    # Fall through to the iterator path below.
+                else:
+                    total_added += added
+                    if added == 0:
+                        logger.warning(
+                            "No spectra were merged from %s",
+                            input_db_path,
+                        )
+                    else:
+                        logger.info(
+                            "Fast-path merged %d spectra from %s",
+                            added,
+                            input_db_path,
+                        )
+                    continue
+
+            # ----------------------------------------------------------------
+            # Fallback: iterator-based merge for cross-backend (Zarr <->
+            # SQLite) or when the SQLite fast-path raised an exception.
+            # ----------------------------------------------------------------
             in_store = create_spectral_store(in_path, backend=in_backend)
 
-            added = out_store.add_spectra(in_store.get_spectra(), category="merged")
+            try:
+                added = out_store.add_spectra(in_store.get_spectra(), category="merged")
+            finally:
+                in_store.close()
+
             total_added += added
 
             if added == 0:
-                logger.warning(f"No valid spectra were found in {input_db_path}")
+                logger.warning("No valid spectra were found in %s", input_db_path)
             else:
-                logger.info(f"Added {added} spectra from {input_db_path}")
-
-            in_store.close()
+                logger.info("Added %d spectra from %s", added, input_db_path)
 
         if total_added == 0:
             raise ValueError("No valid spectra were merged from the input databases.")
 
         console.print(
-            f"[bold green]✓ Successfully merged {total_added} spectra into {output}.[/bold green]"
+            f"[bold green]\u2713 Successfully merged {total_added} spectra "
+            f"into {output}.[/bold green]"
         )
         out_store.close()
     except Exception as e:
@@ -358,6 +468,11 @@ def run_serve(
         "--queue-drop-on-full",
         help="Drop packets instead of blocking when the queue is full.",
     ),
+    queue_put_timeout: float = typer.Option(
+        5.0,
+        "--queue-put-timeout",
+        help="Max seconds to wait for queue space before discarding packet (0 = block indefinitely).",
+    ),
     top_n: int = typer.Option(
         5, "--top-n", help="Number of top annotation hits per spectrum."
     ),
@@ -375,6 +490,11 @@ def run_serve(
     from MassFlow.streaming.server import run_server
 
     try:
+        # Convert 0.0 to None (block indefinitely).
+        effective_timeout: float | None = (
+            queue_put_timeout if queue_put_timeout > 0 else None
+        )
+
         asyncio.run(
             run_server(
                 config_path=config,
@@ -382,6 +502,7 @@ def run_serve(
                 port=port,
                 queue_capacity=queue_capacity,
                 queue_drop_on_full=queue_drop_on_full,
+                queue_put_timeout=effective_timeout,
                 top_n=top_n,
             )
         )
@@ -405,7 +526,7 @@ def run_watch(
     Requires the optional 'watch' extra: pip install massflow[watch]
     """
     try:
-        from watchfiles import watch  # noqa: F811
+        from watchfiles import watch  # type: ignore[import-untyped]  # noqa: F401
     except ImportError:
         console.print(
             "[bold red]Error:[/bold red] The watch command requires the optional 'watchfiles' package.\n"
@@ -520,7 +641,3 @@ def run_watch(
 
 def main():
     app()
-
-
-if __name__ == "__main__":
-    main()

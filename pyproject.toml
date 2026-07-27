@@ -77,8 +77,10 @@ plugins = ["pydantic.mypy"]
 exclude = ["repro_isotope\\.py"]
 
 [tool.pytest.ini_options]
+addopts = "-m 'not benchmark'"
 markers = [
     "core: tests that must pass for the v1.0 stable release contract",
+    "benchmark: performance and latency benchmark tests (run with -m benchmark)",
 ]
 
 [tool.coverage.run]
