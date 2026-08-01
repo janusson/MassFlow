@@ -2,7 +2,7 @@
 
 [![Documentation](https://img.shields.io/badge/docs-available-blue.svg)](https://ericjanusson.github.io/MassFlow/)
 
-MassFlow is a program for local tandem mass spectrometry (MS/MS) annotation. It is designed to be config-first Python toolkit for local  **very easy to run** locally, producing highly reproducible outputs.
+MassFlow is a program for local tandem mass spectrometry (MS/MS) annotation. It is designed to be a configuration-first Python toolkit that is very easy to run locally, producing highly reproducible outputs.
 
 ### The MassFlow Way
 MassFlow is built on three core pillars:
