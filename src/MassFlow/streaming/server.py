@@ -14,30 +14,42 @@ Architecture
     gRPC Client ──(bidi stream)──> StreamSpectra handler
                                        │
                                        ▼
-                                 StreamRequest ──> BoundedQueue
-                                                       │
-                                                       ▼
-                                              asyncio Worker Task
-                                                       │
-                                               StreamingEngine.annotate()
-                                                       │
-                                                       ▼
-                                              AnnotationResponse
-                                                       │
-                                                       ▼
-                                                response_queue ──> gRPC Client
+                              Streaming Validation Gate
+                              (Pydantic + matchms filters)
+                                       │
+                                       ▼
+                              BoundedQueue (backpressure)
+                                       │
+                                       ▼
+                              MicroBatcher (time/batch-size)
+                                       │
+                                       ▼
+                              StreamingEngine.annotate_batch()
+                                       │
+                                       ▼
+                              AnnotationResponse
+                                       │
+                                       ▼
+                              response_queue ──> gRPC Client
 
 Key design decisions
 --------------------
-* A single consumer task drains the bounded queue and feeds spectra to
-  the ``StreamingEngine`` one at a time.  This avoids thread-safety
-  issues with matchms and keeps latency predictable.
+* A single consumer task drains the bounded queue, validates each
+  spectrum, feeds them through the micro-batcher, and dispatches
+  batches to ``StreamingEngine``.  This avoids thread-safety issues
+  with matchms and keeps latency predictable.
+* The micro-batcher accumulates spectra over a configurable time window
+  (default 50 ms) or batch size (default 64) before dispatching,
+  amortising the per-call overhead of the matchms scoring machinery.
 * Responses are written back to the client on a separate ``asyncio``
   coroutine, so the ingestion path (writer) is never blocked by a
   slow client.
 * The server supports in-stream configuration reloads via the
   ``ControlMessage`` envelope, allowing the operator to hot-swap
   reference libraries without restarting.
+* Graceful shutdown drains all pending items in the bounded queue
+  before terminating the gRPC server, ensuring no spectra are lost
+  during controlled restarts.
 """
 
 from __future__ import annotations
@@ -54,10 +66,17 @@ from google.protobuf.empty_pb2 import Empty  # type: ignore[import-untyped]
 
 from MassFlow.config import MassFlowConfig
 from MassFlow.streaming.engine import (
+    MicroBatcher,
     StreamingEngine,
+    StreamingValidationError,
     load_reference_library,
+    validate_streaming_spectrum,
 )
-from MassFlow.streaming.queue import BoundedQueue, QueuedPacket
+from MassFlow.streaming.queue import (
+    BoundedQueue,
+    OverflowPolicy,
+    QueuedPacket,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -87,32 +106,37 @@ class MassFlowStreamingServicer(pb_grpc.MassFlowStreamingServicer):
         library and configure the similarity engine.
     queue_capacity : int
         Maximum number of spectra to buffer before applying backpressure.
-    queue_drop_on_full : bool
-        If ``True``, packets are dropped with an error status when the
-        queue is full.  If ``False``, the server blocks the gRPC stream
-        until space is available.
+    queue_overflow : OverflowPolicy
+        Backpressure policy: ``BLOCK`` (suspend producer) or
+        ``DROP_OLDEST`` (evict oldest packet).
     queue_put_timeout : float or None
         Maximum seconds to wait for queue space when backpressure is
-        active (``queue_drop_on_full=False``).  ``None`` means block
-        indefinitely.  Default 5.0 s protects against consumer stalls
-        during live acquisition.
+        active (``overflow=BLOCK``).  ``None`` means block indefinitely.
     top_n : int
         Number of top annotation hits to return per spectrum.
+    batch_max_size : int
+        Maximum spectra per micro-batch before dispatch.
+    batch_timeout_seconds : float
+        Maximum wait time (seconds) before dispatching a partial batch.
     """
 
     def __init__(
         self,
         config: MassFlowConfig,
         queue_capacity: int = 2048,
-        queue_drop_on_full: bool = False,
+        queue_overflow: OverflowPolicy = OverflowPolicy.BLOCK,
         queue_put_timeout: float | None = 5.0,
         top_n: int = 5,
+        batch_max_size: int = 64,
+        batch_timeout_seconds: float = 0.050,
     ) -> None:
         self._config = config
         self._top_n = top_n
         self._queue_put_timeout = queue_put_timeout
-        self._queue = BoundedQueue(
-            capacity=queue_capacity, drop_on_full=queue_drop_on_full
+        self._queue = BoundedQueue(capacity=queue_capacity, overflow=queue_overflow)
+        self._batcher = MicroBatcher(
+            batch_max_size=batch_max_size,
+            batch_timeout_seconds=batch_timeout_seconds,
         )
         self._engine: Optional[StreamingEngine] = None
         self._start_time_ns = time.time_ns()
@@ -154,46 +178,85 @@ class MassFlowStreamingServicer(pb_grpc.MassFlowStreamingServicer):
         )
 
         async def _consumer() -> None:
-            """Drain the bounded queue and push results to response_queue."""
+            """Drain the bounded queue, micro-batch, and push results."""
             while True:
                 packet = await self._queue.get()
                 if packet is None:
+                    # Poison pill — flush any remaining micro-batch.
+                    batch = await self._batcher.flush()
+                    if batch is not None:
+                        await _dispatch_batch(batch[0], batch[1])
                     break
 
                 if not self._active.is_set():
                     self._queue.task_done()
                     continue
 
-                t0 = time.perf_counter_ns()
+                # ── Streaming validation gate ──────────────────────────
                 try:
-                    if self._engine is None:
-                        self._init_engine()
-
-                    result = self._engine.annotate(packet)  # type: ignore[union-attr]
-                except Exception:
-                    logger.exception(
-                        "Consumer worker failed for %s.", packet.spectrum_id
+                    spectrum = validate_streaming_spectrum(
+                        packet, self._config.processing
                     )
-                    result = {
-                        "spectrum_id": packet.spectrum_id,
-                        "status": "error",
-                        "error_message": "Engine unavailable.",
-                        "top_hits": [],
-                        "fdr_q_value": float("nan"),
-                    }
+                except StreamingValidationError as exc:
+                    logger.warning(
+                        "Validation rejected spectrum %s: %s",
+                        packet.spectrum_id,
+                        exc,
+                    )
+                    self._queue.task_done()
+                    # Return a structured error to the client.
+                    response = _build_error_response(
+                        packet.spectrum_id,
+                        str(exc),
+                    )
+                    try:
+                        response_queue.put_nowait(response)
+                    except asyncio.QueueFull:
+                        pass
+                    continue
 
-                latency_us = (time.perf_counter_ns() - t0) / 1e3
-                self._queue.task_done(latency_us)
+                # ── Micro-batch accumulation ───────────────────────────
+                batch = await self._batcher.add(packet, spectrum)
+                self._queue.task_done()
 
+                if batch is not None:
+                    await _dispatch_batch(batch[0], batch[1])
+
+        async def _dispatch_batch(
+            packets: list[QueuedPacket],
+            spectra: list,
+        ) -> None:
+            """Run a micro-batch through the engine and enqueue responses."""
+            if self._engine is None:
+                self._init_engine()
+
+            t0 = time.perf_counter_ns()
+            try:
+                results = self._engine.annotate_batch(packets, spectra)  # type: ignore[union-attr]
+            except Exception:
+                logger.exception("Batch dispatch failed (%d spectra).", len(spectra))
+                batch_latency_us = (time.perf_counter_ns() - t0) / 1e3
+                for pkt in packets:
+                    response = _build_error_response(
+                        pkt.spectrum_id, "Engine unavailable."
+                    )
+                    response.processing_latency_us = int(batch_latency_us)
+                    try:
+                        response_queue.put_nowait(response)
+                    except asyncio.QueueFull:
+                        pass
+                return
+
+            batch_latency_us = (time.perf_counter_ns() - t0) / 1e3
+            for result in results:
                 response = self._build_response(result)
-                response.processing_latency_us = int(latency_us)
-
+                response.processing_latency_us = int(batch_latency_us)
                 try:
                     response_queue.put_nowait(response)
                 except asyncio.QueueFull:
                     logger.debug(
                         "Response queue full; dropping response for %s.",
-                        packet.spectrum_id,
+                        result.get("spectrum_id", "?"),
                     )
 
         async def _request_handler() -> None:
@@ -202,7 +265,7 @@ class MassFlowStreamingServicer(pb_grpc.MassFlowStreamingServicer):
                 if request.HasField("control"):
                     await self._handle_control(request.control, response_queue)
                 elif request.HasField("spectrum"):
-                    await self._ingest_spectrum(request.spectrum)
+                    await self._ingest_spectrum(request.spectrum, response_queue)
                 else:
                     logger.warning("Received empty StreamRequest; ignoring.")
 
@@ -213,17 +276,23 @@ class MassFlowStreamingServicer(pb_grpc.MassFlowStreamingServicer):
             request_task = asyncio.create_task(_request_handler())
 
             # Yield responses as they arrive.  When the client stops sending
-            # and the request handler exits, wait for the consumer to drain
-            # the remaining queue items, then signal completion.
+            # and the request handler exits, flush the micro-batcher to
+            # score any accumulated spectra, then drain responses.
+            _handler_done_flushed = False
             while True:
-                # Use a short timeout so we can check if the request handler
-                # has finished and the queue is empty.
                 try:
                     response = await asyncio.wait_for(response_queue.get(), timeout=0.5)
                 except asyncio.TimeoutError:
                     if request_task.done():
-                        # Client stopped sending.  Check whether the bounded
-                        # queue and response queue are both drained.
+                        if not _handler_done_flushed:
+                            # Client stopped sending.  Flush the micro-batcher
+                            # so any pending spectra are scored.
+                            pending = await self._batcher.flush()
+                            if pending is not None:
+                                await _dispatch_batch(pending[0], pending[1])
+                            _handler_done_flushed = True
+                            continue  # Drain responses from the flush.
+
                         if self._queue.stats.current_depth == 0:
                             break
                     continue
@@ -264,11 +333,83 @@ class MassFlowStreamingServicer(pb_grpc.MassFlowStreamingServicer):
         )
 
     # ------------------------------------------------------------------
+    # Graceful shutdown
+    # ------------------------------------------------------------------
+
+    async def shutdown(self, drain_timeout: float = 30.0) -> None:
+        """Gracefully stop accepting spectra and drain pending items.
+
+        After this call:
+        * New ``put()`` calls are rejected.
+        * The bounded queue is drained (existing items are processed).
+        * A poison pill is sent to unblock consumers.
+
+        Parameters
+        ----------
+        drain_timeout : float
+            Maximum seconds to wait for the queue to drain.
+        """
+        logger.info(
+            "Servicer shutdown requested; draining queue (timeout=%.1f s).",
+            drain_timeout,
+        )
+        self._active.clear()
+        remaining = await self._queue.drain(timeout=drain_timeout)
+        if remaining > 0:
+            logger.warning(
+                "Servicer shutdown: %d items could not be drained.", remaining
+            )
+        else:
+            logger.info("Servicer shutdown: all pending items drained.")
+
+    # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
 
-    async def _ingest_spectrum(self, packet: pb.SpectrumPacket) -> None:  # type: ignore[name-defined, attr-defined]
-        """Convert a protobuf SpectrumPacket and enqueue it."""
+    async def _ingest_spectrum(
+        self,
+        packet: pb.SpectrumPacket,  # type: ignore[name-defined, attr-defined]
+        response_queue: asyncio.Queue[pb.AnnotationResponse | None],  # type: ignore[name-defined, attr-defined]
+    ) -> None:
+        """Convert a protobuf SpectrumPacket, validate, and enqueue it.
+
+        Basic pre-enqueue checks (empty arrays, NaN precursor_mz) are
+        performed here to avoid clogging the bounded queue with
+        obviously invalid packets.  Deeper structural validation
+        (centroiding, peak count, 5-ppm gate) happens in the consumer.
+        """
+        # ── Pre-enqueue sanity checks ──────────────────────────────
+        if not packet.mz_array or not packet.intensity_array:
+            logger.warning(
+                "Rejecting spectrum %s: empty peak arrays.", packet.spectrum_id
+            )
+            response = _build_error_response(
+                packet.spectrum_id,
+                "Empty m/z or intensity array.",
+            )
+            try:
+                response_queue.put_nowait(response)
+            except asyncio.QueueFull:
+                pass
+            return
+
+        if len(packet.mz_array) != len(packet.intensity_array):
+            logger.warning(
+                "Rejecting spectrum %s: mismatched array lengths (%d vs %d).",
+                packet.spectrum_id,
+                len(packet.mz_array),
+                len(packet.intensity_array),
+            )
+            response = _build_error_response(
+                packet.spectrum_id,
+                "Mismatched m/z and intensity array lengths.",
+            )
+            try:
+                response_queue.put_nowait(response)
+            except asyncio.QueueFull:
+                pass
+            return
+
         qp = QueuedPacket(
             spectrum_id=packet.spectrum_id,
             mz_array=list(packet.mz_array),
@@ -286,6 +427,16 @@ class MassFlowStreamingServicer(pb_grpc.MassFlowStreamingServicer):
             await self._queue.put(qp, timeout=self._queue_put_timeout)
         except Exception:
             logger.exception("Failed to enqueue spectrum %s.", packet.spectrum_id)
+            # If the queue rejected the packet (e.g. shut down), send an
+            # error response so the client is not left hanging.
+            response = _build_error_response(
+                packet.spectrum_id,
+                "Server queue unavailable; spectrum rejected.",
+            )
+            try:
+                response_queue.put_nowait(response)
+            except asyncio.QueueFull:
+                pass
 
     async def _handle_control(
         self,
@@ -357,6 +508,25 @@ class MassFlowStreamingServicer(pb_grpc.MassFlowStreamingServicer):
 
 
 # -----------------------------------------------------------------------
+# Helpers
+# -----------------------------------------------------------------------
+
+
+def _build_error_response(
+    spectrum_id: str,
+    error_message: str,
+) -> pb.AnnotationResponse:  # type: ignore[name-defined, attr-defined]
+    """Build a protobuf ``AnnotationResponse`` with an error status."""
+    return pb.AnnotationResponse(  # type: ignore[name-defined, attr-defined]
+        spectrum_id=spectrum_id,
+        status="error",
+        error_message=error_message,
+        fdr_q_value=float("nan"),
+        top_hits=[],
+    )
+
+
+# -----------------------------------------------------------------------
 # Server bootstrap
 # -----------------------------------------------------------------------
 
@@ -366,9 +536,11 @@ async def serve(
     host: str = "[::]",
     port: int = 50051,
     queue_capacity: int = 2048,
-    queue_drop_on_full: bool = False,
+    queue_overflow: OverflowPolicy = OverflowPolicy.BLOCK,
     queue_put_timeout: float | None = 5.0,
     top_n: int = 5,
+    batch_max_size: int = 64,
+    batch_timeout_seconds: float = 0.050,
     max_workers: int = 10,
 ) -> grpc.aio.Server:
     """Start the async gRPC streaming server.
@@ -383,14 +555,16 @@ async def serve(
         TCP port.  Default 50051.
     queue_capacity : int
         Maximum buffered spectra before backpressure.
-    queue_drop_on_full : bool
-        Drop packets instead of blocking when the queue is full.
+    queue_overflow : OverflowPolicy
+        Backpressure policy: ``BLOCK`` or ``DROP_OLDEST``.
     queue_put_timeout : float or None
-        Maximum seconds to wait for queue space when backpressure is
-        active (``queue_drop_on_full=False``).  ``None`` means block
-        indefinitely.  Default 5.0 s protects against consumer stalls.
+        Maximum seconds to wait for queue space when ``overflow=BLOCK``.
     top_n : int
         Number of top annotation hits per spectrum.
+    batch_max_size : int
+        Maximum spectra per micro-batch.
+    batch_timeout_seconds : float
+        Max wait before dispatching partial batch.
     max_workers : int
         gRPC thread-pool size for non-async work.
 
@@ -414,9 +588,11 @@ async def serve(
     servicer = MassFlowStreamingServicer(
         config=config,
         queue_capacity=queue_capacity,
-        queue_drop_on_full=queue_drop_on_full,
+        queue_overflow=queue_overflow,
         queue_put_timeout=queue_put_timeout,
         top_n=top_n,
+        batch_max_size=batch_max_size,
+        batch_timeout_seconds=batch_timeout_seconds,
     )
     pb_grpc.add_MassFlowStreamingServicer_to_server(servicer, server)
 
@@ -425,6 +601,9 @@ async def serve(
     logger.info("gRPC streaming server listening on %s", listen_addr)
 
     await server.start()
+    # Attach the servicer to the server so the shutdown handler can
+    # access it for graceful draining.
+    server._massflow_servicer = servicer  # type: ignore[attr-defined]
     return server
 
 
@@ -433,33 +612,56 @@ async def run_server(
     host: str = "[::]",
     port: int = 50051,
     queue_capacity: int = 2048,
-    queue_drop_on_full: bool = False,
+    queue_overflow: OverflowPolicy = OverflowPolicy.BLOCK,
     queue_put_timeout: float | None = 5.0,
     top_n: int = 5,
+    batch_max_size: int = 64,
+    batch_timeout_seconds: float = 0.050,
+    drain_timeout: float = 30.0,
 ) -> None:
-    """Convenience entry-point: load config, start server, wait forever."""
+    """Convenience entry-point: load config, start server, wait forever.
+
+    On SIGINT/SIGTERM the bounded queue is drained before the gRPC
+    server is stopped, ensuring no pending spectra are lost during a
+    controlled shutdown.
+    """
     config = MassFlowConfig.from_yaml(config_path)
     server = await serve(
         config,
         host=host,
         port=port,
         queue_capacity=queue_capacity,
-        queue_drop_on_full=queue_drop_on_full,
+        queue_overflow=queue_overflow,
         queue_put_timeout=queue_put_timeout,
         top_n=top_n,
+        batch_max_size=batch_max_size,
+        batch_timeout_seconds=batch_timeout_seconds,
     )
 
-    # Graceful shutdown on SIGTERM / SIGINT.
+    # ── Graceful shutdown on SIGTERM / SIGINT ──────────────────────
     loop = asyncio.get_running_loop()
     stop_event = asyncio.Event()
 
+    async def _graceful_stop() -> None:
+        """Drain the bounded queue, then stop the gRPC server."""
+        logger.info("Shutting down gRPC server gracefully...")
+        servicer: MassFlowStreamingServicer | None = getattr(
+            server, "_massflow_servicer", None
+        )
+        if servicer is not None:
+            await servicer.shutdown(drain_timeout=drain_timeout)
+        await server.stop(grace=5.0)
+        logger.info("gRPC server stopped.")
+
+    def _signal_handler() -> None:
+        stop_event.set()
+
     for sig in (signal.SIGINT, signal.SIGTERM):
         try:
-            loop.add_signal_handler(sig, stop_event.set)
+            loop.add_signal_handler(sig, _signal_handler)
         except NotImplementedError:
             # Windows does not support add_signal_handler for SIGTERM.
             pass
 
     await stop_event.wait()
-    logger.info("Shutting down gRPC server...")
-    await server.stop(grace=5.0)
+    await _graceful_stop()

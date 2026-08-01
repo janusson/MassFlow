@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Measure peak memory usage and execution time of the MassFlow V1.0 pipeline.
+Measure peak memory usage and execution time of the MassFlow v0.1 pipeline.
 
 Uses the built-in ``tracemalloc`` and ``time`` modules to provide a
 self-contained benchmark with zero external dependencies beyond the

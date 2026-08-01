@@ -10,8 +10,9 @@ to ``formula``-based mass validation via pyteomics, and the classical
 cosine-scoring pipeline continues without interruption.
 """
 
+import json
 import logging
-from typing import List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -220,3 +221,166 @@ class SpectrumMetadata(BaseModel):
             self.__dict__["is_physically_valid"] = False
 
         return self
+
+
+# ---------------------------------------------------------------------------
+# Triage / Quality-flag model for spectral difficulty classification
+# ---------------------------------------------------------------------------
+
+
+class TriageProfile(BaseModel):
+    """Structured quality flags computed during spectral pre-processing.
+
+    This model parses the JSON ``triage_flags`` column stored alongside each
+    spectrum in the SQLite database. It provides a stable, typed interface for
+    the :class:`MLRouter` to decide whether a spectrum should be routed to a
+    classical scoring engine ("easy") or an ML engine ("hard").
+
+    **Semantics of individual flags**
+
+    * ``is_chimeric`` – the precursor isolation window contained co-eluting ions,
+      so the fragmentation spectrum is a mixture of two or more precursors.
+    * ``low_abundance_precursor`` – the MS1 precursor ion intensity fell below
+      the configurable signal threshold, increasing the chance that low-intensity
+      fragment peaks are noise.
+    * ``missing_ms1_purity`` – no MS1 isolation-purity metrics were recorded by
+      the instrument method (common for data-dependent acquisition without
+      survey scans).
+    * ``low_signal_to_noise`` – the median or mean fragment S/N is below the
+      acceptable threshold, making peak-picking less reliable.
+    * ``unassigned_neutral_losses`` – the de-novo or rule-based neutral-loss
+      assignment step left a non-trivial fraction of fragment differences
+      unexplained, suggesting an unusual or unexpected fragmentation pathway.
+
+    **Default / absent flags**
+
+    When the ``triage_flags`` column is ``NULL`` or ``"{}"``, all boolean flags
+    default to ``False`` and quantitative fields to ``None``, which the router
+    interprets as "no evidence of difficulty" → route to the easy engine.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    # --- Boolean quality flags -----------------------------------------------
+    is_chimeric: bool = Field(
+        default=False,
+        description="Co-eluting precursor ions in the isolation window.",
+    )
+    low_abundance_precursor: bool = Field(
+        default=False,
+        description="MS1 precursor intensity below configured noise threshold.",
+    )
+    missing_ms1_purity: bool = Field(
+        default=False,
+        description="No MS1 isolation-purity data recorded.",
+    )
+    low_signal_to_noise: bool = Field(
+        default=False,
+        description="Fragment spectrum S/N below acceptable threshold.",
+    )
+    unassigned_neutral_losses: bool = Field(
+        default=False,
+        description="Non-trivial fraction of neutral losses unexplained.",
+    )
+
+    # --- Quantitative metrics (None = not measured) --------------------------
+    precursor_purity: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="Quantitative MS1 isolation purity (0.0 – 1.0).",
+    )
+    signal_to_noise: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        description="Measured fragment-level signal-to-noise ratio.",
+    )
+    num_peaks: Optional[int] = Field(
+        default=None,
+        ge=0,
+        description="Total number of fragment peaks in the spectrum.",
+    )
+
+    # --- Aggregate difficulty score (derived, not stored) --------------------
+    @property
+    def difficulty_flags_active(self) -> int:
+        """Count of active boolean difficulty flags.
+
+        Returns
+        -------
+        int
+            Number of boolean triage flags currently set to ``True``.
+        """
+        flags: list[bool] = [
+            self.is_chimeric,
+            self.low_abundance_precursor,
+            self.missing_ms1_purity,
+            self.low_signal_to_noise,
+            self.unassigned_neutral_losses,
+        ]
+        return sum(1 for f in flags if f)
+
+    @classmethod
+    def from_spectrum_metadata(cls, metadata: Dict[str, Any]) -> "TriageProfile":
+        """Extract a ``TriageProfile`` from a spectrum's metadata dictionary.
+
+        The ``triage_flags`` key (if present) is parsed as JSON. Top-level
+        keys in the metadata that collide with TriageProfile field names are
+        also consumed, so that spectra loaded from a SQLite database that
+        flattened triage_flags into the metadata (as done by
+        ``SpectralDatabase._row_to_spectrum``) are handled transparently.
+
+        Parameters
+        ----------
+        metadata : dict
+            The spectrum ``.metadata`` dict (or ``.get_metadata()``).
+
+        Returns
+        -------
+        TriageProfile
+            Populated profile; absent / unparseable data yields default flags.
+        """
+        # 1. Try the canonical "triage_flags" JSON sub-dict.
+        raw: Optional[str] = metadata.get("triage_flags")
+        if isinstance(raw, dict):
+            # Already deserialised by _row_to_spectrum or equivalent.
+            raw_dict = raw
+        elif isinstance(raw, str) and raw.strip():
+            try:
+                raw_dict = json.loads(raw)
+            except (json.JSONDecodeError, TypeError):
+                raw_dict = {}
+        else:
+            raw_dict = {}
+
+        # 2. Also pull top-level metadata keys that match our field names.
+        #    This handles the case where _row_to_spectrum called
+        #    ``metadata.update(triage)``, so e.g. `is_chimeric` is a top-level
+        #    metadata key rather than nested under `triage_flags`.
+        field_names = {
+            "is_chimeric",
+            "low_abundance_precursor",
+            "missing_ms1_purity",
+            "low_signal_to_noise",
+            "unassigned_neutral_losses",
+            "precursor_purity",
+            "signal_to_noise",
+            "num_peaks",
+        }
+        merged: Dict[str, Any] = {}
+        for name in field_names:
+            if name in metadata and name not in raw_dict:
+                merged[name] = metadata[name]
+        merged.update(raw_dict)
+
+        # Filter to only our known fields (extra keys pass via extra="allow")
+        filtered = {k: v for k, v in merged.items() if k in field_names}
+        return cls(**filtered)
+
+    @classmethod
+    def empty(cls) -> "TriageProfile":
+        """Return a profile with all flags set to their safe defaults.
+
+        This is the profile used when no triage data is available at all.
+        """
+        return cls()

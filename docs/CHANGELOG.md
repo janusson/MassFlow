@@ -11,7 +11,7 @@ All notable changes to MassFlow will be documented in this file.
 - **Onboarding overhaul:** Rewrote `docs/user-guide/usage.md` to use real, runnable tutorial file paths instead of hypothetical placeholders. Added Step 0 (Generate Tutorial Data) so a copy-paste follower can complete the full workflow without `FileNotFoundError`.
 - **README and ARCHITECTURE docs:** Added `massflow tutorial` to stable feature lists, CLI command references, and quickstart sections. Fixed a stray `similarity:` key in the README YAML example.
 
-## [1.0.0] - 2026-05-10
+## [0.1.0] - 2026-05-10
 ### Added
 - **Formal Data Model:** Implemented Pydantic-based validation for all spectral metadata.
 - **SQLite Backend:** Added `massflow db build` to compile `.msp`/`.mgf` libraries into high-performance relational databases.

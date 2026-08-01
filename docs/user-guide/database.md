@@ -1,6 +1,6 @@
 # SQLite Library Management
 
-MassFlow v1.0 natively supports persistent, reusable local spectral libraries backed by SQLite.
+MassFlow v0.1 natively supports persistent, reusable local spectral libraries backed by SQLite.
 
 If you run `massflow annotate` against large, raw text-based formats (like `.msp` or `.mgf`), MassFlow must parse those massive files into Python objects every single time you launch the CLI.
 

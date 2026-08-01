@@ -9,10 +9,13 @@ calculation, result filtering/formatting, decoy generation, and FDR estimation.
 
 from __future__ import annotations
 
+import concurrent.futures
+import importlib.metadata
 import logging
 from collections import defaultdict
 from functools import wraps
-from typing import Iterable, Iterator, List, Optional, TypedDict
+from pathlib import Path
+from typing import Iterable, Iterator, List, Literal, Optional, TypedDict
 
 import numpy as np
 from matchms import Spectrum, calculate_scores
@@ -27,6 +30,8 @@ except ImportError:
     from matchms.similarity import ModifiedCosineGreedy as ModifiedCosine
 
 from MassFlow.config import SimilarityConfig
+from MassFlow.models import TriageProfile
+from MassFlow.protocols import MLEngineProtocol
 
 logger = logging.getLogger(__name__)
 
@@ -466,10 +471,30 @@ def calculate_empirical_p_values(
 def calculate_fdr(
     target_scores: np.ndarray, decoy_scores: np.ndarray
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """
-    Calculate q-values (False Discovery Rate) for target scores.
+    """Calculate q-values (False Discovery Rate) for target scores.
     Uses the conservative target-decoy pseudo-count formula: FDR = (decoys + 1) / targets
     to prevent overly optimistic 0.0 FDR values, particularly for small libraries.
+
+    **Heterogeneous engine assumption (post-v0.1 MLRouter)**
+
+    When scores originate from multiple scoring engines (e.g. classical cosine
+    for "easy" spectra and ML consensus for "hard" spectra), the pooled
+    target and decoy score vectors passed to this function span heterogeneous
+    score distributions. The target-decoy competition (TDC) framework remains
+    statistically valid under the following assumption:
+
+    1. The decoy distribution is constructed from ALL engines' decoy hits,
+       producing a **conservative** pooled null. This means q-values may
+       *overestimate* FDR (i.e. be stricter than the true FDR) when one
+       engine's score scale is compressed relative to the others, because
+       compressed-scale targets are more likely to be out-competed by
+       wide-scale decoys in the pooled ranking.
+    2. The proportion of true positives among top-scoring matches is
+       preserved after merging because FDR is a rank-based procedure — it
+       only cares about the relative ordering of target vs decoy scores.
+    3. For rigorous per-engine FDR, users should run separate workflows.
+       The pooled approach is a pragmatic default that errs on the side of
+       caution.
 
     Parameters
     ----------
@@ -849,6 +874,50 @@ class SimilarityEngine:
 
         return results
 
+    def batch_score(
+        self,
+        query_spectra: List[Spectrum],
+        reference_spectra: List[Spectrum],
+    ) -> np.ndarray:
+        """Score pre-formed query--reference pairs in batch.
+
+        Classical engines have no dedicated batch primitive, so each pair
+        is scored individually via ``search()``.  This method exists to
+        satisfy the uniform interface expected by meta-engines
+        (consensus, cascade).
+        """
+        if len(query_spectra) != len(reference_spectra):
+            raise ValueError(
+                f"query_spectra and reference_spectra must have the same length; "
+                f"got {len(query_spectra)} vs {len(reference_spectra)}"
+            )
+        scores = np.full(len(query_spectra), np.nan, dtype=np.float64)
+        for i, (q, r) in enumerate(zip(query_spectra, reference_spectra)):
+            results = self.search(
+                query_spectra=[q],
+                reference_spectra=[r],
+                min_score=-1.0,
+                top_n=1,
+                include_decoys=False,
+            )
+            if results:
+                scores[i] = float(results[0]["score"])
+        return scores
+
+    def load_model(self, model_path: str | Path) -> None:
+        """No-op: classical engines have no trainable model weights.
+
+        Exists for interface uniformity with ``MLEngineProtocol`` so that
+        meta-engines (consensus, cascade) can call ``load_model`` on any
+        sub-engine without type-checking.
+        """
+        logger.debug(
+            "Classical engine '%s' does not use external model weights; "
+            "ignoring load_model('%s').",
+            self.config.algorithm,
+            model_path,
+        )
+
 
 # =============================================================================
 # Machine-learning similarity engines (require the ``[ml]`` extra)
@@ -864,12 +933,15 @@ class SimilarityEngine:
 # ``RuntimeError`` directing the user to install ``massflow[ml]``.
 
 
-class _MLEngineBase:
+class _MLEngineBase(MLEngineProtocol):
     """Base class for ML-based similarity scoring engines.
 
-    Subclasses must implement ``_build_model()`` and override ``search()``.
-    The public interface is intentionally compatible with ``SimilarityEngine``
-    so that the factory and workflow layers can treat them uniformly.
+    Implements the ``MLEngineProtocol`` contract so that any subclass can
+    be registered as a ``massflow.similarity_engines`` entry point and
+    discovered by ``get_similarity_engine()`` at runtime.
+
+    Subclasses must implement ``_build_model()``, ``search()``,
+    ``batch_score()``, and ``load_model()``.
     """
 
     def __init__(self, config: SimilarityConfig):
@@ -897,6 +969,45 @@ class _MLEngineBase:
     ) -> List[SearchResult]:
         """Run similarity search. Override in subclasses."""
         raise NotImplementedError("Subclasses must implement search()")
+
+    def batch_score(
+        self,
+        query_spectra: List[Spectrum],
+        reference_spectra: List[Spectrum],
+    ) -> np.ndarray:
+        """Score pre-formed query--reference pairs in batch.
+
+        Default implementation delegates to ``search()`` with a
+        single-query / single-reference call per pair.  Subclasses that
+        can perform true vectorised batch scoring SHOULD override this.
+        """
+        if len(query_spectra) != len(reference_spectra):
+            raise ValueError(
+                f"query_spectra and reference_spectra must have the same length; "
+                f"got {len(query_spectra)} vs {len(reference_spectra)}"
+            )
+        scores = np.full(len(query_spectra), np.nan, dtype=np.float64)
+        for i, (q, r) in enumerate(zip(query_spectra, reference_spectra)):
+            results = self.search(
+                query_spectra=[q],
+                reference_spectra=[r],
+                min_score=-1.0,
+                top_n=1,
+                include_decoys=False,
+            )
+            if results:
+                scores[i] = float(results[0]["score"])
+        return scores
+
+    def load_model(self, model_path: str | Path) -> None:
+        """Load pre-trained model weights from disk.
+
+        The default implementation stores the path; subclasses should
+        override to perform actual model deserialization.
+        """
+        self._model_path = Path(model_path)
+        if not self._model_path.exists():
+            raise FileNotFoundError(f"Model path does not exist: {self._model_path}")
 
 
 class Spec2VecEngine(_MLEngineBase):
@@ -944,6 +1055,22 @@ class Spec2VecEngine(_MLEngineBase):
         # ``SearchResult`` dicts.
         raise RuntimeError("Spec2Vec search is not yet implemented. " + _ML_INSTALL_MSG)
 
+    def batch_score(
+        self,
+        query_spectra: List[Spectrum],
+        reference_spectra: List[Spectrum],
+    ) -> np.ndarray:
+        """Score pre-formed query--reference pairs."""
+        raise RuntimeError(
+            "Spec2Vec batch scoring is not yet implemented. " + _ML_INSTALL_MSG
+        )
+
+    def load_model(self, model_path: str | Path) -> None:
+        """Load a pre-trained Spec2Vec model."""
+        raise RuntimeError(
+            "Spec2Vec model loading is not yet implemented. " + _ML_INSTALL_MSG
+        )
+
 
 class MS2DeepScoreEngine(_MLEngineBase):
     """MS2DeepScore-based deep learning similarity scoring engine.
@@ -981,6 +1108,22 @@ class MS2DeepScoreEngine(_MLEngineBase):
         """
         raise RuntimeError(
             "MS2DeepScore search is not yet implemented. " + _ML_INSTALL_MSG
+        )
+
+    def batch_score(
+        self,
+        query_spectra: List[Spectrum],
+        reference_spectra: List[Spectrum],
+    ) -> np.ndarray:
+        """Score pre-formed query--reference pairs."""
+        raise RuntimeError(
+            "MS2DeepScore batch scoring is not yet implemented. " + _ML_INSTALL_MSG
+        )
+
+    def load_model(self, model_path: str | Path) -> None:
+        """Load a pre-trained MS2DeepScore model."""
+        raise RuntimeError(
+            "MS2DeepScore model loading is not yet implemented. " + _ML_INSTALL_MSG
         )
 
 
@@ -1022,8 +1165,14 @@ class ConsensusEngine(_MLEngineBase):
 
         weights = self.config.consensus_weights
 
+        # Meta-algorithms cannot serve as sub-engines (prevents recursion).
+        _META_ALGOS = {"consensus", "cascade"}
+
         for algo, weight in weights.items():
             if weight <= 0:
+                continue
+            if algo in _META_ALGOS:
+                logger.debug("Skipping meta-algorithm '%s' as sub-engine.", algo)
                 continue
 
             sub_cfg = SimilarityConfig(
@@ -1036,34 +1185,16 @@ class ConsensusEngine(_MLEngineBase):
                 rt_tolerance=self.config.rt_tolerance,
             )
 
-            engine: SimilarityEngine | _MLEngineBase | None = None
-
-            if algo in ("cosine", "modified_cosine"):
-                try:
-                    engine = SimilarityEngine(sub_cfg)
-                except Exception as exc:
-                    logger.warning(
-                        "Failed to build classical sub-engine '%s': %s", algo, exc
-                    )
-            elif algo == "spec2vec" and _HAS_SPEC2VEC:
-                try:
-                    engine = Spec2VecEngine(sub_cfg)
-                except Exception as exc:
-                    logger.warning("Failed to build spec2vec sub-engine: %s", exc)
-            elif algo == "ms2deepscore" and _HAS_MS2DEEPSCORE:
-                try:
-                    engine = MS2DeepScoreEngine(sub_cfg)
-                except Exception as exc:
-                    logger.warning("Failed to build ms2deepscore sub-engine: %s", exc)
-            else:
-                logger.debug(
-                    "Skipping sub-engine '%s': not available or dependencies missing.",
-                    algo,
-                )
-
-            if engine is not None:
+            try:
+                engine = get_similarity_engine(sub_cfg)
                 self._sub_engines[algo] = engine
                 self._sub_weights[algo] = weight
+            except Exception:
+                logger.warning(
+                    "Could not initialise sub-engine '%s' for consensus scoring.",
+                    algo,
+                    exc_info=True,
+                )
 
         if not self._sub_engines:
             logger.warning(
@@ -1241,6 +1372,32 @@ class ConsensusEngine(_MLEngineBase):
 
         return aggregated
 
+    def batch_score(
+        self,
+        query_spectra: List[Spectrum],
+        reference_spectra: List[Spectrum],
+    ) -> np.ndarray:
+        """Score pre-formed query--reference pairs via consensus.
+
+        Delegates to each sub-engine and returns a weighted-consensus
+        score per pair.
+        """
+        return super().batch_score(query_spectra, reference_spectra)
+
+    def load_model(self, model_path: str | Path) -> None:
+        """Load model weights for all sub-engines.
+
+        Calls ``load_model`` on each sub-engine in turn.  Failures are
+        logged but do not prevent other sub-engines from loading.
+        """
+        for algo, engine in self._sub_engines.items():
+            try:
+                engine.load_model(model_path)
+            except Exception as exc:
+                logger.warning(
+                    "Failed to load model for sub-engine '%s': %s", algo, exc
+                )
+
 
 class CascadeEngine(_MLEngineBase):
     """Cascaded scoring engine with hierarchical filtering.
@@ -1287,33 +1444,15 @@ class CascadeEngine(_MLEngineBase):
                 rt_tolerance=self.config.rt_tolerance,
             )
 
-            engine: SimilarityEngine | _MLEngineBase | None = None
-
-            if algo in ("cosine", "modified_cosine"):
-                try:
-                    engine = SimilarityEngine(sub_cfg)
-                except Exception as exc:
-                    logger.warning("Failed to build cascade stage '%s': %s", algo, exc)
-            elif algo == "spec2vec" and _HAS_SPEC2VEC:
-                try:
-                    engine = Spec2VecEngine(sub_cfg)
-                except Exception as exc:
-                    logger.warning("Failed to build spec2vec cascade stage: %s", exc)
-            elif algo == "ms2deepscore" and _HAS_MS2DEEPSCORE:
-                try:
-                    engine = MS2DeepScoreEngine(sub_cfg)
-                except Exception as exc:
-                    logger.warning(
-                        "Failed to build ms2deepscore cascade stage: %s", exc
-                    )
-            else:
-                logger.debug(
-                    "Skipping cascade stage '%s': not available or dependencies missing.",
-                    algo,
-                )
-
-            if engine is not None:
+            try:
+                engine = get_similarity_engine(sub_cfg)
                 self._stages.append((algo, engine))
+            except Exception:
+                logger.warning(
+                    "Could not initialise cascade stage '%s'.",
+                    algo,
+                    exc_info=True,
+                )
 
         if not self._stages:
             logger.warning(
@@ -1487,13 +1626,459 @@ class CascadeEngine(_MLEngineBase):
 
         return final_results
 
+    def batch_score(
+        self,
+        query_spectra: List[Spectrum],
+        reference_spectra: List[Spectrum],
+    ) -> np.ndarray:
+        """Score pre-formed query--reference pairs via cascade.
 
-_ML_ENGINE_MAP: dict[str, type] = {
-    "spec2vec": Spec2VecEngine,
-    "ms2deepscore": MS2DeepScoreEngine,
-    "consensus": ConsensusEngine,
-    "cascade": CascadeEngine,
-}
+        Uses the last cascade stage for batch scoring.
+        """
+        if not self._stages:
+            return np.full(len(query_spectra), np.nan, dtype=np.float64)
+        _, last_engine = self._stages[-1]
+        return last_engine.batch_score(query_spectra, reference_spectra)
+
+    def load_model(self, model_path: str | Path) -> None:
+        """Load model weights for all cascade stages.
+
+        Calls ``load_model`` on each stage engine in turn.  Failures are
+        logged but do not prevent other stages from loading.
+        """
+        for algo, engine in self._stages:
+            try:
+                engine.load_model(model_path)
+            except Exception as exc:
+                logger.warning(
+                    "Failed to load model for cascade stage '%s': %s", algo, exc
+                )
+
+
+class MLRouter:
+    """Dynamically route query spectra between classical and ML scoring engines.
+
+    The router evaluates each query spectrum's :class:`TriageProfile` against
+    user-defined thresholds in ``SimilarityConfig`` and dispatches to either a
+    fast classical engine ("easy" spectra) or a more sophisticated ML engine
+    ("hard" spectra such as chimeric, low-S/N, or unassigned neutral losses).
+
+    If the ML engine fails or exceeds ``routing_ml_timeout_seconds``, the
+    router automatically falls back to ``routing_fallback_engine`` and logs a
+    warning without aborting the batch.
+
+    **Multiprocessing compatibility**
+
+    The router is instantiated inside the worker process.  Only the (small,
+    pickle-safe) ``SimilarityConfig`` travels across the process boundary.
+    Engine instances are built lazily on first use within each worker.
+
+    Parameters
+    ----------
+    config : SimilarityConfig
+        Pipeline configuration containing routing thresholds and engine choices.
+    """
+
+    def __init__(self, config: SimilarityConfig) -> None:
+        self._config = config
+        self._easy_engine: SimilarityEngine | _MLEngineBase | None = None
+        self._hard_engine: SimilarityEngine | _MLEngineBase | None = None
+        self._fallback_engine: SimilarityEngine | None = None
+
+    # ------------------------------------------------------------------
+    # Lazy engine builders
+    # ------------------------------------------------------------------
+
+    def _get_easy_engine(self) -> SimilarityEngine | _MLEngineBase:
+        if self._easy_engine is None:
+            easy_cfg = SimilarityConfig(
+                algorithm=self._config.routing_easy_engine,  # type: ignore[arg-type]
+                ms1_tolerance=self._config.ms1_tolerance,
+                ms2_tolerance=self._config.ms2_tolerance,
+                resolution_ppm=self._config.resolution_ppm,
+                min_score=self._config.min_score,
+                min_matched_peaks=self._config.min_matched_peaks,
+                rt_tolerance=self._config.rt_tolerance,
+            )
+            self._easy_engine = get_similarity_engine(easy_cfg)
+        return self._easy_engine
+
+    def _get_hard_engine(self) -> SimilarityEngine | _MLEngineBase:
+        if self._hard_engine is None:
+            hard_algo = self._config.routing_hard_engine
+            if hard_algo not in _ML_ENGINE_REGISTRY:
+                logger.warning(
+                    "routing_hard_engine '%s' is not an ML engine; "
+                    "using modified_cosine as hard engine instead.",
+                    hard_algo,
+                )
+                hard_algo = "modified_cosine"  # type: ignore[assignment]
+
+            hard_cfg = SimilarityConfig(
+                algorithm=hard_algo,  # type: ignore[arg-type]
+                ms1_tolerance=self._config.ms1_tolerance,
+                ms2_tolerance=self._config.ms2_tolerance,
+                resolution_ppm=self._config.resolution_ppm,
+                min_score=0.0,  # collect all hits; FDR applied later
+                min_matched_peaks=0,
+                rt_tolerance=self._config.rt_tolerance,
+                # Forward consensus/cascade settings if applicable
+                consensus_weights=self._config.consensus_weights,
+                consensus_min_engines=self._config.consensus_min_engines,
+                cascade_lower_bound=self._config.cascade_lower_bound,
+                cascade_upper_bound=self._config.cascade_upper_bound,
+                cascade_stages=self._config.cascade_stages,
+            )
+            self._hard_engine = get_similarity_engine(hard_cfg)
+        return self._hard_engine
+
+    def _get_fallback_engine(self) -> SimilarityEngine:
+        if self._fallback_engine is None:
+            fb_cfg = SimilarityConfig(
+                algorithm=self._config.routing_fallback_engine,  # type: ignore[arg-type]
+                ms1_tolerance=self._config.ms1_tolerance,
+                ms2_tolerance=self._config.ms2_tolerance,
+                resolution_ppm=self._config.resolution_ppm,
+                min_score=self._config.min_score,
+                min_matched_peaks=self._config.min_matched_peaks,
+                rt_tolerance=self._config.rt_tolerance,
+            )
+            eng = get_similarity_engine(fb_cfg)
+            if not isinstance(eng, SimilarityEngine):
+                raise RuntimeError(
+                    f"routing_fallback_engine '{self._config.routing_fallback_engine}' "
+                    "must be a classical engine (cosine or modified_cosine)."
+                )
+            self._fallback_engine = eng
+        return self._fallback_engine
+
+    # ------------------------------------------------------------------
+    # Classification
+    # ------------------------------------------------------------------
+
+    def classify(self, spectrum: Spectrum) -> Literal["easy", "hard"]:
+        """Classify a single query spectrum as 'easy' or 'hard'.
+
+        The decision is based on the spectrum's ``TriageProfile`` evaluated
+        against the router's configured thresholds.
+
+        Parameters
+        ----------
+        spectrum : matchms.Spectrum
+            Query spectrum with optional ``triage_flags`` metadata.
+
+        Returns
+        -------
+        Literal['easy', 'hard']
+            Routing decision for this spectrum.
+        """
+        profile = TriageProfile.from_spectrum_metadata(spectrum.metadata)
+
+        # Check individual thresholds ---------------------------------------------------
+        reasons: list[str] = []
+
+        # Chimeric spectra
+        if profile.is_chimeric:
+            action = self._config.routing_chimeric_action
+            if action == "hard":
+                reasons.append("chimeric")
+
+        # Low precursor purity
+        if (
+            profile.precursor_purity is not None
+            and profile.precursor_purity
+            < self._config.routing_precursor_purity_threshold
+        ):
+            reasons.append("low_precursor_purity")
+
+        # Missing MS1 purity
+        if profile.missing_ms1_purity:
+            reasons.append("missing_ms1_purity")
+
+        # Low abundance precursor
+        if profile.low_abundance_precursor:
+            reasons.append("low_abundance_precursor")
+
+        # Low S/N
+        if (
+            profile.signal_to_noise is not None
+            and profile.signal_to_noise < self._config.routing_snr_threshold
+        ):
+            reasons.append("low_snr")
+        elif profile.low_signal_to_noise:
+            reasons.append("low_snr")
+
+        # Unassigned neutral losses
+        if profile.unassigned_neutral_losses:
+            reasons.append("unassigned_neutral_losses")
+
+        # Aggregate difficulty check
+        if len(reasons) >= self._config.routing_min_difficulty_flags:
+            logger.debug(
+                "Spectrum %s routed to HARD engine — reasons: %s",
+                spectrum.get("id", "<unknown>"),
+                ", ".join(reasons),
+            )
+            return "hard"
+
+        return "easy"
+
+    # ------------------------------------------------------------------
+    # Main search dispatch
+    # ------------------------------------------------------------------
+
+    def route_and_search(
+        self,
+        query_spectra: List[Spectrum],
+        reference_spectra: Iterable[Spectrum],
+        include_decoys: bool = True,
+        ref_precursor_mzs: np.ndarray | None = None,
+        ref_is_decoy: np.ndarray | None = None,
+    ) -> List[SearchResult]:
+        """Classify queries and dispatch to the appropriate engine.
+
+        Queries classified as "easy" go to ``routing_easy_engine``;
+        queries classified as "hard" go to ``routing_hard_engine``.
+
+        If the hard engine raises an exception or times out (see
+        ``routing_ml_timeout_seconds``), the hard batch is re-run through
+        ``routing_fallback_engine`` and a warning is logged.
+
+        Parameters
+        ----------
+        query_spectra : list of matchms.Spectrum
+            Experimental query spectra.
+        reference_spectra : iterable of matchms.Spectrum
+            Reference library spectra.
+        include_decoys : bool
+            Whether engines should generate and score decoy spectra.
+        ref_precursor_mzs : np.ndarray or None
+            Pre-computed reference precursor m/z array.
+        ref_is_decoy : np.ndarray or None
+            Pre-computed reference decoy flags.
+
+        Returns
+        -------
+        list of SearchResult
+            Combined results from all engines, tagged with ``routed_via``
+            in the ``score_breakdown`` dict (or a new top-level entry
+            ``routed_via``).
+        """
+        # --- Classify every query ------------------------------------------------
+        easy_queries: List[Spectrum] = []
+        hard_queries: List[Spectrum] = []
+
+        for q in query_spectra:
+            decision = self.classify(q)
+            if decision == "hard":
+                hard_queries.append(q)
+            else:
+                easy_queries.append(q)
+
+        n_total = len(query_spectra)
+        n_easy = len(easy_queries)
+        n_hard = len(hard_queries)
+        logger.info(
+            "MLRouter: %d/%d queries classified as EASY, %d/%d as HARD.",
+            n_easy,
+            n_total,
+            n_hard,
+            n_total,
+        )
+
+        all_results: List[SearchResult] = []
+
+        # --- Easy batch ----------------------------------------------------------
+        if easy_queries:
+            easy_engine = self._get_easy_engine()
+            easy_results = easy_engine.search(
+                query_spectra=easy_queries,
+                reference_spectra=reference_spectra,
+                include_decoys=include_decoys,
+                ref_precursor_mzs=ref_precursor_mzs,
+                ref_is_decoy=ref_is_decoy,
+            )
+            # Tag results with routing information
+            for res in easy_results:
+                breakdown: dict[str, float | str] = dict(
+                    res.get("score_breakdown") or {}
+                )
+                breakdown["routed_via"] = self._config.routing_easy_engine
+                res["score_breakdown"] = breakdown  # type: ignore[arg-type,typeddict-item]
+                res["routed_via"] = self._config.routing_easy_engine  # type: ignore[typeddict-unknown-key]
+            all_results.extend(easy_results)
+            logger.debug("Easy engine returned %d results.", len(easy_results))
+
+        # --- Hard batch (with timeout + fallback) --------------------------------
+        if hard_queries:
+            hard_results = self._run_hard_with_fallback(
+                hard_queries,
+                reference_spectra,
+                include_decoys=include_decoys,
+                ref_precursor_mzs=ref_precursor_mzs,
+                ref_is_decoy=ref_is_decoy,
+            )
+            # Tag results with routing information
+            routed_tag: str = self._config.routing_hard_engine
+            for res in hard_results:
+                breakdown = dict(res.get("score_breakdown") or {})
+                # Determine the actual engine that produced this result
+                used_engine: str = (
+                    self._config.routing_fallback_engine
+                    if res.get("_fallback")
+                    else routed_tag
+                )
+                breakdown["routed_via"] = used_engine
+                res["score_breakdown"] = breakdown  # type: ignore[arg-type,typeddict-item]
+                res["routed_via"] = used_engine  # type: ignore[typeddict-unknown-key]
+            all_results.extend(hard_results)
+
+        return all_results
+
+    def _run_hard_with_fallback(
+        self,
+        hard_queries: List[Spectrum],
+        reference_spectra: Iterable[Spectrum],
+        include_decoys: bool,
+        ref_precursor_mzs: np.ndarray | None,
+        ref_is_decoy: np.ndarray | None,
+    ) -> List[SearchResult]:
+        """Run the hard engine with a timeout; fall back on failure.
+
+        Uses ``concurrent.futures.ThreadPoolExecutor`` to enforce the
+        ``routing_ml_timeout_seconds`` deadline.  If the hard engine
+        raises or times out, the fallback engine processes the batch.
+        """
+        timeout = self._config.routing_ml_timeout_seconds
+        ref_list = list(reference_spectra)  # materialise for reuse
+
+        hard_engine = self._get_hard_engine()
+
+        def _hard_search() -> List[SearchResult]:
+            return hard_engine.search(
+                query_spectra=hard_queries,
+                reference_spectra=ref_list,
+                include_decoys=include_decoys,
+                ref_precursor_mzs=ref_precursor_mzs,
+                ref_is_decoy=ref_is_decoy,
+            )
+
+        try:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(_hard_search)
+                results = future.result(timeout=timeout)
+            logger.info(
+                "Hard engine completed successfully (%d results).", len(results)
+            )
+            return results
+        except concurrent.futures.TimeoutError:
+            logger.warning(
+                "Hard engine '%s' timed out after %.1f s for %d queries; "
+                "falling back to '%s'.",
+                self._config.routing_hard_engine,
+                timeout,
+                len(hard_queries),
+                self._config.routing_fallback_engine,
+            )
+        except Exception as exc:
+            logger.warning(
+                "Hard engine '%s' failed: %s; falling back to '%s'.",
+                self._config.routing_hard_engine,
+                exc,
+                self._config.routing_fallback_engine,
+            )
+
+        # --- Fallback path -------------------------------------------------------
+        fallback = self._get_fallback_engine()
+        fb_results = fallback.search(
+            query_spectra=hard_queries,
+            reference_spectra=ref_list,
+            include_decoys=include_decoys,
+            ref_precursor_mzs=ref_precursor_mzs,
+            ref_is_decoy=ref_is_decoy,
+        )
+        for res in fb_results:
+            res["_fallback"] = True  # type: ignore[typeddict-unknown-key]
+        logger.info(
+            "Fallback engine '%s' returned %d results for hard queries.",
+            self._config.routing_fallback_engine,
+            len(fb_results),
+        )
+        return fb_results
+
+
+# ---------------------------------------------------------------------------
+# ML engine registry (populated from entry points)
+# ---------------------------------------------------------------------------
+# External packages (e.g. ``massflow-ml``) register their engine classes via
+# the ``massflow.similarity_engines`` entry-point group.  The registry is
+# populated once at module import time and cached for the lifetime of the
+# process.  Built-in engines defined in this module are also registered
+# through the same mechanism (see pyproject.toml).
+
+_ML_ENGINE_REGISTRY: dict[str, type] = {}
+
+
+def _discover_ml_engines() -> dict[str, type]:
+    """Discover ML engine classes from registered entry points.
+
+    Scans the ``massflow.similarity_engines`` entry-point group and returns
+    a mapping of algorithm name → engine class.  Entry points that fail to
+    load are logged and skipped.
+
+    Returns
+    -------
+    dict[str, type]
+        Algorithm name → engine class.
+    """
+    registry: dict[str, type] = {}
+    try:
+        eps = importlib.metadata.entry_points(group="massflow.similarity_engines")
+    except TypeError:
+        # Python < 3.12: entry_points() takes no arguments.
+        # Filter the full dict manually.
+        all_eps = importlib.metadata.entry_points()
+        eps = all_eps.select(group="massflow.similarity_engines")  # type: ignore[union-attr]
+
+    for ep in eps:
+        try:
+            engine_cls = ep.load()
+        except Exception as exc:
+            logger.debug(
+                "Failed to load similarity engine entry point '%s': %s",
+                ep.name,
+                exc,
+            )
+            continue
+        if not isinstance(engine_cls, type):
+            logger.warning(
+                "Entry point '%s' did not resolve to a class (got %s); skipping.",
+                ep.name,
+                type(engine_cls).__name__,
+            )
+            continue
+        if not issubclass(engine_cls, MLEngineProtocol):
+            logger.warning(
+                "Entry point '%s' (%s) does not implement MLEngineProtocol; skipping.",
+                ep.name,
+                engine_cls.__name__,
+            )
+            continue
+        registry[ep.name] = engine_cls
+        logger.debug("Registered ML engine '%s' → %s", ep.name, engine_cls.__name__)
+
+    return registry
+
+
+# Populate the registry at import time.
+_ML_ENGINE_REGISTRY = _discover_ml_engines()
+
+
+# ---------------------------------------------------------------------------
+# Legacy alias (deprecated; use ``get_similarity_engine`` or
+# ``_ML_ENGINE_REGISTRY`` directly).
+# ---------------------------------------------------------------------------
+_ML_ENGINE_MAP = _ML_ENGINE_REGISTRY
 
 
 def get_similarity_engine(config: SimilarityConfig) -> SimilarityEngine | _MLEngineBase:
@@ -1502,6 +2087,11 @@ def get_similarity_engine(config: SimilarityConfig) -> SimilarityEngine | _MLEng
     Returns a ``SimilarityEngine`` for classical algorithms (cosine,
     modified_cosine) or an ``_MLEngineBase`` subclass for ML-based algorithms
     (spec2vec, ms2deepscore, consensus, cascade).
+
+    ML engines are discovered dynamically from the
+    ``massflow.similarity_engines`` entry-point group, enabling external
+    packages (such as ``massflow-ml``) to register their own scoring engines
+    without modifying core MassFlow source code.
 
     Parameters
     ----------
@@ -1516,22 +2106,32 @@ def get_similarity_engine(config: SimilarityConfig) -> SimilarityEngine | _MLEng
     Raises
     ------
     ValueError
-        If the requested algorithm is not recognised.
+        If the requested algorithm is not recognised by any registered engine.
     RuntimeError
-        If an ML algorithm is requested but the ``[ml]`` extra is not installed.
+        If an ML algorithm is requested but its required dependencies
+        (PyTorch, Gensim, etc.) are not installed.
     """
     algo = config.algorithm
 
-    if algo in _ML_ENGINE_MAP:
-        if not _HAS_ML:
+    # Classical algorithms: always available with zero overhead.
+    if algo in ("cosine", "modified_cosine"):
+        return SimilarityEngine(config)
+
+    # ML / meta algorithms: resolve via the entry-point registry.
+    if algo in _ML_ENGINE_REGISTRY:
+        engine_cls = _ML_ENGINE_REGISTRY[algo]
+        try:
+            return engine_cls(config)
+        except RuntimeError:
+            # Re-raise RuntimeError (e.g. from _check_dependencies) with a
+            # clearer user-facing message.
             raise RuntimeError(
                 f"Algorithm '{algo}' requires the machine-learning extras. "
                 + _ML_INSTALL_MSG
             )
-        engine_cls = _ML_ENGINE_MAP[algo]
-        return engine_cls(config)
 
-    if algo in ("cosine", "modified_cosine"):
-        return SimilarityEngine(config)
-
-    raise ValueError(f"Unsupported algorithm: {algo}")
+    raise ValueError(
+        f"Unsupported algorithm: '{algo}'. "
+        f"Available classical algorithms: cosine, modified_cosine. "
+        f"Registered ML algorithms: {list(_ML_ENGINE_REGISTRY.keys()) or 'none'}."
+    )

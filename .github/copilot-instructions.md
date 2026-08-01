@@ -40,7 +40,7 @@ High-level architecture (concise)
   - similarity.py: scoring engines (cosine, modified_cosine; experimental: spec2vec, ms2deepscore, consensus, cascade)
   - database.py: all SQLite interactions (build/inspect/merge) and triage_flags logic
   - workflow.py: orchestration, multiprocessing, chunked reference searching, FDR, export
-- Stable vs experimental: prefer cosine/modified_cosine, CSV/mzTab-M, and SQLite DB workflows for v1.0. See README/ARCHITECTURE for details.
+- Stable vs experimental: prefer cosine/modified_cosine, CSV/mzTab-M, and SQLite DB workflows for v0.1. See README/ARCHITECTURE for details.
 
 ---
 

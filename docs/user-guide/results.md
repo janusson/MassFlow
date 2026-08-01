@@ -1,6 +1,6 @@
 # Result Export & FDR
 
-When MassFlow completes an annotation run, it writes reproducible, tabular outputs designed for downstream review and statistical confidence. The stable v1.0 contract focuses on generating per-file results (CSV, mzTab-M) accompanied by YAML provenance reports, alongside optional GNPS FBMN paired exports.
+When MassFlow completes an annotation run, it writes reproducible, tabular outputs designed for downstream review and statistical confidence. The stable v0.1 contract focuses on generating per-file results (CSV, mzTab-M) accompanied by YAML provenance reports, alongside optional GNPS FBMN paired exports.
 
 ---
 

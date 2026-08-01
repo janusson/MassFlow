@@ -156,7 +156,7 @@ class InputConfig(BaseModel):
         default="sqlite",
         description=(
             "Storage backend for spectral libraries. "
-            "'sqlite' (default) uses SQLite BLOBs for v1.0 stable workflows. "
+            "'sqlite' (default) uses SQLite BLOBs for v0.1 stable workflows. "
             "'zarr' uses compressed Zarr arrays for cloud-optimized horizontal scaling."
         ),
     )
@@ -454,6 +454,62 @@ class SimilarityConfig(BaseModel):
         description="Ordered list of algorithms used as cascade stages, from fastest to slowest.",
     )
 
+    # --- ML Router / Orchestrator settings (post-v0.1) -----------------------
+    enable_routing: bool = Field(
+        default=False,
+        description=(
+            "When True, the orchestrator classifies each query spectrum by "
+            "structural difficulty and dispatches it to the appropriate "
+            "scoring engine (fast classical engine for 'easy' spectra, "
+            "ML consensus engine for 'hard' spectra)."
+        ),
+    )
+    routing_easy_engine: Literal["cosine", "modified_cosine"] = Field(
+        default="modified_cosine",
+        description="Engine used for 'easy' (high-quality) query spectra when routing is enabled.",
+    )
+    routing_hard_engine: Literal["consensus", "cascade"] = Field(
+        default="consensus",
+        description="Engine used for 'hard' (low-quality / chimeric) query spectra when routing is enabled.",
+    )
+    routing_fallback_engine: Literal["cosine", "modified_cosine"] = Field(
+        default="modified_cosine",
+        description=(
+            "Fallback engine used when the 'hard' ML engine fails or times out. "
+            "Must be a classical engine so it is always available."
+        ),
+    )
+    routing_precursor_purity_threshold: float = Field(
+        default=0.8,
+        ge=0.0,
+        le=1.0,
+        description="Precursor purity below which a spectrum is routed to the hard engine.",
+    )
+    routing_snr_threshold: float = Field(
+        default=3.0,
+        ge=0.0,
+        description="Signal-to-noise ratio below which a spectrum is routed to the hard engine.",
+    )
+    routing_chimeric_action: Literal["hard", "easy"] = Field(
+        default="hard",
+        description="How to route chimeric spectra: 'hard' (ML engine) or 'easy' (classical engine).",
+    )
+    routing_min_difficulty_flags: int = Field(
+        default=1,
+        ge=0,
+        le=5,
+        description=(
+            "Minimum number of active boolean triage flags required before "
+            "a spectrum is routed to the hard engine. Set to 0 to always "
+            "route flagged spectra to the hard engine."
+        ),
+    )
+    routing_ml_timeout_seconds: float = Field(
+        default=300.0,
+        ge=1.0,
+        description="Maximum seconds allowed for a single ML engine chunk before falling back.",
+    )
+
     @field_validator("rt_tolerance")
     @classmethod
     def validate_rt_tolerance(
@@ -508,7 +564,7 @@ class ExportConfig(BaseModel):
     Declared export preferences for result output.
 
     The annotation workflow writes per-file result reports in the configured
-    format. Only 'csv' and 'mztab' are part of the stable v1.0 contract.
+    format. Only 'csv' and 'mztab' are part of the stable v0.1 contract.
     """
 
     format: Literal["csv", "mztab"] = Field(

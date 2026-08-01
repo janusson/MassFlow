@@ -488,6 +488,7 @@ def run_serve(
     import asyncio
 
     from MassFlow.streaming.server import run_server
+    from MassFlow.streaming.queue import OverflowPolicy
 
     try:
         # Convert 0.0 to None (block indefinitely).
@@ -501,7 +502,9 @@ def run_serve(
                 host=host,
                 port=port,
                 queue_capacity=queue_capacity,
-                queue_drop_on_full=queue_drop_on_full,
+                queue_overflow=OverflowPolicy.DROP_OLDEST
+                if queue_drop_on_full
+                else OverflowPolicy.BLOCK,
                 queue_put_timeout=effective_timeout,
                 top_n=top_n,
             )

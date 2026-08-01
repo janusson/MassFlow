@@ -26,6 +26,7 @@ from matchms import Spectrum
 from MassFlow import io, processing
 from MassFlow.config import MassFlowConfig
 from MassFlow.similarity import (
+    MLRouter,
     SearchResult,
     SimilarityEngine,
     _MLEngineBase,
@@ -36,6 +37,7 @@ from MassFlow.similarity import (
 logger = logging.getLogger(__name__)
 
 _worker_engine: SimilarityEngine | _MLEngineBase | None = None
+_worker_router: MLRouter | None = None
 _worker_references: List[Spectrum] | None = None
 _worker_decoys: List[Spectrum] | None = None
 
@@ -108,10 +110,13 @@ def _init_worker(
 
     setup_structured_logging(level=logging.INFO, force_json=True)
 
-    global _worker_engine, _worker_references, _worker_decoys
+    global _worker_engine, _worker_router, _worker_references, _worker_decoys
     global _worker_ref_precursor_mzs, _worker_ref_is_decoy
 
     _worker_engine = get_similarity_engine(config.similarity)
+    _worker_router = (
+        MLRouter(config.similarity) if config.similarity.enable_routing else None
+    )
     _worker_references = references
     _worker_decoys = decoys
 
@@ -151,6 +156,15 @@ def _process_single_file(
     each chunk, and then applies FDR filtering across the aggregated results for
     that one file.
 
+    When ``config.similarity.enable_routing`` is True, each query spectrum is
+    classified by :class:`MLRouter` as "easy" or "hard" based on its
+    :class:`~MassFlow.models.TriageProfile`. Easy queries are scored by a fast
+    classical engine (e.g. modified cosine); hard queries are dispatched to an
+    ML consensus engine. All results are pooled for a unified FDR calculation.
+
+    If the ML engine fails or times out, the hard batch automatically falls
+    back to a classical engine without aborting the file.
+
     Parameters
     ----------
     query_file : Path
@@ -188,26 +202,44 @@ def _process_single_file(
             q.set("id", new_id)
             seen_ids.add(new_id)
 
-        global _worker_engine, _worker_references, _worker_decoys
+        global _worker_engine, _worker_router, _worker_references, _worker_decoys
         global _worker_ref_precursor_mzs, _worker_ref_is_decoy
-        engine = (
-            _worker_engine
-            if _worker_engine is not None
-            else get_similarity_engine(config.similarity)
-        )
 
         standard_queries = query_spectra
+
+        # ---- Routing decision --------------------------------------------------
+        enable_routing = getattr(config.similarity, "enable_routing", False)
 
         # Search against shared memory libraries if available (from Pool initializer)
         if _worker_references is not None and _worker_decoys is not None:
             all_references = _worker_references + _worker_decoys
-            all_results = engine.search(
-                standard_queries,
-                all_references,
-                include_decoys=False,
-                ref_precursor_mzs=_worker_ref_precursor_mzs,
-                ref_is_decoy=_worker_ref_is_decoy,
-            )
+
+            if enable_routing:
+                router = (
+                    _worker_router
+                    if _worker_router is not None
+                    else MLRouter(config.similarity)
+                )
+                all_results = router.route_and_search(
+                    standard_queries,
+                    all_references,
+                    include_decoys=False,
+                    ref_precursor_mzs=_worker_ref_precursor_mzs,
+                    ref_is_decoy=_worker_ref_is_decoy,
+                )
+            else:
+                engine = (
+                    _worker_engine
+                    if _worker_engine is not None
+                    else get_similarity_engine(config.similarity)
+                )
+                all_results = engine.search(
+                    standard_queries,
+                    all_references,
+                    include_decoys=False,
+                    ref_precursor_mzs=_worker_ref_precursor_mzs,
+                    ref_is_decoy=_worker_ref_is_decoy,
+                )
         else:
             # Fallback for single-process testing or direct invocation, streaming the library
             all_results = []
@@ -216,9 +248,22 @@ def _process_single_file(
             ref_gen = io.load_spectra(config.input.library_path)
             ref_iterator = processing.process_spectra(ref_gen, config.processing)
 
-            all_results = engine.search(
-                standard_queries, ref_iterator, include_decoys=True
-            )
+            if enable_routing:
+                router = MLRouter(config.similarity)
+                all_results = router.route_and_search(
+                    standard_queries,
+                    ref_iterator,
+                    include_decoys=True,
+                )
+            else:
+                engine = (
+                    _worker_engine
+                    if _worker_engine is not None
+                    else get_similarity_engine(config.similarity)
+                )
+                all_results = engine.search(
+                    standard_queries, ref_iterator, include_decoys=True
+                )
 
         # Global FDR calculation across all chunks for this experimental file
         target_scores = []

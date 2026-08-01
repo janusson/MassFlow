@@ -1,5 +1,5 @@
 site_name: MassFlow
-site_description: A config-first Python toolkit for local tandem mass spectrometry (MS/MS) annotation workflows.
+site_description: A config-first Python toolkit for local tandem mass spectrometry (MS/MS) data annotation.
 site_author: Eric Janusson
 repo_url: https://github.com/janusson/MassFlow
 repo_name: janusson/MassFlow

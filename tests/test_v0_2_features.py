@@ -1,5 +1,5 @@
 """
-TDD fixtures for v1.1 features: Retention Time (RT) filtering and Mass Error (ppm).
+TDD fixtures for v0.2 features: Retention Time (RT) filtering and Mass Error (ppm).
 
 These tests define the expected behaviour of two upcoming engine capabilities
 before the production code exists. They are designed to fail (Red phase) until

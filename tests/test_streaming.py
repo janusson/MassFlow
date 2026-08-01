@@ -1021,7 +1021,829 @@ class TestMemoryStability:
 
         assert q.stats.total_completed == N
         assert q.stats.total_dropped == 0
-        assert q.stats.total_dropped == 0
 
         # No meaningful assertion on gc stats (they're system-dependent),
         # but if we got here without OOM, we're good.
+
+
+# ---------------------------------------------------------------------------
+# OverflowPolicy + DROP_OLDEST tests
+# ---------------------------------------------------------------------------
+
+
+class TestOverflowPolicy:
+    """Tests for the new OverflowPolicy-based BoundedQueue semantics."""
+
+    @pytest.mark.asyncio
+    async def test_drop_oldest_evicts_oldest(self):
+        """DROP_OLDEST discards the oldest packet when full."""
+        from MassFlow.streaming.queue import (
+            BoundedQueue,
+            OverflowPolicy,
+            QueuedPacket,
+        )
+
+        q = BoundedQueue(capacity=3, overflow=OverflowPolicy.DROP_OLDEST)
+
+        for i in range(3):
+            await q.put(
+                QueuedPacket(
+                    spectrum_id=f"scan_{i:03d}",
+                    mz_array=[100.0],
+                    intensity_array=[999.0],
+                    precursor_mz=350.0,
+                    retention_time_seconds=0.0,
+                    charge=1,
+                    ion_mode="positive",
+                    adduct="",
+                    collision_energy=0.0,
+                    acquisition_timestamp_ns=0,
+                )
+            )
+
+        assert q.is_full
+        assert q.stats.total_dropped == 0
+
+        # Add a fourth — oldest (scan_000) should be evicted.
+        await q.put(
+            QueuedPacket(
+                spectrum_id="scan_003",
+                mz_array=[100.0],
+                intensity_array=[999.0],
+                precursor_mz=350.0,
+                retention_time_seconds=0.0,
+                charge=1,
+                ion_mode="positive",
+                adduct="",
+                collision_energy=0.0,
+                acquisition_timestamp_ns=0,
+            )
+        )
+
+        # One dropped (scan_000), one ingested (scan_003).
+        assert q.stats.total_dropped == 1
+        assert q.stats.total_ingested == 4
+        assert q.is_full
+
+        # The oldest remaining should be scan_001.
+        item = await q.get()
+        assert item is not None
+        assert item.spectrum_id == "scan_001"
+        q.task_done()
+
+    @pytest.mark.asyncio
+    async def test_drop_oldest_no_consumer_leak(self):
+        """DROP_OLDEST eviction maintains correct unfinished_tasks count."""
+        from MassFlow.streaming.queue import (
+            BoundedQueue,
+            OverflowPolicy,
+            QueuedPacket,
+        )
+
+        q = BoundedQueue(capacity=2, overflow=OverflowPolicy.DROP_OLDEST)
+
+        for i in range(5):
+            await q.put(
+                QueuedPacket(
+                    spectrum_id=f"scan_{i:03d}",
+                    mz_array=[100.0],
+                    intensity_array=[999.0],
+                    precursor_mz=350.0,
+                    retention_time_seconds=0.0,
+                    charge=1,
+                    ion_mode="positive",
+                    adduct="",
+                    collision_energy=0.0,
+                    acquisition_timestamp_ns=0,
+                )
+            )
+
+        # 3 dropped (scan_000, scan_001, scan_002), 5 ingested.
+        assert q.stats.total_dropped == 3
+        assert q.stats.total_ingested == 5
+
+        # Drain the remaining 2 items.
+        for _ in range(2):
+            item = await q.get()
+            assert item is not None
+            q.task_done()
+
+        # join() should not hang — unfinished_tasks must be consistent.
+        await asyncio.wait_for(q.join(), timeout=3.0)
+
+    @pytest.mark.asyncio
+    async def test_drop_oldest_try_put_nowait(self):
+        """try_put_nowait with DROP_OLDEST evicts oldest silently."""
+        from MassFlow.streaming.queue import (
+            BoundedQueue,
+            OverflowPolicy,
+            QueuedPacket,
+        )
+
+        q = BoundedQueue(capacity=2, overflow=OverflowPolicy.DROP_OLDEST)
+
+        q.try_put_nowait(
+            QueuedPacket(
+                spectrum_id="scan_000",
+                mz_array=[100.0],
+                intensity_array=[999.0],
+                precursor_mz=350.0,
+                retention_time_seconds=0.0,
+                charge=1,
+                ion_mode="positive",
+                adduct="",
+                collision_energy=0.0,
+                acquisition_timestamp_ns=0,
+            )
+        )
+        q.try_put_nowait(
+            QueuedPacket(
+                spectrum_id="scan_001",
+                mz_array=[100.0],
+                intensity_array=[999.0],
+                precursor_mz=350.0,
+                retention_time_seconds=0.0,
+                charge=1,
+                ion_mode="positive",
+                adduct="",
+                collision_energy=0.0,
+                acquisition_timestamp_ns=0,
+            )
+        )
+        assert q.is_full
+
+        # This should evict scan_000, not raise.
+        q.try_put_nowait(
+            QueuedPacket(
+                spectrum_id="scan_002",
+                mz_array=[100.0],
+                intensity_array=[999.0],
+                precursor_mz=350.0,
+                retention_time_seconds=0.0,
+                charge=1,
+                ion_mode="positive",
+                adduct="",
+                collision_energy=0.0,
+                acquisition_timestamp_ns=0,
+            )
+        )
+
+        assert q.stats.total_dropped == 1
+        assert q.stats.total_ingested == 3
+
+    @pytest.mark.asyncio
+    async def test_drop_oldest_preserves_depth(self):
+        """After DROP_OLDEST eviction, depth remains at capacity."""
+        from MassFlow.streaming.queue import (
+            BoundedQueue,
+            OverflowPolicy,
+            QueuedPacket,
+        )
+
+        q = BoundedQueue(capacity=3, overflow=OverflowPolicy.DROP_OLDEST)
+
+        for i in range(3):
+            await q.put(
+                QueuedPacket(
+                    spectrum_id=f"scan_{i:03d}",
+                    mz_array=[100.0],
+                    intensity_array=[999.0],
+                    precursor_mz=350.0,
+                    retention_time_seconds=0.0,
+                    charge=1,
+                    ion_mode="positive",
+                    adduct="",
+                    collision_energy=0.0,
+                    acquisition_timestamp_ns=0,
+                )
+            )
+
+        assert q.current_depth == 3
+
+        # Add many more — depth must never exceed capacity.
+        for i in range(3, 20):
+            await q.put(
+                QueuedPacket(
+                    spectrum_id=f"scan_{i:03d}",
+                    mz_array=[100.0],
+                    intensity_array=[999.0],
+                    precursor_mz=350.0,
+                    retention_time_seconds=0.0,
+                    charge=1,
+                    ion_mode="positive",
+                    adduct="",
+                    collision_energy=0.0,
+                    acquisition_timestamp_ns=0,
+                )
+            )
+            assert q.current_depth <= 3
+
+    @pytest.mark.asyncio
+    async def test_backward_compat_drop_on_full_true(self):
+        """Legacy drop_on_full=True raises QueueFull (reject-on-full)."""
+        from MassFlow.streaming.queue import (
+            BoundedQueue,
+            QueueFull,
+            QueuedPacket,
+        )
+
+        q = BoundedQueue(capacity=1, drop_on_full=True)
+
+        await q.put(
+            QueuedPacket(
+                spectrum_id="scan_000",
+                mz_array=[100.0],
+                intensity_array=[999.0],
+                precursor_mz=350.0,
+                retention_time_seconds=0.0,
+                charge=1,
+                ion_mode="positive",
+                adduct="",
+                collision_energy=0.0,
+                acquisition_timestamp_ns=0,
+            )
+        )
+
+        with pytest.raises(QueueFull):
+            await q.put(
+                QueuedPacket(
+                    spectrum_id="scan_001",
+                    mz_array=[200.0],
+                    intensity_array=[888.0],
+                    precursor_mz=400.0,
+                    retention_time_seconds=0.0,
+                    charge=1,
+                    ion_mode="positive",
+                    adduct="",
+                    collision_energy=0.0,
+                    acquisition_timestamp_ns=0,
+                )
+            )
+
+    @pytest.mark.asyncio
+    async def test_backward_compat_drop_on_full_false(self):
+        """Legacy drop_on_full=False blocks on full (BLOCK semantics)."""
+        from MassFlow.streaming.queue import (
+            BoundedQueue,
+            QueuedPacket,
+        )
+
+        q = BoundedQueue(capacity=1, drop_on_full=False)
+
+        await q.put(
+            QueuedPacket(
+                spectrum_id="scan_000",
+                mz_array=[100.0],
+                intensity_array=[999.0],
+                precursor_mz=350.0,
+                retention_time_seconds=0.0,
+                charge=1,
+                ion_mode="positive",
+                adduct="",
+                collision_energy=0.0,
+                acquisition_timestamp_ns=0,
+            )
+        )
+
+        # Should block, not raise.
+        async def put_extra():
+            await q.put(
+                QueuedPacket(
+                    spectrum_id="scan_001",
+                    mz_array=[200.0],
+                    intensity_array=[888.0],
+                    precursor_mz=400.0,
+                    retention_time_seconds=0.0,
+                    charge=1,
+                    ion_mode="positive",
+                    adduct="",
+                    collision_energy=0.0,
+                    acquisition_timestamp_ns=0,
+                )
+            )
+
+        task = asyncio.create_task(put_extra())
+        await asyncio.sleep(0.1)
+        assert not task.done()
+
+        # Drain to unblock.
+        item = await q.get()
+        assert item is not None
+        q.task_done()
+
+        await asyncio.wait_for(task, timeout=2.0)
+
+    @pytest.mark.asyncio
+    async def test_backward_compat_drop_on_full_none(self):
+        """drop_on_full=None uses overflow param (backward compat)."""
+        from MassFlow.streaming.queue import (
+            BoundedQueue,
+            OverflowPolicy,
+            QueuedPacket,
+        )
+
+        q = BoundedQueue(
+            capacity=2,
+            overflow=OverflowPolicy.DROP_OLDEST,
+            drop_on_full=None,
+        )
+
+        for i in range(3):
+            await q.put(
+                QueuedPacket(
+                    spectrum_id=f"scan_{i:03d}",
+                    mz_array=[100.0],
+                    intensity_array=[999.0],
+                    precursor_mz=350.0,
+                    retention_time_seconds=0.0,
+                    charge=1,
+                    ion_mode="positive",
+                    adduct="",
+                    collision_energy=0.0,
+                    acquisition_timestamp_ns=0,
+                )
+            )
+
+        assert q.stats.total_dropped == 1
+        assert q.overflow == OverflowPolicy.DROP_OLDEST
+
+
+# ---------------------------------------------------------------------------
+# BoundedQueue.drain() tests
+# ---------------------------------------------------------------------------
+
+
+class TestQueueDrain:
+    """Tests for the drain() graceful-shutdown helper."""
+
+    @pytest.mark.asyncio
+    async def test_drain_blocks_new_put(self):
+        """After drain() is called, new put() calls are silently dropped."""
+        from MassFlow.streaming.queue import (
+            BoundedQueue,
+            QueuedPacket,
+        )
+
+        q = BoundedQueue(capacity=8)
+
+        await q.put(
+            QueuedPacket(
+                spectrum_id="scan_000",
+                mz_array=[100.0],
+                intensity_array=[999.0],
+                precursor_mz=350.0,
+                retention_time_seconds=0.0,
+                charge=1,
+                ion_mode="positive",
+                adduct="",
+                collision_energy=0.0,
+                acquisition_timestamp_ns=0,
+            )
+        )
+
+        # Drain asynchronously — consumes the existing item.
+        async def consumer():
+            item = await q.get()
+            if item is not None:
+                q.task_done()
+
+        consumer_task = asyncio.create_task(consumer())
+        remaining = await q.drain(timeout=2.0)
+        assert remaining == 0
+
+        await consumer_task
+
+        # New puts should be silently dropped.
+        await q.put(
+            QueuedPacket(
+                spectrum_id="scan_rejected",
+                mz_array=[100.0],
+                intensity_array=[999.0],
+                precursor_mz=350.0,
+                retention_time_seconds=0.0,
+                charge=1,
+                ion_mode="positive",
+                adduct="",
+                collision_energy=0.0,
+                acquisition_timestamp_ns=0,
+            )
+        )
+        assert q.stats.total_dropped == 1
+
+    @pytest.mark.asyncio
+    async def test_drain_completes_empty_queue(self):
+        """drain() on an already-empty queue returns 0 immediately."""
+        from MassFlow.streaming.queue import BoundedQueue
+
+        q = BoundedQueue(capacity=8)
+        remaining = await q.drain(timeout=1.0)
+        assert remaining == 0
+
+    @pytest.mark.asyncio
+    async def test_drain_times_out_with_stalled_consumer(self):
+        """drain() returns remaining count when consumer is stalled."""
+        from MassFlow.streaming.queue import (
+            BoundedQueue,
+            QueuedPacket,
+        )
+
+        q = BoundedQueue(capacity=8)
+
+        for i in range(3):
+            await q.put(
+                QueuedPacket(
+                    spectrum_id=f"scan_{i:03d}",
+                    mz_array=[100.0],
+                    intensity_array=[999.0],
+                    precursor_mz=350.0,
+                    retention_time_seconds=0.0,
+                    charge=1,
+                    ion_mode="positive",
+                    adduct="",
+                    collision_energy=0.0,
+                    acquisition_timestamp_ns=0,
+                )
+            )
+
+        # Drain without a consumer — should time out.
+        remaining = await q.drain(timeout=0.2)
+        assert remaining > 0
+
+
+# ---------------------------------------------------------------------------
+# MicroBatcher tests
+# ---------------------------------------------------------------------------
+
+
+class TestMicroBatcher:
+    """Tests for time/batch-size micro-batch accumulator."""
+
+    def _make_packet(self, scan_id: str):
+        from MassFlow.streaming.queue import QueuedPacket
+
+        return QueuedPacket(
+            spectrum_id=scan_id,
+            mz_array=[100.0, 200.0],
+            intensity_array=[999.0, 500.0],
+            precursor_mz=350.0,
+            retention_time_seconds=0.0,
+            charge=1,
+            ion_mode="positive",
+            adduct="",
+            collision_energy=0.0,
+            acquisition_timestamp_ns=0,
+        )
+
+    def _make_spectrum(self):
+        from matchms import Spectrum
+        import numpy as np
+
+        return Spectrum(
+            mz=np.array([100.0, 200.0], dtype=np.float64),
+            intensities=np.array([999.0, 500.0], dtype=np.float64),
+            metadata={"precursor_mz": 350.0},
+        )
+
+    @pytest.mark.asyncio
+    async def test_batch_size_triggers_dispatch(self):
+        """Dispatch fires when batch_max_size is reached."""
+        from MassFlow.streaming.engine import MicroBatcher
+
+        batcher = MicroBatcher(batch_max_size=3, batch_timeout_seconds=5.0)
+
+        batch = None
+        for i in range(2):
+            result = await batcher.add(
+                self._make_packet(f"scan_{i:03d}"),
+                self._make_spectrum(),
+            )
+            assert result is None  # Not yet full.
+
+        # Third item should trigger dispatch.
+        batch = await batcher.add(
+            self._make_packet("scan_002"),
+            self._make_spectrum(),
+        )
+        assert batch is not None
+        packets, spectra = batch
+        assert len(packets) == 3
+        assert len(spectra) == 3
+        assert packets[0].spectrum_id == "scan_000"
+        assert batcher.pending_count == 0
+
+    @pytest.mark.asyncio
+    async def test_timeout_triggers_dispatch(self):
+        """Dispatch fires when the deadline expires."""
+        from MassFlow.streaming.engine import MicroBatcher
+
+        batcher = MicroBatcher(batch_max_size=64, batch_timeout_seconds=0.05)
+
+        # Add one item — not enough to fill batch.
+        result = await batcher.add(
+            self._make_packet("scan_000"),
+            self._make_spectrum(),
+        )
+        assert result is None
+
+        # Wait past the deadline.
+        await asyncio.sleep(0.1)
+
+        # Next add should trigger dispatch (deadline expired).
+        batch = await batcher.add(
+            self._make_packet("scan_001"),
+            self._make_spectrum(),
+        )
+        assert batch is not None
+        packets, spectra = batch
+        assert len(packets) == 2
+        assert packets[0].spectrum_id == "scan_000"
+
+    @pytest.mark.asyncio
+    async def test_flush_returns_pending(self):
+        """flush() returns pending items and resets state."""
+        from MassFlow.streaming.engine import MicroBatcher
+
+        batcher = MicroBatcher(batch_max_size=10, batch_timeout_seconds=5.0)
+
+        await batcher.add(self._make_packet("scan_000"), self._make_spectrum())
+        await batcher.add(self._make_packet("scan_001"), self._make_spectrum())
+
+        batch = await batcher.flush()
+        assert batch is not None
+        packets, spectra = batch
+        assert len(packets) == 2
+        assert batcher.pending_count == 0
+
+        # Second flush on empty batcher returns None.
+        assert await batcher.flush() is None
+
+    @pytest.mark.asyncio
+    async def test_flush_returns_none_when_empty(self):
+        """flush() on an empty batcher returns None."""
+        from MassFlow.streaming.engine import MicroBatcher
+
+        batcher = MicroBatcher(batch_max_size=10, batch_timeout_seconds=5.0)
+        assert await batcher.flush() is None
+
+
+# ---------------------------------------------------------------------------
+# Streaming validation gate tests
+# ---------------------------------------------------------------------------
+
+
+class TestStreamingValidation:
+    """Tests for the pre-scoring streaming validation gate."""
+
+    def _make_packet(self, **overrides):
+        from MassFlow.streaming.queue import QueuedPacket
+
+        defaults = dict(
+            spectrum_id="scan_test",
+            mz_array=[100.0, 200.0, 300.0],
+            intensity_array=[999.0, 500.0, 100.0],
+            precursor_mz=350.0,
+            retention_time_seconds=120.0,
+            charge=1,
+            ion_mode="positive",
+            adduct="[M+H]+",
+            collision_energy=25.0,
+            acquisition_timestamp_ns=0,
+        )
+        defaults.update(overrides)
+        return QueuedPacket(**defaults)
+
+    def test_valid_spectrum_passes(self):
+        """A well-formed streaming spectrum passes the validation gate."""
+        from MassFlow.config import ProcessingConfig
+        from MassFlow.streaming.engine import validate_streaming_spectrum
+
+        packet = self._make_packet()
+        config = ProcessingConfig(
+            min_peaks=2,
+            filter_min_peaks=True,
+            filter_by_intensity=False,
+        )
+        spectrum = validate_streaming_spectrum(packet, config)
+        assert spectrum is not None
+        assert len(spectrum.peaks) == 3
+
+    def test_empty_mz_array_raises(self):
+        """Empty m/z array raises StreamingValidationError."""
+        from MassFlow.config import ProcessingConfig
+        from MassFlow.streaming.engine import (
+            StreamingValidationError,
+            validate_streaming_spectrum,
+        )
+
+        packet = self._make_packet(mz_array=[], intensity_array=[])
+        with pytest.raises(StreamingValidationError, match="empty"):
+            validate_streaming_spectrum(packet, ProcessingConfig())
+
+    def test_mismatched_array_lengths_raises(self):
+        """Mismatched m/z and intensity lengths raise."""
+        from MassFlow.config import ProcessingConfig
+        from MassFlow.streaming.engine import (
+            StreamingValidationError,
+            validate_streaming_spectrum,
+        )
+
+        packet = self._make_packet(
+            mz_array=[100.0, 200.0],
+            intensity_array=[999.0],
+        )
+        with pytest.raises(StreamingValidationError, match="mismatched"):
+            validate_streaming_spectrum(packet, ProcessingConfig())
+
+    def test_nan_in_arrays_raises(self):
+        """NaN values in peak arrays raise."""
+        from MassFlow.config import ProcessingConfig
+        from MassFlow.streaming.engine import (
+            StreamingValidationError,
+            validate_streaming_spectrum,
+        )
+
+        packet = self._make_packet(
+            mz_array=[100.0, float("nan"), 300.0],
+            intensity_array=[999.0, 500.0, 100.0],
+        )
+        with pytest.raises(StreamingValidationError, match="NaN"):
+            validate_streaming_spectrum(packet, ProcessingConfig())
+
+    def test_inf_in_arrays_raises(self):
+        """Inf values in peak arrays raise."""
+        from MassFlow.config import ProcessingConfig
+        from MassFlow.streaming.engine import (
+            StreamingValidationError,
+            validate_streaming_spectrum,
+        )
+
+        packet = self._make_packet(
+            mz_array=[100.0, float("inf"), 300.0],
+            intensity_array=[999.0, 500.0, 100.0],
+        )
+        with pytest.raises(StreamingValidationError, match="Inf"):
+            validate_streaming_spectrum(packet, ProcessingConfig())
+
+    def test_insufficient_peaks_raises(self):
+        """Spectrum with too few peaks (below min_peaks) raises."""
+        from MassFlow.config import ProcessingConfig
+        from MassFlow.streaming.engine import (
+            StreamingValidationError,
+            validate_streaming_spectrum,
+        )
+
+        packet = self._make_packet(
+            mz_array=[100.0],
+            intensity_array=[999.0],
+        )
+        config = ProcessingConfig(
+            min_peaks=5,
+            filter_min_peaks=True,
+            filter_by_intensity=False,
+        )
+        with pytest.raises(StreamingValidationError, match="fewer than 5"):
+            validate_streaming_spectrum(packet, config)
+
+    def test_noise_threshold_filters_all_peaks_raises(self):
+        """Spectrum with all peaks below noise threshold raises."""
+        from MassFlow.config import ProcessingConfig
+        from MassFlow.streaming.engine import (
+            StreamingValidationError,
+            validate_streaming_spectrum,
+        )
+
+        packet = self._make_packet(
+            mz_array=[100.0, 200.0, 300.0],
+            intensity_array=[10.0, 20.0, 30.0],
+        )
+        config = ProcessingConfig(
+            min_peaks=1,
+            filter_by_intensity=True,
+            noise_threshold=1000.0,
+        )
+        with pytest.raises(StreamingValidationError, match="noise threshold"):
+            validate_streaming_spectrum(packet, config)
+
+    def test_negative_precursor_mz_raises(self):
+        """Negative precursor_mz fails Pydantic model validation."""
+        from MassFlow.config import ProcessingConfig
+        from MassFlow.streaming.engine import (
+            StreamingValidationError,
+            validate_streaming_spectrum,
+        )
+
+        packet = self._make_packet(precursor_mz=-1.0)
+        config = ProcessingConfig(
+            filter_by_intensity=False,
+            filter_min_peaks=False,
+        )
+        with pytest.raises(StreamingValidationError, match="precursor"):
+            validate_streaming_spectrum(packet, config)
+
+    def test_unsorted_mz_gets_sorted(self):
+        """Unsorted m/z arrays are sorted during validation."""
+        from MassFlow.config import ProcessingConfig
+        from MassFlow.streaming.engine import validate_streaming_spectrum
+
+        packet = self._make_packet(
+            mz_array=[300.0, 100.0, 200.0],
+            intensity_array=[100.0, 999.0, 500.0],
+        )
+        config = ProcessingConfig(
+            filter_by_intensity=False,
+            filter_min_peaks=False,
+        )
+        spectrum = validate_streaming_spectrum(packet, config)
+        # m/z should be ascending.
+        assert np.all(spectrum.peaks.mz[:-1] <= spectrum.peaks.mz[1:])
+        assert spectrum.peaks.mz[0] == 100.0
+        assert spectrum.peaks.mz[-1] == 300.0
+
+    def test_metadata_attached(self):
+        """Validated spectrum carries the expected metadata."""
+        from MassFlow.config import ProcessingConfig
+        from MassFlow.streaming.engine import validate_streaming_spectrum
+
+        packet = self._make_packet()
+        config = ProcessingConfig(
+            filter_by_intensity=False,
+            filter_min_peaks=False,
+        )
+        spectrum = validate_streaming_spectrum(packet, config)
+        assert spectrum.get("precursor_mz") == 350.0
+        assert spectrum.get("charge") == 1
+        assert spectrum.get("ionmode") == "positive"
+        assert spectrum.get("adduct") == "[M+H]+"
+        assert spectrum.get("id") == "scan_test"
+
+
+# ---------------------------------------------------------------------------
+# StreamingEngine.annotate_batch tests
+# ---------------------------------------------------------------------------
+
+
+class TestAnnotateBatch:
+    """Tests for micro-batched annotation."""
+
+    def test_annotate_batch_returns_per_packet_responses(self, temp_config_yaml):
+        """annotate_batch returns one response per input packet."""
+        from MassFlow.config import MassFlowConfig, ProcessingConfig
+        from MassFlow.streaming.engine import (
+            StreamingEngine,
+            load_reference_library,
+            validate_streaming_spectrum,
+        )
+        from MassFlow.streaming.queue import QueuedPacket
+
+        config = MassFlowConfig.from_yaml(temp_config_yaml)
+        refs = load_reference_library(config)
+        engine = StreamingEngine(config=config, reference_spectra=refs, top_n=3)
+
+        # Use a processing config that won't filter out our test peaks.
+        proc_cfg = ProcessingConfig(
+            min_peaks=1,
+            filter_by_intensity=False,
+            filter_min_peaks=False,
+        )
+
+        packets = []
+        spectra = []
+        for i in range(3):
+            pkt = QueuedPacket(
+                spectrum_id=f"scan_batch_{i:03d}",
+                mz_array=[100.0, 200.0, 300.0],
+                intensity_array=[999.0, 500.0, 100.0],
+                precursor_mz=350.0,
+                retention_time_seconds=float(i),
+                charge=1,
+                ion_mode="positive",
+                adduct="[M+H]+",
+                collision_energy=25.0,
+                acquisition_timestamp_ns=0,
+            )
+            spectrum = validate_streaming_spectrum(pkt, proc_cfg)
+            packets.append(pkt)
+            spectra.append(spectrum)
+
+        results = engine.annotate_batch(packets, spectra)
+
+        assert len(results) == 3
+        ids = {r["spectrum_id"] for r in results}
+        assert ids == {"scan_batch_000", "scan_batch_001", "scan_batch_002"}
+        for r in results:
+            assert r["status"] in ("annotated", "no_match", "error")
+
+    def test_annotate_batch_empty_input(self, temp_config_yaml):
+        """annotate_batch with empty lists returns empty list."""
+        from MassFlow.config import MassFlowConfig
+        from MassFlow.streaming.engine import (
+            StreamingEngine,
+            load_reference_library,
+        )
+
+        config = MassFlowConfig.from_yaml(temp_config_yaml)
+        refs = load_reference_library(config)
+        engine = StreamingEngine(config=config, reference_spectra=refs, top_n=3)
+
+        results = engine.annotate_batch([], [])
+        assert results == []

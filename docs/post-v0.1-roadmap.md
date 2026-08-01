@@ -1,6 +1,6 @@
-# Post-v1.0 Development Roadmap
+# Post-v0.1 Development Roadmap
 
-With the release of MassFlow v1.0, the core processing and annotation pipelines are stabilized. Future development will focus on scaling, deployment, and advanced machine learning integrations.
+With the release of MassFlow v0.1, the core processing and annotation pipelines are stabilized. Future development will focus on scaling, deployment, and advanced machine learning integrations.
 
 ## 1. Satellite Repository Integration (`massflow-ml`)
 To maintain the lightweight nature of the core `MassFlow` package, heavy machine learning dependencies (e.g., TensorFlow, PyTorch, Gensim) will be isolated.

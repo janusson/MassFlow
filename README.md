@@ -1,4 +1,4 @@
-# MassFlow (v1.0.0)
+# MassFlow (v0.1.0)
 
 [![Documentation](https://img.shields.io/badge/docs-available-blue.svg)](https://ericjanusson.github.io/MassFlow/)
 
@@ -63,7 +63,7 @@ MassFlow is designed for local, reproducible MS/MS annotation workflows where yo
 
 ## What is stable vs experimental
 
-### Core workflow for `v1.0`
+### Core workflow for `v0.1`
 These are the parts to rely on first:
 
 - `massflow tutorial` — generates synthetic data for instant evaluation
@@ -407,7 +407,7 @@ MassFlow is intentionally conservative at the I/O boundary.
 - `README.md`: quickstart and user-facing overview
 - `ARCHITECTURE.md`: module responsibilities and data flow
 - `docs/user-guide/`: technical manuals and metadata contracts
-- `docs/post-v1.0-roadmap.md`: future development
+- `docs/post-v0.1-roadmap.md`: future development
 
 ## License
 

@@ -1,6 +1,6 @@
 # Classical Similarity Scoring
 
-MassFlow v1.0 establishes a robust, stable contract around classical spectral similarity engines. The primary supported algorithms are the foundational `cosine` and `modified_cosine` implementations from the `matchms` library.
+MassFlow v0.1 establishes a robust, stable contract around classical spectral similarity engines. The primary supported algorithms are the foundational `cosine` and `modified_cosine` implementations from the `matchms` library.
 
 These engines compare the mass-to-charge (m/z) and intensity arrays of an experimental query spectrum against a reference library to identify candidate compounds.
 
@@ -84,6 +84,6 @@ The `similarity` section of your YAML configuration enforces strict chemical and
 
 MassFlow contains several advanced machine learning models and orchestration logic (like `spec2vec`, `ms2deepscore`, `consensus`, and `cascade`).
 
-Because these engines require external model weights, complex validation, or specific tie-breaking logic, they are not currently part of the stable v1.0 pipeline contract.
+Because these engines require external model weights, complex validation, or specific tie-breaking logic, they are not currently part of the stable v0.1 pipeline contract.
 
 For documentation on how to configure and run these engines at your own risk, see the [Experimental Features](../experimental/ml-engines.md) guide.

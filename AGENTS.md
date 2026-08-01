@@ -70,7 +70,7 @@ Tests that **can** use formula-based fallbacks (via `pyteomics`) should have **t
 
 ### 2.5 Pytest Markers
 
-- `@pytest.mark.core` — must pass for the v1.0 stable release contract. Use this for tests of `cosine`, `modified_cosine`, CSV/mzTab-M export, and SQLite DB workflows.
+- `@pytest.mark.core` — must pass for the v0.1 stable release contract. Use this for tests of `cosine`, `modified_cosine`, CSV/mzTab-M export, and SQLite DB workflows.
 - Tests for experimental features (`spec2vec`, `ms2deepscore`, `consensus`, `cascade`, GraphML networking) should NOT be marked `core`.
 
 ---
@@ -189,7 +189,7 @@ The 5-ppm tolerance is **physically mandated** and **not configurable**:
 
 | Status | Features | Constraint |
 |---|---|---|
-| **v1.0 Stable** | `cosine`, `modified_cosine`, `massflow annotate`, `massflow db`, CSV/mzTab-M export, SQLite libraries | Must not regress; all `@pytest.mark.core` tests must pass |
+| **v0.1 Stable** | `cosine`, `modified_cosine`, `massflow annotate`, `massflow db`, CSV/mzTab-M export, SQLite libraries | Must not regress; all `@pytest.mark.core` tests must pass |
 | **Experimental** | `spec2vec`, `ms2deepscore`, `consensus`, `cascade`, GraphML networking, terminal browser | Can evolve freely; must not break stable paths |
 
 ### 6.2 Module Boundaries
@@ -261,5 +261,5 @@ uv run massflow db merge --databases <a.db> <b.db> --output merged.db
 1. **Read the existing tests first.** The test files in `tests/` are the most reliable specification of expected behavior.
 2. **Consult `CONTRIBUTING.md`** for development workflow, and `ARCHITECTURE.md` for component responsibilities.
 3. **Run the test suite** before and after your change. If coverage drops below 80%, add tests.
-4. **Respect stable vs experimental boundaries.** If a change affects the v1.0 stable contract (`cosine`, `modified_cosine`, `massflow annotate`, `massflow db`), it requires extra scrutiny.
+4. **Respect stable vs experimental boundaries.** If a change affects the v0.1 stable contract (`cosine`, `modified_cosine`, `massflow annotate`, `massflow db`), it requires extra scrutiny.
 5. **Ask before guessing.** If the docs, tests, and code disagree, raise the inconsistency rather than picking one arbitrarily.

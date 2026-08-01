@@ -19,7 +19,7 @@ The architecture is intentionally modular. Configuration, I/O, processing,
 similarity scoring, database access, and workflow orchestration live in
 separate modules so the main annotation path stays predictable and testable.
 
-For `v1.0`, the stable product contract is centered on:
+For `v0.1`, the stable product contract is centered on:
 
 - `massflow annotate --config ...`
 - SQLite-backed library workflows through `massflow db`
@@ -106,10 +106,10 @@ graph LR
   - Experimental engines:
     - `spec2vec`
     - `ms2deepscore`
-    - `consensus` (via the `ConsensusEngine` and v1.1 Orchestrator API)
+    - `consensus` (via the `ConsensusEngine` and v0.2 Orchestrator API)
     - `cascade`
 
-### Orchestrator API (v1.1 Foundation)
+### Orchestrator API (v0.2 Foundation)
 
 - `src/MassFlow/models.py`
   - Defines strict Pydantic data contracts (`AnnotationHit`, `ConsensusInput`, `ConsensusResult`, `ConsensusConfig`, `MolecularStructure`).

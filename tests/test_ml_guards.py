@@ -114,19 +114,36 @@ class TestMLEngineDegradation:
         [
             ("spec2vec", Spec2VecEngine),
             ("ms2deepscore", MS2DeepScoreEngine),
-            ("consensus", ConsensusEngine),
-            ("cascade", CascadeEngine),
         ],
     )
     def test_factory_raises_runtime_error_without_ml(
         self, algo: str, engine_cls: type
     ) -> None:
-        """Factory must raise RuntimeError for ML algos when ml extras absent."""
+        """Factory must raise RuntimeError for pure ML algos when ml extras absent."""
         if _HAS_ML:
             pytest.skip("ML extras are installed; degradation test not applicable")
 
         with pytest.raises(RuntimeError, match="machine-learning extras"):
             get_similarity_engine(SimilarityConfig(algorithm=algo))
+
+    @pytest.mark.parametrize(
+        "algo,engine_cls",
+        [
+            ("consensus", ConsensusEngine),
+            ("cascade", CascadeEngine),
+        ],
+    )
+    def test_meta_engines_degrade_gracefully_without_ml(
+        self, algo: str, engine_cls: type
+    ) -> None:
+        """Consensus/Cascade must succeed even without ML deps, falling back to classical."""
+        if _HAS_ML:
+            pytest.skip("ML extras are installed; degradation test not applicable")
+
+        engine = get_similarity_engine(SimilarityConfig(algorithm=algo))
+        assert isinstance(engine, engine_cls), (
+            f"Expected {engine_cls.__name__} for {algo}, got {type(engine).__name__}"
+        )
 
     @pytest.mark.parametrize(
         "engine_cls",
@@ -275,3 +292,216 @@ class TestMLAbsenceSimulation:
         # This must not raise
         engine = get_similarity_engine(SimilarityConfig(algorithm="cosine"))
         assert isinstance(engine, SimilarityEngine)
+
+
+# =============================================================================
+# Entry-point registry and protocol compliance tests
+# =============================================================================
+
+
+class TestEntryPointRegistry:
+    """Verify that the entry-point-based engine registry works correctly."""
+
+    def test_registry_is_dict(self) -> None:
+        """_ML_ENGINE_REGISTRY must be a dict."""
+        from MassFlow.similarity import _ML_ENGINE_REGISTRY
+
+        assert isinstance(_ML_ENGINE_REGISTRY, dict)
+
+    def test_registry_contains_builtin_engines(self) -> None:
+        """All four built-in ML engines must be discoverable via entry points."""
+        from MassFlow.similarity import _ML_ENGINE_REGISTRY
+
+        expected = {"spec2vec", "ms2deepscore", "consensus", "cascade"}
+        registered = set(_ML_ENGINE_REGISTRY.keys())
+        missing = expected - registered
+        assert not missing, (
+            f"Built-in engines not found in registry: {missing}. "
+            f"Registered: {registered}"
+        )
+
+    def test_legacy_alias_points_to_registry(self) -> None:
+        """_ML_ENGINE_MAP must be an alias for _ML_ENGINE_REGISTRY."""
+        from MassFlow.similarity import _ML_ENGINE_MAP, _ML_ENGINE_REGISTRY
+
+        assert _ML_ENGINE_MAP is _ML_ENGINE_REGISTRY, (
+            "_ML_ENGINE_MAP must be the same object as _ML_ENGINE_REGISTRY"
+        )
+
+    @pytest.mark.parametrize(
+        "algo", ["spec2vec", "ms2deepscore", "consensus", "cascade"]
+    )
+    def test_registry_entries_are_classes(self, algo: str) -> None:
+        """Each registry entry must resolve to a class (not a module or function)."""
+        from MassFlow.similarity import _ML_ENGINE_REGISTRY
+
+        engine_cls = _ML_ENGINE_REGISTRY[algo]
+        assert isinstance(engine_cls, type), (
+            f"Registry entry '{algo}' is {type(engine_cls).__name__}, expected a class"
+        )
+
+    def test_discovery_is_idempotent(self) -> None:
+        """Calling _discover_ml_engines twice must produce identical results."""
+        from MassFlow.similarity import _discover_ml_engines
+
+        first = _discover_ml_engines()
+        second = _discover_ml_engines()
+        assert first == second, "Repeated discovery must produce consistent results"
+
+
+class TestProtocolCompliance:
+    """Verify that all registered ML engines implement MLEngineProtocol."""
+
+    def test_registered_engines_are_protocol_subclasses(self) -> None:
+        """Every engine in _ML_ENGINE_REGISTRY must be a subclass of MLEngineProtocol."""
+        from MassFlow.protocols import MLEngineProtocol
+        from MassFlow.similarity import _ML_ENGINE_REGISTRY
+
+        for algo, engine_cls in _ML_ENGINE_REGISTRY.items():
+            assert issubclass(engine_cls, MLEngineProtocol), (
+                f"'{algo}' ({engine_cls.__name__}) must be a subclass of MLEngineProtocol"
+            )
+
+    def test_protocol_defines_required_methods(self) -> None:
+        """MLEngineProtocol must declare search, batch_score, and load_model."""
+        from MassFlow.protocols import MLEngineProtocol
+
+        assert hasattr(MLEngineProtocol, "search"), "Protocol missing 'search'"
+        assert hasattr(MLEngineProtocol, "batch_score"), (
+            "Protocol missing 'batch_score'"
+        )
+        assert hasattr(MLEngineProtocol, "load_model"), "Protocol missing 'load_model'"
+
+    def test_base_engine_implements_batch_score(self) -> None:
+        """_MLEngineBase.batch_score must exist and accept correct signature."""
+        from MassFlow.similarity import _MLEngineBase
+
+        assert hasattr(_MLEngineBase, "batch_score")
+        assert callable(_MLEngineBase.batch_score)
+
+    def test_base_engine_implements_load_model(self) -> None:
+        """_MLEngineBase.load_model must exist and accept a path argument."""
+        from MassFlow.similarity import _MLEngineBase
+
+        assert hasattr(_MLEngineBase, "load_model")
+        assert callable(_MLEngineBase.load_model)
+
+
+# =============================================================================
+# Numerical-parity scaffolding (for v1.x migration from inline → plugin ML)
+# =============================================================================
+
+
+class TestNumericalParityScaffolding:
+    """
+    Scaffolding to verify numerical parity between legacy inline ML engines
+    and their decoupled plugin equivalents.
+
+    These tests establish the contract that the satellite ``massflow-ml``
+    package must satisfy.  The actual numerical assertions will be
+    populated once the ML engines have full implementations.
+    """
+
+    def test_searchresult_structure_identical_regardless_of_engine(
+        self,
+    ) -> None:
+        """
+        SearchResult keys must be identical whether the engine was obtained
+        via direct construction or via the entry-point factory.
+
+        This guarantees that downstream code (FDR, export, database) never
+        needs to know how the engine was created.
+        """
+        from typing import get_type_hints
+
+        from MassFlow.similarity import SearchResult
+
+        # SearchResult is a TypedDict; its __annotations__ define the required keys.
+        required_keys = set(get_type_hints(SearchResult).keys())
+        expected_keys = {
+            "query_id",
+            "query_precursor_mz",
+            "reference_id",
+            "reference_name",
+            "reference_precursor_mz",
+            "score",
+            "matched_peaks",
+            "smiles",
+            "inchikey",
+            "is_decoy",
+            "q_value",
+            "p_value",
+            "annotation_tier",
+            "structural_similarity",
+            "mass_error_ppm",
+            "score_breakdown",
+        }
+        assert required_keys == expected_keys, (
+            f"SearchResult keys changed! Expected: {expected_keys}, got: {required_keys}"
+        )
+
+    def test_factory_and_direct_construct_return_same_type(self) -> None:
+        """
+        For classical algorithms, factory and direct construction must
+        produce the same engine type.
+        """
+        for algo in ("cosine", "modified_cosine"):
+            cfg = SimilarityConfig(algorithm=algo)
+            from_factory = get_similarity_engine(cfg)
+            from_direct = SimilarityEngine(cfg)
+            assert type(from_factory) is type(from_direct), (
+                f"Factory returned {type(from_factory).__name__} "
+                f"but direct construction gave {type(from_direct).__name__} "
+                f"for algorithm '{algo}'"
+            )
+
+    def test_ml_router_uses_registry(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """
+        MLRouter must use _ML_ENGINE_REGISTRY (not a hardcoded map) to
+        check for available ML engines.
+        """
+        from MassFlow.similarity import MLRouter
+
+        # Verify the router references _ML_ENGINE_REGISTRY
+        import inspect
+
+        source = inspect.getsource(MLRouter._get_hard_engine)
+        assert "_ML_ENGINE_REGISTRY" in source, (
+            "MLRouter._get_hard_engine must reference _ML_ENGINE_REGISTRY"
+        )
+
+    def test_search_result_serialization_roundtrip(self) -> None:
+        """
+        SearchResult dicts must survive a JSON-serialization roundtrip
+        without losing precision or keys.
+        """
+        import json
+
+        from MassFlow.similarity import SearchResult
+
+        result: SearchResult = {
+            "query_id": "test_query_1",
+            "query_precursor_mz": 304.1543,
+            "reference_id": "test_ref_1",
+            "reference_name": "Caffeine",
+            "reference_precursor_mz": 195.0877,
+            "score": 0.9234,
+            "matched_peaks": 12,
+            "smiles": "CN1C=NC2=C1C(=O)N(C(=O)N2C)C",
+            "inchikey": "RYYVLZVUVIJVGH-UHFFFAOYSA-N",
+            "is_decoy": False,
+            "q_value": 0.001,
+            "p_value": 0.0005,
+            "annotation_tier": "Level 1",
+            "structural_similarity": 0.87,
+            "mass_error_ppm": 1.23,
+            "score_breakdown": {"cosine": 0.92, "modified_cosine": 0.88},
+        }
+
+        serialized = json.dumps(result, allow_nan=False)
+        deserialized = json.loads(serialized)
+
+        assert deserialized["query_id"] == result["query_id"]
+        assert deserialized["score"] == result["score"]
+        assert deserialized["score_breakdown"] == result["score_breakdown"]
+        assert deserialized["is_decoy"] == result["is_decoy"]

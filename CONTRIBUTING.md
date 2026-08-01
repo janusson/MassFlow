@@ -2,7 +2,7 @@
 
 Thanks for your interest in improving MassFlow.
 
-MassFlow is a pre-1.0, CLI-first Python toolkit for local MS/MS annotation. The
+MassFlow is an early-stage, CLI-first Python toolkit for local MS/MS annotation. The
 current stabilization priority is the core annotation workflow, SQLite-backed
 library workflows, and documentation that matches the code.
 
@@ -133,7 +133,7 @@ If your change affects how users run the program, update the relevant docs:
 - `README.md` for quickstart and user-facing workflow changes
 - `ARCHITECTURE.md` for structural or boundary changes
 - `CHANGELOG.md` for release-facing summaries
-- `V1_0_DEVELOPMENT_PLAN.md` if the work changes release planning
+- `docs/post-v0.1-roadmap.md` if the work changes release planning
 
 Keep examples short and realistic. Prefer one clear example over many stale
 ones.
@@ -170,7 +170,7 @@ When reporting a bug, please include:
 
 ## Scope and Stability Notes
 
-For the current pre-1.0 line, the most stable surfaces are:
+For the current pre-0.1 line, the most stable surfaces are:
 
 - `massflow annotate --config ...`
 - YAML configuration loading

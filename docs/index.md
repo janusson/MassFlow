@@ -17,7 +17,7 @@
 
 ## Mission
 
-MassFlow v1.0 delivers a reliable and easily configurable pipeline that takes open-format experimental spectra and reference libraries, applies standard `matchms` processing, performs classical similarity searching, and produces predictable tabular results.
+MassFlow v0.1 delivers a reliable and easily configurable pipeline that takes open-format experimental spectra and reference libraries, applies standard `matchms` processing, performs classical similarity searching, and produces predictable tabular results.
 
 We prioritize stability, predictability, and correct data handling over cutting-edge features.
 
@@ -35,7 +35,7 @@ We prioritize stability, predictability, and correct data handling over cutting-
 | `cosine` and `modified_cosine` | **Stable** | Best-supported classical scoring paths |
 | CSV, mzTab-M, and FBMN export | **Stable** | Main reporting surfaces (w/ YAML provenance reports) |
 | Scientific Validation (5 ppm checks) | **Stable** | Built-in strict physical integrity checks |
-| Orchestrator API (`ConsensusEngine`, etc.) | *Experimental* | Engine-agnostic data contracts for v1.1 ML integration |
+| Orchestrator API (`ConsensusEngine`, etc.) | *Experimental* | Engine-agnostic data contracts for v0.2 ML integration |
 | Advanced Engines (`spec2vec`, `ms2deepscore`, `cascade`) | *Experimental* | Higher setup and complex scientific validation |
 | GraphML networking & Visualization | *Experimental* | Optional and non-core |
 | Language Server (LSP) | *Experimental* | Editor integration for real-time validation |

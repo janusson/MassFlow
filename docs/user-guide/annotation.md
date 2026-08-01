@@ -1,6 +1,6 @@
 # CLI Workflows
 
-The core of MassFlow v1.0 is the config-driven CLI. These workflows are designed to be fully reproducible, predictable, and simple enough to execute in an automated shell script or CI/CD pipeline.
+The core of MassFlow v0.1 is the config-driven CLI. These workflows are designed to be fully reproducible, predictable, and simple enough to execute in an automated shell script or CI/CD pipeline.
 
 ## Standard Annotation
 

@@ -1,6 +1,6 @@
 [project]
 name = "massflow"
-version = "1.0.0"
+version = "0.1.0"
 description = "A scientific Python package for mass spectrometry processing and analysis."
 readme = "README.md"
 license = {text = "MIT"}
@@ -47,6 +47,12 @@ watch = [
 [project.scripts]
 massflow = "MassFlow.cli:main"
 
+[project.entry-points."massflow.similarity_engines"]
+spec2vec = "MassFlow.similarity:Spec2VecEngine"
+ms2deepscore = "MassFlow.similarity:MS2DeepScoreEngine"
+consensus = "MassFlow.similarity:ConsensusEngine"
+cascade = "MassFlow.similarity:CascadeEngine"
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/MassFlow"]
 
@@ -79,7 +85,7 @@ exclude = ["repro_isotope\\.py"]
 [tool.pytest.ini_options]
 addopts = "-m 'not benchmark'"
 markers = [
-    "core: tests that must pass for the v1.0 stable release contract",
+    "core: tests that must pass for the v0.1 stable release contract",
     "benchmark: performance and latency benchmark tests (run with -m benchmark)",
 ]
 

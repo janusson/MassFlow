@@ -50,6 +50,7 @@ import numpy as np
 from matchms import Spectrum
 
 from MassFlow.storage import SpectralStore
+from MassFlow.models import TriageProfile
 
 CURRENT_SPECTRA_COLUMNS = {
     "id",
@@ -1196,6 +1197,46 @@ class SpectralDatabase(SpectralStore):
         if row is None:
             return None
         return self._row_to_spectrum(row)
+
+    def get_triage_profile(self, spectrum_id: str) -> Optional[TriageProfile]:
+        """Retrieve the structured :class:`TriageProfile` for a spectrum.
+
+        Parses the ``triage_flags`` JSON column directly from the database row
+        without materialising a full ``matchms.Spectrum``. This is suitable for
+        bulk pre-filtering or batch classification where peak arrays are not
+        yet needed.
+
+        Parameters
+        ----------
+        spectrum_id : str
+            The ``original_id`` of the spectrum.
+
+        Returns
+        -------
+        TriageProfile or None
+            Populated profile, or ``None`` if the spectrum is not found.
+        """
+        if not self.conn:
+            raise ConnectionError("Database not connected.")
+        cursor = self.conn.cursor()
+        cursor.execute(
+            "SELECT triage_flags FROM spectra WHERE original_id = ? LIMIT 1",
+            (spectrum_id,),
+        )
+        row = cursor.fetchone()
+        if row is None:
+            return None
+
+        raw = row["triage_flags"]
+        if raw and isinstance(raw, str) and raw.strip():
+            try:
+                flags_dict = json.loads(raw)
+            except (json.JSONDecodeError, TypeError):
+                flags_dict = {}
+        else:
+            flags_dict = {}
+
+        return TriageProfile(**flags_dict)
 
     def merge_from_sqlite(
         self,

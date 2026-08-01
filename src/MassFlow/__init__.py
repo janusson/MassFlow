@@ -12,12 +12,13 @@ from __future__ import annotations
 import importlib.metadata
 
 try:
-    __version__ = "1.0.0"
+    __version__ = "0.1.0"
 except importlib.metadata.PackageNotFoundError:
     __version__ = "unknown"
 
 __all__ = [
     "MassFlowConfig",
+    "MLEngineProtocol",
     "SpectralDatabase",
     "SpectralStore",
     "ZarrSpectralStore",
@@ -30,6 +31,7 @@ __all__ = [
     "database",
     "io",
     "processing",
+    "protocols",
     "similarity",
     "storage",
     "workflow",
@@ -43,6 +45,10 @@ def __getattr__(name):
         from .config import MassFlowConfig
 
         return MassFlowConfig
+    elif name == "MLEngineProtocol":
+        from .protocols import MLEngineProtocol
+
+        return MLEngineProtocol
     elif name == "SpectralDatabase":
         from .database import SpectralDatabase
 

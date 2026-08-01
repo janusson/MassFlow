@@ -12,7 +12,7 @@ Storage backends implement:
 - High-throughput batch array retrieval for similarity matrix construction.
 - Aggregate metadata queries (total counts, category breakdowns, m/z ranges).
 
-The default backend for v1.0 workflows is ``"sqlite"``, which uses the existing
+The default backend for v0.1 workflows is ``"sqlite"``, which uses the existing
 ``SpectralDatabase`` class. The ``"zarr"`` backend is opt-in via configuration
 and is intended for horizontal-scaling and cloud-native distributed search
 scenarios.
@@ -223,7 +223,7 @@ def create_spectral_store(
         File-system path for the store.
     backend : str
         Backend identifier. Supported values:
-        - ``"sqlite"`` — SQLite BLOB-backed store (default, v1.0 stable).
+        - ``"sqlite"`` — SQLite BLOB-backed store (default, v0.1 stable).
         - ``"zarr"`` — Zarr/Blosc-backed store (cloud-optimized).
     **kwargs
         Additional keyword arguments forwarded to the store constructor.
