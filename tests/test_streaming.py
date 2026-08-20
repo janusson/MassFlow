@@ -556,6 +556,55 @@ class TestStreamingEngine:
         assert engine._engine is not None
         assert len(engine._ref_precursor_mzs) == len(refs)
 
+    def test_engine_routes_through_consensus(self, temp_config_yaml):
+        """Streaming annotations are routed through the ConsensusEngine."""
+        from MassFlow.config import MassFlowConfig
+        from MassFlow.similarity import ConsensusEngine
+        from MassFlow.streaming.engine import (
+            StreamingEngine,
+            load_reference_library,
+        )
+
+        config = MassFlowConfig.from_yaml(temp_config_yaml)
+        refs = load_reference_library(config)
+        engine = StreamingEngine(config=config, reference_spectra=refs, top_n=3)
+
+        assert isinstance(engine._engine, ConsensusEngine)
+        # Classical sub-engines are always available even without ML extras.
+        assert engine._engine._sub_engines
+
+    def test_consensus_hits_carry_structural_similarity(self, temp_config_yaml):
+        """Consensus hits expose the best individual sub-engine score."""
+        from MassFlow.config import MassFlowConfig
+        from MassFlow.streaming.engine import (
+            StreamingEngine,
+            load_reference_library,
+        )
+        from MassFlow.streaming.queue import QueuedPacket
+
+        config = MassFlowConfig.from_yaml(temp_config_yaml)
+        refs = load_reference_library(config)
+        engine = StreamingEngine(config=config, reference_spectra=refs, top_n=3)
+
+        packet = QueuedPacket(
+            spectrum_id="scan_consensus",
+            mz_array=[100.0, 200.0, 300.0],
+            intensity_array=[999.0, 500.0, 100.0],
+            precursor_mz=350.0,
+            retention_time_seconds=120.0,
+            charge=1,
+            ion_mode="positive",
+            adduct="[M+H]+",
+            collision_energy=25.0,
+            acquisition_timestamp_ns=0,
+        )
+        result = engine.annotate(packet)
+        assert result["status"] == "annotated"
+        hit = result["top_hits"][0]
+        # structural_similarity carries the best individual sub-engine
+        # score, which is >= the weighted consensus score.
+        assert hit["structural_similarity"] >= hit["score"]
+
     def test_annotate_returns_hits(self, temp_config_yaml):
         """Annotating a known spectrum returns hits."""
         from MassFlow.config import MassFlowConfig
@@ -747,6 +796,164 @@ class TestSpectrumConversion:
 
 
 # ---------------------------------------------------------------------------
+# High-water-mark quality-gated backpressure (Phase 4)
+# ---------------------------------------------------------------------------
+
+
+def _make_packet(
+    spectrum_id: str,
+    n_peaks: int = 10,
+    precursor_mz: float = 350.0,
+    ion_mode: str = "positive",
+    intensities: list[float] | None = None,
+):
+    """Build a QueuedPacket with a controllable quality profile."""
+    from MassFlow.streaming.queue import QueuedPacket
+
+    if intensities is None:
+        # 9 low peaks + one dominant base peak → strong signal spread.
+        intensities = [1.0] * (n_peaks - 1) + [100.0] if n_peaks > 1 else [1.0]
+    return QueuedPacket(
+        spectrum_id=spectrum_id,
+        mz_array=[100.0 + i * 10.0 for i in range(n_peaks)],
+        intensity_array=intensities,
+        precursor_mz=precursor_mz,
+        retention_time_seconds=0.0,
+        charge=1,
+        ion_mode=ion_mode,
+        adduct="",
+        collision_energy=0.0,
+        acquisition_timestamp_ns=0,
+    )
+
+
+class TestQualityBackpressure:
+    """Quality-gated high-water-mark backpressure in the bounded queue."""
+
+    def test_compute_packet_quality_hand_computed(self):
+        """Quality components sum to the documented score."""
+        from MassFlow.streaming.queue import compute_packet_quality
+
+        # 10 peaks (0.5) + precursor (0.25) + spread (0.15) + ion mode (0.1).
+        high_quality = _make_packet(
+            "high", n_peaks=10, precursor_mz=350.0, ion_mode="positive"
+        )
+        assert compute_packet_quality(high_quality) == pytest.approx(1.0)
+
+        # 2 peaks (0.1) + precursor (0.25), flat intensities, no ion mode.
+        low_quality = _make_packet(
+            "low",
+            n_peaks=2,
+            precursor_mz=350.0,
+            ion_mode="",
+            intensities=[1.0, 1.0],
+        )
+        assert compute_packet_quality(low_quality) == pytest.approx(0.35)
+
+        # Missing precursor costs 0.25.
+        no_precursor = _make_packet(
+            "no_precursor",
+            n_peaks=10,
+            precursor_mz=0.0,
+            ion_mode="positive",
+        )
+        assert compute_packet_quality(no_precursor) == pytest.approx(0.75)
+
+    @pytest.mark.asyncio
+    async def test_high_water_mark_drops_low_quality(self):
+        """Above the HWM, low-quality spectra are shed, not buffered."""
+        from MassFlow.streaming.queue import BoundedQueue
+
+        q = BoundedQueue(capacity=10, high_water_mark=0.5, low_quality_threshold=0.5)
+        # Fill to the high-water mark with high-quality packets.
+        for i in range(5):
+            await q.put(_make_packet(f"high_{i}"))
+        assert q.current_depth == 5
+        assert q.is_above_high_water_mark
+
+        # A low-quality packet is dropped at the gate.
+        low = _make_packet(
+            "low_quality", n_peaks=2, ion_mode="", intensities=[1.0, 1.0]
+        )
+        await q.put(low)
+        assert q.current_depth == 5
+        assert q.stats.total_dropped == 1
+        assert q.stats.total_dropped_low_quality == 1
+        assert q.stats.total_ingested == 5
+
+        # A high-quality packet is still admitted above the HWM.
+        await q.put(_make_packet("high_5"))
+        assert q.current_depth == 6
+        assert q.stats.total_dropped_low_quality == 1
+
+    @pytest.mark.asyncio
+    async def test_below_high_water_mark_never_gates(self):
+        """Low-quality spectra are accepted while the buffer is shallow."""
+        from MassFlow.streaming.queue import BoundedQueue
+
+        q = BoundedQueue(capacity=10, high_water_mark=0.5, low_quality_threshold=0.5)
+        for i in range(3):
+            await q.put(
+                _make_packet(f"low_{i}", n_peaks=2, ion_mode="", intensities=[1.0, 1.0])
+            )
+        assert q.current_depth == 3
+        assert q.stats.total_dropped_low_quality == 0
+
+    @pytest.mark.asyncio
+    async def test_high_water_mark_disabled_by_default(self):
+        """Default HWM of 1.0 leaves the quality gate inert (back-compat)."""
+        from MassFlow.streaming.queue import BoundedQueue
+
+        q = BoundedQueue(capacity=2)
+        assert q.high_water_mark == 1.0
+        # Fill to capacity; the BLOCK overflow policy applies, not the gate.
+        for i in range(2):
+            await q.put(
+                _make_packet(f"low_{i}", n_peaks=2, ion_mode="", intensities=[1.0, 1.0])
+            )
+        assert q.is_full
+        assert q.stats.total_dropped_low_quality == 0
+
+    @pytest.mark.asyncio
+    async def test_try_put_nowait_respects_quality_gate(self):
+        """The non-blocking enqueue path applies the same gate."""
+        from MassFlow.streaming.queue import BoundedQueue
+
+        q = BoundedQueue(capacity=10, high_water_mark=0.5, low_quality_threshold=0.5)
+        for i in range(5):
+            q.try_put_nowait(_make_packet(f"high_{i}"))
+
+        q.try_put_nowait(
+            _make_packet("low", n_peaks=2, ion_mode="", intensities=[1.0, 1.0])
+        )
+        assert q.current_depth == 5
+        assert q.stats.total_dropped_low_quality == 1
+
+    @pytest.mark.asyncio
+    async def test_record_latency_batch(self):
+        """Batch latency recording feeds the rolling average."""
+        from MassFlow.streaming.queue import BoundedQueue
+
+        q = BoundedQueue(capacity=8)
+        q.record_latency(latency_us=250.0, count=4)
+        assert q.stats.avg_latency_us == pytest.approx(250.0)
+        q.record_latency(latency_us=0.0, count=10)  # non-positive ignored
+        assert q.stats.avg_latency_us == pytest.approx(250.0)
+
+    @pytest.mark.asyncio
+    async def test_invalid_high_water_mark_raises(self):
+        """HWM and threshold bounds are validated."""
+        from MassFlow.streaming.queue import BoundedQueue
+
+        with pytest.raises(ValueError, match="high_water_mark"):
+            BoundedQueue(capacity=10, high_water_mark=0.0)
+        with pytest.raises(ValueError, match="high_water_mark"):
+            BoundedQueue(capacity=10, high_water_mark=1.5)
+        with pytest.raises(ValueError, match="low_quality_threshold"):
+            BoundedQueue(capacity=10, low_quality_threshold=1.5)
+
+
+# ---------------------------------------------------------------------------
 # Server integration tests (require generated gRPC stubs)
 # ---------------------------------------------------------------------------
 
@@ -805,6 +1012,48 @@ class TestGRPCServerIntegration:
             assert status.is_active is True
             assert status.queue_depth >= 0
             assert status.spectra_ingested >= 0
+
+    @pytest.mark.asyncio
+    async def test_get_status_reports_low_quality_drops(self, server):
+        """GetStatus exposes spectra_dropped and the low-quality breakdown.
+
+        The server fixture runs with the default high-water mark (0.8) and
+        quality threshold (0.5): filling the queue to the mark and then
+        ingesting a low-quality spectrum must be visible in the status
+        snapshot as a quality-gated drop.
+        """
+        import asyncio
+        import grpc
+
+        grpc_server, port = server
+        servicer = grpc_server._massflow_servicer
+
+        # Fill the queue to its high-water mark with high-quality packets.
+        # No StreamSpectra RPC is active, so nothing drains the queue.
+        hwm_depth = int(servicer._queue._capacity * servicer._queue.high_water_mark)
+        for i in range(hwm_depth):
+            await servicer._queue.put(_make_packet(f"fill_{i:03d}"))
+        assert servicer._queue.is_above_high_water_mark
+
+        # Ingest one low-quality spectrum through the servicer path.
+        low_packet = pb.SpectrumPacket(
+            spectrum_id="low_quality_001",
+            mz_array=[100.0, 200.0],
+            intensity_array=[1.0, 1.0],
+            precursor_mz=350.0,
+        )
+        response_queue: asyncio.Queue[pb.AnnotationResponse | None] = asyncio.Queue()
+        await servicer._ingest_spectrum(low_packet, response_queue)
+
+        async with grpc.aio.insecure_channel(f"localhost:{port}") as channel:
+            stub = pb_grpc.MassFlowStreamingStub(channel)
+            from google.protobuf import empty_pb2
+
+            status = await stub.GetStatus(empty_pb2.Empty())
+            assert status.spectra_dropped >= 1
+            assert status.spectra_dropped_low_quality >= 1
+            assert status.spectra_ingested >= hwm_depth
+            assert status.queue_depth == hwm_depth
 
     @pytest.mark.asyncio
     async def test_stream_single_spectrum(self, server):

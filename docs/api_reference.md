@@ -264,7 +264,7 @@ This document provides a concise reference for all public classes, attributes, m
   - `p_value: float | None`
   - `annotation_tier: str | None`
   - `structural_similarity: float | None`
-- `generate_decoys(spectra: List[Spectrum], random_seed: int) -> List[Spectrum]`
+- `generate_decoys(spectra: List[Spectrum], random_seed: int, min_relative_intensity: float, mz_shift_da: float) -> List[Spectrum]`
 - `calculate_empirical_p_values(target_scores: np.ndarray, decoy_scores: np.ndarray) -> np.ndarray`
 - `calculate_fdr(target_scores: np.ndarray, decoy_scores: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]`
 - **`class SimilarityEngine`**

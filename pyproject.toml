@@ -40,6 +40,9 @@ ml = [
 zarr = [
     "zarr>=3.0",
 ]
+hnsw = [
+    "hnswlib>=0.8.0",
+]
 watch = [
     "watchfiles>=1.1.1",
 ]
@@ -81,6 +84,13 @@ ignore_missing_imports = true
 plugins = ["pydantic.mypy"]
 # Exclude root-level scratch scripts
 exclude = ["repro_isotope\\.py"]
+
+[tool.ruff]
+# Generated protobuf/gRPC stubs are not linted.
+extend-exclude = [
+    "src/MassFlow/streaming/generated",
+    "src/MassFlow/generated",
+]
 
 [tool.pytest.ini_options]
 addopts = "-m 'not benchmark'"

@@ -20,9 +20,38 @@ That migration path is intended to be explicit, validated, and reversible. The
 database module provides the schema inspection and migration helpers used by the
 migration script so SQL remains centralized in this file.
 
+Zarr array storage (hybrid SQLite + Zarr schema)
+-----------------------------------------------
+As of the Phase 1 storage migration, :class:`SpectralDatabase` can optionally
+outsource fragment arrays to a chunked Zarr store instead of the SQLite BLOB
+columns. When ``zarr_path`` is supplied the database stores only metadata plus
+two reference columns:
+
+- ``zarr_ref TEXT`` — the unique identifier (UUID) of the Zarr group that owns
+  the peak arrays (:attr:`ZarrPeakArrayStore.store_uuid`).
+- ``zarr_index INTEGER`` — the spectrum's index into the flat Zarr arrays
+  (``peaks/mz_flat``, ``peaks/intensity_flat``, ``peaks/boundaries``).
+
+Fresh hybrid tables are created without ``mz_array`` / ``intensity_array``
+BLOB columns. Pre-existing BLOB tables keep their columns (rows written
+before migration fall back to BLOB reads) and gain the two reference columns
+via ``ALTER TABLE``. A BLOB-mode instance reading a Zarr-referenced row raises
+``RuntimeError`` with instructions to reopen with ``zarr_path``.
+
+Existing BLOB databases are migrated with:
+
+- ``scripts/migrations/0002_blobs_to_zarr.py`` (wraps
+  :func:`migrate_blobs_to_zarr`)
+
+The migration is append-ordered, verified bit-for-bit before BLOBs are
+NULLed, and idempotent. If a run is interrupted, rerun it; orphaned Zarr
+arrays from the interrupted batch are automatically truncated. Use
+``overwrite=True`` (or delete the ``.zarr`` directory) to rebuild the array
+store from scratch.
+
 Current schema version
 ----------------------
-The active ``spectra`` table stores:
+The active ``spectra`` table stores (BLOB mode):
 
 - ``original_id``
 - ``name``
@@ -34,12 +63,19 @@ The active ``spectra`` table stores:
 - ``metadata``
 - ``mz_array``
 - ``intensity_array``
+
+Hybrid (Zarr) mode replaces the two BLOB columns with:
+
+- ``zarr_ref``
+- ``zarr_index``
 """
 
 from __future__ import annotations
 
 import ast
 import json
+import logging
+import shutil
 import sqlite3
 from collections.abc import Iterator
 from datetime import datetime, timezone
@@ -51,6 +87,13 @@ from matchms import Spectrum
 
 from MassFlow.storage import SpectralStore
 from MassFlow.models import TriageProfile
+from MassFlow.zarr_store import (
+    ZarrPeakArrayStore,
+    _DEFAULT_BOUNDARY_CHUNK_SIZE,
+    _DEFAULT_PEAK_CHUNK_SIZE,
+)
+
+logger = logging.getLogger(__name__)
 
 CURRENT_SPECTRA_COLUMNS = {
     "id",
@@ -210,6 +253,12 @@ def is_current_spectra_schema(connection: sqlite3.Connection) -> bool:
     """
     Determine whether the ``spectra`` table matches the current schema.
 
+    The current schema has two accepted variants:
+
+    - BLOB mode: peak arrays stored in ``mz_array`` / ``intensity_array``.
+    - Hybrid (Zarr) mode: peak arrays stored in a Zarr store referenced by
+      ``zarr_ref`` / ``zarr_index``.
+
     Parameters
     ----------
     connection : sqlite3.Connection
@@ -225,7 +274,11 @@ def is_current_spectra_schema(connection: sqlite3.Connection) -> bool:
     >>> is_current = is_current_spectra_schema(connection)
     """
     columns = set(get_spectra_table_columns(connection))
-    return bool(columns) and CURRENT_SPECTRA_COLUMNS.issubset(columns)
+    if not columns:
+        return False
+    has_blob_arrays = {"mz_array", "intensity_array"}.issubset(columns)
+    has_zarr_reference = {"zarr_ref", "zarr_index"}.issubset(columns)
+    return has_blob_arrays or has_zarr_reference
 
 
 def legacy_migration_error_message(db_path: Union[str, Path]) -> str:
@@ -255,9 +308,86 @@ def legacy_migration_error_message(db_path: Union[str, Path]) -> str:
     )
 
 
-def create_current_spectra_table(connection: sqlite3.Connection) -> None:
+def create_current_spectra_table(
+    connection: sqlite3.Connection,
+    include_peak_blobs: bool = True,
+) -> None:
     """
     Create the current ``spectra`` table if it does not exist.
+
+    Parameters
+    ----------
+    connection : sqlite3.Connection
+        Open SQLite connection.
+    include_peak_blobs : bool, optional
+        If ``True`` (default, BLOB mode) the table includes the
+        ``mz_array`` / ``intensity_array`` BLOB columns. If ``False``
+        (hybrid Zarr mode) the table includes the ``zarr_ref`` /
+        ``zarr_index`` reference columns instead, so SQLite retains only
+        metadata plus the Zarr reference.
+
+    Returns
+    -------
+    None
+
+    Examples
+    --------
+    >>> create_current_spectra_table(connection)
+    """
+    cursor = connection.cursor()
+    if include_peak_blobs:
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS spectra (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                original_id TEXT,
+                name TEXT,
+                precursor_mz REAL,
+                charge INTEGER,
+                ionmode TEXT,
+                adduct TEXT,
+                category TEXT,
+                metadata TEXT,
+                mz_array BLOB,
+                intensity_array BLOB,
+                triage_flags TEXT
+            )
+            """
+        )
+    else:
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS spectra (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                original_id TEXT,
+                name TEXT,
+                precursor_mz REAL,
+                charge INTEGER,
+                ionmode TEXT,
+                adduct TEXT,
+                category TEXT,
+                metadata TEXT,
+                zarr_ref TEXT,
+                zarr_index INTEGER,
+                triage_flags TEXT
+            )
+            """
+        )
+
+    columns = get_spectra_table_columns(connection)
+    if columns and "triage_flags" not in columns:
+        cursor.execute("ALTER TABLE spectra ADD COLUMN triage_flags TEXT")
+
+    connection.commit()
+
+
+def _ensure_zarr_columns(connection: sqlite3.Connection) -> None:
+    """
+    Add the ``zarr_ref`` and ``zarr_index`` columns to an existing table.
+
+    Idempotent: columns that already exist are left untouched. Used when a
+    hybrid Zarr-mode :class:`SpectralDatabase` opens a table originally
+    created in BLOB mode.
 
     Parameters
     ----------
@@ -270,32 +400,16 @@ def create_current_spectra_table(connection: sqlite3.Connection) -> None:
 
     Examples
     --------
-    >>> create_current_spectra_table(connection)
+    >>> _ensure_zarr_columns(connection)
     """
-    cursor = connection.cursor()
-    cursor.execute(
-        """
-        CREATE TABLE IF NOT EXISTS spectra (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            original_id TEXT,
-            name TEXT,
-            precursor_mz REAL,
-            charge INTEGER,
-            ionmode TEXT,
-            adduct TEXT,
-            category TEXT,
-            metadata TEXT,
-            mz_array BLOB,
-            intensity_array BLOB,
-            triage_flags TEXT
-        )
-        """
-    )
-
     columns = get_spectra_table_columns(connection)
-    if columns and "triage_flags" not in columns:
-        cursor.execute("ALTER TABLE spectra ADD COLUMN triage_flags TEXT")
-
+    if not columns:
+        return
+    cursor = connection.cursor()
+    if "zarr_ref" not in columns:
+        cursor.execute("ALTER TABLE spectra ADD COLUMN zarr_ref TEXT")
+    if "zarr_index" not in columns:
+        cursor.execute("ALTER TABLE spectra ADD COLUMN zarr_index INTEGER")
     connection.commit()
 
 
@@ -837,9 +951,273 @@ def migrate_legacy_peaks_to_arrays(
     return migrate_legacy_peaks_database(db_path)
 
 
+def migrate_blobs_to_zarr(
+    db_path: Union[str, Path],
+    zarr_path: Union[str, Path, None] = None,
+    peak_chunk_size: int = _DEFAULT_PEAK_CHUNK_SIZE,
+    boundary_chunk_size: int = _DEFAULT_BOUNDARY_CHUNK_SIZE,
+    compressor: Optional[Any] = None,
+    null_blobs: bool = True,
+    overwrite: bool = False,
+    batch_size: int = 5000,
+    verify: bool = True,
+) -> dict[str, Any]:
+    """
+    Migrate SQLite BLOB peak arrays into a chunked Zarr store.
+
+    Reads every spectrum row that still carries BLOB arrays (``zarr_index``
+    IS NULL), appends the arrays to a :class:`ZarrPeakArrayStore`, and
+    updates each row with the ``zarr_ref`` UUID and its ``zarr_index`` in the
+    flat Zarr arrays. After a successful, verified write the BLOB columns are
+    NULLed (default) so SQLite retains only metadata plus the Zarr reference.
+
+    The migration is:
+
+    - **append-ordered**: rows are processed in ``id`` order so indices are
+      stable and re-runs continue where they left off.
+    - **verified**: each appended batch is read back from Zarr and compared
+      bit-for-bit against the BLOB data before the row references are
+      committed.
+    - **idempotent**: rows that already reference the Zarr store are skipped;
+      a fully migrated database reports ``"already_migrated"``.
+
+    If a previous run was interrupted between a Zarr append and its SQL
+    update, the orphaned Zarr tail is detected and truncated automatically.
+
+    Parameters
+    ----------
+    db_path : str or Path
+        Path to the SQLite database to migrate.
+    zarr_path : str or Path or None, optional
+        Path for the Zarr array store. Defaults to the database path with a
+        ``.zarr`` suffix (e.g. ``library.db`` → ``library.zarr``).
+    peak_chunk_size : int, optional
+        Float64 elements per chunk in the Zarr peak arrays. Small chunks
+        increase metadata overhead; large chunks increase decompression
+        memory during parallel reads.
+    boundary_chunk_size : int, optional
+        Spectra per chunk in the Zarr boundaries array.
+    compressor : optional
+        Zarr compressor (defaults to Blosc+zstd, clevel=3).
+    null_blobs : bool, optional
+        If ``True`` (default), NULL out the ``mz_array`` / ``intensity_array``
+        columns of migrated rows after verification.
+    overwrite : bool, optional
+        If ``True``, clear any existing ``zarr_ref`` / ``zarr_index`` values
+        and rebuild the Zarr store from scratch. Only meaningful while the
+        BLOB columns still hold the source data (i.e. before a previous run
+        with ``null_blobs=True``); rows whose BLOBs were already NULLed
+        cannot be re-migrated.
+    batch_size : int, optional
+        Number of rows migrated per Zarr append / SQL commit batch.
+    verify : bool, optional
+        If ``True`` (default), read every migrated batch back from Zarr and
+        compare it bit-for-bit against the source BLOB arrays.
+
+    Returns
+    -------
+    dict[str, Any]
+        Migration summary with ``status`` (``"migrated"`` or
+        ``"already_migrated"``), ``database``, ``zarr_path``, ``zarr_ref``,
+        ``migrated_row_count``, and ``sample_checks``.
+
+    Raises
+    ------
+    RuntimeError
+        If the database uses the legacy ``peaks`` schema (run migration
+        0001 first), if verification fails, or if the Zarr store does not
+        match the rows that already reference it.
+
+    Examples
+    --------
+    >>> summary = migrate_blobs_to_zarr("library.db")
+    """
+    database_path = Path(db_path)
+    target_zarr_path = (
+        Path(zarr_path) if zarr_path is not None else database_path.with_suffix(".zarr")
+    )
+
+    connection = _create_sqlite_connection(database_path)
+    store: Optional[ZarrPeakArrayStore] = None
+
+    try:
+        if is_legacy_spectra_schema(connection):
+            raise RuntimeError(
+                "Legacy 'peaks' schema detected. Run "
+                "'scripts/migrations/0001_peaks_to_arrays.py' before "
+                "migrating BLOBs to Zarr."
+            )
+
+        _ensure_zarr_columns(connection)
+        columns = set(get_spectra_table_columns(connection))
+        if not {"mz_array", "intensity_array"}.issubset(columns):
+            return {
+                "status": "already_migrated",
+                "database": str(database_path),
+                "zarr_path": str(target_zarr_path),
+                "zarr_ref": None,
+                "migrated_row_count": 0,
+                "message": "Database has no BLOB columns to migrate.",
+            }
+
+        cursor = connection.cursor()
+        if overwrite:
+            cursor.execute("UPDATE spectra SET zarr_ref = NULL, zarr_index = NULL")
+            connection.commit()
+            if target_zarr_path.is_dir():
+                shutil.rmtree(target_zarr_path)
+
+        store = ZarrPeakArrayStore(
+            target_zarr_path,
+            peak_chunk_size=peak_chunk_size,
+            boundary_chunk_size=boundary_chunk_size,
+            compressor=compressor,
+        )
+        zarr_ref = store.store_uuid
+
+        # Consistency checks against rows that already reference Zarr.
+        cursor.execute(
+            "SELECT DISTINCT zarr_ref FROM spectra WHERE zarr_ref IS NOT NULL LIMIT 1"
+        )
+        existing_ref_row = cursor.fetchone()
+        if existing_ref_row is not None and str(existing_ref_row[0]) != zarr_ref:
+            raise RuntimeError(
+                f"Zarr store identity mismatch: rows reference "
+                f"'{existing_ref_row[0]}' but '{target_zarr_path}' reports "
+                f"'{zarr_ref}'."
+            )
+
+        cursor.execute("SELECT COUNT(*) FROM spectra WHERE zarr_index IS NOT NULL")
+        referenced_count = int(cursor.fetchone()[0])
+
+        if store.n_spectra > referenced_count:
+            # A previous run was interrupted after a Zarr append but before
+            # its SQL update: trim the orphaned trailing arrays and continue.
+            logger.warning(
+                "Zarr store has %d spectra but only %d rows reference it; "
+                "truncating %d orphaned arrays.",
+                store.n_spectra,
+                referenced_count,
+                store.n_spectra - referenced_count,
+            )
+            store.truncate(referenced_count)
+        elif store.n_spectra < referenced_count:
+            raise RuntimeError(
+                f"Zarr store '{target_zarr_path}' is missing referenced "
+                f"spectra: {referenced_count} rows reference it but it holds "
+                f"only {store.n_spectra}. Rebuild with overwrite=True."
+            )
+
+        cursor.execute(
+            "SELECT id, mz_array, intensity_array FROM spectra "
+            "WHERE zarr_index IS NULL "
+            "AND mz_array IS NOT NULL AND intensity_array IS NOT NULL "
+            "ORDER BY id"
+        )
+        rows = cursor.fetchall()
+        if not rows:
+            return {
+                "status": "already_migrated",
+                "database": str(database_path),
+                "zarr_path": str(target_zarr_path),
+                "zarr_ref": zarr_ref,
+                "migrated_row_count": 0,
+                "message": "All rows already reference the Zarr store.",
+            }
+
+        update_cursor = connection.cursor()
+        migrated_count = 0
+        total_peak_count = 0
+        sample_checks: list[dict[str, Any]] = []
+
+        for batch_start in range(0, len(rows), batch_size):
+            batch = rows[batch_start : batch_start + batch_size]
+            mz_list = [
+                np.frombuffer(row["mz_array"], dtype=np.float64) for row in batch
+            ]
+            intensity_list = [
+                np.frombuffer(row["intensity_array"], dtype=np.float64) for row in batch
+            ]
+
+            start_index = store.append_spectra(mz_list, intensity_list)
+
+            if verify:
+                read_mz, read_intensity = store.read_spectra(
+                    list(range(start_index, start_index + len(batch)))
+                )
+                for offset, (mz_read, intensity_read) in enumerate(
+                    zip(read_mz, read_intensity)
+                ):
+                    if not np.array_equal(mz_read, mz_list[offset]) or not (
+                        np.array_equal(intensity_read, intensity_list[offset])
+                    ):
+                        raise RuntimeError(
+                            "Zarr verification failed for row id="
+                            f"{int(batch[offset]['id'])} at index "
+                            f"{start_index + offset}."
+                        )
+
+            update_cursor.executemany(
+                "UPDATE spectra SET zarr_ref = ?, zarr_index = ? WHERE id = ?",
+                [
+                    (zarr_ref, start_index + offset, int(row["id"]))
+                    for offset, row in enumerate(batch)
+                ],
+            )
+            connection.commit()
+
+            migrated_count += len(batch)
+            total_peak_count += sum(int(arr.size) for arr in mz_list)
+            if len(sample_checks) < 3:
+                first_mz = mz_list[0]
+                first_intensity = intensity_list[0]
+                sample_checks.append(
+                    {
+                        "row_id": int(batch[0]["id"]),
+                        "zarr_index": start_index,
+                        "peak_count": int(first_mz.size),
+                        "first_mz": (float(first_mz[0]) if first_mz.size > 0 else None),
+                        "first_intensity": (
+                            float(first_intensity[0])
+                            if first_intensity.size > 0
+                            else None
+                        ),
+                    }
+                )
+
+        if null_blobs:
+            update_cursor.execute(
+                "UPDATE spectra SET mz_array = NULL, intensity_array = NULL "
+                "WHERE zarr_index IS NOT NULL"
+            )
+            connection.commit()
+
+        return {
+            "status": "migrated",
+            "database": str(database_path),
+            "zarr_path": str(target_zarr_path),
+            "zarr_ref": zarr_ref,
+            "migrated_row_count": migrated_count,
+            "total_peak_count": total_peak_count,
+            "blobs_nulled": null_blobs,
+            "sample_checks": sample_checks,
+        }
+    finally:
+        if store is not None:
+            store.close()
+        connection.close()
+
+
 class SpectralDatabase(SpectralStore):
     """
     Manage a local SQLite database for persistent storage of mass spectra.
+
+    By default the database stores fragment arrays as ``float64`` BLOBs in the
+    ``mz_array`` / ``intensity_array`` columns (BLOB mode). Passing
+    ``zarr_path`` switches to hybrid mode: SQLite retains only metadata plus a
+    ``zarr_ref`` / ``zarr_index`` reference pair, and the fragment arrays are
+    persisted in a chunked, compressed Zarr store (:class:`ZarrPeakArrayStore`)
+    that supports concurrent, lock-free reads for multiprocessing.
 
     Parameters
     ----------
@@ -850,6 +1228,15 @@ class SpectralDatabase(SpectralStore):
         initialization raises a ``RuntimeError`` describing the required
         explicit migration path. This flag exists only to make destructive
         upgrade intent explicit and is not used to perform destructive changes.
+    zarr_path : str or Path or None, optional
+        Path to the Zarr array store used for ``mz_array`` / ``intensity_array``
+        in hybrid mode. When ``None`` (default) the database uses BLOB mode.
+    peak_chunk_size : int, optional
+        Float64 elements per chunk in the Zarr peak arrays (hybrid mode only).
+    boundary_chunk_size : int, optional
+        Spectra per chunk in the Zarr boundaries array (hybrid mode only).
+    compressor : optional
+        Zarr compressor for the peak arrays (hybrid mode only).
 
     Returns
     -------
@@ -858,12 +1245,17 @@ class SpectralDatabase(SpectralStore):
     Examples
     --------
     >>> db = SpectralDatabase("library.db")
+    >>> db = SpectralDatabase("library.db", zarr_path="library.zarr")
     """
 
     def __init__(
         self,
         db_path: Union[str, Path],
         allow_destructive_upgrade: bool = False,
+        zarr_path: Union[str, Path, None] = None,
+        peak_chunk_size: int = _DEFAULT_PEAK_CHUNK_SIZE,
+        boundary_chunk_size: int = _DEFAULT_BOUNDARY_CHUNK_SIZE,
+        compressor: Optional[Any] = None,
     ):
         # Let SpectralStore.__init__ set self.store_path and call
         # self._initialize() (no-op for SpectralDatabase — SQLite setup
@@ -873,8 +1265,17 @@ class SpectralDatabase(SpectralStore):
         self.db_path = self.store_path
         self.conn: Optional[sqlite3.Connection] = None
         self.allow_destructive_upgrade = allow_destructive_upgrade
+        self._zarr_path: Optional[Path] = (
+            Path(zarr_path) if zarr_path is not None else None
+        )
+        self._peak_chunk_size = peak_chunk_size
+        self._boundary_chunk_size = boundary_chunk_size
+        self._compressor = compressor
+        self._zarr_arrays: Optional[ZarrPeakArrayStore] = None
         self._connect()
         self._initialize_tables()
+        if self._zarr_path is not None:
+            self._attach_zarr_store()
 
     def _initialize(self) -> None:
         """No-op; SQLite setup is handled in __init__ via _connect/_initialize_tables."""
@@ -920,7 +1321,87 @@ class SpectralDatabase(SpectralStore):
                 legacy_migration_error_message(self.db_path)
             )
 
-        create_current_spectra_table(self.conn)
+        create_current_spectra_table(
+            self.conn,
+            include_peak_blobs=self._zarr_path is None,
+        )
+        if self._zarr_path is not None:
+            _ensure_zarr_columns(self.conn)
+
+    def _attach_zarr_store(self) -> None:
+        """
+        Open the hybrid-mode Zarr array store and validate its identity.
+
+        Returns
+        -------
+        None
+
+        Raises
+        ------
+        ConnectionError
+            If the database connection has not been established.
+        RuntimeError
+            If rows reference a Zarr store whose UUID does not match the
+            attached store.
+
+        Examples
+        --------
+        >>> db._attach_zarr_store()
+        """
+        if not self.conn or self._zarr_path is None:
+            raise ConnectionError("Database not connected or no Zarr path set.")
+
+        self._zarr_arrays = ZarrPeakArrayStore(
+            self._zarr_path,
+            peak_chunk_size=self._peak_chunk_size,
+            boundary_chunk_size=self._boundary_chunk_size,
+            compressor=self._compressor,
+        )
+
+        # Validate that any referenced rows point at this exact store.
+        cursor = self.conn.cursor()
+        cursor.execute(
+            "SELECT DISTINCT zarr_ref FROM spectra WHERE zarr_ref IS NOT NULL LIMIT 1"
+        )
+        row = cursor.fetchone()
+        if row is not None:
+            referenced_uuid = str(row[0])
+            if referenced_uuid != self._zarr_arrays.store_uuid:
+                actual_uuid = self._zarr_arrays.store_uuid
+                self._zarr_arrays.close()
+                self._zarr_arrays = None
+                raise RuntimeError(
+                    f"Zarr store identity mismatch: spectra rows reference "
+                    f"'{referenced_uuid}' but '{self._zarr_path}' reports "
+                    f"'{actual_uuid}'."
+                )
+
+        # Verify the array store actually covers every referenced index.
+        cursor.execute(
+            "SELECT MAX(zarr_index) FROM spectra WHERE zarr_index IS NOT NULL"
+        )
+        max_index_row = cursor.fetchone()
+        if max_index_row is not None and max_index_row[0] is not None:
+            if self._zarr_arrays.n_spectra <= int(max_index_row[0]):
+                raise RuntimeError(
+                    f"Zarr store '{self._zarr_path}' holds "
+                    f"{self._zarr_arrays.n_spectra} spectra but rows reference "
+                    f"indices up to {int(max_index_row[0])}. The array store "
+                    f"is missing data; rebuild it with "
+                    f"migrate_blobs_to_zarr(overwrite=True)."
+                )
+
+    @property
+    def zarr_ref(self) -> Optional[str]:
+        """Return the attached Zarr store UUID in hybrid mode, else ``None``."""
+        if self._zarr_arrays is None:
+            return None
+        return self._zarr_arrays.store_uuid
+
+    @property
+    def zarr_path(self) -> Optional[Path]:
+        """Return the attached Zarr store path in hybrid mode, else ``None``."""
+        return self._zarr_path
 
     def add_spectra(
         self,
@@ -956,6 +1437,9 @@ class SpectralDatabase(SpectralStore):
         """
         if not self.conn:
             raise ConnectionError("Database not connected.")
+
+        if self._zarr_arrays is not None:
+            return self._add_spectra_zarr(spectra, category, batch_size)
 
         count = 0
         batch: list[tuple[Any, ...]] = []
@@ -1013,6 +1497,200 @@ class SpectralDatabase(SpectralStore):
             self.conn.commit()
 
         return count
+
+    def _zarr_insert_columns(self) -> list[str]:
+        """
+        Return the column list used by hybrid-mode INSERT statements.
+
+        Returns
+        -------
+        list[str]
+            Preferred columns that actually exist in the ``spectra`` table.
+
+        Examples
+        --------
+        >>> columns = db._zarr_insert_columns()
+        """
+        if not self.conn:
+            raise ConnectionError("Database not connected.")
+        available = set(get_spectra_table_columns(self.conn))
+        preferred = [
+            "original_id",
+            "name",
+            "precursor_mz",
+            "charge",
+            "ionmode",
+            "adduct",
+            "category",
+            "metadata",
+            "triage_flags",
+            "zarr_ref",
+            "zarr_index",
+            "mz_array",
+            "intensity_array",
+        ]
+        return [column for column in preferred if column in available]
+
+    def _add_spectra_zarr(
+        self,
+        spectra: Iterator[Spectrum],
+        category: str,
+        batch_size: int,
+    ) -> int:
+        """
+        Insert spectra in hybrid mode: Zarr arrays + metadata rows.
+
+        Fragment arrays are appended to the Zarr store first and the returned
+        indices are persisted in the ``zarr_index`` column, so SQLite rows only
+        carry metadata plus the ``zarr_ref`` / ``zarr_index`` reference pair.
+
+        Note: if the SQLite insert fails after a Zarr append, the Zarr store
+        may contain unreferenced trailing arrays. This is harmless (they are
+        never read) and can be removed by rebuilding the store.
+
+        Parameters
+        ----------
+        spectra : Iterator[Spectrum]
+            Iterator yielding spectra to insert.
+        category : str
+            Category label for inserted spectra.
+        batch_size : int
+            Number of rows to accumulate before committing.
+
+        Returns
+        -------
+        int
+            Number of successfully added spectra.
+
+        Examples
+        --------
+        >>> count = db._add_spectra_zarr(iter([spectrum]), "library", 5000)
+        """
+        if not self.conn:
+            raise ConnectionError("Database not connected.")
+        if self._zarr_arrays is None:
+            raise RuntimeError("Zarr store is not attached (hybrid mode off).")
+
+        columns = self._zarr_insert_columns()
+        insert_query = (
+            f"INSERT INTO spectra ({', '.join(columns)}) "
+            f"VALUES ({', '.join(['?'] * len(columns))})"
+        )
+        zarr_ref = self._zarr_arrays.store_uuid
+
+        count = 0
+        pending_rows: list[dict[str, Any]] = []
+        pending_mz: list[np.ndarray] = []
+        pending_intensity: list[np.ndarray] = []
+        cursor = self.conn.cursor()
+
+        for spectrum in spectra:
+            if spectrum is None:
+                continue
+
+            mz_array_raw = np.asarray(spectrum.peaks.mz, dtype=np.float64)
+            intensity_array_raw = np.asarray(
+                spectrum.peaks.intensities, dtype=np.float64
+            )
+
+            # Triage flags are pre-calculated in processing.py and stored in
+            # metadata; mirror the BLOB path's storage convention.
+            triage_flags = spectrum.get("triage_flags", {})
+            triage_json = json.dumps(triage_flags)
+            metadata_json = _json_serialize_metadata(spectrum.metadata.copy())
+
+            pending_rows.append(
+                {
+                    "original_id": spectrum.get("id"),
+                    "name": spectrum.get("compound_name") or spectrum.get("name"),
+                    "precursor_mz": spectrum.get("precursor_mz"),
+                    "charge": spectrum.get("charge"),
+                    "ionmode": spectrum.get("ionmode"),
+                    "adduct": spectrum.get("adduct"),
+                    "category": category,
+                    "metadata": metadata_json,
+                    "triage_flags": triage_json,
+                    "zarr_ref": zarr_ref,
+                }
+            )
+            pending_mz.append(mz_array_raw)
+            pending_intensity.append(intensity_array_raw)
+            count += 1
+
+            if len(pending_rows) >= batch_size:
+                self._flush_zarr_batch(
+                    cursor,
+                    insert_query,
+                    columns,
+                    pending_rows,
+                    pending_mz,
+                    pending_intensity,
+                )
+                pending_rows = []
+                pending_mz = []
+                pending_intensity = []
+
+        if pending_rows:
+            self._flush_zarr_batch(
+                cursor,
+                insert_query,
+                columns,
+                pending_rows,
+                pending_mz,
+                pending_intensity,
+            )
+
+        return count
+
+    def _flush_zarr_batch(
+        self,
+        cursor: sqlite3.Cursor,
+        insert_query: str,
+        columns: list[str],
+        rows: list[dict[str, Any]],
+        mz_arrays: list[np.ndarray],
+        intensity_arrays: list[np.ndarray],
+    ) -> None:
+        """
+        Append one batch of arrays to Zarr and persist the metadata rows.
+
+        Parameters
+        ----------
+        cursor : sqlite3.Cursor
+            Active SQLite cursor used for the batch INSERT.
+        insert_query : str
+            Parameterized INSERT statement with one placeholder per column.
+        columns : list[str]
+            Column list matching *insert_query*.
+        rows : list[dict[str, Any]]
+            Per-spectrum metadata dictionaries (already serialized).
+        mz_arrays : list[np.ndarray]
+            Float64 fragment m/z vectors.
+        intensity_arrays : list[np.ndarray]
+            Float64 fragment intensity vectors.
+
+        Returns
+        -------
+        None
+
+        Examples
+        --------
+        >>> db._flush_zarr_batch(cursor, query, columns, rows, mz, intensities)
+        """
+        if not self.conn:
+            raise ConnectionError("Database not connected.")
+        if self._zarr_arrays is None:
+            raise RuntimeError("Zarr store is not attached (hybrid mode off).")
+
+        start_index = self._zarr_arrays.append_spectra(mz_arrays, intensity_arrays)
+
+        values: list[tuple[Any, ...]] = []
+        for offset, row in enumerate(rows):
+            row["zarr_index"] = start_index + offset
+            values.append(tuple(row.get(column) for column in columns))
+
+        cursor.executemany(insert_query, values)
+        self.conn.commit()
 
     def get_spectra(
         self,
@@ -1074,6 +1752,10 @@ class SpectralDatabase(SpectralStore):
         """
         Convert a SQLite row into a ``matchms.Spectrum``.
 
+        Rows that reference the Zarr store (``zarr_index`` is not NULL) are
+        read from the attached :class:`ZarrPeakArrayStore`; rows that still
+        carry BLOBs fall back to the BLOB read path (pre-migration rows).
+
         Parameters
         ----------
         row : sqlite3.Row
@@ -1084,6 +1766,12 @@ class SpectralDatabase(SpectralStore):
         Spectrum
             Reconstructed spectrum object.
 
+        Raises
+        ------
+        RuntimeError
+            If the row is Zarr-referenced but no Zarr store is attached, or
+            if the row has neither BLOBs nor a Zarr reference.
+
         Examples
         --------
         >>> spectrum = db._row_to_spectrum(row)
@@ -1092,8 +1780,31 @@ class SpectralDatabase(SpectralStore):
         if "triage_flags" in row.keys() and row["triage_flags"]:
             triage = json.loads(row["triage_flags"])
             metadata.update(triage)
-        mz_array = np.frombuffer(row["mz_array"], dtype=np.float64).copy()
-        intensity_array = np.frombuffer(row["intensity_array"], dtype=np.float64).copy()
+
+        if "zarr_index" in row.keys() and row["zarr_index"] is not None:
+            if self._zarr_arrays is None:
+                raise RuntimeError(
+                    "This row stores its peak arrays in a Zarr store, but this "
+                    "SpectralDatabase was opened without one. Reopen with "
+                    "SpectralDatabase(db_path, zarr_path=<path to .zarr store>)."
+                )
+            mz_array, intensity_array = self._zarr_arrays.read_spectrum(
+                int(row["zarr_index"])
+            )
+            return Spectrum(
+                mz=mz_array,
+                intensities=intensity_array,
+                metadata=metadata,
+            )
+
+        mz_blob = row["mz_array"]
+        intensity_blob = row["intensity_array"]
+        if mz_blob is None or intensity_blob is None:
+            raise RuntimeError(
+                "Spectrum row has neither BLOB peak arrays nor a Zarr reference."
+            )
+        mz_array = np.frombuffer(mz_blob, dtype=np.float64).copy()
+        intensity_array = np.frombuffer(intensity_blob, dtype=np.float64).copy()
         return Spectrum(mz=mz_array, intensities=intensity_array, metadata=metadata)
 
     def get_total_spectra_count(self) -> int:
@@ -1291,6 +2002,13 @@ class SpectralDatabase(SpectralStore):
         if not self.conn:
             raise ConnectionError("Database not connected.")
 
+        if self._zarr_arrays is not None:
+            raise RuntimeError(
+                "merge_from_sqlite cannot be used when the target database "
+                "stores peak arrays in a Zarr store. Use the iterator-based "
+                "merge (get_spectra()/add_spectra()) instead."
+            )
+
         source_abs = str(source_db_path.resolve())
         cursor = self.conn.cursor()
 
@@ -1300,6 +2018,19 @@ class SpectralDatabase(SpectralStore):
         try:
             cursor.execute("PRAGMA _merge_source.table_info(spectra)")
             source_cols = [str(row[1]) for row in cursor.fetchall()]
+
+            # A source whose rows reference a Zarr store cannot be merged via
+            # the bulk BLOB copy — fall back to the iterator-based merge.
+            if "zarr_index" in source_cols:
+                cursor.execute(
+                    "SELECT COUNT(*) FROM _merge_source.spectra "
+                    "WHERE zarr_index IS NOT NULL"
+                )
+                if int(cursor.fetchone()[0]) > 0:
+                    raise RuntimeError(
+                        "Source database stores peak arrays in a Zarr store; "
+                        "use the iterator-based merge instead."
+                    )
 
             target_cols = get_spectra_table_columns(self.conn)
 
@@ -1372,6 +2103,9 @@ class SpectralDatabase(SpectralStore):
         if not self.conn:
             raise ConnectionError("Database not connected.")
 
+        if self._zarr_arrays is not None:
+            return self._batch_get_arrays_zarr(spectrum_ids)
+
         mz_arrays: list[np.ndarray] = []
         intensity_arrays: list[np.ndarray] = []
 
@@ -1393,9 +2127,106 @@ class SpectralDatabase(SpectralStore):
 
         return mz_arrays, intensity_arrays
 
+    def _batch_get_arrays_zarr(
+        self,
+        spectrum_ids: Optional[list[str]] = None,
+    ) -> tuple[list[np.ndarray], list[np.ndarray]]:
+        """
+        Batch-read peak arrays in hybrid mode.
+
+        Zarr-referenced rows are read in one bulk call against the array
+        store; any remaining pre-migration BLOB rows are deserialized
+        individually. The returned lists follow the database row order
+        (``ORDER BY id``).
+
+        Parameters
+        ----------
+        spectrum_ids : list of str or None
+            Specific spectrum IDs to retrieve. If ``None``, all spectra are
+            returned.
+
+        Returns
+        -------
+        tuple[list[np.ndarray], list[np.ndarray]]
+            Aligned lists of ``float64`` m/z and intensity arrays.
+
+        Examples
+        --------
+        >>> mz_arrays, intensity_arrays = db._batch_get_arrays_zarr()
+        """
+        if not self.conn:
+            raise ConnectionError("Database not connected.")
+        if self._zarr_arrays is None:
+            raise RuntimeError("Zarr store is not attached (hybrid mode off).")
+
+        cursor = self.conn.cursor()
+        if spectrum_ids is not None:
+            placeholders = ",".join(["?"] * len(spectrum_ids))
+            cursor.execute(
+                f"SELECT * FROM spectra WHERE original_id IN ({placeholders}) "
+                "ORDER BY id",
+                spectrum_ids,
+            )
+            rows_by_id: dict[str, sqlite3.Row] = {
+                str(row["original_id"]): row for row in cursor.fetchall()
+            }
+            # Preserve the requested order and skip unknown ids, matching
+            # ZarrSpectralStore.batch_get_arrays semantics.
+            ordered_rows = [
+                rows_by_id[spectrum_id]
+                for spectrum_id in spectrum_ids
+                if spectrum_id in rows_by_id
+            ]
+        else:
+            cursor.execute("SELECT * FROM spectra ORDER BY id")
+            ordered_rows = cursor.fetchall()
+
+        # Collect row order and classify each row as Zarr- or BLOB-backed.
+        order: list[tuple[Any, ...]] = []
+        zarr_indices: list[int] = []
+        for row in ordered_rows:
+            zarr_index = row["zarr_index"] if "zarr_index" in row.keys() else None
+            if zarr_index is not None:
+                order.append(("zarr", int(zarr_index)))
+                zarr_indices.append(int(zarr_index))
+                continue
+
+            mz_blob = row["mz_array"] if "mz_array" in row.keys() else None
+            intensity_blob = (
+                row["intensity_array"] if "intensity_array" in row.keys() else None
+            )
+            if mz_blob is None or intensity_blob is None:
+                raise RuntimeError(
+                    "Spectrum row has neither BLOB peak arrays nor a Zarr reference."
+                )
+            order.append(("blob", mz_blob, intensity_blob))
+
+        zarr_lookup: dict[int, tuple[np.ndarray, np.ndarray]] = {}
+        if zarr_indices:
+            zarr_mz, zarr_intensity = self._zarr_arrays.read_spectra(zarr_indices)
+            zarr_lookup = {
+                index: (mz_arr, intensity_arr)
+                for index, mz_arr, intensity_arr in zip(
+                    zarr_indices, zarr_mz, zarr_intensity
+                )
+            }
+
+        mz_arrays: list[np.ndarray] = []
+        intensity_arrays: list[np.ndarray] = []
+        for entry in order:
+            if entry[0] == "zarr":
+                zarr_mz_arr, zarr_intensity_arr = zarr_lookup[int(entry[1])]
+            else:
+                zarr_mz_arr = np.frombuffer(entry[1], dtype=np.float64).copy()
+                zarr_intensity_arr = np.frombuffer(entry[2], dtype=np.float64).copy()
+            mz_arrays.append(zarr_mz_arr)
+            intensity_arrays.append(zarr_intensity_arr)
+
+        return mz_arrays, intensity_arrays
+
     def close(self) -> None:
         """
-        Close the database connection.
+        Close the database connection and any attached Zarr store.
 
         Returns
         -------
@@ -1405,6 +2236,9 @@ class SpectralDatabase(SpectralStore):
         --------
         >>> db.close()
         """
+        if self._zarr_arrays is not None:
+            self._zarr_arrays.close()
+            self._zarr_arrays = None
         if self.conn:
             self.conn.close()
             self.conn = None

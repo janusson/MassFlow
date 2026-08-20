@@ -225,6 +225,9 @@ def create_spectral_store(
         Backend identifier. Supported values:
         - ``"sqlite"`` — SQLite BLOB-backed store (default, v0.1 stable).
         - ``"zarr"`` — Zarr/Blosc-backed store (cloud-optimized).
+        - ``"hybrid"`` — SQLite metadata + Zarr peak arrays; the SQLite
+          database retains metadata and a ``zarr_ref``/``zarr_index``
+          reference pair while arrays live in a ``<stem>.zarr`` store.
     **kwargs
         Additional keyword arguments forwarded to the store constructor.
 
@@ -242,6 +245,7 @@ def create_spectral_store(
     --------
     >>> store = create_spectral_store("library.db", backend="sqlite")
     >>> store = create_spectral_store("library.zarr", backend="zarr")
+    >>> store = create_spectral_store("library.db", backend="hybrid")
     """
     backend = backend.lower()
 
@@ -253,6 +257,20 @@ def create_spectral_store(
             Path(store_path), allow_destructive_upgrade=allow_upgrade
         )
 
+    if backend in ("hybrid", "sqlite-zarr"):
+        from MassFlow.database import SpectralDatabase
+
+        zarr_path = kwargs.pop("zarr_path", None)
+        if zarr_path is None:
+            zarr_path = Path(str(store_path)).with_suffix(".zarr")
+        allow_upgrade = kwargs.pop("allow_destructive_upgrade", False)
+        return SpectralDatabase(
+            Path(store_path),
+            allow_destructive_upgrade=allow_upgrade,
+            zarr_path=zarr_path,
+            **kwargs,
+        )
+
     if backend == "zarr":
         from MassFlow.zarr_store import ZarrSpectralStore
 
@@ -260,7 +278,7 @@ def create_spectral_store(
 
     raise ValueError(
         f"Unsupported storage backend: '{backend}'. "
-        f"Supported backends: 'sqlite', 'zarr'."
+        f"Supported backends: 'sqlite', 'zarr', 'hybrid'."
     )
 
 

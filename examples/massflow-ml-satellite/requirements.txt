@@ -1,0 +1,5 @@
+# Dependencies for the massflow-ml satellite reference server.
+# The MassFlow core itself is assumed to be installed in the environment.
+fastapi>=0.110
+uvicorn>=0.27
+httpx>=0.27

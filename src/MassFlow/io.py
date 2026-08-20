@@ -206,7 +206,13 @@ def load_spectra(
     elif fmt in ["db", "sqlite"]:
         from MassFlow.storage import create_spectral_store
 
-        store = create_spectral_store(path, backend="sqlite")
+        # A hybrid database is a SQLite file whose peak arrays live in a
+        # sibling `<stem>.zarr` store; attach it so metadata-only reads
+        # still resolve fragment arrays.
+        if path.with_suffix(".zarr").is_dir():
+            store = create_spectral_store(path, backend="hybrid")
+        else:
+            store = create_spectral_store(path, backend="sqlite")
         loader = store.get_spectra()
     elif fmt == "zarr":
         from MassFlow.storage import create_spectral_store

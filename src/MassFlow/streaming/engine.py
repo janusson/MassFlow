@@ -1,11 +1,11 @@
 """
 Streaming integration engine for real-time spectral annotation.
 
-This module connects the gRPC ingestion pipeline to MassFlow's existing
-``SimilarityEngine``.  It converts ``QueuedPacket`` instances into
-``matchms.Spectrum`` objects, runs similarity search against a
-pre-loaded reference library, and returns structured annotation
-responses.
+This module connects the gRPC ingestion pipeline to MassFlow's
+``ConsensusEngine``.  It converts ``QueuedPacket`` instances into
+``matchms.Spectrum`` objects, runs a weighted multi-engine consensus
+search against a pre-loaded reference library, and returns structured
+annotation responses.
 
 Design notes
 ------------
@@ -15,15 +15,21 @@ Design notes
 * Reference spectra are loaded once at server start and held in memory.
   A future optimisation could use a shared-memory ring-buffer for
   zero-copy handoff from the I/O thread.
+* **Consensus scoring** — every packet is routed through
+  :class:`MassFlow.similarity.ConsensusEngine`, which combines the
+  configured sub-engines (default: cosine + modified_cosine, ML engines
+  when available) into a weighted consensus score.  This trades some
+  throughput for higher-confidence real-time annotations; the
+  ``consensus_weights`` / ``consensus_min_engines`` settings in
+  ``SimilarityConfig`` control the ensemble.
 * **Micro-batching** (``MicroBatcher``) accumulates individual spectra
   over a configurable time window or batch size before dispatching to
-  ``SimilarityEngine.search()``, amortising overhead at high ingestion
-  rates.
+  the consensus search, amortising overhead at high ingestion rates.
 * **Streaming validation** (``validate_streaming_spectrum``) acts as a
   pre-scoring gate: it constructs a Pydantic ``SpectrumMetadata`` to
   enforce the 5-ppm precursor-m/z sanity check and applies matchms
   peak-level filtering so that malformed or empty MS2 scans are
-  rejected before they reach the similarity engine.
+  rejected before they reach the scoring engines.
 """
 
 from __future__ import annotations
@@ -37,8 +43,11 @@ from typing import List
 import numpy as np
 from matchms import Spectrum
 
-from MassFlow.config import MassFlowConfig, ProcessingConfig
-from MassFlow.similarity import SearchResult, get_similarity_engine
+from MassFlow.config import MassFlowConfig, ProcessingConfig, SimilarityConfig
+from MassFlow.similarity import (
+    ConsensusEngine,
+    SearchResult,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -251,6 +260,7 @@ def _spectrum_from_packet(
         intensities = intensities[sort_idx]
 
     metadata = {
+        "id": packet.spectrum_id,
         "precursor_mz": float(packet.precursor_mz),
         "retention_time": float(packet.retention_time_seconds),
         "charge": int(packet.charge),
@@ -384,7 +394,14 @@ class MicroBatcher:
 
 
 class StreamingEngine:
-    """Wraps ``SimilarityEngine`` for real-time spectral annotation.
+    """Wraps :class:`MassFlow.similarity.ConsensusEngine` for real-time
+    spectral annotation.
+
+    Every packet is scored by the consensus engine, which combines the
+    configured sub-engines (classical cosine / modified_cosine, plus ML
+    engines when installed) into a weighted consensus score.  The
+    ensemble is controlled by ``consensus_weights`` and
+    ``consensus_min_engines`` in the similarity configuration.
 
     Supports both single-spectrum and micro-batched annotation paths.
 
@@ -409,8 +426,23 @@ class StreamingEngine:
         self._reference_spectra = reference_spectra
         self._top_n = top_n
 
-        # Build the similarity engine and pre-compute hot-path arrays.
-        self._engine = get_similarity_engine(config.similarity)
+        # Build the consensus engine from the user's similarity settings.
+        # Streaming annotations go through the weighted multi-engine
+        # consensus path for higher-confidence real-time calls; the
+        # ensemble composition follows SimilarityConfig.consensus_weights
+        # (defaults to cosine + modified_cosine, ML engines when present).
+        consensus_config = SimilarityConfig(
+            algorithm="consensus",
+            ms1_tolerance=config.similarity.ms1_tolerance,
+            ms2_tolerance=config.similarity.ms2_tolerance,
+            resolution_ppm=config.similarity.resolution_ppm,
+            min_score=config.similarity.min_score,
+            min_matched_peaks=config.similarity.min_matched_peaks,
+            rt_tolerance=config.similarity.rt_tolerance,
+            consensus_weights=config.similarity.consensus_weights,
+            consensus_min_engines=config.similarity.consensus_min_engines,
+        )
+        self._engine = ConsensusEngine(consensus_config)
 
         # Pre-compute reference precursor m/z array (L2 cache pattern).
         self._ref_precursor_mzs = np.array(
@@ -421,7 +453,8 @@ class StreamingEngine:
 
         n_ref = len(reference_spectra)
         logger.info(
-            "StreamingEngine initialised with %d reference spectra (top_n=%d).",
+            "StreamingEngine initialised with %d reference spectra (top_n=%d) "
+            "using consensus scoring.",
             n_ref,
             top_n,
         )
@@ -481,12 +514,12 @@ class StreamingEngine:
         packets: List["QueuedPacket"],  # type: ignore[name-defined]  # noqa: F821
         spectra: List[Spectrum],
     ) -> List[dict]:
-        """Annotate a micro-batch of spectra in a single engine call.
+        """Annotate a micro-batch of spectra in a single consensus call.
 
-        The batch is dispatched to ``SimilarityEngine.search()`` as a
-        single call, which computes the full N×M similarity matrix
-        efficiently.  Results are then partitioned back to their
-        originating packets.
+        The batch is dispatched to :class:`ConsensusEngine.search` as a
+        single call, which scores every query-reference pair across the
+        configured sub-engines and aggregates weighted consensus scores.
+        Results are then partitioned back to their originating packets.
 
         Parameters
         ----------
@@ -668,5 +701,22 @@ def load_reference_library(
     if not processed:
         raise RuntimeError("All spectra were discarded during library processing.")
 
-    logger.info("Reference library ready: %d processed spectra.", len(processed))
+    # Streaming libraries frequently lack unique identifiers (e.g. MSP
+    # files without an ID field).  Consensus scoring aggregates results by
+    # reference id, so assign deterministic unique ids to every spectrum:
+    # missing ids get a positional id, and duplicates get a suffix.
+    seen_ids: set[str] = set()
+    for index, spectrum in enumerate(processed):
+        spectrum_id = str(spectrum.get("id") or "")
+        if not spectrum_id:
+            spectrum_id = f"streaming_ref_{index:06d}"
+        if spectrum_id in seen_ids:
+            spectrum_id = f"{spectrum_id}_{index:06d}"
+        seen_ids.add(spectrum_id)
+        spectrum.set("id", spectrum_id)
+
+    logger.info(
+        "Reference library ready: %d processed spectra (unique ids assigned).",
+        len(processed),
+    )
     return processed

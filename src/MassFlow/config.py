@@ -152,12 +152,14 @@ class InputConfig(BaseModel):
         default=500,
         description="Threshold (in MB) above which the library is streamed from disk instead of loaded into memory.",
     )
-    storage_backend: Literal["sqlite", "zarr"] = Field(
+    storage_backend: Literal["sqlite", "zarr", "hybrid"] = Field(
         default="sqlite",
         description=(
             "Storage backend for spectral libraries. "
             "'sqlite' (default) uses SQLite BLOBs for v0.1 stable workflows. "
-            "'zarr' uses compressed Zarr arrays for cloud-optimized horizontal scaling."
+            "'zarr' uses compressed Zarr arrays for cloud-optimized horizontal "
+            "scaling. 'hybrid' stores metadata in SQLite and peak arrays in "
+            "a chunked Zarr store referenced by zarr_ref/zarr_index."
         ),
     )
 
@@ -316,6 +318,31 @@ class ProcessingConfig(BaseModel):
         default=1000.0, description="Minimum intensity threshold"
     )
 
+    # --- Entropy-based decoy generation (FDR calibration) ---
+    decoy_min_relative_intensity: float = Field(
+        default=0.01,
+        gt=0.0,
+        le=1.0,
+        description=(
+            "Baseline noise floor for entropy-based decoy generation, as a "
+            "fraction of the base peak (the most intense fragment): peaks "
+            "below this threshold are excluded before the sqrt-weighted "
+            "spectral entropy is computed and before decoys are constructed. "
+            "Strict noise thresholding prevents chemical noise from "
+            "inflating entropy estimates and biasing FDR calibration."
+        ),
+    )
+    decoy_mz_shift_da: float = Field(
+        default=1.0,
+        gt=0.0,
+        description=(
+            "Uniform per-peak m/z jitter (Da) applied to decoy fragment "
+            "positions, randomizing fragmentation pathways so decoys share "
+            "no fragment positions with their source spectra at scoring "
+            "tolerance."
+        ),
+    )
+
     @field_validator("min_intensity", "noise_threshold")
     @classmethod
     def validate_non_negative_intensities(cls, v: float, info: ValidationInfo) -> float:
@@ -454,6 +481,85 @@ class SimilarityConfig(BaseModel):
         description="Ordered list of algorithms used as cascade stages, from fastest to slowest.",
     )
 
+    # --- Numba peak pre-filter (used with algorithm='modified_cosine') ---
+    enable_numba_prefilter: bool = Field(
+        default=True,
+        description=(
+            "When True, modified_cosine scoring uses the Numba-accelerated "
+            "peak/neutral-loss matching prefilter to skip query-reference "
+            "pairs that cannot reach min_matched_peaks before exact scoring. "
+            "Produces identical results to full scoring and falls back "
+            "automatically when numba is not installed."
+        ),
+    )
+
+    # --- HNSW ANN index settings (used by cascade when hnsw_enabled) ---
+    hnsw_enabled: bool = Field(
+        default=False,
+        description=(
+            "When True, cascade searches build a HNSW (Hierarchical Navigable "
+            "Small World) index over binned reference spectra and use it for "
+            "sub-linear candidate retrieval before exact scoring. Spectral "
+            "cosine/modified-cosine are non-metric, so HNSW only generates "
+            "candidates; exact scoring is always applied afterwards."
+        ),
+    )
+    hnsw_m: int = Field(
+        default=32,
+        ge=1,
+        description=(
+            "HNSW construction parameter M: maximum connections per node per "
+            "layer. Higher values densify the graph, improving recall on "
+            "non-metric spectral data at the cost of memory."
+        ),
+    )
+    hnsw_ef_construction: int = Field(
+        default=400,
+        ge=1,
+        description=(
+            "HNSW construction parameter ef_construction: dynamic candidate "
+            "list size during graph build. Higher values make heuristic "
+            "pruning gentler, which prevents recall degradation on "
+            "non-metric spectral data."
+        ),
+    )
+    hnsw_ef_search: int = Field(
+        default=200,
+        ge=1,
+        description=(
+            "HNSW query parameter ef_search: dynamic candidate list size at "
+            "query time. Must be >= hnsw_candidates_per_query; higher values "
+            "trade latency for recall."
+        ),
+    )
+    hnsw_candidates_per_query: int = Field(
+        default=200,
+        ge=1,
+        description=(
+            "Number of HNSW candidates retrieved per query spectrum before "
+            "exact scoring in the cascade."
+        ),
+    )
+    hnsw_bin_width: float = Field(
+        default=1.0,
+        gt=0.0,
+        description="m/z bin width (Da) used to vectorize spectra for the HNSW index.",
+    )
+    hnsw_mz_min: float = Field(
+        default=0.0,
+        ge=0.0,
+        description="Lower m/z bound (inclusive) of the HNSW binning range.",
+    )
+    hnsw_mz_max: float = Field(
+        default=2000.0,
+        gt=0.0,
+        description="Upper m/z bound (exclusive) of the HNSW binning range.",
+    )
+    hnsw_random_seed: int = Field(
+        default=42,
+        description="Random seed for HNSW graph construction (deterministic builds).",
+    )
+
     # --- ML Router / Orchestrator settings (post-v0.1) -----------------------
     enable_routing: bool = Field(
         default=False,
@@ -509,6 +615,84 @@ class SimilarityConfig(BaseModel):
         ge=1.0,
         description="Maximum seconds allowed for a single ML engine chunk before falling back.",
     )
+
+    # --- Remote ML engine endpoints (massflow-ml satellite boundary) ---
+    ml_endpoints: dict[str, str] = Field(
+        default_factory=dict,
+        description=(
+            "Remote ML engine endpoints keyed by algorithm name, e.g. "
+            "{'spec2vec': 'http://ml-host:8080/spec2vec'} or "
+            "{'ms2deepscore': 'grpc://ml-host:9090'}. When an endpoint is "
+            "configured for an algorithm, scoring is routed to the remote "
+            "service (REST JSON or the massflow.v1.ml gRPC contract) instead "
+            "of requiring a local installation of the heavy dependencies."
+        ),
+    )
+    ml_request_timeout_seconds: float = Field(
+        default=10.0,
+        ge=0.1,
+        description=(
+            "Per-request timeout (seconds) for remote ML engine calls. "
+            "Timed-out calls count as failures for the circuit breaker."
+        ),
+    )
+    ml_circuit_breaker_threshold: int = Field(
+        default=3,
+        ge=1,
+        description=(
+            "Consecutive remote ML failures that open the circuit breaker. "
+            "While open, calls fail fast and orchestrators fall back to "
+            "classical scoring without paying the network timeout."
+        ),
+    )
+    ml_circuit_breaker_cooldown_seconds: float = Field(
+        default=60.0,
+        ge=0.0,
+        description=(
+            "Seconds the circuit breaker stays open before allowing one "
+            "trial call (half-open)."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def validate_hnsw_parameters(self) -> "SimilarityConfig":
+        """Ensure HNSW construction parameters define a usable graph.
+
+        ``ef_construction`` must be at least ``M`` (hnswlib's heuristic
+        pruning is unstable below this); the binning range must have positive
+        width.
+        """
+        if self.hnsw_ef_construction < self.hnsw_m:
+            raise ValueError(
+                "hnsw_ef_construction must be >= hnsw_m for stable HNSW graph "
+                f"construction. Received hnsw_m={self.hnsw_m}, "
+                f"hnsw_ef_construction={self.hnsw_ef_construction}."
+            )
+        if self.hnsw_mz_min >= self.hnsw_mz_max:
+            raise ValueError(
+                "hnsw_mz_min must be < hnsw_mz_max for a non-empty binning "
+                f"range. Received [{self.hnsw_mz_min}, {self.hnsw_mz_max})."
+            )
+        return self
+
+    @field_validator("ml_endpoints")
+    @classmethod
+    def validate_ml_endpoints(
+        cls, endpoints: dict[str, str], info: ValidationInfo
+    ) -> dict[str, str]:
+        """Ensure every ML endpoint uses a supported transport scheme."""
+        for algorithm, endpoint in endpoints.items():
+            if not isinstance(endpoint, str) or not endpoint.strip():
+                raise ValueError(
+                    f"ml_endpoints['{algorithm}'] must be a non-empty URL string."
+                )
+            normalized = endpoint.strip()
+            if not normalized.startswith(("http://", "https://", "grpc://")):
+                raise ValueError(
+                    f"ml_endpoints['{algorithm}']='{endpoint}' has an "
+                    f"unsupported scheme; use http://, https://, or grpc://."
+                )
+        return endpoints
 
     @field_validator("rt_tolerance")
     @classmethod

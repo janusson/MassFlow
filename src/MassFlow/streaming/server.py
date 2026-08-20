@@ -38,9 +38,19 @@ Key design decisions
   spectrum, feeds them through the micro-batcher, and dispatches
   batches to ``StreamingEngine``.  This avoids thread-safety issues
   with matchms and keeps latency predictable.
+* **Quality-gated backpressure**: when the queue depth reaches a
+  configurable high-water mark, incoming low-quality spectra (see
+  ``BoundedQueue.compute_packet_quality``) are shed and counted in
+  ``ServerStatus.spectra_dropped_low_quality`` so an instrument that
+  acquires faster than the engines can score cannot exhaust memory or
+  inflate latency.
 * The micro-batcher accumulates spectra over a configurable time window
   (default 50 ms) or batch size (default 64) before dispatching,
-  amortising the per-call overhead of the matchms scoring machinery.
+  amortising the per-call overhead of the scoring machinery.
+* Every batch is routed through the ``ConsensusEngine``: the configured
+  sub-engines (cosine, modified_cosine, and ML engines when installed)
+  are combined into a weighted consensus score for higher-confidence
+  real-time annotations.
 * Responses are written back to the client on a separate ``asyncio``
   coroutine, so the ingestion path (writer) is never blocked by a
   slow client.
@@ -112,6 +122,14 @@ class MassFlowStreamingServicer(pb_grpc.MassFlowStreamingServicer):
     queue_put_timeout : float or None
         Maximum seconds to wait for queue space when backpressure is
         active (``overflow=BLOCK``).  ``None`` means block indefinitely.
+    high_water_mark : float
+        Fraction of queue capacity at which the quality gate engages:
+        once reached, incoming low-quality spectra (quality score below
+        ``low_quality_threshold``) are dropped to protect buffer space
+        for high-quality acquisitions.
+    low_quality_threshold : float
+        Minimum packet quality required to enqueue above the high-water
+        mark.
     top_n : int
         Number of top annotation hits to return per spectrum.
     batch_max_size : int
@@ -126,6 +144,8 @@ class MassFlowStreamingServicer(pb_grpc.MassFlowStreamingServicer):
         queue_capacity: int = 2048,
         queue_overflow: OverflowPolicy = OverflowPolicy.BLOCK,
         queue_put_timeout: float | None = 5.0,
+        high_water_mark: float = 0.8,
+        low_quality_threshold: float = 0.5,
         top_n: int = 5,
         batch_max_size: int = 64,
         batch_timeout_seconds: float = 0.050,
@@ -133,7 +153,12 @@ class MassFlowStreamingServicer(pb_grpc.MassFlowStreamingServicer):
         self._config = config
         self._top_n = top_n
         self._queue_put_timeout = queue_put_timeout
-        self._queue = BoundedQueue(capacity=queue_capacity, overflow=queue_overflow)
+        self._queue = BoundedQueue(
+            capacity=queue_capacity,
+            overflow=queue_overflow,
+            high_water_mark=high_water_mark,
+            low_quality_threshold=low_quality_threshold,
+        )
         self._batcher = MicroBatcher(
             batch_max_size=batch_max_size,
             batch_timeout_seconds=batch_timeout_seconds,
@@ -236,6 +261,9 @@ class MassFlowStreamingServicer(pb_grpc.MassFlowStreamingServicer):
             except Exception:
                 logger.exception("Batch dispatch failed (%d spectra).", len(spectra))
                 batch_latency_us = (time.perf_counter_ns() - t0) / 1e3
+                self._queue.record_latency(
+                    batch_latency_us / max(len(spectra), 1), count=len(spectra)
+                )
                 for pkt in packets:
                     response = _build_error_response(
                         pkt.spectrum_id, "Engine unavailable."
@@ -248,6 +276,12 @@ class MassFlowStreamingServicer(pb_grpc.MassFlowStreamingServicer):
                 return
 
             batch_latency_us = (time.perf_counter_ns() - t0) / 1e3
+            # Feed the rolling latency window so GetStatus reports live
+            # processing latency even though task_done() was signalled at
+            # dequeue time.
+            self._queue.record_latency(
+                batch_latency_us / max(len(spectra), 1), count=len(spectra)
+            )
             for result in results:
                 response = self._build_response(result)
                 response.processing_latency_us = int(batch_latency_us)
@@ -327,6 +361,7 @@ class MassFlowStreamingServicer(pb_grpc.MassFlowStreamingServicer):
             spectra_ingested=stats.total_ingested,
             spectra_annotated=stats.total_completed,
             spectra_dropped=stats.total_dropped,
+            spectra_dropped_low_quality=stats.total_dropped_low_quality,
             avg_latency_us=stats.avg_latency_us,
             throughput_hz=throughput,
             is_active=self._active.is_set(),
@@ -538,6 +573,8 @@ async def serve(
     queue_capacity: int = 2048,
     queue_overflow: OverflowPolicy = OverflowPolicy.BLOCK,
     queue_put_timeout: float | None = 5.0,
+    high_water_mark: float = 0.8,
+    low_quality_threshold: float = 0.5,
     top_n: int = 5,
     batch_max_size: int = 64,
     batch_timeout_seconds: float = 0.050,
@@ -559,6 +596,11 @@ async def serve(
         Backpressure policy: ``BLOCK`` or ``DROP_OLDEST``.
     queue_put_timeout : float or None
         Maximum seconds to wait for queue space when ``overflow=BLOCK``.
+    high_water_mark : float
+        Fraction of queue capacity at which low-quality spectra start
+        being shed under backpressure.
+    low_quality_threshold : float
+        Minimum packet quality required to enqueue above the HWM.
     top_n : int
         Number of top annotation hits per spectrum.
     batch_max_size : int
@@ -590,6 +632,8 @@ async def serve(
         queue_capacity=queue_capacity,
         queue_overflow=queue_overflow,
         queue_put_timeout=queue_put_timeout,
+        high_water_mark=high_water_mark,
+        low_quality_threshold=low_quality_threshold,
         top_n=top_n,
         batch_max_size=batch_max_size,
         batch_timeout_seconds=batch_timeout_seconds,
@@ -614,6 +658,8 @@ async def run_server(
     queue_capacity: int = 2048,
     queue_overflow: OverflowPolicy = OverflowPolicy.BLOCK,
     queue_put_timeout: float | None = 5.0,
+    high_water_mark: float = 0.8,
+    low_quality_threshold: float = 0.5,
     top_n: int = 5,
     batch_max_size: int = 64,
     batch_timeout_seconds: float = 0.050,
@@ -633,6 +679,8 @@ async def run_server(
         queue_capacity=queue_capacity,
         queue_overflow=queue_overflow,
         queue_put_timeout=queue_put_timeout,
+        high_water_mark=high_water_mark,
+        low_quality_threshold=low_quality_threshold,
         top_n=top_n,
         batch_max_size=batch_max_size,
         batch_timeout_seconds=batch_timeout_seconds,

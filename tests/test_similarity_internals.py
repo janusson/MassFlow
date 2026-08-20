@@ -205,10 +205,23 @@ def test_generate_decoys_basic():
     assert "decoy" in str(d.get("id"))
 
 
-def test_generate_decoys_preserves_mz():
+def test_generate_decoys_randomizes_fragment_positions():
+    """Entropy-based decoys jitter fragment positions away from the source.
+
+    Phase 3 replaces naive intensity shuffling with entropy-preserving
+    decoy generation: decoys preserve the precursor m/z and the spectral
+    entropy of the source, but fragment positions are jittered so decoys
+    share no fragments with their source at scoring tolerance. The old
+    contract (decoys keep the exact m/z array) is intentionally retired.
+    """
     s = _make_spectrum(200.0, "target", n_peaks=10)
     decoys = similarity.generate_decoys([s])
-    np.testing.assert_array_equal(decoys[0].peaks.mz, s.peaks.mz)
+    decoy_mz = decoys[0].peaks.mz
+    assert not np.array_equal(decoy_mz, s.peaks.mz)
+    # Precursor m/z (metadata) is still preserved exactly.
+    assert float(decoys[0].get("precursor_mz")) == pytest.approx(
+        float(s.get("precursor_mz")), rel=1e-12
+    )
 
 
 def test_generate_decoys_all_same_intensity():

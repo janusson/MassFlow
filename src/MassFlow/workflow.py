@@ -24,7 +24,7 @@ import numpy as np
 from matchms import Spectrum
 
 from MassFlow import io, processing
-from MassFlow.config import MassFlowConfig
+from MassFlow.config import MassFlowConfig, SimilarityConfig
 from MassFlow.similarity import (
     MLRouter,
     SearchResult,
@@ -34,12 +34,19 @@ from MassFlow.similarity import (
     get_similarity_engine,
 )
 
+from MassFlow.protocols import MLEngineProtocol
+
 logger = logging.getLogger(__name__)
 
-_worker_engine: SimilarityEngine | _MLEngineBase | None = None
+_worker_engine: SimilarityEngine | _MLEngineBase | MLEngineProtocol | None = None
 _worker_router: MLRouter | None = None
 _worker_references: List[Spectrum] | None = None
 _worker_decoys: List[Spectrum] | None = None
+
+# Classical fallback engine for the ML API boundary: when the configured
+# engine (remote ML endpoint or locally-missing heavy dependencies) fails,
+# the worker retries with modified_cosine so the run never crashes.
+_worker_fallback_engine: SimilarityEngine | None = None
 
 # L2 Cache – pre-computed numpy arrays for the worker hot path.
 # These are populated once in _init_worker and consumed by _process_single_file
@@ -111,12 +118,13 @@ def _init_worker(
     setup_structured_logging(level=logging.INFO, force_json=True)
 
     global _worker_engine, _worker_router, _worker_references, _worker_decoys
-    global _worker_ref_precursor_mzs, _worker_ref_is_decoy
+    global _worker_ref_precursor_mzs, _worker_ref_is_decoy, _worker_fallback_engine
 
     _worker_engine = get_similarity_engine(config.similarity)
     _worker_router = (
         MLRouter(config.similarity) if config.similarity.enable_routing else None
     )
+    _worker_fallback_engine = _build_classical_fallback_engine(config.similarity)
     _worker_references = references
     _worker_decoys = decoys
 
@@ -142,6 +150,39 @@ def _init_worker(
     else:
         _worker_ref_precursor_mzs = None
         _worker_ref_is_decoy = None
+
+
+def _build_classical_fallback_engine(
+    similarity_config: SimilarityConfig,
+) -> SimilarityEngine:
+    """Build the modified_cosine fallback engine for the ML API boundary.
+
+    Used when the configured engine fails at search time — a remote ML
+    endpoint that is unreachable (or whose circuit breaker has opened) or a
+    local environment missing the heavy dependencies (PyTorch, Gensim).
+    Empirical p-value scoring is applied on top of these results by the
+    normal FDR block in ``_process_single_file``.
+
+    Parameters
+    ----------
+    similarity_config : SimilarityConfig
+        The active similarity configuration (tolerances are inherited).
+
+    Returns
+    -------
+    SimilarityEngine
+        A classical modified_cosine engine.
+    """
+    fallback_config = SimilarityConfig(
+        algorithm="modified_cosine",
+        ms1_tolerance=similarity_config.ms1_tolerance,
+        ms2_tolerance=similarity_config.ms2_tolerance,
+        resolution_ppm=similarity_config.resolution_ppm,
+        min_score=similarity_config.min_score,
+        min_matched_peaks=similarity_config.min_matched_peaks,
+        rt_tolerance=similarity_config.rt_tolerance,
+    )
+    return SimilarityEngine(fallback_config)
 
 
 def _process_single_file(
@@ -233,13 +274,33 @@ def _process_single_file(
                     if _worker_engine is not None
                     else get_similarity_engine(config.similarity)
                 )
-                all_results = engine.search(
-                    standard_queries,
-                    all_references,
-                    include_decoys=False,
-                    ref_precursor_mzs=_worker_ref_precursor_mzs,
-                    ref_is_decoy=_worker_ref_is_decoy,
-                )
+                try:
+                    all_results = engine.search(
+                        standard_queries,
+                        all_references,
+                        include_decoys=False,
+                        ref_precursor_mzs=_worker_ref_precursor_mzs,
+                        ref_is_decoy=_worker_ref_is_decoy,
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "Configured engine '%s' failed (%s); falling back "
+                        "to modified_cosine scoring.",
+                        config.similarity.algorithm,
+                        exc,
+                    )
+                    fallback_engine = (
+                        _worker_fallback_engine
+                        if _worker_fallback_engine is not None
+                        else _build_classical_fallback_engine(config.similarity)
+                    )
+                    all_results = fallback_engine.search(
+                        standard_queries,
+                        all_references,
+                        include_decoys=False,
+                        ref_precursor_mzs=_worker_ref_precursor_mzs,
+                        ref_is_decoy=_worker_ref_is_decoy,
+                    )
         else:
             # Fallback for single-process testing or direct invocation, streaming the library
             all_results = []
@@ -261,9 +322,25 @@ def _process_single_file(
                     if _worker_engine is not None
                     else get_similarity_engine(config.similarity)
                 )
-                all_results = engine.search(
-                    standard_queries, ref_iterator, include_decoys=True
-                )
+                try:
+                    all_results = engine.search(
+                        standard_queries, ref_iterator, include_decoys=True
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "Configured engine '%s' failed (%s); falling back "
+                        "to modified_cosine scoring.",
+                        config.similarity.algorithm,
+                        exc,
+                    )
+                    fallback_engine = (
+                        _worker_fallback_engine
+                        if _worker_fallback_engine is not None
+                        else _build_classical_fallback_engine(config.similarity)
+                    )
+                    all_results = fallback_engine.search(
+                        standard_queries, ref_iterator, include_decoys=True
+                    )
 
         # Global FDR calculation across all chunks for this experimental file
         target_scores = []
@@ -486,11 +563,42 @@ def run_annotation_pipeline(
             raise ValueError("No valid spectra found in library.")
 
         logger.info(
-            f"Loaded {len(reference_spectra)} reference spectra. Generating decoys for FDR calculation..."
+            f"Loaded {len(reference_spectra)} reference spectra. Generating entropy-based decoys for FDR calculation..."
         )
-        from MassFlow.similarity import generate_decoys
+        from MassFlow.similarity import compare_target_decoy_entropy, generate_decoys
 
-        decoy_spectra = generate_decoys(reference_spectra)
+        decoy_spectra = generate_decoys(
+            reference_spectra,
+            min_relative_intensity=config.processing.decoy_min_relative_intensity,
+            mz_shift_da=config.processing.decoy_mz_shift_da,
+        )
+
+        # FDR-calibration diagnostic: entropy-preserving decoys must not
+        # systematically diverge from targets in spectral entropy. A large
+        # delta indicates biased decoy generation and unreliable q-values.
+        entropy_comparison = compare_target_decoy_entropy(
+            reference_spectra,
+            decoy_spectra,
+            min_relative_intensity=config.processing.decoy_min_relative_intensity,
+        )
+        logger.info(
+            "Target-decoy entropy comparison: mean_target=%.4f nats, "
+            "mean_decoy=%.4f nats, mean_abs_delta=%.6f, max_abs_delta=%.6f "
+            "(%d pairs).",
+            entropy_comparison["mean_target_entropy"],
+            entropy_comparison["mean_decoy_entropy"],
+            entropy_comparison["mean_abs_entropy_delta"],
+            entropy_comparison["max_abs_entropy_delta"],
+            int(entropy_comparison["compared_pairs"]),
+        )
+        if entropy_comparison["mean_abs_entropy_delta"] > 0.01:
+            logger.warning(
+                "Target and decoy entropy distributions systematically "
+                "diverge (mean |delta| = %.4f nats). FDR calibration may be "
+                "biased; check that baseline noise filtering is applied "
+                "before decoy generation.",
+                entropy_comparison["mean_abs_entropy_delta"],
+            )
 
         # Only warn when both conditions are met:
         # 1. Library is small (< 2000 spectra)

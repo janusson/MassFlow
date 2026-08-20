@@ -1,137 +1,221 @@
-# MassFlow (v0.1.0)
+# MassFlow
 
+[![CI](https://github.com/janusson/MassFlow/actions/workflows/ci.yml/badge.svg)](https://github.com/janusson/MassFlow/actions/workflows/ci.yml)
 [![Documentation](https://img.shields.io/badge/docs-available-blue.svg)](https://ericjanusson.github.io/MassFlow/)
+[![Python 3.13+](https://img.shields.io/badge/python-3.13+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-MassFlow is a program for local tandem mass spectrometry (MS/MS) annotation. It is designed to be a configuration-first Python toolkit that is very easy to run locally, producing highly reproducible outputs.
+**MassFlow is a local-first, high-throughput tandem mass spectrometry (MS/MS)
+annotation engine.** It turns experimental spectra (`.mzML`, `.mgf`) and
+reference libraries (`.msp`, SQLite/Zarr databases) into calibrated structural
+annotations — reproducible, configuration-driven, and fast enough for
+all-vs-all molecular networking at scale.
 
-### The MassFlow Way
-MassFlow is built on three core pillars:
-1. **Precision**: Strict 5.0 ppm precursor mass validation and physics-informed models guarantee structural integrity.
-2. **Portability**: Vendor-agnostic, open-format ingestion (`.mzML`, `.mgf`) keeps your data pipeline flexible.
-3. **Performance**: Vectorized calculations and local SQLite backends allow for rapid, memory-aware searching.
+Built on four engineering pillars:
 
-### Try it in 30 seconds:
+1. **Hybrid Zarr storage** — metadata in SQLite, float64 peak arrays in
+   compressed, chunked Zarr. Lock-free concurrent reads, no BLOB I/O
+   bottleneck.
+2. **Two-channel HNSW indexing** — sub-linear analogue discovery. Spectra are
+   embedded as `[binned m/z, binned neutral losses]`, so modified-cosine
+   matches survive even when analogue precursors shift.
+3. **Entropy-preserving FDR** — decoys preserve precursor m/z *and* the
+   spectral information content (√I-weighted Shannon entropy after a strict
+   base-peak noise filter), keeping target-decoy calibration honest.
+4. **Fail-safe ML microservice boundary** — Spec2Vec/MS2DeepScore run behind
+   a remote REST/gRPC contract with a circuit breaker; the core never
+   hard-depends on PyTorch or Gensim and always falls back to classical
+   scoring.
+
 ```shell
 # One-liner to generate tutorial data, build the database, and run annotation
 uv run massflow tutorial
 
 # Then follow the printed commands to build the DB and annotate
-uv run massflow db build --input tutorial/tutorial_library.msp --output tutorial/results/compiled_library.db --config tutorial/tutorial_config.yaml --category library
+uv run massflow db build --input tutorial/tutorial_library.msp \
+    --output tutorial/results/compiled_library.db \
+    --config tutorial/tutorial_config.yaml --category library
 uv run massflow annotate --config tutorial/tutorial_config.yaml
 ```
 
-Its core workflow is simple:
+---
 
-1. load an experimental spectral file
-2. load a reference library
-3. apply configurable `matchms` processing
-4. score query spectra against the library
-5. write per-file CSV or mzTab-M results
+## Performance architecture
+
+### 1 · Hybrid SQLite + Zarr storage engine
+
+Fragment arrays were moved out of SQLite BLOBs into compressed, chunked Zarr
+stores. The SQLite database keeps only metadata plus a `zarr_ref`/`zarr_index`
+reference to each array — reads become lock-free, which removes the
+contention point for multiprocessing workers.
 
 ```mermaid
-graph LR
-    Config[YAML Config] --> CLI{MassFlow CLI}
-    Input[Experimental<br/>mzML / MGF] --> CLI
-    Library[Reference<br/>MSP / DB] --> CLI
-    CLI --> Processed[Processed Spectra]
-    Processed --> Sim[Similarity Search<br/>cosine / modified_cosine]
-    Sim --> FDR[FDR Filtering]
-    FDR --> Out[CSV / mzTab-M<br/>+ YAML Report]
+flowchart TD
+    Config[YAML config<br/>storage_backend: hybrid] --> Write[SpectralDatabase<br/>metadata + zarr_ref]
+    Write --> DB[(SQLite<br/>metadata only)]
+    Write --> Z[(Zarr store<br/>float64 mz/intensity arrays<br/>Blosc+zstd chunks)]
+    DB --> Read[Parallel workers<br/>lock-free reads]
+    Z --> Read
+    Read --> Score[Scoring engines]
 ```
 
-## Stable vs experimental at a glance
+- Chunk sizes are tuned: ~1M float64 elements (~8 MB) per peak-array chunk
+  balances compression ratio against read amplification; metadata arrays
+  chunk at 4096 spectra. An experimental tensor layout `(2, B, M)` maps
+  chunks directly onto batch-similarity reads.
+- The migration utility
+  [`scripts/migrations/0002_blobs_to_zarr.py`](scripts/migrations/0002_blobs_to_zarr.py)
+  converts existing BLOB databases: it is bit-for-bit verified, idempotent,
+  and interrupt-safe.
+- `input.storage_backend: sqlite | zarr | hybrid` selects the layout per run;
+  hybrid databases are created with `massflow db build`/`db merge`.
 
-| Surface | Status | Notes |
-| --- | --- | --- |
-| `massflow tutorial` | Stable target | Generates synthetic data for evaluation; see the [Usage Guide](docs/user-guide/usage.md) |
-| `massflow annotate --config ...` | Stable target | Main documented workflow |
-| YAML configuration | Stable target | Prefer `library_path`; `reference_library` is deprecated and remains accepted only as a backward-compatible alias during the transition |
-| Open-format ingestion (`mzML`, `mzXML`, `MGF`, `MSP`) | Stable target | Vendor raw conversion is out of scope |
-| SQLite library workflows (`massflow db ...`) | Stable target | Recommended for reusable local libraries |
-| `cosine` and `modified_cosine` | Stable target | Best-supported scoring paths |
-| CSV, mzTab-M export | Stable target | Main reporting surfaces |
+### 2 · Two-channel HNSW index for sub-linear analogue networking
 
-## What MassFlow is for
+All-vs-all molecular networking scales quadratically. MassFlow embeds every
+spectrum into a two-channel vector — `[binned m/z, binned neutral losses]` —
+and searches an HNSW graph over that space. The neutral-loss channel
+(`precursor_mz − fragment_mz`) is what keeps structural analogues
+discoverable when their precursor masses shift.
 
-MassFlow is designed for local, reproducible MS/MS annotation workflows where you want to:
+```mermaid
+flowchart LR
+    S[Spectrum] --> E[2-channel embedding<br/>binned m/z + binned neutral losses]
+    E --> H[HNSW graph<br/>M=32, ef_construction=400]
+    H --> C[Candidates<br/>sub-linear lookup]
+    C --> P[Numba prefilter<br/>exact-mass + neutral-loss gates]
+    P --> R[Exact modified-cosine<br/>re-scoring]
+```
 
-- run annotation from the command line
-- keep preprocessing settings in a YAML file
-- use open formats such as `mzML`, `mzXML`, `MGF`, and `MSP`
-- reuse processed reference libraries through SQLite
-- export simple tabular results (CSV, mzTab-M) for downstream review
+- Cosine over binned vectors is **not a metric** (triangle inequality does
+  not hold), so the HNSW stage is a *candidate generator only*: every hit is
+  re-scored exactly. Construction parameters are exposed for tuning —
+  `hnsw_m`, `hnsw_ef_construction`, `hnsw_ef_search`,
+  `hnsw_candidates_per_query`, `hnsw_bin_width`, `hnsw_mz_min`,
+  `hnsw_mz_max`, `hnsw_random_seed` under `similarity:`. Conservative values
+  protect recall in the non-metric regime.
+- The index integrates seamlessly into `CascadeEngine` as the first,
+  coarse-and-fast stage; [`MassFlow.acceleration`](src/MassFlow/acceleration.py)
+  adds Numba-JIT two-pointer prefiltering (with a numerically identical pure
+  NumPy fallback) on top.
 
-## What is stable vs experimental
+### 3 · Entropy-preserving decoys & calibrated FDR
 
-### Core workflow for `v0.1`
-These are the parts to rely on first:
+Naive fragment shuffling biases the target-decoy null distribution. MassFlow
+replaces it with entropy-based decoy generation: each decoy preserves the
+precursor m/z and the spectral entropy of its source while randomizing the
+fragmentation pathways.
 
-- `massflow tutorial` — generates synthetic data for instant evaluation
-- `massflow annotate --config ...`
-- YAML configuration loading and validation
-- open-format ingestion for `mzML`, `mzXML`, `MGF`, and `MSP`
-- SQLite library workflows through `massflow db`
-- configurable `matchms`-based metadata and peak filtering
-- similarity search with `cosine` and `modified_cosine`
-- per-file CSV and mzTab-M result export
+```mermaid
+flowchart TD
+    P[Filtered MS2 peaks] --> F[Hard baseline filter<br/>drop peaks < 1% of base peak]
+    F --> W[Sqrt intensity weighting<br/>w = I^0.5]
+    W --> H[Shannon entropy H = -Σ p ln p]
+    H --> D[Decoy: permute intensity profile<br/>+ jitter fragment m/z]
+    D --> K[Entropy preserved<br/>precursor preserved]
+    K --> Q[Target-decoy FDR<br/>q-values]
+```
 
-## Documentation
+- `MassFlow.similarity.spectral_entropy` applies the spectral-entropy
+  weighting (`I^0.5`) and the hard `<1% base-peak` noise filter *before*
+  computing information content, so low-abundance chemical noise cannot
+  inflate entropy and skew calibration (Li et al., *Nat. Methods* 2021).
+- `processing.decoy_min_relative_intensity` and `processing.decoy_mz_shift_da`
+  expose the filter and jitter controls; `compare_target_decoy_entropy`
+  provides a drift diagnostic that logs a calibration warning whenever
+  target and decoy entropy distributions systematically diverge.
 
-Comprehensive documentation, including API references, experimental guides, and deep-dives into processing, is available at: **[https://ericjanusson.github.io/MassFlow/](https://ericjanusson.github.io/MassFlow/)**
+### 4 · Fail-safe ML microservice boundary
 
-## Installation and Dependency Policy
+Heavy scoring engines (Spec2Vec, MS2DeepScore) live outside the core.
+The wire contract is `protos/massflow/v1/ml.proto` — served over REST (JSON
+mirror) or gRPC — and every remote call is wrapped in a circuit breaker.
 
-MassFlow requires **Python 3.10+**.
+```mermaid
+sequenceDiagram
+    participant O as CascadeEngine / ConsensusEngine
+    participant CB as CircuitBreaker
+    participant ML as massflow-ml satellite<br/>(REST / gRPC)
+    participant C as Classical fallback
+    O->>CB: ML score request
+    alt service healthy
+        CB->>ML: Search / BatchScore
+        ML-->>O: ranked hits
+    else timeout / unreachable / no deps
+        CB-->>O: circuit opens (fail fast)
+        O->>C: modified_cosine + empirical p-values
+    end
+```
 
-The project uses `pyproject.toml` and `uv.lock` as the single source of truth for packaging, versioning, and dependencies. Using `uv` is strictly recommended to ensure reproducible environments.
+- Configure endpoints per algorithm under `similarity.ml_endpoints`
+  (e.g. `spec2vec: http://ml-host:8080/spec2vec`,
+  `ms2deepscore: grpc://ml-host:9090`), with
+  `ml_request_timeout_seconds`, `ml_circuit_breaker_threshold`, and
+  `ml_circuit_breaker_cooldown_seconds`.
+- If the service is down — or PyTorch/Gensim simply are not installed — the
+  pipeline logs a warning and falls back to classical scoring with empirical
+  p-values. A run never crashes on ML unavailability.
+- A complete reference server (FastAPI REST + `grpc.aio` + dummy model +
+  end-to-end smoke client) lives in
+  [`examples/massflow-ml-satellite/`](examples/massflow-ml-satellite/).
+
+### 5 · Real-time streaming with backpressure
+
+`massflow stream-server` serves the bidirectional `StreamSpectra` gRPC RPC
+for live instrument annotation. A bounded asyncio queue absorbs bursts; when
+the buffer exceeds its high-water mark, low-quality spectra are shed and
+reported through `GetStatus` (`spectra_dropped`) instead of letting memory
+bloat.
+
+---
+
+## Pipeline at a glance
+
+```mermaid
+graph TD
+    Config[YAML config] --> Ref[Reference library<br/>MSP / DB / Zarr]
+    Config --> Exp[Experimental spectra<br/>mzML / MGF]
+    Ref --> Store[Hybrid SQLite+Zarr store]
+    Store --> Process[matchms processing<br/>noise threshold, normalization]
+    Exp --> Process
+    Process --> Index[2-channel HNSW index]
+    Index --> Pre[Numba prefilter]
+    Pre --> Score[cosine / modified_cosine<br/>or ML engines]
+    Score --> Decoy[Entropy-preserving decoys]
+    Decoy --> FDR[FDR estimation & q-values]
+    FDR --> Out[CSV / mzTab-M + YAML report]
+```
+
+## Installation
+
+MassFlow requires **Python 3.13+** and uses `uv` for reproducible
+environments:
 
 ```shell
-pip install massflow-ms  # Or your preferred distribution method
-# or
-git clone https://github.com/ejanusson/massflow && cd massflow && uv sync
+git clone https://github.com/janusson/MassFlow && cd MassFlow
+uv python pin 3.13 && uv sync
+
+# Optional extras
+uv sync --extra zarr --extra hnsw   # Zarr storage + HNSW indexing
+uv sync --extra ml                  # Spec2Vec / MS2DeepScore (heavy)
 ```
 
 ## Quickstart
 
-### 0. Try it instantly with tutorial data
-
-If you don't have MS/MS files handy, generate a synthetic dataset and run the full pipeline in under a minute:
-
 ```shell
+# Generate a synthetic dataset and pre-configured YAML
 uv run massflow tutorial
+
+# Build a reusable reference database
+uv run massflow db build --input tutorial/tutorial_library.msp \
+    --output tutorial/results/compiled_library.db \
+    --config tutorial/tutorial_config.yaml --category library
+
+# Annotate
+uv run massflow annotate --config tutorial/tutorial_config.yaml
 ```
 
-This creates a `tutorial/` directory with a reference library, experimental queries, and a pre-configured YAML config. Follow the printed next-steps commands to build the database and run the annotation — no external files required.
-
-For a complete walkthrough, see the [Usage Guide](docs/user-guide/usage.md).
-
-### 1. Choose your inputs
-
-You need:
-
-- one experimental file, for example `example.mzML`
-- one reference library, for example `library.msp`
-
-MassFlow directly supports open formats. It does **not** convert vendor raw formats for you.
-
-Supported user-facing input formats:
-
-- `mzML`
-- `mzXML`
-- `MGF`
-- `MSP`
-
-SQLite libraries are also supported for explicit file inputs such as a reference library path.
-
-### 2. Create or edit a config file
-
-You can generate a starter config:
-
-```shell
-uv run massflow init --output massflow_config.yaml
-```
-
-Then edit the key fields:
+A minimal config:
 
 ```yaml
 project:
@@ -142,273 +226,145 @@ input:
   input_path: "data/experiments/experiment.mzML"
   library_path: "data/libraries/library.msp"
   format: "mzml"
+  storage_backend: "hybrid"        # sqlite | zarr | hybrid
 
 processing:
   clean_metadata: true
-  filter_by_intensity: true
   noise_threshold: 1000.0
-  min_intensity: 0.0
-  filter_min_peaks: true
   min_peaks: 5
+  decoy_min_relative_intensity: 0.01   # 1% base-peak noise floor for FDR
+  decoy_mz_shift_da: 1.0
 
 similarity:
-  algorithm: "cosine"
+  algorithm: "modified_cosine"
   ms1_tolerance: 0.02
   ms2_tolerance: 0.02
-  tolerance_unit: "Da"
   min_score: 0.6
   min_matched_peaks: 3
-  fdr_threshold: 0.05
+  fdr_threshold: 0.01
+
+  # --- HNSW candidate pre-stage (sub-linear search) ---
+  hnsw_enabled: true
+  hnsw_m: 32
+  hnsw_ef_construction: 400
+  hnsw_ef_search: 200
+  hnsw_candidates_per_query: 200
+  hnsw_bin_width: 1.0
+  hnsw_mz_min: 0.0
+  hnsw_mz_max: 2000.0
+
+  # --- Remote ML engines (optional; classical fallback is automatic) ---
+  ml_endpoints:
+    spec2vec: "http://localhost:8080/spec2vec"
+    ms2deepscore: "grpc://localhost:9090"
+  ml_request_timeout_seconds: 10.0
+  ml_circuit_breaker_threshold: 3
+  ml_circuit_breaker_cooldown_seconds: 60.0
 
 export:
-  # Available formats: "csv", "mztab"
-  format: "csv"
+  format: "csv"   # csv | mztab
 ```
 
-### 3. Run annotation
+## Results
 
-```shell
-uv run massflow annotate --config massflow_config.yaml
-```
-
-### 4. Check the results
-
-MassFlow writes one CSV (or mzTab-M) file per experimental input into `project.output_directory`.
-
-For an input file named `example.mzML`, expect outputs like:
-
-- `results/standard_analysis/example_results.csv`
-- `results/standard_analysis/example_results.report.yaml`
-
-The CSV contains the annotation table itself.
-
-The sidecar report is intended to capture the provenance of that CSV, including details such as:
-
-- when the analysis was run
-- which query file was processed
-- which library file or database was used
-- which config file path produced the run
-- the parsed processing, similarity, workflow, and export settings that were applied
-- enough run metadata to connect the reported CSV back to the exact analysis context
-
-The CSV includes matched and unmatched query spectra. Unmatched rows are still written so you can review what was searched.
-
-If a query spectrum has no retained match after score and FDR filtering, the row is still exported and the match-specific columns are left empty. In the current workflow, these rows are useful for confirming that the input was processed even when no annotation was found.
-
-A simplified no-match example looks like this:
+For an input named `example.mzML`, MassFlow writes
+`example_results.csv` (or `.mztab`) plus a provenance sidecar
+`example_results.report.yaml` into `project.output_directory`. Unmatched
+queries are still exported — with empty annotation columns — so the complete
+input is auditable:
 
 ```csv
 query_id,query_precursor_mz,reference_id,reference_name,score,Annotation_Status
 example_query_0,304.0,,,,Unknown
 ```
 
-## How the program works
-
-```mermaid
-graph TD
-    Config[1. Load YAML Config] --> Ref[2. Load & Process<br/>Reference Library]
-    Config --> Exp[3. Load & Process<br/>Experimental Spectra]
-    Ref --> Score[4. Score Queries<br/>Against Library]
-    Exp --> Score
-    Score --> Decoy[5. Generate Decoys<br/>& Estimate FDR]
-    Decoy --> Filter[6. Filter & Export<br/>CSV + YAML Report]
-```
-
-At a high level, the annotation workflow does this:
-
-1. load the YAML config
-2. load and process the reference library
-3. load and process the experimental spectra
-4. score queries against the library
-5. estimate target-decoy false discovery rate
-6. keep retained matches and export the results (e.g. CSV + YAML sidecar)
-
-A few practical details matter:
-
-- reference libraries are processed through the same configured filtering pipeline as the queries
-- searches are chunked to avoid loading the entire reference library into one large scoring pass
-- results are filtered per experimental file before export
-- if a small reference library is used, FDR may be overly strict and remove many hits
-
-## Example: annotate a local file against a local library
-
-If your project contains:
-
-- `data/experiments/COE001_16ppm_5uL.mzML`
-- `data/libraries/example_library.msp`
-
-then a minimal config would look like:
-
-```yaml
-project:
-  output_directory: "results/standard_analysis"
-
-input:
-  input_path: "data/experiments/COE001_16ppm_5uL.mzML"
-  library_path: "data/libraries/example_library.msp"
-  format: "mzml"
-
-similarity:
-  algorithm: "cosine"
-```
-
-and you would run:
+## Hybrid storage & databases
 
 ```shell
-uv run massflow annotate --config massflow_config.yaml
+# Build / inspect / merge libraries (SQLite metadata + Zarr peak arrays)
+uv run massflow db build --input data/libraries/library.msp \
+    --output results/library.db --config massflow_config.yaml --category library
+uv run massflow db inspect results/library.db
+uv run massflow db merge --inputs results/lib1.db results/lib2.db \
+    --output results/merged.db --backend hybrid
+
+# Migrate an existing BLOB database to the hybrid layout
+uv run python scripts/migrations/0002_blobs_to_zarr.py --input results/library.db \
+    --zarr-output results/library.zarr
 ```
 
-## Database workflows
-
-For repeated analyses, you can preprocess a library into SQLite.
-
-```mermaid
-graph LR
-    MSP[MSP / MGF<br/>Library] --> Build[db build]
-    Build --> DB[(SQLite DB)]
-    DB --> Inspect[db inspect]
-    DB --> Annotate[annotate --config]
-    DB1[(lib1.db)] --> Merge[db merge]
-    DB2[(lib2.db)] --> Merge
-    Merge --> Merged[(merged.db)]
-    Merged --> Annotate
-```
-
-### Build a database
+## Real-time streaming
 
 ```shell
-uv run massflow db build --input data/libraries/example_library.msp --output results/example_library.db --config massflow_config.yaml --category library
+uv run massflow stream-server --config massflow_config.yaml \
+    --host "[::]" --port 50051 \
+    --queue-capacity 2048 --queue-high-water-mark 0.8 \
+    --queue-low-quality-threshold 0.5
 ```
 
-### Inspect a database
-
-```shell
-uv run massflow db inspect results/example_library.db
-```
-
-### Merge databases
-
-```shell
-uv run massflow db merge --inputs results/lib1.db results/lib2.db --output results/merged.db
-```
-
-You can then use the resulting `.db` file as the configured library input path.
-
-The preferred config key is `library_path`.
-
-`reference_library` is deprecated in documentation and examples, but it is still accepted as a backward-compatible alias during the current transition period. New configs should use `library_path`.
-
-The reported CSV output should also be accompanied by a sidecar report so the result table keeps a hard link back to the run settings that produced it. In practice, this report should record both the original config path and the parsed settings that were actually applied during the run.
-
-## Managing a local user database
-
-A practical pattern is to maintain your own local SQLite library for in-house standards, curated references, or project-specific compounds.
-
-A simple workflow is:
-
-1. start from one or more library files in `MSP` or `MGF`
-2. build a SQLite database with `massflow db build`
-3. inspect it with `massflow db inspect`
-4. merge multiple local databases with `massflow db merge` when needed
-5. point `input.library_path` at the resulting `.db` file
-
-For example, you might keep:
-
-- `results/user_library.db` for your main curated local library
-- `results/standards.db` for authenticated standards
-- `results/project_x_library.db` for project-specific spectra
-
-Then merge them into one search library when appropriate:
-
-```shell
-uv run massflow db build --input data/libraries/example_library.msp --output results/user_library.db --config massflow_config.yaml --category personal
-uv run massflow db inspect results/user_library.db
-uv run massflow db merge --inputs results/user_library.db results/standards.db --output results/master_user_library.db
-```
-
-After that, set your config to use the merged library:
-
-```yaml
-input:
-  input_path: "data/experiments/experiment_file.mzML"
-  library_path: "results/master_user_library.db"
-  format: "mzml"
-```
-
-The database layer stores spectra plus metadata and a category label, so categories such as `reference`, `personal`, `standards`, or `project_x` can help you keep local libraries organized.
-
-## Processing controls
-
-MassFlow exposes common `matchms`-based processing steps through YAML settings.
-
-Examples include:
-
-- metadata cleaning
-- retention time extraction
-- identifier repair
-- intensity filtering
-- minimum peak count enforcement
-- m/z truncation
-- top-N peak reduction
-- intensity normalization
-
-This makes preprocessing reproducible and easier to review than ad hoc scripts.
+The bidirectional `StreamSpectra` RPC accepts `SpectrumPacket` streams from
+instrument clients and yields `AnnotationResponse` objects computed by the
+consensus engine. Backpressure flags control shedding; `GetStatus` reports
+queue depth, dropped spectra, and engine health. (`massflow serve` remains as
+a deprecated alias.)
 
 ## Similarity engines
 
-### Stable search paths
-These are the choices for the current core workflow:
+| Engine | Status | Notes |
+| --- | --- | --- |
+| `cosine`, `modified_cosine` | Stable | Primary scoring paths; exact-mass + neutral-loss aware |
+| `cascade` | Stable | HNSW pre-stage → Numba prefilter → exact re-scoring |
+| `consensus` | Stable | Weighted ensemble of engines, classical fallback built in |
+| `spec2vec`, `ms2deepscore` | Remote | Served via the massflow-ml boundary (`massflow[ml]`) |
 
-- `cosine`
-- `modified_cosine`
+## The ML satellite in one glance
 
-If you need the broadest compatibility and simplest behavior, start with `cosine`.
+```shell
+# Install satellite-only deps and start both transports
+uv pip install -r examples/massflow-ml-satellite/requirements.txt
+uv run uvicorn rest_server:app --app-dir examples/massflow-ml-satellite --port 8080 &
+uv run python examples/massflow-ml-satellite/grpc_server.py --port 9090 &
+
+# Prove the whole contract with the core's own client
+uv run python examples/massflow-ml-satellite/client_smoke.py
+```
 
 ## Python API
-
-MassFlow can also be used from Python.
-
-For core engines such as `cosine` and `modified_cosine`:
 
 ```python
 from pathlib import Path
 
 from MassFlow import io
 from MassFlow.config import MassFlowConfig
-from MassFlow.similarity import SimilarityEngine
+from MassFlow.similarity import get_similarity_engine
 
 query_spectra = list(io.load_spectra(Path("data/experiments/example.mgf"), "mgf"))
-reference_spectra = list(io.load_spectra(Path("data/libraries/example_library.msp"), "msp"))
+reference_spectra = list(
+    io.load_spectra(Path("data/libraries/example_library.msp"), "msp")
+)
 
 config = MassFlowConfig.from_yaml("massflow_config.yaml")
-engine = SimilarityEngine(config.similarity)
+engine = get_similarity_engine(config.similarity)
 results = engine.search(query_spectra, reference_spectra)
 ```
 
 ## Testing
 
-Run the test suite with:
-
 ```shell
-uv run pytest
+uv run pytest                     # full suite
+uv run pytest --cov=src/MassFlow --cov-report=xml --cov-fail-under=80 -v
+uv run ruff check . && uv run ruff format --check .
+uv run mypy .
 ```
 
-## Notes on supported data
+## Documentation
 
-MassFlow is intentionally conservative at the I/O boundary.
-
-- open formats are supported directly
-- vendor raw formats are rejected instead of being converted implicitly
-- large raw datasets and reference libraries are best kept outside the repository
-- SQLite libraries are useful when you want faster repeated library access
-
-## Repository guide
-
-- `README.md`: quickstart and user-facing overview
-- `ARCHITECTURE.md`: module responsibilities and data flow
-- `docs/user-guide/`: technical manuals and metadata contracts
-- `docs/post-v0.1-roadmap.md`: future development
+- [`docs/`](docs/) — user guide, API reference, and metadata contracts
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — component responsibilities
+- [`examples/massflow-ml-satellite/`](examples/massflow-ml-satellite/) —
+  reference ML microservice
+- [`protos/massflow/v1/`](protos/massflow/v1/) — streaming & ML wire contracts
 
 ## License
 
-MIT. See `LICENSE`.
+MIT. See [`LICENSE`](LICENSE).

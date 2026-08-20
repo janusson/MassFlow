@@ -67,7 +67,7 @@ import time
 from dataclasses import dataclass
 from functools import wraps
 from pathlib import Path
-from typing import Any, Callable, Iterator, Optional, TYPE_CHECKING
+from typing import Any, Callable, Iterator, Optional, Sequence, TYPE_CHECKING
 
 import numpy as np
 from matchms import Spectrum
@@ -90,6 +90,9 @@ _DEFAULT_PEAK_CHUNK_SIZE: int = 1_048_576
 
 # Spectra per chunk for 1-D metadata arrays (flat layout).
 _DEFAULT_METADATA_CHUNK_SIZE: int = 4096
+
+# Spectra per chunk for the boundaries array in the hybrid SQLite+Zarr backend.
+_DEFAULT_BOUNDARY_CHUNK_SIZE: int = 4096
 
 # Spectra per batch for the tensor layout.
 _DEFAULT_TENSOR_BATCH_SIZE: int = 1024
@@ -114,6 +117,25 @@ _DEFAULT_CACHE_TTL: float = 300.0  # seconds
 _BACKOFF_BASE: float = 1.0
 _BACKOFF_MULTIPLIER: float = 2.0
 _BACKOFF_MAX: float = 60.0
+
+
+def _default_compressor() -> Optional[Any]:
+    """Return the default Blosc+zstd compressor, or ``None`` if unavailable.
+
+    zarr v3 exposes codecs via :mod:`zarr.codecs`.  Blosc with zstd and
+    byte-shuffling at clevel 3 gives a good compression/speed trade-off for
+    float64 spectral arrays (~8 MB chunks).
+    """
+    try:
+        import zarr.codecs
+
+        return zarr.codecs.BloscCodec(
+            cname="zstd",
+            clevel=3,
+            shuffle="shuffle",
+        )
+    except (ImportError, AttributeError, TypeError):
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -1614,3 +1636,549 @@ class ZarrSpectralStore(SpectralStore):
     def layout(self) -> str:
         """Return the active storage layout (``"flat"`` or ``"tensor"``)."""
         return self._layout
+
+
+# ===================================================================
+# ZarrPeakArrayStore
+# ===================================================================
+
+
+class ZarrPeakArrayStore:
+    """Chunked Zarr storage for fragment peak arrays (m/z + intensity).
+
+    This class is the array-storage half of the hybrid SQLite + Zarr backend.
+    SQLite retains spectrum metadata rows plus a ``zarr_ref`` / ``zarr_index``
+    reference pair; this class persists the ``float64`` fragment vectors in a
+    flat, chunked layout:
+
+    ``peaks/``
+        ``mz_flat`` (float64) and ``intensity_flat`` (float64) — concatenated
+        per-spectrum vectors indexed by ``peaks/boundaries`` (int64), where
+        ``boundaries[i]`` is the flat offset of spectrum *i*.  ``boundaries``
+        holds ``n_spectra + 1`` entries and ``boundaries[0] == 0``.
+
+    The root group attributes record ``store_uuid`` — a unique identifier that
+    the SQLite ``zarr_ref`` column references so database rows can be matched
+    to the array store that owns their peaks.
+
+    Chunk sizing is configurable per array dimension:
+
+    - ``peak_chunk_size`` — float64 elements per chunk in ``mz_flat`` and
+      ``intensity_flat`` (default ~8 MB per chunk).  Chunks that are too small
+      make per-chunk metadata overhead dominate; chunks that are too large
+      cause decompression memory spikes during parallel reads.
+    - ``boundary_chunk_size`` — spectra per chunk in ``boundaries``.
+
+    Reads are lock-free and safe for multiprocessing: every read opens a fresh
+    read-only Zarr handle, and appends only write *new* chunks (the
+    ``boundaries`` tail is appended without rewriting existing chunks), so
+    concurrent readers always observe a consistent snapshot of previously
+    appended spectra.  Writes serialize through the same dual-lock strategy
+    used by :class:`ZarrSpectralStore` (``threading.Lock`` +
+    ``fcntl.flock``).
+
+    Parameters
+    ----------
+    store_path : Path
+        Directory path for local stores, or an fsspec-compatible URL
+        (``s3://``, ``gs://``, ``https://``) for cloud stores.  Remote stores
+        are read-only.
+    peak_chunk_size : int, optional
+        Float64 elements per chunk in ``mz_flat`` / ``intensity_flat``.
+    boundary_chunk_size : int, optional
+        Spectra per chunk in ``boundaries``.
+    compressor : optional
+        Zarr compressor (defaults to Blosc+zstd, clevel=3).
+    overwrite : bool, optional
+        If ``True``, delete any existing local store before creating a
+        fresh one.
+    storage_options : dict, optional
+        Keyword arguments forwarded to the ``fsspec`` filesystem constructor.
+    remote_timeout : float, optional
+        Timeout in seconds for individual remote read operations.
+    remote_retries : int, optional
+        Maximum retry attempts for remote reads (exponential backoff).
+
+    Examples
+    --------
+    >>> store = ZarrPeakArrayStore("library.zarr", peak_chunk_size=262144)
+    >>> start = store.append_spectra([mz_array], [intensity_array])
+    >>> mz_read, intensity_read = store.read_spectrum(start)
+    >>> store.close()
+    """
+
+    _PEAKS_GROUP = "peaks"
+    _MZ_ARRAY = "mz_flat"
+    _INTENSITY_ARRAY = "intensity_flat"
+    _BOUNDARIES_ARRAY = "boundaries"
+    _UUID_ATTR = "store_uuid"
+
+    def __init__(
+        self,
+        store_path: Path,
+        peak_chunk_size: int = _DEFAULT_PEAK_CHUNK_SIZE,
+        boundary_chunk_size: int = _DEFAULT_BOUNDARY_CHUNK_SIZE,
+        compressor: Optional[Any] = None,
+        overwrite: bool = False,
+        storage_options: Optional[dict[str, Any]] = None,
+        remote_timeout: float = _DEFAULT_REMOTE_TIMEOUT,
+        remote_retries: int = _DEFAULT_REMOTE_RETRIES,
+    ) -> None:
+        if peak_chunk_size < 1:
+            raise ValueError("peak_chunk_size must be >= 1.")
+        if boundary_chunk_size < 1:
+            raise ValueError("boundary_chunk_size must be >= 1.")
+
+        self.store_path = Path(store_path)
+        self._peak_chunk_size = peak_chunk_size
+        self._boundary_chunk_size = boundary_chunk_size
+        self._compressor = compressor
+        self._storage_options = storage_options
+        self._is_remote = _is_remote_url(str(store_path))
+        self._retry_config = RetryConfig(max_retries=remote_retries)
+        self._remote_timeout = remote_timeout
+
+        self._root: Optional[Any] = None  # zarr.Group
+        self._store: Optional[Any] = None  # underlying zarr.Store
+        self._n_spectra: int = 0
+        self._store_uuid: str = ""
+        # In-process lock for coordinating appends within the same process.
+        self._lock = threading.Lock()
+
+        self._initialize(overwrite)
+
+    # ------------------------------------------------------------------
+    # Lifecycle
+    # ------------------------------------------------------------------
+
+    def _initialize(self, overwrite: bool) -> None:
+        """Open or create the Zarr group and peak arrays."""
+        import zarr
+
+        store_path_str = str(self.store_path)
+
+        if overwrite and not self._is_remote and self.store_path.exists():
+            import shutil
+
+            shutil.rmtree(store_path_str)
+
+        if not self._is_remote:
+            self.store_path.mkdir(parents=True, exist_ok=True)
+
+        if self._is_remote:
+            self._store = _make_fsspec_store(
+                store_path_str,
+                storage_options=self._storage_options,
+                read_only=True,
+            )
+            self._root = zarr.open_group(store=self._store, mode="r")
+        else:
+            self._root = zarr.open_group(store_path_str, mode="a")
+            self._store = None
+
+        if self._compressor is None:
+            self._compressor = _default_compressor()
+
+        # Ensure the peaks sub-group and flat arrays exist.
+        if self._PEAKS_GROUP not in self._root:
+            try:
+                self._root.create_group(self._PEAKS_GROUP)
+            except Exception:
+                # Group may already exist in a concurrent session.
+                pass
+
+        pg = self._root[self._PEAKS_GROUP]  # type: ignore[return-value]
+        compressor_kwargs: dict[str, Any] = {}
+        if self._compressor is not None:
+            compressor_kwargs["compressors"] = [self._compressor]
+
+        for name in (self._MZ_ARRAY, self._INTENSITY_ARRAY):
+            if name not in pg:  # type: ignore[operator]
+                pg.create_array(  # type: ignore[union-attr]
+                    name,
+                    shape=(0,),
+                    chunks=(self._peak_chunk_size,),
+                    dtype=np.float64,
+                    fill_value=0.0,
+                    **compressor_kwargs,
+                )
+
+        if self._BOUNDARIES_ARRAY not in pg:  # type: ignore[operator]
+            pg.create_array(  # type: ignore[union-attr]
+                self._BOUNDARIES_ARRAY,
+                shape=(0,),
+                chunks=(self._boundary_chunk_size,),
+                dtype=np.int64,
+                fill_value=0,
+            )
+
+        # Store UUID — generated on first creation, stable afterwards.
+        if self._UUID_ATTR in self._root.attrs:
+            self._store_uuid = str(self._root.attrs[self._UUID_ATTR])
+        else:
+            if self._is_remote:
+                raise RuntimeError(
+                    "Remote Zarr store is missing the 'store_uuid' attribute; "
+                    "cannot validate the database reference."
+                )
+            import uuid
+
+            self._store_uuid = uuid.uuid4().hex
+            self._root.attrs[self._UUID_ATTR] = self._store_uuid
+
+        boundaries = pg[self._BOUNDARIES_ARRAY]  # type: ignore[index]
+        self._n_spectra = max(0, int(boundaries.shape[0]) - 1)  # type: ignore[union-attr]
+
+        logger.info(
+            "ZarrPeakArrayStore opened: path=%s remote=%s n_spectra=%d "
+            "peak_chunk_size=%d boundary_chunk_size=%d",
+            store_path_str,
+            self._is_remote,
+            self._n_spectra,
+            self._peak_chunk_size,
+            self._boundary_chunk_size,
+        )
+
+    def close(self) -> None:
+        """Release Zarr handles.  Data is already durable on disk/object store."""
+        self._root = None
+        self._store = None
+
+    @property
+    def is_open(self) -> bool:
+        """Return ``True`` while the store has an open Zarr handle."""
+        return self._root is not None
+
+    # ------------------------------------------------------------------
+    # Read helpers — lock-free, fresh read-only handle per call
+    # ------------------------------------------------------------------
+
+    def _open_read_group(self) -> Any:  # zarr.Group
+        """Open a fresh read-only Zarr group for a single read operation.
+
+        Opening a new handle per call keeps reads lock-free and safe across
+        processes: no file handle, cache, or chunk state is shared between
+        threads, worker processes, or the writer.
+        """
+        import zarr
+
+        if self._is_remote:
+            fsspec_store = _make_fsspec_store(
+                str(self.store_path),
+                storage_options=self._storage_options,
+                read_only=True,
+            )
+            return zarr.open_group(store=fsspec_store, mode="r")
+        return zarr.open_group(str(self.store_path), mode="r")
+
+    def _retry_read(self, func: Callable[[], Any]) -> Any:
+        """Execute *func* with exponential-backoff retry for remote stores."""
+        if not self._is_remote:
+            return func()
+        return _retry_with_backoff(self._retry_config)(func)()
+
+    # ------------------------------------------------------------------
+    # Writes — append-only under dual lock
+    # ------------------------------------------------------------------
+
+    def _acquire_write_lock(self) -> tuple[int | None, bool]:
+        """Acquire in-process and cross-process write locks."""
+        if self._is_remote:
+            acquired = self._lock.acquire(blocking=True)
+            return None, acquired
+        lock_path = self.store_path / _LOCK_FILENAME
+        fd = _acquire_file_lock(lock_path)
+        acquired = self._lock.acquire(blocking=True)
+        return fd, acquired
+
+    def _release_write_lock(self, fd: int | None, acquired: bool) -> None:
+        """Release locks acquired by :meth:`_acquire_write_lock`."""
+        if acquired:
+            self._lock.release()
+        if not self._is_remote:
+            _release_file_lock(fd)
+
+    def append_spectra(
+        self,
+        mz_arrays: Sequence[np.ndarray],
+        intensity_arrays: Sequence[np.ndarray],
+    ) -> int:
+        """Append spectrum peak vectors and return the first new index.
+
+        The returned index is the spectrum position that callers must persist
+        alongside their metadata rows (``zarr_index``).
+
+        Parameters
+        ----------
+        mz_arrays : sequence of np.ndarray
+            Fragment m/z vectors, one per spectrum (``float64``).
+        intensity_arrays : sequence of np.ndarray
+            Fragment intensity vectors, one per spectrum (``float64``).
+
+        Returns
+        -------
+        int
+            The start index of the first appended spectrum.
+
+        Raises
+        ------
+        ValueError
+            If the two sequences have different lengths or an array is not
+            one-dimensional.
+        RuntimeError
+            If the store is remote (remote stores are read-only).
+        """
+        if self._is_remote:
+            raise RuntimeError(
+                "Writing to remote Zarr stores is not supported. "
+                "Build the store locally and upload the resulting "
+                "directory/prefix to your cloud storage."
+            )
+
+        mz_list = [np.asarray(a, dtype=np.float64) for a in mz_arrays]
+        intensity_list = [np.asarray(a, dtype=np.float64) for a in intensity_arrays]
+
+        if len(mz_list) != len(intensity_list):
+            raise ValueError(
+                "mz_arrays and intensity_arrays must have the same length."
+            )
+        for mz_arr, intensity_arr in zip(mz_list, intensity_list):
+            if mz_arr.ndim != 1 or intensity_arr.ndim != 1:
+                raise ValueError("Peak arrays must be one-dimensional.")
+            if mz_arr.size != intensity_arr.size:
+                raise ValueError("Each m/z and intensity pair must match in size.")
+
+        if not mz_list:
+            return self._n_spectra
+
+        peak_counts = np.fromiter(
+            (arr.size for arr in mz_list), dtype=np.int64, count=len(mz_list)
+        )
+        total_new_peaks = int(peak_counts.sum())
+        if total_new_peaks > 0:
+            new_mz_flat = np.concatenate(mz_list)
+            new_intensity_flat = np.concatenate(intensity_list)
+        else:
+            new_mz_flat = np.empty(0, dtype=np.float64)
+            new_intensity_flat = np.empty(0, dtype=np.float64)
+        new_tail = np.cumsum(peak_counts, dtype=np.int64)
+
+        fd, lock_acquired = self._acquire_write_lock()
+        try:
+            if self._root is None:
+                raise RuntimeError("ZarrPeakArrayStore is not open.")
+            pg = self._root[self._PEAKS_GROUP]
+            mz_flat = pg[self._MZ_ARRAY]
+            intensity_flat = pg[self._INTENSITY_ARRAY]
+            boundaries = pg[self._BOUNDARIES_ARRAY]
+
+            existing_spectra = max(0, int(boundaries.shape[0]) - 1)
+            existing_peaks = (
+                int(boundaries[existing_spectra]) if existing_spectra > 0 else 0
+            )
+            total_peaks = existing_peaks + total_new_peaks
+
+            mz_flat.resize(total_peaks)
+            intensity_flat.resize(total_peaks)
+            if total_new_peaks > 0:
+                mz_flat[existing_peaks:total_peaks] = new_mz_flat
+                intensity_flat[existing_peaks:total_peaks] = new_intensity_flat
+
+            # Append only the new boundary tail — never rewrite existing
+            # chunks so concurrent lock-free readers stay consistent.
+            new_n_spectra = existing_spectra + len(mz_list)
+            boundaries.resize(new_n_spectra + 1)
+            boundaries[existing_spectra + 1 : new_n_spectra + 1] = (
+                existing_peaks + new_tail
+            )
+
+            start_index = existing_spectra
+            self._n_spectra = new_n_spectra
+        finally:
+            self._release_write_lock(fd, lock_acquired)
+
+        return start_index
+
+    def truncate(self, n_spectra: int) -> None:
+        """
+        Remove trailing spectra so the store holds exactly *n_spectra*.
+
+        Used by the BLOB→Zarr migration to discard orphaned arrays left by
+        an interrupted run (arrays appended but never referenced by SQLite
+        rows). Zarr v3 ``resize`` drops the trailing chunks entirely.
+
+        Parameters
+        ----------
+        n_spectra : int
+            Target number of spectra. Must be between ``0`` and the current
+            count.
+
+        Returns
+        -------
+        None
+
+        Raises
+        ------
+        ValueError
+            If *n_spectra* is negative or larger than the current count.
+        RuntimeError
+            If the store is remote (remote stores are read-only).
+
+        Examples
+        --------
+        >>> store.truncate(10)
+        """
+        if self._is_remote:
+            raise RuntimeError(
+                "Writing to remote Zarr stores is not supported. "
+                "Build the store locally and upload the resulting "
+                "directory/prefix to your cloud storage."
+            )
+        if n_spectra < 0 or n_spectra > self._n_spectra:
+            raise ValueError(
+                f"n_spectra must be between 0 and {self._n_spectra}; got {n_spectra}."
+            )
+
+        fd, lock_acquired = self._acquire_write_lock()
+        try:
+            if self._root is None:
+                raise RuntimeError("ZarrPeakArrayStore is not open.")
+            pg = self._root[self._PEAKS_GROUP]
+            mz_flat = pg[self._MZ_ARRAY]
+            intensity_flat = pg[self._INTENSITY_ARRAY]
+            boundaries = pg[self._BOUNDARIES_ARRAY]
+
+            new_total_peaks = int(boundaries[n_spectra]) if n_spectra > 0 else 0
+            mz_flat.resize(new_total_peaks)
+            intensity_flat.resize(new_total_peaks)
+            if n_spectra == 0:
+                # Keep a single zero sentinel so future appends have
+                # boundaries[0] == 0 to anchor their cumulative offsets.
+                boundaries.resize(1)
+                boundaries[0] = 0
+            else:
+                boundaries.resize(n_spectra + 1)
+            self._n_spectra = n_spectra
+        finally:
+            self._release_write_lock(fd, lock_acquired)
+
+    # ------------------------------------------------------------------
+    # Reads — lock-free
+    # ------------------------------------------------------------------
+
+    def read_spectrum(self, index: int) -> tuple[np.ndarray, np.ndarray]:
+        """Read the ``(mz, intensity)`` pair for the spectrum at *index*.
+
+        Both returned arrays are ``float64`` and owned by the caller.
+        """
+        mz_arrays, intensity_arrays = self.read_spectra([index])
+        return mz_arrays[0], intensity_arrays[0]
+
+    def read_spectra(
+        self,
+        indices: Optional[Sequence[int]] = None,
+    ) -> tuple[list[np.ndarray], list[np.ndarray]]:
+        """Batch-read peak vectors for the requested spectrum indices.
+
+        Parameters
+        ----------
+        indices : sequence of int or None, optional
+            Spectrum indices to read.  If ``None``, all spectra are returned
+            in store order.
+
+        Returns
+        -------
+        tuple[list[np.ndarray], list[np.ndarray]]
+            Aligned lists of ``float64`` m/z and intensity arrays.
+        """
+        group = self._open_read_group()
+        pg = group[self._PEAKS_GROUP]
+        boundaries = self._retry_read(
+            lambda: np.asarray(pg[self._BOUNDARIES_ARRAY][:], dtype=np.int64)
+        )
+        n_spectra = max(0, int(boundaries.shape[0]) - 1)
+
+        if indices is None:
+            index_list = list(range(n_spectra))
+        else:
+            index_list = [int(i) for i in indices]
+            for idx in index_list:
+                if idx < 0 or idx >= n_spectra:
+                    raise IndexError(
+                        f"Spectrum index {idx} out of range for store with "
+                        f"{n_spectra} spectra."
+                    )
+
+        if not index_list:
+            return [], []
+
+        start_min = int(np.min([boundaries[i] for i in index_list]))
+        end_max = int(np.max([boundaries[i + 1] for i in index_list]))
+
+        def read_mz_span() -> np.ndarray:
+            return np.asarray(pg[self._MZ_ARRAY][start_min:end_max], dtype=np.float64)
+
+        def read_intensity_span() -> np.ndarray:
+            return np.asarray(
+                pg[self._INTENSITY_ARRAY][start_min:end_max], dtype=np.float64
+            )
+
+        mz_span = self._retry_read(read_mz_span)
+        intensity_span = self._retry_read(read_intensity_span)
+
+        mz_arrays: list[np.ndarray] = []
+        intensity_arrays: list[np.ndarray] = []
+        for idx in index_list:
+            start = int(boundaries[idx]) - start_min
+            end = int(boundaries[idx + 1]) - start_min
+            mz_arrays.append(np.asarray(mz_span[start:end], dtype=np.float64).copy())
+            intensity_arrays.append(
+                np.asarray(intensity_span[start:end], dtype=np.float64).copy()
+            )
+
+        return mz_arrays, intensity_arrays
+
+    # ------------------------------------------------------------------
+    # Informational
+    # ------------------------------------------------------------------
+
+    @property
+    def n_spectra(self) -> int:
+        """Number of spectra currently stored."""
+        return self._n_spectra
+
+    @property
+    def store_uuid(self) -> str:
+        """Unique identifier of this store, referenced by ``zarr_ref``."""
+        return self._store_uuid
+
+    @property
+    def peak_chunk_size(self) -> int:
+        """Configured float64-elements-per-chunk for the peak arrays."""
+        return self._peak_chunk_size
+
+    @property
+    def boundary_chunk_size(self) -> int:
+        """Configured spectra-per-chunk for the boundaries array."""
+        return self._boundary_chunk_size
+
+    @property
+    def chunk_sizes(self) -> dict[str, int]:
+        """Actual chunk sizes of the underlying arrays.
+
+        Useful for verifying chunk-size configurability against an open
+        store (arrays created with a given chunk shape keep it forever).
+        """
+        if self._root is None:
+            return {}
+        pg = self._root[self._PEAKS_GROUP]
+        return {
+            self._MZ_ARRAY: int(pg[self._MZ_ARRAY].chunks[0]),
+            self._INTENSITY_ARRAY: int(pg[self._INTENSITY_ARRAY].chunks[0]),
+            self._BOUNDARIES_ARRAY: int(pg[self._BOUNDARIES_ARRAY].chunks[0]),
+        }
+
+    @property
+    def is_remote(self) -> bool:
+        """Return ``True`` if the store is backed by a remote URL."""
+        return self._is_remote

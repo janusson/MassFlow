@@ -21,6 +21,7 @@ __all__ = [
     "MLEngineProtocol",
     "SpectralDatabase",
     "SpectralStore",
+    "ZarrPeakArrayStore",
     "ZarrSpectralStore",
     "create_spectral_store",
     "load_spectra",
@@ -30,6 +31,7 @@ __all__ = [
     "config",
     "database",
     "io",
+    "ml_client",
     "processing",
     "protocols",
     "similarity",
@@ -61,6 +63,10 @@ def __getattr__(name):
         from .zarr_store import ZarrSpectralStore
 
         return ZarrSpectralStore
+    elif name == "ZarrPeakArrayStore":
+        from .zarr_store import ZarrPeakArrayStore
+
+        return ZarrPeakArrayStore
     elif name == "create_spectral_store":
         from .storage import create_spectral_store
 

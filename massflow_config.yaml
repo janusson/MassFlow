@@ -14,6 +14,13 @@ processing: # basic cleaning only
   normalize_intensity: true
   reduce_to_top_n_peaks: true
   n_max: 100
+  # Entropy-based decoy generation for FDR calibration:
+  # peaks below this fraction of the BASE PEAK are treated as baseline
+  # noise and excluded before the sqrt-weighted spectral entropy is
+  # computed.
+  decoy_min_relative_intensity: 0.01
+  # per-peak m/z jitter (Da) randomizing decoy fragmentation pathways.
+  decoy_mz_shift_da: 1.0
 
 similarity:
   algorithm: "cosine"
@@ -21,6 +28,17 @@ similarity:
   ms2_tolerance: 0.02
   min_score: 0.7
   fdr_threshold: 0.05
+  # Numba peak/neutral-loss prefilter for modified_cosine candidate
+  # generation (identical results, faster on large libraries):
+  enable_numba_prefilter: true
+  # HNSW approximate candidate retrieval inside the cascade engine.
+  # Requires the [hnsw] extra. Tune M/ef_construction/ef_search for
+  # recall because spectral similarity is non-metric.
+  hnsw_enabled: false
+  hnsw_m: 32
+  hnsw_ef_construction: 400
+  hnsw_ef_search: 200
+  hnsw_candidates_per_query: 200
 
 export:
   # Available formats: "csv", "mztab"

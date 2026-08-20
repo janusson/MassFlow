@@ -604,6 +604,15 @@ wheels = [
 ]
 
 [[package]]
+name = "hnswlib"
+version = "0.8.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/cf/7a/1a9b1405f2eb59515f06c3074750b03e0e96edf7fee0f6dd6df81d9c21d7/hnswlib-0.8.0.tar.gz", hash = "sha256:cb6d037eedebb34a7134e7dc78966441dfd04c9cf5ee93911be911ced951c44c", size = 36206, upload-time = "2023-12-03T04:16:17.55Z" }
+
+[[package]]
 name = "idna"
 version = "3.15"
 source = { registry = "https://pypi.org/simple" }
@@ -949,6 +958,9 @@ dev = [
     { name = "pytest" },
     { name = "pytest-cov" },
 ]
+hnsw = [
+    { name = "hnswlib" },
+]
 ml = [
     { name = "gensim" },
     { name = "ms2deepscore" },
@@ -982,6 +994,7 @@ dev = [
 requires-dist = [
     { name = "gensim", marker = "extra == 'ml'", specifier = ">=4.3.0" },
     { name = "grpcio", specifier = ">=1.60.0" },
+    { name = "hnswlib", marker = "extra == 'hnsw'", specifier = ">=0.8.0" },
     { name = "lxml" },
     { name = "matchms", specifier = ">=0.27.0" },
     { name = "ms2deepscore", marker = "extra == 'ml'", specifier = ">=1.0.0" },
@@ -1003,7 +1016,7 @@ requires-dist = [
     { name = "watchfiles", marker = "extra == 'watch'", specifier = ">=1.1.1" },
     { name = "zarr", marker = "extra == 'zarr'", specifier = ">=3.0" },
 ]
-provides-extras = ["dev", "chem", "ml", "zarr", "watch"]
+provides-extras = ["dev", "chem", "ml", "zarr", "hnsw", "watch"]
 
 [package.metadata.requires-dev]
 dev = [

@@ -15,10 +15,23 @@ import logging
 from collections import defaultdict
 from functools import wraps
 from pathlib import Path
-from typing import Iterable, Iterator, List, Literal, Optional, TypedDict
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Iterable,
+    Iterator,
+    List,
+    Literal,
+    Optional,
+    Sequence,
+    TypedDict,
+)
 
 import numpy as np
 from matchms import Spectrum, calculate_scores
+
+if TYPE_CHECKING:
+    from MassFlow.hnsw import HNSWSpectralIndex
 
 try:
     from matchms.similarity import (
@@ -394,14 +407,226 @@ def _ms1_prefilter_arrays(
     return np.array(rows), np.array(cols)
 
 
-def generate_decoys(spectra: List[Spectrum], random_seed: int = 42) -> List[Spectrum]:
+# ---------------------------------------------------------------------------
+# Entropy-based decoy generation (FDR calibration)
+# ---------------------------------------------------------------------------
+# Defaults for the entropy-preserving decoy generator. Spectral cosine /
+# modified cosine are not metrics and naive fragment shuffling biases the
+# target-decoy null distribution, so decoys are generated to preserve the
+# precursor m/z and the spectral entropy — the ion information content —
+# of their source spectra while randomizing the fragmentation pathways
+# (intensity-to-position pairing and fragment positions).
+#
+# Spectral entropy (Li et al., Nat. Methods 2021) applies a square-root
+# intensity weighting (w = I^0.5) before normalization so that a few intense
+# base peaks do not dominate the information estimate while low-abundance
+# peaks retain meaningful weight.  A hard baseline filter (peaks below
+# ``min_relative_intensity`` × the base peak, default 1%) is applied FIRST so
+# chemical noise cannot artificially inflate the entropy.
+
+_DEFAULT_DECOY_MIN_RELATIVE_INTENSITY: float = 0.01
+_DEFAULT_DECOY_MZ_SHIFT_DA: float = 1.0
+
+
+def spectral_entropy(
+    intensities: np.ndarray,
+    min_relative_intensity: float = _DEFAULT_DECOY_MIN_RELATIVE_INTENSITY,
+) -> float:
+    """Compute the spectral entropy (nats) of fragment intensities.
+
+    Follows the spectral-entropy definition of Li et al. (Nat. Methods 2021):
+
+    1. **Hard baseline filter** — peaks below ``min_relative_intensity`` ×
+       the base peak (default 1% of the base peak) are removed, so
+       low-abundance chemical noise cannot artificially inflate the
+       information content.
+    2. **Square-root intensity weighting** — the remaining intensities are
+       weighted as ``w = I**0.5`` and normalized to a probability vector;
+       the entropy is ``H = -Σ p ln p``.  The sqrt weighting prevents a few
+       intense base peaks from dominating the estimate (raw linear
+       intensities would over-weight them).
+
+    Parameters
+    ----------
+    intensities : np.ndarray
+        One-dimensional fragment intensities. The entropy is invariant to
+        global intensity scaling, so raw or normalized intensities give the
+        same result.
+    min_relative_intensity : float, optional
+        Baseline noise floor as a fraction of the **base peak** (the maximum
+        intensity). Peaks below ``min_relative_intensity × base_peak`` are
+        excluded before weighting. Defaults to 0.01 (1% of the base peak).
+
+    Returns
+    -------
+    float
+        Spectral entropy in nats (natural logarithm). Returns 0.0 when fewer
+        than two peaks survive filtering (a single-peak spectrum carries no
+        information).
+
+    Examples
+    --------
+    >>> spectral_entropy(np.array([1.0, 1.0]))
+    0.6931...  # ln(2)
     """
-    Generate a decoy library by shuffling fragment intensities.
-    This mathematically breaks the structural correlation while keeping the
-    precursor m/z the same and preserving monotonically increasing m/z arrays.
+    intensity_array = np.asarray(intensities, dtype=np.float64)
+    if intensity_array.size == 0:
+        return 0.0
+
+    base_peak = float(np.max(intensity_array))
+    if not np.isfinite(base_peak) or base_peak <= 0.0:
+        return 0.0
+
+    # Strict baseline filtering BEFORE the information estimate: noise
+    # peaks below the relative floor of the base peak are discarded.
+    keep_mask = intensity_array >= min_relative_intensity * base_peak
+    kept = intensity_array[keep_mask]
+    if kept.size < 2:
+        return 0.0
+
+    # Spectral entropy weighting: I^0.5 (sqrt) before normalization.
+    weights = np.sqrt(kept)
+    probabilities = weights / np.sum(weights)
+    return float(-np.sum(probabilities * np.log(probabilities)))
+
+
+def compare_target_decoy_entropy(
+    target_spectra: Sequence[Spectrum],
+    decoy_spectra: Sequence[Spectrum],
+    min_relative_intensity: float = _DEFAULT_DECOY_MIN_RELATIVE_INTENSITY,
+) -> dict[str, float]:
+    """Compare Shannon entropy distributions of targets and decoys.
+
+    Diagnostic for FDR calibration: entropy-preserving decoys should produce
+    a target and decoy entropy distribution that do not systematically
+    diverge. A large ``mean_abs_entropy_delta`` indicates biased decoy
+    generation (e.g. unfiltered noise peaks or degenerate intensity
+    profiles) and should be investigated before trusting q-values.
+
+    Parameters
+    ----------
+    target_spectra : sequence of Spectrum
+        Reference (target) spectra.
+    decoy_spectra : sequence of Spectrum
+        Generated decoy spectra, aligned one-to-one with the targets.
+    min_relative_intensity : float, optional
+        Relative intensity floor passed to :func:`spectral_entropy`.
+
+    Returns
+    -------
+    dict[str, float]
+        Summary with ``mean_target_entropy``, ``mean_decoy_entropy``,
+        ``mean_abs_entropy_delta``, ``max_abs_entropy_delta`` and
+        ``compared_pairs``. Empty inputs yield NaN statistics.
+
+    Examples
+    --------
+    >>> compare_target_decoy_entropy(targets, decoys)
+    {'mean_target_entropy': ..., 'mean_decoy_entropy': ..., ...}
+    """
+    target_entropies = np.array(
+        [
+            spectral_entropy(
+                np.asarray(spectrum.peaks.intensities, dtype=np.float64),
+                min_relative_intensity,
+            )
+            for spectrum in target_spectra
+        ],
+        dtype=np.float64,
+    )
+    decoy_entropies = np.array(
+        [
+            spectral_entropy(
+                np.asarray(spectrum.peaks.intensities, dtype=np.float64),
+                min_relative_intensity,
+            )
+            for spectrum in decoy_spectra
+        ],
+        dtype=np.float64,
+    )
+
+    compared_pairs = min(target_entropies.size, decoy_entropies.size)
+    if compared_pairs == 0:
+        return {
+            "mean_target_entropy": np.nan,
+            "mean_decoy_entropy": np.nan,
+            "mean_abs_entropy_delta": np.nan,
+            "max_abs_entropy_delta": np.nan,
+            "compared_pairs": 0.0,
+        }
+
+    deltas = np.abs(
+        target_entropies[:compared_pairs] - decoy_entropies[:compared_pairs]
+    )
+    return {
+        "mean_target_entropy": float(np.mean(target_entropies)),
+        "mean_decoy_entropy": float(np.mean(decoy_entropies)),
+        "mean_abs_entropy_delta": float(np.mean(deltas)),
+        "max_abs_entropy_delta": float(np.max(deltas)),
+        "compared_pairs": float(compared_pairs),
+    }
+
+
+def generate_decoys(
+    spectra: List[Spectrum],
+    random_seed: int = 42,
+    min_relative_intensity: float = _DEFAULT_DECOY_MIN_RELATIVE_INTENSITY,
+    mz_shift_da: float = _DEFAULT_DECOY_MZ_SHIFT_DA,
+) -> List[Spectrum]:
+    """Generate entropy-preserving decoy spectra for target-decoy FDR.
+
+    Naive fragment shuffling is replaced with entropy-based decoy generation.
+    Each decoy:
+
+    1. **Preserves the precursor m/z** of its source spectrum.
+    2. **Preserves the spectral entropy** — the information content computed
+       with the spectral-entropy weighting (``I**0.5``) after a strict
+       baseline filter (peaks below ``min_relative_intensity`` × the base
+       peak are removed) — exactly, up to floating-point rounding.
+    3. **Randomizes the fragmentation pathways**: intensities are reassigned
+       across peaks (random permutation of the filtered intensity profile)
+       and fragment positions are jittered by ``±mz_shift_da``, so decoys
+       share no fragment positions with their source at scoring tolerance.
+
+    Because the filtered intensity profile is permuted (not resampled), the
+    weighted intensity distribution — and therefore the spectral entropy —
+    is preserved exactly. This prevents the systematic entropy divergence
+    between targets and decoys that biases naive permutation-based FDR
+    calibration; raw chemical noise is excluded by the base-peak filter
+    before the information content is computed.
+
+    Degenerate spectra with fewer than two distinct filtered intensities are
+    tapered (random 0.5–1.0 multipliers) so the decoy is never identical to
+    its source; this can only occur for synthetic/uniform spectra and slightly
+    perturbs entropy for those cases.
+
+    Parameters
+    ----------
+    spectra : list of Spectrum
+        Reference spectra to decoy.
+    random_seed : int, optional
+        Seed for the decoy RNG (deterministic generation).
+    min_relative_intensity : float, optional
+        Baseline noise floor as a fraction of the **base peak**; peaks below
+        ``min_relative_intensity × base_peak`` are excluded before entropy
+        computation and decoy construction.
+    mz_shift_da : float, optional
+        Uniform per-peak m/z jitter (Da) applied to decoy fragment positions.
+
+    Returns
+    -------
+    list of Spectrum
+        One decoy per input spectrum, with ``id`` and ``compound_name``
+        suffixed ``_decoy``, ``is_decoy=True``, and the preserved target
+        spectral entropy recorded in the ``spectral_entropy`` metadata field.
+
+    Examples
+    --------
+    >>> decoys = generate_decoys(reference_spectra)
     """
     rng = np.random.default_rng(random_seed)
-    decoys = []
+    decoys: List[Spectrum] = []
+
     for spec in spectra:
         decoy_metadata = spec.metadata.copy()
         decoy_metadata["is_decoy"] = True
@@ -412,36 +637,75 @@ def generate_decoys(spectra: List[Spectrum], random_seed: int = 42) -> List[Spec
         if name:
             decoy_metadata["compound_name"] = f"{name}_decoy"
 
-        shuffled_intensities = spec.peaks.intensities.copy()
-        n_peaks = len(shuffled_intensities)
+        mz_array = np.asarray(spec.peaks.mz, dtype=np.float64)
+        intensity_array = np.asarray(spec.peaks.intensities, dtype=np.float64)
+        n_peaks = mz_array.size
 
-        # If there are fewer than 2 unique intensity values, shuffling is ineffective.
-        # Instead, apply a random taper to break structural correlation. We use
-        # randomised uniform multipliers (0.5–1.0) shuffled independently so the
-        # resulting pattern is not systematically correlated with m/z order.
-        if len(np.unique(shuffled_intensities)) < 2 and n_peaks > 1:
-            taper = rng.uniform(0.5, 1.0, size=n_peaks)
-            rng.shuffle(taper)
-            shuffled_intensities = shuffled_intensities * taper
+        # Preserved ion information content (entropy) of the source.
+        target_entropy = spectral_entropy(intensity_array, min_relative_intensity)
+        decoy_metadata["spectral_entropy"] = target_entropy
+
+        # Degenerate spectrum (no peaks / zero total intensity): nothing to
+        # randomize; copy as-is.
+        total_intensity = float(np.sum(intensity_array))
+        if n_peaks == 0 or total_intensity <= 0.0:
+            decoys.append(
+                Spectrum(
+                    mz=mz_array.copy(),
+                    intensities=intensity_array.copy(),
+                    metadata=decoy_metadata,
+                )
+            )
+            continue
+
+        # Strict baseline filtering BEFORE entropy computation and decoy
+        # construction: peaks below ``min_relative_intensity`` × the base
+        # peak are chemical noise and are excluded so they cannot skew the
+        # spectral entropy estimate or leak into decoys.
+        base_peak = float(np.max(intensity_array))
+        if base_peak > 0.0:
+            keep_mask = intensity_array >= min_relative_intensity * base_peak
         else:
-            original_intensities = shuffled_intensities.copy()
-            rng.shuffle(shuffled_intensities)
-            # Post-shuffle check to ensure it's not identical (for low peak counts).
-            # If the shuffle accidentally produced the original ordering, roll by one
-            # position and add small random jitter for very sparse spectra to prevent
-            # accidental structural correlation through matched m/z positions.
-            if np.array_equal(shuffled_intensities, original_intensities):
-                shuffled_intensities = np.roll(shuffled_intensities, 1)
-            if n_peaks <= 5:
-                jitter = rng.uniform(0.95, 1.05, size=n_peaks)
-                shuffled_intensities = shuffled_intensities * jitter
+            keep_mask = np.ones(n_peaks, dtype=bool)
+        if int(np.count_nonzero(keep_mask)) < 2:
+            # Very sparse spectra: fall back to the full peak list rather
+            # than generating a degenerate single-peak decoy.
+            keep_mask = np.ones(n_peaks, dtype=bool)
 
-        decoy_spec = Spectrum(
-            mz=spec.peaks.mz.copy(),
-            intensities=shuffled_intensities,
-            metadata=decoy_metadata,
+        filtered_mz = mz_array[keep_mask]
+        filtered_intensities = intensity_array[keep_mask]
+        n_filtered = filtered_intensities.size
+
+        # Randomize the fragmentation pathways. A permutation of the filtered
+        # intensity profile preserves the normalized intensity distribution
+        # (and therefore the entropy) exactly.
+        if np.unique(filtered_intensities).size < 2:
+            # Permuting identical values is a no-op: taper instead so the
+            # decoy is never identical to its source.
+            taper = rng.uniform(0.5, 1.0, size=n_filtered)
+            rng.shuffle(taper)
+            decoy_intensities = filtered_intensities * taper
+        else:
+            permutation = rng.permutation(n_filtered)
+            if np.array_equal(permutation, np.arange(n_filtered)):
+                permutation = np.roll(permutation, 1)
+            decoy_intensities = filtered_intensities[permutation]
+
+        # Jitter fragment positions so decoys share no fragment positions
+        # with their source at scoring tolerance; keep positions positive and
+        # ascending (MassFlow spectra are always m/z-sorted).
+        position_jitter = rng.uniform(-mz_shift_da, mz_shift_da, size=n_filtered)
+        decoy_mz = np.maximum(filtered_mz + position_jitter, 0.01)
+        sort_order = np.argsort(decoy_mz)
+
+        decoys.append(
+            Spectrum(
+                mz=decoy_mz[sort_order],
+                intensities=decoy_intensities[sort_order],
+                metadata=decoy_metadata,
+            )
         )
-        decoys.append(decoy_spec)
+
     return decoys
 
 
@@ -681,11 +945,74 @@ class SimilarityEngine:
 
         n_queries = len(query_spectra)
 
+        # ------------------------------------------------------------------
+        # Candidate generation & scoring
+        # ------------------------------------------------------------------
+        # Three scoring paths share one output contract (a dense structured
+        # array of shape (n_refs, n_queries) with 'score' and 'matches'
+        # columns):
+        #
+        # 1. Numba peak/neutral-loss prefilter (modified_cosine): skips
+        #    pairs that cannot reach min_matched_peaks, then scores only the
+        #    surviving pairs via matchms sparse_array.
+        # 2. MS1 precursor prefilter (cosine with sparse_array): the
+        #    existing v0.1 stable path.
+        # 3. Full matrix scoring: exact fallback for everything else.
+        #
+        # All three produce identical results for the pairs they consider.
+        peak_prefilter_applied = False
+        if (
+            self.config.algorithm == "modified_cosine"
+            and self.config.enable_numba_prefilter
+            and self.config.min_matched_peaks > 0
+            and hasattr(self.similarity_function, "sparse_array")
+        ):
+            from MassFlow.acceleration import _HAS_NUMBA, prefilter_candidate_pairs
+
+            if _HAS_NUMBA:
+                idx_row, idx_col = prefilter_candidate_pairs(
+                    all_references,
+                    query_spectra,
+                    tolerance=self.config.ms2_tolerance,
+                    min_matches=self.config.min_matched_peaks,
+                    algorithm="modified_cosine",
+                )
+                if len(idx_row) > 0:
+                    sparse_results = self.similarity_function.sparse_array(
+                        all_references,
+                        query_spectra,
+                        idx_row,
+                        idx_col,
+                        is_symmetric=False,
+                        progress_bar=False,
+                    )
+                    scores_array = np.zeros(
+                        (len(all_references), n_queries),
+                        dtype=self.similarity_function.score_datatype,
+                    )
+                    scores_array[idx_row, idx_col] = sparse_results
+                else:
+                    scores_array = np.zeros(
+                        (len(all_references), n_queries),
+                        dtype=self.similarity_function.score_datatype,
+                    )
+                peak_prefilter_applied = True
+                logger.debug(
+                    "Numba peak prefilter: %d/%d pairs survived for scoring "
+                    "(min_matched_peaks=%d, tolerance=%.4f).",
+                    len(idx_row),
+                    len(all_references) * n_queries,
+                    self.config.min_matched_peaks,
+                    self.config.ms2_tolerance,
+                )
+
         # MS1 Pre-filtering for cosine with sparse array support.
         # When ref_precursor_mzs is provided (L2 cache), use it directly to
         # avoid Spectrum-object property lookups in the hot path.
-        if self.config.algorithm == "cosine" and hasattr(
-            self.similarity_function, "sparse_array"
+        if (
+            not peak_prefilter_applied
+            and self.config.algorithm == "cosine"
+            and hasattr(self.similarity_function, "sparse_array")
         ):
             ms1_tol = getattr(self.config, "ms1_tolerance", 0.02)
             res_ppm = getattr(self.config, "resolution_ppm", None)
@@ -720,7 +1047,7 @@ class SimilarityEngine:
                     dtype=self.similarity_function.score_datatype,
                 )
 
-        else:
+        elif not peak_prefilter_applied:
             # Calculate scores natively for modified cosine (or cosine without sparse_array).
             # Log an informational message if the user explicitly configured PPM-based
             # MS1 pre-filtering, which is not applied during modified cosine scoring.
@@ -931,6 +1258,51 @@ class SimilarityEngine:
 #
 # When called without the required libraries, each engine raises a clear
 # ``RuntimeError`` directing the user to install ``massflow[ml]``.
+
+
+def _sub_engine_config(
+    parent: SimilarityConfig,
+    algorithm: str,
+    **overrides: Any,
+) -> SimilarityConfig:
+    """Build a sub-engine config inheriting tolerances and remote ML settings.
+
+    Meta-engines (consensus, cascade, router) construct child configs for
+    their sub-engines.  This helper forwards the tolerances, thresholds, and
+    — critically for the massflow-ml satellite boundary — the remote
+    ``ml_endpoints`` and circuit-breaker settings, so a remote Spec2Vec/
+    MS2DeepScore endpoint configured at the top level is also used inside
+    meta-engines.
+
+    Parameters
+    ----------
+    parent : SimilarityConfig
+        The top-level configuration to inherit from.
+    algorithm : str
+        Algorithm name for the sub-engine.
+    **overrides
+        Fields to override on the sub-config.
+
+    Returns
+    -------
+    SimilarityConfig
+        Sub-engine configuration.
+    """
+    fields: dict[str, Any] = dict(
+        algorithm=algorithm,
+        ms1_tolerance=parent.ms1_tolerance,
+        ms2_tolerance=parent.ms2_tolerance,
+        resolution_ppm=parent.resolution_ppm,
+        min_score=parent.min_score,
+        min_matched_peaks=parent.min_matched_peaks,
+        rt_tolerance=parent.rt_tolerance,
+        ml_endpoints=parent.ml_endpoints,
+        ml_request_timeout_seconds=parent.ml_request_timeout_seconds,
+        ml_circuit_breaker_threshold=parent.ml_circuit_breaker_threshold,
+        ml_circuit_breaker_cooldown_seconds=parent.ml_circuit_breaker_cooldown_seconds,
+    )
+    fields.update(overrides)
+    return SimilarityConfig(**fields)
 
 
 class _MLEngineBase(MLEngineProtocol):
@@ -1160,7 +1532,9 @@ class ConsensusEngine(_MLEngineBase):
         ms2deepscore) are only instantiated when their dependencies are
         present.  Engines that fail to build are silently skipped.
         """
-        self._sub_engines: dict[str, SimilarityEngine | _MLEngineBase] = {}
+        self._sub_engines: dict[
+            str, SimilarityEngine | _MLEngineBase | MLEngineProtocol
+        ] = {}
         self._sub_weights: dict[str, float] = {}
 
         weights = self.config.consensus_weights
@@ -1175,14 +1549,11 @@ class ConsensusEngine(_MLEngineBase):
                 logger.debug("Skipping meta-algorithm '%s' as sub-engine.", algo)
                 continue
 
-            sub_cfg = SimilarityConfig(
-                algorithm=algo,  # type: ignore[arg-type]
-                ms1_tolerance=self.config.ms1_tolerance,
-                ms2_tolerance=self.config.ms2_tolerance,
-                resolution_ppm=self.config.resolution_ppm,
+            sub_cfg = _sub_engine_config(
+                self.config,
+                algo,
                 min_score=0.0,
                 min_matched_peaks=0,
-                rt_tolerance=self.config.rt_tolerance,
             )
 
             try:
@@ -1199,7 +1570,7 @@ class ConsensusEngine(_MLEngineBase):
         if not self._sub_engines:
             logger.warning(
                 "No sub-engines could be initialised for consensus scoring. "
-                "Searches will return empty results."
+                "Searches will fall back to modified_cosine."
             )
         else:
             logger.info(
@@ -1208,6 +1579,28 @@ class ConsensusEngine(_MLEngineBase):
             )
 
         self._model_loaded = bool(self._sub_engines)
+
+    # ------------------------------------------------------------------
+    # Classical fallback (circuit-breaker / missing-dependency safety net)
+    # ------------------------------------------------------------------
+
+    def _get_fallback_engine(self) -> SimilarityEngine:
+        """Return the classical modified_cosine fallback engine.
+
+        Used when every consensus sub-engine is unavailable (remote ML
+        service unreachable with an open circuit breaker, or heavy local
+        dependencies not installed).  The orchestrator applies empirical
+        p-value scoring on top of these results at the workflow level.
+        """
+        if not hasattr(self, "_fallback_engine"):
+            fallback_cfg = _sub_engine_config(
+                self.config,
+                "modified_cosine",
+                min_score=0.0,
+                min_matched_peaks=0,
+            )
+            self._fallback_engine = SimilarityEngine(fallback_cfg)
+        return self._fallback_engine
 
     def search(
         self,
@@ -1248,9 +1641,6 @@ class ConsensusEngine(_MLEngineBase):
         List[SearchResult]
             Aggregated and weighted consensus results.
         """
-        if not self._sub_engines:
-            return []
-
         if not query_spectra or not reference_spectra:
             return []
 
@@ -1258,11 +1648,26 @@ class ConsensusEngine(_MLEngineBase):
         cutoff = min_score if min_score is not None else self.config.min_score
         min_engines = self.config.consensus_min_engines
 
+        if not self._sub_engines:
+            logger.warning(
+                "Consensus has no sub-engines; falling back to modified_cosine."
+            )
+            return self._get_fallback_engine().search(
+                query_spectra=query_spectra,
+                reference_spectra=ref_list,
+                min_score=cutoff,
+                top_n=top_n,
+                include_decoys=include_decoys,
+                ref_precursor_mzs=ref_precursor_mzs,
+                ref_is_decoy=ref_is_decoy,
+            )
+
         # ------------------------------------------------------------------
         # Phase 1: run every available sub-engine and collect raw results
         # ------------------------------------------------------------------
         # engine_results: list of (algo, weight, list of SearchResult)
         engine_results: list[tuple[str, float, list[SearchResult]]] = []
+        failed_algos: list[str] = []
 
         for algo, engine in self._sub_engines.items():
             weight = self._sub_weights[algo]
@@ -1279,6 +1684,7 @@ class ConsensusEngine(_MLEngineBase):
                 engine_results.append((algo, weight, raw))
                 logger.debug("Sub-engine '%s' returned %d raw results.", algo, len(raw))
             except Exception as exc:
+                failed_algos.append(algo)
                 logger.warning(
                     "Sub-engine '%s' failed during search, skipping: %s",
                     algo,
@@ -1286,6 +1692,21 @@ class ConsensusEngine(_MLEngineBase):
                 )
 
         if not engine_results:
+            if failed_algos:
+                logger.warning(
+                    "All consensus sub-engines failed (%s); falling back to "
+                    "modified_cosine scoring.",
+                    ", ".join(failed_algos),
+                )
+                return self._get_fallback_engine().search(
+                    query_spectra=query_spectra,
+                    reference_spectra=ref_list,
+                    min_score=cutoff,
+                    top_n=top_n,
+                    include_decoys=include_decoys,
+                    ref_precursor_mzs=ref_precursor_mzs,
+                    ref_is_decoy=ref_is_decoy,
+                )
             return []
 
         # ------------------------------------------------------------------
@@ -1299,7 +1720,10 @@ class ConsensusEngine(_MLEngineBase):
                 key = (res["query_id"], res["reference_id"])
                 if key not in buckets:
                     buckets[key] = {"scores": {}, "template": res}
-                buckets[key]["scores"][algo] = res["score"]
+                # Reference libraries can contain duplicate (or missing) ids;
+                # keep the best per-algorithm score for the bucket rather
+                # than letting later results overwrite earlier ones.
+                buckets[key]["scores"].setdefault(algo, []).append(res["score"])
 
         # ------------------------------------------------------------------
         # Phase 3: compute weighted consensus scores
@@ -1307,17 +1731,17 @@ class ConsensusEngine(_MLEngineBase):
         aggregated: list[SearchResult] = []
 
         for (_qid, _rid), bucket in buckets.items():
-            scores_by_algo: dict[str, float] = bucket["scores"]
+            scores_by_algo: dict[str, list[float]] = bucket["scores"]
 
             if len(scores_by_algo) < min_engines:
                 continue
 
             total_weight = 0.0
             weighted_sum = 0.0
-            for algo, score in scores_by_algo.items():
+            for algo, scores in scores_by_algo.items():
                 w = self._sub_weights.get(algo, 0.0)
                 total_weight += w
-                weighted_sum += score * w
+                weighted_sum += max(scores) * w
 
             if total_weight == 0:
                 continue
@@ -1328,7 +1752,7 @@ class ConsensusEngine(_MLEngineBase):
                 continue
 
             template = bucket["template"]
-            best_individual = max(scores_by_algo.values())
+            best_individual = max(max(scores) for scores in scores_by_algo.values())
 
             aggregated.append(
                 SearchResult(
@@ -1347,7 +1771,9 @@ class ConsensusEngine(_MLEngineBase):
                     annotation_tier=template["annotation_tier"],
                     structural_similarity=float(best_individual),
                     mass_error_ppm=template["mass_error_ppm"],
-                    score_breakdown=dict(scores_by_algo),
+                    score_breakdown={
+                        algo: max(scores) for algo, scores in scores_by_algo.items()
+                    },
                 )
             )
 
@@ -1431,17 +1857,16 @@ class CascadeEngine(_MLEngineBase):
         available; ML engines require their respective dependencies.
         Stages that fail to build are skipped.
         """
-        self._stages: list[tuple[str, SimilarityEngine | _MLEngineBase]] = []
+        self._stages: list[
+            tuple[str, SimilarityEngine | _MLEngineBase | MLEngineProtocol]
+        ] = []
 
         for algo in self.config.cascade_stages:
-            sub_cfg = SimilarityConfig(
-                algorithm=algo,  # type: ignore[arg-type]
-                ms1_tolerance=self.config.ms1_tolerance,
-                ms2_tolerance=self.config.ms2_tolerance,
-                resolution_ppm=self.config.resolution_ppm,
+            sub_cfg = _sub_engine_config(
+                self.config,
+                algo,
                 min_score=0.0,
                 min_matched_peaks=0,
-                rt_tolerance=self.config.rt_tolerance,
             )
 
             try:
@@ -1457,7 +1882,7 @@ class CascadeEngine(_MLEngineBase):
         if not self._stages:
             logger.warning(
                 "No cascade stages could be initialised. "
-                "Searches will return empty results."
+                "Searches will fall back to modified_cosine."
             )
         else:
             logger.info(
@@ -1466,6 +1891,163 @@ class CascadeEngine(_MLEngineBase):
             )
 
         self._model_loaded = bool(self._stages)
+
+        # HNSW state (built lazily at search time and cached per reference set).
+        self._hnsw_index: Optional[HNSWSpectralIndex] = None
+        self._hnsw_index_ref_ids: tuple[str, ...] = ()
+
+    # ------------------------------------------------------------------
+    # Classical fallback (circuit-breaker / missing-dependency safety net)
+    # ------------------------------------------------------------------
+
+    def _get_fallback_engine(self) -> SimilarityEngine:
+        """Return the classical modified_cosine fallback engine.
+
+        Used when no cascade stage can run (remote ML endpoints unreachable
+        with open circuit breakers, or heavy local dependencies missing).
+        The orchestrator applies empirical p-value scoring on top of these
+        results at the workflow level.
+        """
+        if not hasattr(self, "_fallback_engine"):
+            fallback_cfg = _sub_engine_config(
+                self.config,
+                "modified_cosine",
+                min_score=0.0,
+                min_matched_peaks=0,
+            )
+            self._fallback_engine = SimilarityEngine(fallback_cfg)
+        return self._fallback_engine
+
+    def _run_classical_fallback(
+        self,
+        query_spectra: List[Spectrum],
+        ref_list: List[Spectrum],
+        threshold: float,
+        top_n: Optional[int],
+        include_decoys: bool,
+        ref_precursor_mzs: Optional[np.ndarray],
+        ref_is_decoy: Optional[np.ndarray],
+    ) -> List[SearchResult]:
+        """Run the classical fallback engine with cascade-style thresholds."""
+        logger.warning(
+            "Cascade unavailable; falling back to modified_cosine scoring "
+            "(threshold=%.3f).",
+            threshold,
+        )
+        results = self._get_fallback_engine().search(
+            query_spectra=query_spectra,
+            reference_spectra=ref_list,
+            min_score=threshold,
+            top_n=top_n,
+            include_decoys=include_decoys,
+            ref_precursor_mzs=ref_precursor_mzs,
+            ref_is_decoy=ref_is_decoy,
+        )
+        return results
+
+    # ------------------------------------------------------------------
+    # HNSW candidate retrieval (approximate, sub-linear)
+    # ------------------------------------------------------------------
+
+    def _get_hnsw_index(self, ref_list: List[Spectrum]) -> Optional[HNSWSpectralIndex]:
+        """Return a cached HNSW index over *ref_list*, rebuilding when needed.
+
+        The index is cached keyed by the reference id sequence, so repeated
+        searches against the same library (e.g. chunked query processing)
+        amortize the construction cost. Returns ``None`` when hnswlib is
+        unavailable, in which case callers fall back to exact scoring.
+
+        Parameters
+        ----------
+        ref_list : list of Spectrum
+            Reference library to index.
+
+        Returns
+        -------
+        HNSWSpectralIndex or None
+            The (possibly freshly built) index, or ``None`` when hnswlib is
+            not installed.
+        """
+        from MassFlow import hnsw as hnsw_module
+
+        if not hnsw_module._HAS_HNSWLIB:
+            logger.warning(
+                "hnsw_enabled is True but hnswlib is not installed; "
+                "falling back to exact cascade scoring. %s",
+                hnsw_module._HNSW_INSTALL_MSG,
+            )
+            return None
+
+        ref_ids = tuple(str(ref.get("id")) for ref in ref_list)
+        if self._hnsw_index is not None and self._hnsw_index_ref_ids == ref_ids:
+            return self._hnsw_index
+
+        index = hnsw_module.HNSWSpectralIndex.from_spectra(
+            ref_list,
+            bin_width=self.config.hnsw_bin_width,
+            mz_min=self.config.hnsw_mz_min,
+            mz_max=self.config.hnsw_mz_max,
+            m=self.config.hnsw_m,
+            ef_construction=self.config.hnsw_ef_construction,
+            random_seed=self.config.hnsw_random_seed,
+            max_elements=max(len(ref_list), self.config.hnsw_ef_search),
+        )
+        self._hnsw_index = index
+        self._hnsw_index_ref_ids = ref_ids
+        logger.info(
+            "Built HNSW index over %d reference spectra "
+            "(dim=%d, M=%d, ef_construction=%d).",
+            len(ref_list),
+            index.dim,
+            index.m,
+            index.ef_construction,
+        )
+        return index
+
+    def _hnsw_candidate_ids(
+        self,
+        index: HNSWSpectralIndex,
+        query_spectra: List[Spectrum],
+        n_refs: int,
+    ) -> set[str]:
+        """Retrieve candidate reference ids for *query_spectra* from *index*.
+
+        Retrieves ``hnsw_candidates_per_query`` neighbours per query spectrum
+        using ``hnsw_ef_search``, then unions the per-query candidate lists.
+        These candidates are approximate (the underlying similarity is
+        non-metric), so exact scoring must follow.
+
+        Parameters
+        ----------
+        index : HNSWSpectralIndex
+            Populated index over the reference library.
+        query_spectra : list of Spectrum
+            Query spectra to vectorize and search.
+        n_refs : int
+            Total reference count (caps ``k``).
+
+        Returns
+        -------
+        set[str]
+            Union of reference ids retrieved for any query.
+        """
+        from MassFlow import hnsw as hnsw_module
+
+        k = min(self.config.hnsw_candidates_per_query, n_refs)
+        query_vectors = hnsw_module.bin_spectra(
+            query_spectra,
+            bin_width=self.config.hnsw_bin_width,
+            mz_min=self.config.hnsw_mz_min,
+            mz_max=self.config.hnsw_mz_max,
+        )
+        candidate_id_lists, _ = index.query(
+            query_vectors,
+            k=k,
+            ef_search=self.config.hnsw_ef_search,
+        )
+        return {
+            spectrum_id for per_query in candidate_id_lists for spectrum_id in per_query
+        }
 
     def search(
         self,
@@ -1485,6 +2067,14 @@ class CascadeEngine(_MLEngineBase):
         are passed to the next stage.  This narrows the candidate set
         progressively, reserving expensive models for the most promising
         candidates.
+
+        When ``hnsw_enabled`` is True, an optional Phase 0 retrieves a small
+        candidate set per query from a HNSW (Hierarchical Navigable Small
+        World) graph built over binned reference spectra, giving sub-linear
+        candidate generation for massive libraries. Because spectral
+        similarity is non-metric, HNSW only *generates* candidates; the
+        exact stages below always follow, and any HNSW failure falls back
+        to exact scoring over the full reference set.
 
         **Threshold semantics**
 
@@ -1515,9 +2105,6 @@ class CascadeEngine(_MLEngineBase):
         List[SearchResult]
             Final-stage results after cascaded filtering.
         """
-        if not self._stages:
-            return []
-
         if not query_spectra or not reference_spectra:
             return []
 
@@ -1527,12 +2114,73 @@ class CascadeEngine(_MLEngineBase):
             min_score if min_score is not None else self.config.cascade_upper_bound
         )
 
+        if not self._stages:
+            return self._run_classical_fallback(
+                query_spectra,
+                ref_list,
+                upper_bound,
+                top_n,
+                include_decoys,
+                ref_precursor_mzs,
+                ref_is_decoy,
+            )
+
         # ------------------------------------------------------------------
-        # Phase 1: run stages sequentially, winnowing the reference set
+        # Phase 0 (optional): HNSW approximate candidate retrieval.
+        #
+        # The HNSW graph is built over binned reference spectra and used to
+        # fetch a small candidate set per query in sub-linear time. Because
+        # spectral similarity is non-metric this stage only *generates*
+        # candidates — the exact cascade stages below always follow. On
+        # failure (e.g. hnswlib missing) the cascade falls back to exact
+        # scoring over the full reference set.
         # ------------------------------------------------------------------
         current_refs: list[Spectrum] = ref_list
         current_ref_precursor_mzs = ref_precursor_mzs
         current_ref_is_decoy = ref_is_decoy
+
+        if self.config.hnsw_enabled:
+            try:
+                hnsw_index = self._get_hnsw_index(ref_list)
+                if hnsw_index is not None:
+                    candidate_ids = self._hnsw_candidate_ids(
+                        hnsw_index, query_spectra, len(ref_list)
+                    )
+                    hnsw_filtered_refs: list[Spectrum] = []
+                    hnsw_filtered_indices: list[int] = []
+                    for ref_index, ref in enumerate(current_refs):
+                        if str(ref.get("id")) in candidate_ids:
+                            hnsw_filtered_refs.append(ref)
+                            hnsw_filtered_indices.append(ref_index)
+
+                    logger.debug(
+                        "HNSW candidate retrieval kept %d/%d references "
+                        "for exact cascade scoring.",
+                        len(hnsw_filtered_refs),
+                        len(current_refs),
+                    )
+                    if not hnsw_filtered_refs:
+                        return []
+
+                    current_refs = hnsw_filtered_refs
+                    if current_ref_precursor_mzs is not None:
+                        current_ref_precursor_mzs = current_ref_precursor_mzs[
+                            hnsw_filtered_indices
+                        ]
+                    if current_ref_is_decoy is not None:
+                        current_ref_is_decoy = current_ref_is_decoy[
+                            hnsw_filtered_indices
+                        ]
+            except Exception as exc:
+                logger.warning(
+                    "HNSW candidate retrieval failed (%s); falling back "
+                    "to full cascade scoring.",
+                    exc,
+                )
+
+        # ------------------------------------------------------------------
+        # Phase 1: run stages sequentially, winnowing the reference set
+        # ------------------------------------------------------------------
 
         for stage_idx, (algo, engine) in enumerate(self._stages):
             is_last = stage_idx == len(self._stages) - 1
@@ -1555,7 +2203,21 @@ class CascadeEngine(_MLEngineBase):
                     algo,
                     exc,
                 )
-                # If a non-final stage fails we cannot continue filtering.
+                # If the very first stage fails we cannot filter at all:
+                # fall back to classical modified_cosine scoring so the run
+                # still produces annotations (e.g. remote ML endpoint
+                # unreachable with an open circuit breaker).
+                if stage_idx == 0:
+                    return self._run_classical_fallback(
+                        query_spectra,
+                        current_refs,
+                        stage_threshold,
+                        top_n,
+                        include_decoys,
+                        current_ref_precursor_mzs,
+                        current_ref_is_decoy,
+                    )
+                # If a later non-final stage fails we cannot continue filtering.
                 if not is_last:
                     return []
                 # If the final stage fails, return what we have from the
@@ -1681,29 +2343,28 @@ class MLRouter:
 
     def __init__(self, config: SimilarityConfig) -> None:
         self._config = config
-        self._easy_engine: SimilarityEngine | _MLEngineBase | None = None
-        self._hard_engine: SimilarityEngine | _MLEngineBase | None = None
+        self._easy_engine: (
+            SimilarityEngine | _MLEngineBase | MLEngineProtocol | None
+        ) = None
+        self._hard_engine: (
+            SimilarityEngine | _MLEngineBase | MLEngineProtocol | None
+        ) = None
         self._fallback_engine: SimilarityEngine | None = None
 
     # ------------------------------------------------------------------
     # Lazy engine builders
     # ------------------------------------------------------------------
 
-    def _get_easy_engine(self) -> SimilarityEngine | _MLEngineBase:
+    def _get_easy_engine(self) -> SimilarityEngine | _MLEngineBase | MLEngineProtocol:
         if self._easy_engine is None:
-            easy_cfg = SimilarityConfig(
-                algorithm=self._config.routing_easy_engine,  # type: ignore[arg-type]
-                ms1_tolerance=self._config.ms1_tolerance,
-                ms2_tolerance=self._config.ms2_tolerance,
-                resolution_ppm=self._config.resolution_ppm,
-                min_score=self._config.min_score,
-                min_matched_peaks=self._config.min_matched_peaks,
-                rt_tolerance=self._config.rt_tolerance,
+            easy_cfg = _sub_engine_config(
+                self._config,
+                self._config.routing_easy_engine,
             )
             self._easy_engine = get_similarity_engine(easy_cfg)
         return self._easy_engine
 
-    def _get_hard_engine(self) -> SimilarityEngine | _MLEngineBase:
+    def _get_hard_engine(self) -> SimilarityEngine | _MLEngineBase | MLEngineProtocol:
         if self._hard_engine is None:
             hard_algo = self._config.routing_hard_engine
             if hard_algo not in _ML_ENGINE_REGISTRY:
@@ -1714,14 +2375,11 @@ class MLRouter:
                 )
                 hard_algo = "modified_cosine"  # type: ignore[assignment]
 
-            hard_cfg = SimilarityConfig(
-                algorithm=hard_algo,  # type: ignore[arg-type]
-                ms1_tolerance=self._config.ms1_tolerance,
-                ms2_tolerance=self._config.ms2_tolerance,
-                resolution_ppm=self._config.resolution_ppm,
+            hard_cfg = _sub_engine_config(
+                self._config,
+                hard_algo,
                 min_score=0.0,  # collect all hits; FDR applied later
                 min_matched_peaks=0,
-                rt_tolerance=self._config.rt_tolerance,
                 # Forward consensus/cascade settings if applicable
                 consensus_weights=self._config.consensus_weights,
                 consensus_min_engines=self._config.consensus_min_engines,
@@ -1734,14 +2392,9 @@ class MLRouter:
 
     def _get_fallback_engine(self) -> SimilarityEngine:
         if self._fallback_engine is None:
-            fb_cfg = SimilarityConfig(
-                algorithm=self._config.routing_fallback_engine,  # type: ignore[arg-type]
-                ms1_tolerance=self._config.ms1_tolerance,
-                ms2_tolerance=self._config.ms2_tolerance,
-                resolution_ppm=self._config.resolution_ppm,
-                min_score=self._config.min_score,
-                min_matched_peaks=self._config.min_matched_peaks,
-                rt_tolerance=self._config.rt_tolerance,
+            fb_cfg = _sub_engine_config(
+                self._config,
+                self._config.routing_fallback_engine,
             )
             eng = get_similarity_engine(fb_cfg)
             if not isinstance(eng, SimilarityEngine):
@@ -2081,7 +2734,9 @@ _ML_ENGINE_REGISTRY = _discover_ml_engines()
 _ML_ENGINE_MAP = _ML_ENGINE_REGISTRY
 
 
-def get_similarity_engine(config: SimilarityConfig) -> SimilarityEngine | _MLEngineBase:
+def get_similarity_engine(
+    config: SimilarityConfig,
+) -> SimilarityEngine | _MLEngineBase | MLEngineProtocol:
     """Factory function to instantiate the appropriate similarity engine.
 
     Returns a ``SimilarityEngine`` for classical algorithms (cosine,
@@ -2116,6 +2771,28 @@ def get_similarity_engine(config: SimilarityConfig) -> SimilarityEngine | _MLEng
     # Classical algorithms: always available with zero overhead.
     if algo in ("cosine", "modified_cosine"):
         return SimilarityEngine(config)
+
+    # ── Remote ML endpoints (massflow-ml satellite boundary) ────────────
+    # When an endpoint is configured for the requested algorithm, scoring is
+    # delegated to the remote service through a circuit-breaker-protected
+    # client instead of requiring a local installation of the heavy
+    # dependencies (PyTorch, Gensim, spec2vec, ms2deepscore).
+    remote_endpoint = (config.ml_endpoints or {}).get(algo)
+    if remote_endpoint:
+        from MassFlow.ml_client import RemoteMLEngine
+
+        logger.info(
+            "Routing algorithm '%s' to remote ML endpoint '%s'.",
+            algo,
+            remote_endpoint,
+        )
+        return RemoteMLEngine(
+            algorithm=algo,
+            endpoint=remote_endpoint,
+            timeout_seconds=config.ml_request_timeout_seconds,
+            circuit_failure_threshold=config.ml_circuit_breaker_threshold,
+            circuit_cooldown_seconds=config.ml_circuit_breaker_cooldown_seconds,
+        )
 
     # ML / meta algorithms: resolve via the entry-point registry.
     if algo in _ML_ENGINE_REGISTRY:

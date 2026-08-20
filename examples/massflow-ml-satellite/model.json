@@ -1,0 +1,7 @@
+{
+  "model": "dummy-binned-cosine",
+  "version": 1,
+  "bin_width": 1.0,
+  "mz_min": 0.0,
+  "mz_max": 2000.0
+}

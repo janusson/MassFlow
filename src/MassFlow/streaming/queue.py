@@ -23,6 +23,8 @@ import time
 from dataclasses import dataclass, field
 from typing import Optional
 
+import numpy as np
+
 logger = logging.getLogger(__name__)
 
 
@@ -48,6 +50,7 @@ class QueueStats:
     current_depth: int = 0
     total_ingested: int = 0
     total_dropped: int = 0
+    total_dropped_low_quality: int = 0
     total_completed: int = 0
     _latency_samples: list[float] = field(default_factory=list)
 
@@ -82,6 +85,74 @@ class QueuedPacket:
     enqueue_time_ns: int = field(default_factory=time.time_ns)
 
 
+# --------------------------------------------------------------------------
+# Packet quality scoring (backpressure triage)
+# ---------------------------------------------------------------------------
+
+
+def compute_packet_quality(packet: "QueuedPacket") -> float:
+    """Score a packet's annotation quality in ``[0.0, 1.0]``.
+
+    A cheap, deterministic triage heuristic used by the high-water-mark
+    backpressure gate to decide which spectra to shed when the ingestion
+    rate exceeds processing capacity. Components:
+
+    * **Peak count** (0.5 max): linearly ramps to 10 fragment peaks.
+      Spectra with very few peaks carry little information for reliable
+      annotation.
+    * **Precursor validity** (0.25): a positive, finite precursor m/z is
+      required for MS1-gated scoring.
+    * **Signal spread** (0.15): a base peak at least 3× the mean intensity
+      indicates a real signal above the noise floor.
+    * **Ion mode** (0.1): a known ionization mode supports adduct
+      compatibility checks.
+
+    The score is a prioritisation heuristic only — it never substitutes
+    for the scientific validation gate in
+    :func:`MassFlow.streaming.engine.validate_streaming_spectrum`.
+
+    Parameters
+    ----------
+    packet : QueuedPacket
+        The spectral packet to triage.
+
+    Returns
+    -------
+    float
+        Quality score in ``[0.0, 1.0]``.
+
+    Examples
+    --------
+    >>> compute_packet_quality(packet)
+    0.85
+    """
+    score = 0.0
+
+    # Peak count: 0.05 per peak up to 10 peaks.
+    n_peaks = len(packet.mz_array) if packet.mz_array else 0
+    score += min(n_peaks, 10) / 10 * 0.5
+
+    # Precursor validity.
+    precursor_mz = float(packet.precursor_mz)
+    if precursor_mz > 0.0 and np.isfinite(precursor_mz):
+        score += 0.25
+
+    # Signal spread: base peak ≥ 3× mean intensity indicates structure.
+    if packet.intensity_array:
+        intensities = np.asarray(packet.intensity_array, dtype=np.float64)
+        if intensities.size > 1 and np.all(np.isfinite(intensities)):
+            max_intensity = float(np.max(intensities))
+            mean_intensity = float(np.mean(intensities))
+            if max_intensity > 0.0 and max_intensity >= 3.0 * mean_intensity:
+                score += 0.15
+
+    # Ion mode known.
+    if packet.ion_mode:
+        score += 0.1
+
+    return min(max(score, 0.0), 1.0)
+
+
 class BoundedQueue:
     """Capacity-limited async queue with backpressure and overflow semantics.
 
@@ -96,6 +167,17 @@ class BoundedQueue:
         **Deprecated.**  If ``True`` the ``put()`` method raises
         ``QueueFull`` when the queue is full (equivalent to a
         "drop newest" strategy).  Prefer ``OverflowPolicy`` in new code.
+    high_water_mark : float, optional
+        Fraction of capacity at which the quality gate engages.  When the
+        queue depth reaches this mark, incoming spectra whose
+        :func:`compute_packet_quality` score is below
+        ``low_quality_threshold`` are dropped instead of enqueued, keeping
+        buffer space for high-quality acquisitions.  Must be in ``(0, 1]``.
+        ``1.0`` disables the gate (the overflow policy alone governs a
+        full queue); the streaming servicer enables it by default (0.8).
+    low_quality_threshold : float, optional
+        Minimum quality score required to enqueue once the high-water mark
+        is reached.  Must be in ``[0, 1]``.
     """
 
     def __init__(
@@ -103,9 +185,18 @@ class BoundedQueue:
         capacity: int = 2048,
         overflow: OverflowPolicy = OverflowPolicy.BLOCK,
         drop_on_full: Optional[bool] = None,
+        high_water_mark: float = 1.0,
+        low_quality_threshold: float = 0.5,
     ) -> None:
         if capacity <= 0:
             raise ValueError("Queue capacity must be positive.")
+        if not 0.0 < high_water_mark <= 1.0:
+            raise ValueError("high_water_mark must be in (0, 1].")
+        if not 0.0 <= low_quality_threshold <= 1.0:
+            raise ValueError("low_quality_threshold must be in [0, 1].")
+
+        self._high_water_mark = high_water_mark
+        self._low_quality_threshold = low_quality_threshold
 
         # Resolve overflow policy, honouring the legacy ``drop_on_full`` flag.
         if drop_on_full is not None:
@@ -150,9 +241,38 @@ class BoundedQueue:
         return self._overflow
 
     @property
+    def high_water_mark(self) -> float:
+        """Fraction of capacity at which the quality gate engages."""
+        return self._high_water_mark
+
+    @property
+    def low_quality_threshold(self) -> float:
+        """Minimum quality score required to enqueue above the HWM."""
+        return self._low_quality_threshold
+
+    @property
+    def is_above_high_water_mark(self) -> bool:
+        """True when queue depth has reached the high-water mark."""
+        return self._queue.qsize() >= int(self._capacity * self._high_water_mark)
+
+    @property
     def current_depth(self) -> int:
         """Number of packets currently in the queue."""
         return self._queue.qsize()
+
+    def _drop_low_quality(self, packet: "QueuedPacket") -> None:
+        """Record a quality-gated drop (does not touch the queue)."""
+        self._stats.total_dropped += 1
+        self._stats.total_dropped_low_quality += 1
+        logger.warning(
+            "High-water mark reached (%d/%d); dropping low-quality "
+            "spectrum %s (quality=%.2f < %.2f).",
+            self._stats.current_depth,
+            self._capacity,
+            packet.spectrum_id,
+            compute_packet_quality(packet),
+            self._low_quality_threshold,
+        )
 
     async def put(
         self,
@@ -184,6 +304,14 @@ class BoundedQueue:
                 "Queue is shut down; dropping spectrum %s.", packet.spectrum_id
             )
             return
+
+        # ── High-water-mark quality gate ───────────────────────────────
+        # When the buffer is filling up but not yet full, shed low-quality
+        # spectra so capacity is reserved for high-quality acquisitions.
+        if not self.is_full and self.is_above_high_water_mark:
+            if compute_packet_quality(packet) < self._low_quality_threshold:
+                self._drop_low_quality(packet)
+                return
 
         if self.is_full:
             if self._reject_on_full:
@@ -259,6 +387,12 @@ class BoundedQueue:
             self._stats.total_dropped += 1
             raise QueueFull("Queue is shut down; cannot enqueue.")
 
+        # ── High-water-mark quality gate ───────────────────────────────
+        if not self.is_full and self.is_above_high_water_mark:
+            if compute_packet_quality(packet) < self._low_quality_threshold:
+                self._drop_low_quality(packet)
+                return
+
         if self.is_full:
             if self._overflow == OverflowPolicy.DROP_OLDEST:
                 try:
@@ -305,6 +439,29 @@ class BoundedQueue:
         if latency_us > 0:
             self._stats.record_latency(latency_us)
         self._queue.task_done()
+
+    def record_latency(self, latency_us: float, count: int = 1) -> None:
+        """Record processing latency samples without touching task counters.
+
+        Used by batch dispatchers that already signalled ``task_done()``
+        per packet at dequeue time but only learn the true processing
+        latency once the micro-batch has been scored.
+
+        Parameters
+        ----------
+        latency_us : float
+            Per-spectrum processing latency in microseconds.
+        count : int, optional
+            Number of spectra this latency applies to.
+
+        Returns
+        -------
+        None
+        """
+        if latency_us <= 0 or count <= 0:
+            return
+        for _ in range(min(count, 1000)):
+            self._stats.record_latency(latency_us)
 
     async def join(self) -> None:
         """Block until all enqueued packets have been processed."""

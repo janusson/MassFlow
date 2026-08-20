@@ -152,6 +152,10 @@ message ServerStatus {
   // Spectra dropped due to queue overflow (should trend toward zero).
   uint64 spectra_dropped = 4;
 
+  // Subset of spectra_dropped that were discarded by the high-water-mark
+  // quality gate (low-quality spectra shed under backpressure).
+  uint64 spectra_dropped_low_quality = 8;
+
   // Rolling-average processing latency in microseconds.
   double avg_latency_us = 5;
 

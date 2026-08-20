@@ -264,8 +264,13 @@ def test_search_exception_handler():
     from MassFlow.similarity import SimilarityEngine, SimilarityConfig
     from matchms import Spectrum
 
+    # The Numba prefilter is disabled so the full-matrix calculate_scores
+    # path (whose exception handling this test targets) is exercised.
     cfg = SimilarityConfig(
-        algorithm="modified_cosine", min_score=0.0, ms2_tolerance=0.1
+        algorithm="modified_cosine",
+        min_score=0.0,
+        ms2_tolerance=0.1,
+        enable_numba_prefilter=False,
     )
     engine = SimilarityEngine(cfg)
 

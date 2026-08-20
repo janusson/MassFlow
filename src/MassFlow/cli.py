@@ -257,7 +257,9 @@ def run_db_build(
         "default", "--category", help="Tag for categorization inside the database."
     ),
     backend: str = typer.Option(
-        "sqlite", "--backend", help="Storage backend: 'sqlite' (default) or 'zarr'."
+        "sqlite",
+        "--backend",
+        help="Storage backend: 'sqlite' (default), 'zarr', or 'hybrid'.",
     ),
 ):
     """Process a raw library file and store it in an optimized database."""
@@ -305,10 +307,13 @@ def run_db_inspect(
     try:
         from MassFlow.storage import create_spectral_store
 
-        # Auto-detect backend from path
+        # Auto-detect backend from path. A hybrid database is a SQLite file
+        # with a sibling `<stem>.zarr` array store.
         path = Path(file)
         if path.suffix == ".zarr" or (path.is_dir() and (path / ".zgroup").exists()):
             backend = "zarr"
+        elif path.with_suffix(".zarr").is_dir():
+            backend = "hybrid"
         else:
             backend = "sqlite"
 
@@ -451,6 +456,122 @@ def run_db_merge(
         raise typer.Exit(1)
 
 
+def _run_stream_server_impl(
+    config: str,
+    host: str,
+    port: int,
+    queue_capacity: int,
+    queue_drop_on_full: bool,
+    queue_put_timeout: float,
+    queue_high_water_mark: float,
+    queue_low_quality_threshold: float,
+    top_n: int,
+) -> None:
+    """Run the asyncio gRPC streaming server lifecycle.
+
+    Delegates to :func:`MassFlow.streaming.server.run_server`, which loads
+    the config, binds the gRPC port, and waits for termination inside an
+    ``asyncio`` event loop with graceful SIGINT/SIGTERM draining.
+    """
+    import asyncio
+
+    from MassFlow.streaming.queue import OverflowPolicy
+    from MassFlow.streaming.server import run_server
+
+    try:
+        # Convert 0.0 to None (block indefinitely).
+        effective_timeout: float | None = (
+            queue_put_timeout if queue_put_timeout > 0 else None
+        )
+
+        asyncio.run(
+            run_server(
+                config_path=config,
+                host=host,
+                port=port,
+                queue_capacity=queue_capacity,
+                queue_overflow=OverflowPolicy.DROP_OLDEST
+                if queue_drop_on_full
+                else OverflowPolicy.BLOCK,
+                queue_put_timeout=effective_timeout,
+                high_water_mark=queue_high_water_mark,
+                low_quality_threshold=queue_low_quality_threshold,
+                top_n=top_n,
+            )
+        )
+    except KeyboardInterrupt:
+        console.print("\n[bold yellow]Server stopped by user.[/bold yellow]")
+    except Exception as e:
+        logger.error(f"Server failed: {e}", exc_info=True)
+        raise typer.Exit(1)
+
+
+@app.command("stream-server")
+def run_stream_server(
+    config: str = typer.Option(
+        ..., "--config", help="Path to configuration YAML file."
+    ),
+    host: str = typer.Option(
+        "[::]", "--host", help="Bind address (default: [::] for all interfaces)."
+    ),
+    port: int = typer.Option(50051, "--port", help="TCP port (default: 50051)."),
+    queue_capacity: int = typer.Option(
+        2048, "--queue-capacity", help="Max buffered spectra before backpressure."
+    ),
+    queue_drop_on_full: bool = typer.Option(
+        False,
+        "--queue-drop-on-full",
+        help="Drop packets instead of blocking when the queue is full.",
+    ),
+    queue_put_timeout: float = typer.Option(
+        5.0,
+        "--queue-put-timeout",
+        help="Max seconds to wait for queue space before discarding packet (0 = block indefinitely).",
+    ),
+    queue_high_water_mark: float = typer.Option(
+        0.8,
+        "--queue-high-water-mark",
+        help=(
+            "Fraction of queue capacity at which low-quality spectra start "
+            "being dropped to protect buffer space for high-quality "
+            "acquisitions."
+        ),
+    ),
+    queue_low_quality_threshold: float = typer.Option(
+        0.5,
+        "--queue-low-quality-threshold",
+        help=(
+            "Minimum packet quality score (0.0-1.0) required to enqueue "
+            "once the high-water mark is reached."
+        ),
+    ),
+    top_n: int = typer.Option(
+        5, "--top-n", help="Number of top annotation hits per spectrum."
+    ),
+):
+    """
+    Start the gRPC streaming server for real-time spectral annotation.
+
+    The server listens for instrument clients sending MS2 spectra over the
+    bidirectional StreamSpectra RPC and returns structural annotations as
+    they are computed by the consensus engine. Backpressure is handled by a
+    bounded queue with quality-gated high-water-mark shedding.
+
+    Prerequisites: run ``scripts/protoc_gen.sh`` to compile the protobuf stubs.
+    """
+    _run_stream_server_impl(
+        config=config,
+        host=host,
+        port=port,
+        queue_capacity=queue_capacity,
+        queue_drop_on_full=queue_drop_on_full,
+        queue_put_timeout=queue_put_timeout,
+        queue_high_water_mark=queue_high_water_mark,
+        queue_low_quality_threshold=queue_low_quality_threshold,
+        top_n=top_n,
+    )
+
+
 @app.command("serve")
 def run_serve(
     config: str = typer.Option(
@@ -473,47 +594,45 @@ def run_serve(
         "--queue-put-timeout",
         help="Max seconds to wait for queue space before discarding packet (0 = block indefinitely).",
     ),
+    queue_high_water_mark: float = typer.Option(
+        0.8,
+        "--queue-high-water-mark",
+        help=(
+            "Fraction of queue capacity at which low-quality spectra start "
+            "being dropped to protect buffer space for high-quality "
+            "acquisitions."
+        ),
+    ),
+    queue_low_quality_threshold: float = typer.Option(
+        0.5,
+        "--queue-low-quality-threshold",
+        help=(
+            "Minimum packet quality score (0.0-1.0) required to enqueue "
+            "once the high-water mark is reached."
+        ),
+    ),
     top_n: int = typer.Option(
         5, "--top-n", help="Number of top annotation hits per spectrum."
     ),
 ):
     """
-    Start the gRPC streaming server for real-time spectral annotation.
-
-    The server listens for instrument clients sending MS2 spectra over gRPC
-    and returns structural annotations as they are computed.
-
-    Prerequisites: run ``scripts/protoc_gen.sh`` to compile the protobuf stubs.
+    Deprecated alias for ``massflow stream-server``. Use stream-server.
     """
-    import asyncio
-
-    from MassFlow.streaming.server import run_server
-    from MassFlow.streaming.queue import OverflowPolicy
-
-    try:
-        # Convert 0.0 to None (block indefinitely).
-        effective_timeout: float | None = (
-            queue_put_timeout if queue_put_timeout > 0 else None
-        )
-
-        asyncio.run(
-            run_server(
-                config_path=config,
-                host=host,
-                port=port,
-                queue_capacity=queue_capacity,
-                queue_overflow=OverflowPolicy.DROP_OLDEST
-                if queue_drop_on_full
-                else OverflowPolicy.BLOCK,
-                queue_put_timeout=effective_timeout,
-                top_n=top_n,
-            )
-        )
-    except KeyboardInterrupt:
-        console.print("\n[bold yellow]Server stopped by user.[/bold yellow]")
-    except Exception as e:
-        logger.error(f"Server failed: {e}", exc_info=True)
-        raise typer.Exit(1)
+    console.print(
+        "[bold yellow]Note:[/bold yellow] 'massflow serve' is deprecated; "
+        "use 'massflow stream-server' instead."
+    )
+    _run_stream_server_impl(
+        config=config,
+        host=host,
+        port=port,
+        queue_capacity=queue_capacity,
+        queue_drop_on_full=queue_drop_on_full,
+        queue_put_timeout=queue_put_timeout,
+        queue_high_water_mark=queue_high_water_mark,
+        queue_low_quality_threshold=queue_low_quality_threshold,
+        top_n=top_n,
+    )
 
 
 @app.command("watch")

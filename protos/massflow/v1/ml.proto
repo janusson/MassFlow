@@ -1,0 +1,91 @@
+syntax = "proto3";
+
+package massflow.v1.ml;
+
+// ---------------------------------------------------------------------------
+// Remote ML engine service (massflow-ml satellite boundary)
+// ---------------------------------------------------------------------------
+//
+// This proto defines the wire contract between the lightweight MassFlow core
+// and external machine-learning scoring services (e.g. the ``massflow-ml``
+// satellite repository hosting Spec2Vec and MS2DeepScore engines).
+//
+// The core package implements only the CLIENT side (see
+// ``MassFlow.ml_client.RemoteMLEngine``) and treats the service as an opaque
+// implementation of ``MLEngineProtocol``. Servers may be implemented in any
+// language; a Python reference server can be generated from this file with
+// grpcio-tools.
+//
+// All scientific values are float64 to preserve MassFlow's data-integrity
+// conventions (never float32).
+
+// A serialized matchms.Spectrum payload (float64 peak arrays + string
+// metadata).
+message SpectrumVector {
+  string spectrum_id = 1;
+  repeated double mz_array = 2;
+  repeated double intensity_array = 3;
+  map<string, string> metadata = 4;
+}
+
+message MLEngineRequest {
+  // Algorithm served by the target engine ("spec2vec" or "ms2deepscore").
+  string algorithm = 1;
+
+  repeated SpectrumVector query_spectra = 2;
+  repeated SpectrumVector reference_spectra = 3;
+
+  // Minimum similarity score threshold in [0, 1] (0 = return everything).
+  double min_score = 4;
+
+  // Maximum hits per query spectrum. 0 = unlimited.
+  int32 top_n = 5;
+
+  // Whether the server should generate and score decoys for FDR estimation.
+  bool include_decoys = 6;
+}
+
+// A single annotation hit, structurally aligned with MassFlow's SearchResult.
+message AnnotationHit {
+  string reference_id = 1;
+  string reference_name = 2;
+  double score = 3;
+  int32 matched_peaks = 4;
+  string smiles = 5;
+  string inchikey = 6;
+  double q_value = 7;
+  string annotation_tier = 8;
+  double structural_similarity = 9;
+}
+
+message SpectrumResults {
+  string query_id = 1;
+  repeated AnnotationHit hits = 2;
+}
+
+message MLEngineResponse {
+  repeated SpectrumResults results = 1;
+}
+
+message BatchScoreRequest {
+  string algorithm = 1;
+  repeated SpectrumVector query_spectra = 2;
+  repeated SpectrumVector reference_spectra = 3;
+}
+
+message BatchScoreResponse {
+  // One score per query-reference pair (aligned by index).
+  repeated double scores = 1;
+}
+
+// ---------------------------------------------------------------------------
+// Service definition
+// ---------------------------------------------------------------------------
+
+service MLEngineService {
+  // Ranked similarity search over a reference library.
+  rpc Search(MLEngineRequest) returns (MLEngineResponse);
+
+  // Score pre-formed query-reference pairs in one batch call.
+  rpc BatchScore(BatchScoreRequest) returns (BatchScoreResponse);
+}

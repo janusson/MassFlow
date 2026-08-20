@@ -203,8 +203,14 @@ The CLI loads the config and calls `run_annotation_pipeline()`.
    - Results are aggregated.
 
 7. **FDR calculation**
-   - Decoys are generated from the reference spectra.
+   - Entropy-based decoys are generated from the reference spectra:
+     each decoy preserves the precursor m/z and the Shannon entropy of its
+     source's noise-filtered fragment intensities while randomizing the
+     fragmentation pathways, avoiding the null-distribution bias of naive
+     fragment shuffling.
    - Target and decoy scores are combined to estimate q-values.
+   - The workflow logs a target-decoy entropy-divergence diagnostic to
+     flag biased FDR calibration.
    - Final results are filtered by:
      - score thresholds
      - matched-peak thresholds where applicable
@@ -350,18 +356,42 @@ formats, rejects unsupported vendor raw inputs, and exports result tables.
 
 ### `MassFlow.database`
 Provides SQLite-backed storage for spectral libraries and helper methods for
-build, inspection, merge, and spectrum streaming.
+build, inspection, merge, and spectrum streaming. In addition to the default
+BLOB mode (``mz_array`` / ``intensity_array``), it supports a hybrid mode
+where SQLite retains only metadata plus a ``zarr_ref`` / ``zarr_index``
+reference pair and fragment arrays are persisted in a chunked Zarr store
+(see ``MassFlow.zarr_store``). The ``migrate_blobs_to_zarr`` helper (wrapped
+by ``scripts/migrations/0002_blobs_to_zarr.py``) migrates existing BLOB
+libraries to the hybrid backend with bitwise verification.
 
 ### `MassFlow.processing`
 Applies the configured `matchms` metadata repairs and peak filtering pipeline.
 
 ### `MassFlow.similarity`
 Creates and runs the scoring engines. It also defines decoy generation and
-result structures used during FDR calculation.
+result structures used during FDR calculation. Modified-cosine scoring uses a
+Numba-accelerated peak/neutral-loss prefilter (`MassFlow.acceleration`) to
+skip pairs that cannot reach `min_matched_peaks`; the cascade engine can
+optionally use a HNSW (Hierarchical Navigable Small World) index
+(`MassFlow.hnsw`) for sub-linear candidate retrieval before exact scoring.
+External ML engines (Spec2Vec, MS2DeepScore) sit behind the
+`MLEngineProtocol` boundary and may run remotely over REST/gRPC
+(`MassFlow.ml_client`, `ml_endpoints` in the config); a circuit breaker plus
+classical modified_cosine fallbacks in the meta-engines and workflow keep
+runs alive when the ML service is unreachable or heavy dependencies are
+missing.
 
 ### `MassFlow.networking`
 Builds GraphML molecular-network output from workflow results when networking
 is enabled.
+
+### `MassFlow.streaming` (experimental)
+Implements the gRPC real-time annotation server (`StreamSpectra` bidirectional
+RPC plus `GetStatus` health probe). Incoming packets are validated through a
+Pydantic/matchms gate, buffered in a bounded async queue with quality-gated
+high-water-mark backpressure (low-quality spectra are shed under overrun and
+reported as `spectra_dropped_low_quality`), micro-batched, and routed through
+the `ConsensusEngine`; annotations stream back to the client as they complete.
 
 ---
 

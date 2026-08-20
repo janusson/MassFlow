@@ -89,6 +89,11 @@ graph LR
 - `src/MassFlow/database.py`
   - Stores and retrieves spectra in SQLite format.
   - Supports database build, inspection, and merge workflows.
+  - Supports a hybrid storage mode where SQLite retains metadata plus a
+    `zarr_ref`/`zarr_index` reference pair and fragment arrays live in a
+    chunked Zarr store (see `src/MassFlow/zarr_store.py`), with a migration
+    utility (`scripts/migrations/0002_blobs_to_zarr.py`) for existing BLOB
+    libraries.
   - Implements a fast NumPy-based **Triage Bitmask** scan during insertion to flag structurally significant features (e.g., Tyrosine immonium ions at 136.076 Da). These flags are stored as JSON in the `triage_flags` column for future ML routing.
 
 ### Processing
@@ -111,6 +116,18 @@ graph LR
     - `ms2deepscore`
     - `consensus` (via the `ConsensusEngine` and v0.2 Orchestrator API)
     - `cascade`
+- `src/MassFlow/acceleration.py`
+  - Numba-accelerated peak/neutral-loss matching prefilter that skips
+    query-reference pairs below `min_matched_peaks` before exact
+    modified-cosine scoring (pure-NumPy fallback with identical results).
+- `src/MassFlow/hnsw.py`
+  - hnswlib-backed HNSW (Hierarchical Navigable Small World) index over
+    two-channel binned spectral vectors (`[binned exact m/z, binned
+    neutral losses]`) for sub-linear candidate retrieval on massive
+    libraries. The neutral-loss channel preserves recall for shifted
+    analogues under modified cosine. Used by the cascade engine as an
+    approximate pre-stage; spectral similarity is non-metric, so exact
+    scoring always follows.
 
 ### Orchestrator API (v0.2 Foundation)
 
