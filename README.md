@@ -6,8 +6,6 @@
 [![Python 3.13+](https://img.shields.io/badge/python-3.13+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-*MassFlow is actively maintained. For inquiries regarding collaborative development, data annotation consulting, or full-time remote opportunities in cheminformatics, please contact Dr. Eric Janusson by email at [ericjanusson@outlook.com](ericjanusson@outlook.com) or by visiting [https://ericjanusson.ca/contact/](https://ericjanusson.ca/contact/).*
-
 **MassFlow is a local-first, high-throughput tandem mass spectrometry (MS/MS)
 annotation engine.** It turns experimental spectra (`.mzML`, `.mgf`) and
 reference libraries (`.msp`, SQLite/Zarr databases) into calibrated structural
@@ -371,3 +369,7 @@ uv run mypy .
 ## License
 
 MIT. See [`LICENSE`](LICENSE).
+
+## Contact
+
+*MassFlow is actively maintained. For inquiries regarding collaborative development, data annotation consulting, or full-time remote opportunities in cheminformatics, please contact Dr. Eric Janusson by email at [ericjanusson@outlook.com](ericjanusson@outlook.com) or by visiting [https://ericjanusson.ca/contact/](https://ericjanusson.ca/contact/).*
