@@ -21,6 +21,7 @@ dependencies = [
     # Pinned for macOS 15 dyld compatibility with matchms transitive dep
     "scipy>=1.15.0",
     "typer>=0.25.1",
+    "zarr>=3.2.1",
 ]
 
 [project.optional-dependencies]

@@ -948,6 +948,7 @@ dependencies = [
     { name = "scikit-learn" },
     { name = "scipy" },
     { name = "typer" },
+    { name = "zarr" },
 ]
 
 [package.optional-dependencies]
@@ -1014,6 +1015,7 @@ requires-dist = [
     { name = "torch", marker = "extra == 'ml'", specifier = ">=2.0.0" },
     { name = "typer", specifier = ">=0.25.1" },
     { name = "watchfiles", marker = "extra == 'watch'", specifier = ">=1.1.1" },
+    { name = "zarr", specifier = ">=3.2.1" },
     { name = "zarr", marker = "extra == 'zarr'", specifier = ">=3.0" },
 ]
 provides-extras = ["dev", "chem", "ml", "zarr", "hnsw", "watch"]

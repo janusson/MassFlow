@@ -115,5 +115,7 @@ nav:
       - Workflow: api/workflow.md
       - Models: api/models.md
       - Cheminformatics: api/cheminformatics.md
-  - Roadmap: post-v1.0-roadmap.md
+      - Consensus: api/consensus.md
+      - Server: api/server.md
+  - Roadmap: post-v0.1-roadmap.md
   - Changelog: CHANGELOG.md

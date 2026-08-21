@@ -86,4 +86,4 @@ MassFlow contains several advanced machine learning models and orchestration log
 
 Because these engines require external model weights, complex validation, or specific tie-breaking logic, they are not currently part of the stable v0.1 pipeline contract.
 
-For documentation on how to configure and run these engines at your own risk, see the [Experimental Features](../experimental/ml-engines.md) guide.
+For documentation on how to configure and run these engines at your own risk, see the [Similarity Engine API](../api/similarity.md) reference.

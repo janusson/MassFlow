@@ -39,5 +39,8 @@ jobs:
         run: |
           cp ARCHITECTURE.md docs/ARCHITECTURE.md
 
+      - name: Build documentation (strict)
+        run: uv run mkdocs build --strict
+
       - name: Deploy to GitHub Pages
         run: uv run mkdocs gh-deploy --force

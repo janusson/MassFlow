@@ -1,3 +1,5 @@
+*MassFlow is actively maintained. For inquiries regarding collaborative development, data annotation consulting, or full-time remote opportunities in cheminformatics, please contact Dr. Eric Janusson by email at [ericjanusson@outlook.com](ericjanusson@outlook.com) or by visiting [https://ericjanusson.ca/contact/](https://ericjanusson.ca/contact/).*
+
 # MassFlow
 
 [![CI](https://github.com/janusson/MassFlow/actions/workflows/ci.yml/badge.svg)](https://github.com/janusson/MassFlow/actions/workflows/ci.yml)

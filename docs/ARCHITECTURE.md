@@ -21,15 +21,16 @@ separate modules so the main annotation path stays predictable and testable.
 
 For `v0.1`, the stable product contract is centered on:
 
+- `massflow tutorial` — generates synthetic tutorial data for local evaluation
 - `massflow annotate --config ...`
 - SQLite-backed library workflows through `massflow db`
 - open-format ingestion for `mzML`, `mzXML`, `MGF`, and `MSP`
 - configurable `matchms`-based processing
 - `cosine` and `modified_cosine` similarity
-- CSV, mzTab-M, and GNPS FBMN compatible export formats
+- CSV and mzTab-M result export formats
 
-Experimental utilities such as the terminal browser, molecular networking, and
-advanced ML-backed engines remain outside the core support promise.
+Advanced ML-backed engines and other experimental utilities remain outside the
+core support promise.
 
 ---
 
@@ -43,7 +44,7 @@ graph LR
     CLI --> Processed[Processed Spectra]
     Processed --> Sim[Similarity Search]
     Sim --> Filter[FDR Filtering]
-    Filter --> Out[CSV / mzTab / FBMN + YAML Report]
+    Filter --> Out[CSV / mzTab + YAML Report]
 ```
 
 ---
@@ -54,11 +55,16 @@ graph LR
 
 - `src/MassFlow/cli.py`
   - Defines the CLI commands:
-    - `annotate`
     - `init`
+    - `tutorial`
+    - `annotate`
+    - `convert`
     - `db build`
     - `db inspect`
     - `db merge`
+    - `stream-server`
+    - `serve`
+    - `watch`
 - Python API
   - Core modules can also be imported directly for scripting or testing.
 
@@ -81,11 +87,17 @@ graph LR
 - `src/MassFlow/io.py`
   - Loads spectra from supported open formats and SQLite libraries.
   - Rejects vendor raw formats instead of converting them implicitly.
-  - Writes match results to CSV, mzTab-M, and MGF formats (for FBMN).
+  - Writes match results to CSV and mzTab-M formats, and can export spectra
+    as MGF or MSP.
 
 - `src/MassFlow/database.py`
   - Stores and retrieves spectra in SQLite format.
   - Supports database build, inspection, and merge workflows.
+  - Supports a hybrid storage mode where SQLite retains metadata plus a
+    `zarr_ref`/`zarr_index` reference pair and fragment arrays live in a
+    chunked Zarr store (see `src/MassFlow/zarr_store.py`), with a migration
+    utility (`scripts/migrations/0002_blobs_to_zarr.py`) for existing BLOB
+    libraries.
   - Implements a fast NumPy-based **Triage Bitmask** scan during insertion to flag structurally significant features (e.g., Tyrosine immonium ions at 136.076 Da). These flags are stored as JSON in the `triage_flags` column for future ML routing.
 
 ### Processing
@@ -106,20 +118,28 @@ graph LR
   - Experimental engines:
     - `spec2vec`
     - `ms2deepscore`
-    - `consensus` (via the `ConsensusEngine` and v0.2 Orchestrator API)
+    - `consensus` (via the `ConsensusEngine`)
     - `cascade`
+- `src/MassFlow/acceleration.py`
+  - Numba-accelerated peak/neutral-loss matching prefilter that skips
+    query-reference pairs below `min_matched_peaks` before exact
+    modified-cosine scoring (pure-NumPy fallback with identical results).
+- `src/MassFlow/hnsw.py`
+  - hnswlib-backed HNSW (Hierarchical Navigable Small World) index over
+    two-channel binned spectral vectors (`[binned exact m/z, binned
+    neutral losses]`) for sub-linear candidate retrieval on massive
+    libraries. The neutral-loss channel preserves recall for shifted
+    analogues under modified cosine. Used by the cascade engine as an
+    approximate pre-stage; spectral similarity is non-metric, so exact
+    scoring always follows.
 
-### Orchestrator API (v0.2 Foundation)
+### Data models and consensus scoring
 
 - `src/MassFlow/models.py`
   - Defines strict Pydantic data contracts (`AnnotationHit`, `ConsensusInput`, `ConsensusResult`, `ConsensusConfig`, `MolecularStructure`).
   - Provides a dependency-free, engine-agnostic language for communication between the lightweight core and heavy ML satellite repositories (e.g., `massflow-ml`).
   - Implements rigorous structural validation (e.g., 5 ppm precursor m/z checks) and automatically calculates theoretical `isotopic_envelope` distributions for valid molecules.
-- `src/MassFlow/consensus.py`
-  - Implements `ConsensusEngine` for resolving multiple algorithmic annotations into a single `ConsensusResult`.
-  - Supports probabilistically-weighted score aggregation representing the precision-recall trade-offs of the underlying ensemble.
-  - Implements multiple tie-breaking strategies (`highest_rank`, `average_score`, `validator_engine`).
-  - Includes a scientific credibility check to flag high-discrepancy results as an 'orthogonal agreement failure' for human review.
+- Consensus *scoring* is provided by the `ConsensusEngine` in `src/MassFlow/similarity.py`, which combines cosine, modified_cosine, and (when the `[ml]` extra is installed) Spec2Vec/MS2DeepScore sub-engines into a weighted consensus score. The standalone `MassFlow.consensus` orchestrator module (the v0.2 Orchestrator API with `generate_consensus`) was removed in the v1.0 engine lockdown; the tie-breaking and credibility-check logic it implemented is no longer part of the codebase.
 
 ---
 
@@ -128,10 +148,10 @@ graph LR
 MassFlow enforces strict physical boundaries at the point of ingestion, ensuring that automated annotation pipelines do not propagate chemically impossible results.
 
 ### Precursor Validation (5 ppm Tolerance)
-Within the `SpectrumMetadata` contract, an experimental `precursor_mz` is rigorously cross-referenced against the molecule's theoretical exact mass, charge state, and ionization adduct. The orchestrator pulls high-precision monoisotopic mass shifts from the internal `ADDUCT_OFFSETS` registry and calculates the theoretical m/z. If the provided experimental precursor m/z deviates from this theoretical value by more than **5.0 ppm**, the record is rejected as physically implausible via a Pydantic `ValidationError`.
+Within the `SpectrumMetadata` contract (defined in `MassFlow.models`), an experimental `precursor_mz` is rigorously cross-referenced against the molecule's theoretical exact mass, charge state, and ionization adduct. The theoretical m/z is computed from the exact mass plus the adduct offset — via `MassFlow.cheminformatics.compute_adduct_offset` and its `_ADDUCT_SPECS` registry — divided by the absolute charge. If the experimental precursor m/z deviates from this theoretical value by more than **5.0 ppm**, the record is flagged `is_physically_valid = False` so downstream processing treats it as chemically implausible.
 
 **Supported Adducts:**
-- **Positive Mode:** `[M+H]+`, `[M+NH4]+`, `[M+Na]+`, `[M+K]+`, `[M]+`
+- **Positive Mode:** `[M+H]+`, `[M+NH4]+`, `[M+Na]+`, `[M+K]+`, `[M]+`, `[M+2H]2+`
 - **Negative Mode:** `[M-H]-`, `[M+Cl]-`, `[M+HCOO]-`, `[M+CH3COO]-`, `[M+FA-H]-` (Formate), `[M]-`
 
 ### Theoretical Isotopic Envelopes
@@ -151,9 +171,6 @@ graph TD
     PROCESS --> SIM[Similarity Engine]
     SIM --> WORKFLOW
     SIM --> ML[ML Engines]
-    WORKFLOW --> NET[Networking]
-    WORKFLOW --> ORCH[Orchestrator API]
-    ORCH --> WORKFLOW
 ```
 
 ---
@@ -170,8 +187,7 @@ The CLI loads the config and calls `run_annotation_pipeline()`.
 
 1. **Configuration loading**
    - The YAML file is parsed into `MassFlowConfig`.
-   - Paths such as `file_path`, `data_directory`, and `library_path` have
-     `~` expanded.
+   - Paths such as `input_path` and `library_path` have `~` expanded.
 
 2. **Library loading**
    - The workflow requires a configured library path.
@@ -183,9 +199,8 @@ The CLI loads the config and calls `run_annotation_pipeline()`.
      may be weak.
 
 3. **Experimental input discovery**
-   - The workflow accepts either:
-     - `input.file_path`
-     - or `input.data_directory`
+   - The workflow reads `input.input_path`, which may point to a single
+     spectral file or a directory of files.
    - If a directory is used, files are discovered recursively.
 
 4. **Pre-loading and Multiprocessing**
@@ -220,11 +235,6 @@ The CLI loads the config and calls `run_annotation_pipeline()`.
    - The workflow writes one result file per experimental input file.
    - Output filenames follow the pattern:
      - `<input_stem>_results.<ext>`
-   - Depending on configuration, it can also output a `consensus_spectra.mgf` (for FBMN mode).
-
-9. **Optional networking**
-   - If `workflow.perform_networking` is enabled, GraphML output is generated.
-   - This path is optional and experimental.
 
 ---
 
@@ -269,9 +279,6 @@ MassFlow directly loads:
   - `.db`
   - `.sqlite`
 
-There is also internal support for pickle-based loading in the I/O layer, but
-that is not part of the main config-first workflow contract.
-
 ### Unsupported direct input formats
 
 MassFlow intentionally does **not** perform vendor raw conversion internally.
@@ -293,13 +300,9 @@ running the annotation workflow.
 The stable output formats are:
 
 - CSV or mzTab-M result files written per experimental input
-- FBMN compatibility outputs (CSV paired with Consensus MGF)
 
-Optional output:
-
-- GraphML molecular-network export when explicitly enabled
-
-Although the config model includes broader export fields (JSON, Excel, Parquet), CSV and mzTab-M are the core reporting surfaces.
+The export format is selected via `export.format` in the config (supported
+values: `csv` or `mztab`).
 
 ---
 
@@ -309,6 +312,7 @@ Although the config model includes broader export fields (JSON, Excel, Parquet),
 
 These are the features the docs should treat as the main supported path:
 
+- `massflow tutorial` — generates synthetic tutorial data for local evaluation
 - `massflow annotate --config ...`
 - YAML configuration via `MassFlowConfig`
 - open-format ingestion for `mzML`, `mzXML`, `MGF`, and `MSP`
@@ -316,7 +320,7 @@ These are the features the docs should treat as the main supported path:
 - `matchms`-based metadata and peak processing
 - `cosine` and `modified_cosine`
 - target-decoy FDR filtering
-- per-file CSV and mzTab-M result export, plus GNPS FBMN mode
+- per-file CSV and mzTab-M result export
 - `massflow db build`, `inspect`, and `merge`
 
 ## Experimental or less-stable surfaces
@@ -327,8 +331,6 @@ These features exist in the repository but should be treated more cautiously:
 - `ms2deepscore`
 - `consensus`
 - `cascade`
-- GraphML networking
-- pickle-oriented utility paths
 
 See `README.md` for the user-facing guide to what is currently experimental, why it is classified that way, and how to approach those features safely.
 
@@ -338,7 +340,7 @@ See `README.md` for the user-facing guide to what is currently experimental, why
 
 ### `MassFlow.cli`
 Parses command-line arguments, configures logging, and dispatches CLI commands
-into the workflow, browser, or database layers.
+into the workflow or database layers.
 
 ### `MassFlow.workflow`
 Implements the annotation pipeline. It loads and processes the reference
@@ -381,10 +383,6 @@ classical modified_cosine fallbacks in the meta-engines and workflow keep
 runs alive when the ML service is unreachable or heavy dependencies are
 missing.
 
-### `MassFlow.networking`
-Builds GraphML molecular-network output from workflow results when networking
-is enabled.
-
 ### `MassFlow.streaming` (experimental)
 Implements the gRPC real-time annotation server (`StreamSpectra` bidirectional
 RPC plus `GetStatus` health probe). Incoming packets are validated through a
@@ -419,7 +417,7 @@ project:
   output_directory: "results/standard_analysis"
 
 input:
-  file_path: "data/experiments/experiment.mzML"
+  input_path: "data/experiments/experiment.mzML"
   library_path: "data/libraries/library.msp"
   format: "mzml"
 

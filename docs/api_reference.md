@@ -20,7 +20,6 @@ This document provides a concise reference for all public classes, attributes, m
 - `run_db_build(input: str, output: str, config: str, category: str) -> Any`
 - `run_db_inspect(file: str) -> Any`
 - `run_db_merge(inputs: List[str], output: str) -> Any`
-- `run_visualize(graphml_path: str, output: str) -> Any`
 - `run_watch(config: str) -> Any`
 - `main() -> Any`
 
@@ -92,10 +91,7 @@ This document provides a concise reference for all public classes, attributes, m
   - `validate_cascade_range(v: float, info: ValidationInfo) -> float`
   - `validate_min_matched_peaks(v: int, info: ValidationInfo) -> int`
 - **`class WorkflowConfig`**
-  - `perform_peak_picking: bool`
-  - `perform_alignment: bool`
-  - `perform_networking: bool`
-  - `export_consensus: bool`
+  - (no active fields; reserved for future pipeline stages)
 - **`class ExportConfig`**
   - `format: Literal['csv', 'pickle', 'msp', 'mgf', 'json', 'xlsx', 'parquet', 'fbmn', 'mztab']`
 - **`class MassFlowConfig`**
@@ -107,13 +103,6 @@ This document provides a concise reference for all public classes, attributes, m
   - `export: ExportConfig`
   - `output_directory() -> Path`
   - `from_yaml(path: Union[str, Path]) -> 'MassFlowConfig'`
-
-## `MassFlow.consensus`
-
-- `generate_consensus(input_data: ConsensusInput, config: ConsensusConfig) -> ConsensusResult`
-- **`class ConsensusEngine`**
-  - `__init__(config: ConsensusConfig) -> None`
-  - `resolve(consensus_input: ConsensusInput) -> ConsensusResult`
 
 ## `MassFlow.convert`
 
@@ -227,10 +216,6 @@ This document provides a concise reference for all public classes, attributes, m
   - `metadata: SpectrumMetadata`
   - `peaks: SpectralPeaks`
 
-## `MassFlow.networking`
-
-- `generate_molecular_network(all_queries: List[Spectrum], all_references: List[Spectrum], all_results: List[SearchResult], config: MassFlowConfig, output_path: Path) -> None`
-
 ## `MassFlow.processing`
 
 - `compute_spectral_metrics(mz_array: np.ndarray, precursor_mz: float) -> Tuple[np.ndarray, np.ndarray]`
@@ -239,13 +224,6 @@ This document provides a concise reference for all public classes, attributes, m
 - `peak_processing(spectrum: Spectrum, config: ProcessingConfig) -> Optional[Spectrum]`
 - `process_spectra_batch(spectra: List[Spectrum], config: ProcessingConfig) -> List[Spectrum]`
 - `process_spectra(spectra: Iterator[Spectrum], config: ProcessingConfig) -> Iterator[Spectrum]`
-
-## `MassFlow.server`
-
-- `is_plausible_formula(text: str) -> bool`
-- `check_smiles_validity(smiles: str) -> Optional[str]`
-- `validate_document(ls: LanguageServer, params: Any) -> Any`
-- `hover(ls: LanguageServer, params: HoverParams) -> Optional[Hover]`
 
 ## `MassFlow.similarity`
 
@@ -274,13 +252,15 @@ This document provides a concise reference for all public classes, attributes, m
   - `__init__(config: SimilarityConfig) -> Any`
   - `search(query_spectra: List[Spectrum], reference_spectra: List[Spectrum], min_score: float | None, top_n: int | None, include_decoys: bool) -> List[SearchResult]`
 - **`class ConsensusEngine`**
-  - `__init__(engines: list[tuple[SimilarityEngine, float]], min_score: float) -> Any`
+  - `__init__(config: SimilarityConfig) -> Any`
   - `search(query_spectra: List[Spectrum], reference_spectra: List[Spectrum], min_score: float | None, top_n: int | None, include_decoys: bool) -> List[SearchResult]`
 - `get_similarity_engine(config: SimilarityConfig) -> SimilarityEngine | ConsensusEngine | CascadeEngine`
 
-## `MassFlow.visualization.network`
+## `MassFlow.streaming.server`
 
-- `visualize_graphml(graphml_path: str | Path, output_html: str | Path, notebook: bool) -> None`
+- **`class MassFlowStreamingServicer`**
+- `serve(config: MassFlowConfig, host: str, port: int, queue_capacity: int, ...) -> Any`
+- `run_server(config_path: str, host: str, port: int, ...) -> Any`
 
 ## `MassFlow.workflow`
 
