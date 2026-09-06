@@ -1,0 +1,3430 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A config-first Python toolkit for local tandem mass spectrometry (MS/MS) data annotation.">
+      
+      
+        <meta name="author" content="Eric Janusson">
+      
+      
+      
+        <link rel="prev" href="../multiprocessing/">
+      
+      
+        <link rel="next" href="../CAPABILITY_MATRIX/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Architecture - MassFlow</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/_mkdocstrings.css">
+    
+      <link rel="stylesheet" href="../stylesheets/ayu-dark.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="teal">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#massflow-architecture" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="MassFlow" class="md-header__button md-logo" aria-label="MassFlow" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            MassFlow
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Architecture
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="teal"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="teal"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+          <a href="javascript:void(0)" class="md-search__icon md-icon" title="Share" aria-label="Share" data-clipboard data-clipboard-text="" data-md-component="search-share" tabindex="-1">
+            
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9a3 3 0 0 0-3 3 3 3 0 0 0 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.15c-.05.21-.08.43-.08.66 0 1.61 1.31 2.91 2.92 2.91s2.92-1.3 2.92-2.91A2.92 2.92 0 0 0 18 16.08"/></svg>
+          </a>
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/janusson/MassFlow" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    janusson/MassFlow
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../getting-started/installation/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Getting Started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../summary_diagrams/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  User Guide
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    <li class="md-tabs__item md-tabs__item--active">
+      <a href="./" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Architecture
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../CAPABILITY_MATRIX/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Product Contract & Capability Matrix
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../COMPLEXITY_AUDIT/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Complexity Audit & Subsystem Classification
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../api_reference/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  API Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../post-v0.1-roadmap/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Roadmap
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../CHANGELOG/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Changelog
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="MassFlow" class="md-nav__button md-logo" aria-label="MassFlow" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    MassFlow
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/janusson/MassFlow" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    janusson/MassFlow
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/tutorial/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tutorial
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/quickstart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quickstart
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../summary_diagrams/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Diagrams & Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_2" id="__nav_3_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Core Workflow (Stable)
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Core Workflow (Stable)
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../user-guide/annotation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Annotation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../user-guide/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration (YAML)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../user-guide/database/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SQLite Library Management
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../user-guide/processing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Processing & Filtering
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../user-guide/validation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Scientific Validation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../user-guide/scientific_validation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Golden Test Suite
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../user-guide/similarity/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Classical Similarity
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../user-guide/results/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Result Export & FDR
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../user-guide/usage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Usage Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_3" id="__nav_3_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data & Math
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Data & Math
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../user-guide/data-requirements/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data Requirements
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../user-guide/scoring_logic/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Scoring Logic
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../multiprocessing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Multiprocessing & Memory Model
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Overview
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#simple-data-flow-workflow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Simple Data Flow Workflow
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#high-level-components" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        High-Level Components
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="High-Level Components">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#user-facing-surfaces" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        User-facing surfaces
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#terminal-console" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Terminal console
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#orchestration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Orchestration
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#data-access" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Data access
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#processing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Processing
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#similarity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Similarity
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#data-models-and-consensus-scoring" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Data models and consensus scoring
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#scientific-data-integrity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Scientific Data Integrity
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Scientific Data Integrity">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#precursor-validation-5-ppm-tolerance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Precursor Validation (5 ppm Tolerance)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#theoretical-isotopic-envelopes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Theoretical Isotopic Envelopes
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#component-diagram" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Component Diagram
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#actual-annotation-workflow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Actual Annotation Workflow
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Actual Annotation Workflow">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#pipeline-steps" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pipeline steps
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sequence-diagram" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sequence Diagram
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#supported-inputs-and-outputs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Supported Inputs and Outputs
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Supported Inputs and Outputs">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#supported-direct-input-formats" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Supported direct input formats
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#unsupported-direct-input-formats" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Unsupported direct input formats
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#standard-outputs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Standard outputs
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#core-vs-experimental-features" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Core vs Experimental Features
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#core-for-the-stable-annotation-workflow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Core for the stable annotation workflow
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#experimental-or-less-stable-surfaces" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Experimental or less-stable surfaces
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#module-responsibilities" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Module Responsibilities
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Module Responsibilities">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#massflowcli" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MassFlow.cli
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#massflowworkflow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MassFlow.workflow
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#massflowconfig" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MassFlow.config
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#massflowio" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MassFlow.io
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#massflowdatabase" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MassFlow.database
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#massflowprocessing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MassFlow.processing
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#massflowsimilarity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MassFlow.similarity
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#massflowstreaming-experimental" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MassFlow.streaming (experimental)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#massflowtui-interactive-requires-the-tui-extra" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MassFlow.tui (interactive, requires the tui extra)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#design-principles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Design Principles
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#practical-example" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Practical Example
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../CAPABILITY_MATRIX/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Product Contract & Capability Matrix
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../COMPLEXITY_AUDIT/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Complexity Audit & Subsystem Classification
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api_reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/tui/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Terminal Console (TUI)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/config/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/database/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Database
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/convert/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Conversion
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/io/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Input/Output
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/processing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Processing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/similarity/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Similarity
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/storage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Storage (Zarr)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/hnsw/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HNSW Indexing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/acceleration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Acceleration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/queue/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Streaming Queue
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/workflow/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workflow
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/models/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/cheminformatics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cheminformatics
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/consensus/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Consensus
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/server/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Server
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../post-v0.1-roadmap/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Roadmap
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../CHANGELOG/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Overview
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#simple-data-flow-workflow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Simple Data Flow Workflow
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#high-level-components" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        High-Level Components
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="High-Level Components">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#user-facing-surfaces" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        User-facing surfaces
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#terminal-console" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Terminal console
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#orchestration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Orchestration
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#data-access" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Data access
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#processing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Processing
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#similarity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Similarity
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#data-models-and-consensus-scoring" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Data models and consensus scoring
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#scientific-data-integrity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Scientific Data Integrity
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Scientific Data Integrity">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#precursor-validation-5-ppm-tolerance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Precursor Validation (5 ppm Tolerance)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#theoretical-isotopic-envelopes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Theoretical Isotopic Envelopes
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#component-diagram" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Component Diagram
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#actual-annotation-workflow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Actual Annotation Workflow
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Actual Annotation Workflow">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#pipeline-steps" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pipeline steps
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sequence-diagram" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sequence Diagram
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#supported-inputs-and-outputs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Supported Inputs and Outputs
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Supported Inputs and Outputs">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#supported-direct-input-formats" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Supported direct input formats
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#unsupported-direct-input-formats" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Unsupported direct input formats
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#standard-outputs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Standard outputs
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#core-vs-experimental-features" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Core vs Experimental Features
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#core-for-the-stable-annotation-workflow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Core for the stable annotation workflow
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#experimental-or-less-stable-surfaces" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Experimental or less-stable surfaces
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#module-responsibilities" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Module Responsibilities
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Module Responsibilities">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#massflowcli" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MassFlow.cli
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#massflowworkflow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MassFlow.workflow
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#massflowconfig" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MassFlow.config
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#massflowio" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MassFlow.io
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#massflowdatabase" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MassFlow.database
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#massflowprocessing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MassFlow.processing
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#massflowsimilarity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MassFlow.similarity
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#massflowstreaming-experimental" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MassFlow.streaming (experimental)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#massflowtui-interactive-requires-the-tui-extra" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MassFlow.tui (interactive, requires the tui extra)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#design-principles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Design Principles
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#practical-example" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Practical Example
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="massflow-architecture">MassFlow Architecture<a class="headerlink" href="#massflow-architecture" title="Permanent link">&para;</a></h1>
+<blockquote>
+<p><strong>This file is a component-level reference only.</strong> The authoritative product
+contract, capability matrix, contradiction log, and core/experimental/future
+research boundaries live in
+<a href="../CAPABILITY_MATRIX/"><code>docs/CAPABILITY_MATRIX.md</code></a>. Where the two documents
+disagree, <code>CAPABILITY_MATRIX.md</code> governs.</p>
+</blockquote>
+<h2 id="overview">Overview<a class="headerlink" href="#overview" title="Permanent link">&para;</a></h2>
+<p>MassFlow is a local, CLI-first toolkit for tandem mass spectrometry (MS/MS)
+annotation workflows.</p>
+<p>The core execution path is:</p>
+<ol>
+<li>load a YAML configuration</li>
+<li>load an experimental file or directory of files</li>
+<li>load a reference library</li>
+<li>process spectra with configurable <code>matchms</code> filters</li>
+<li>run similarity search against the reference library</li>
+<li>apply score and FDR filtering</li>
+<li>write per-file CSV result tables</li>
+</ol>
+<p>The architecture is intentionally modular. Configuration, I/O, processing,
+similarity scoring, database access, and workflow orchestration live in
+separate modules so the main annotation path stays predictable and testable.</p>
+<p>For <code>v0.1</code>, the stable product contract is centered on:</p>
+<ul>
+<li><code>massflow tutorial</code> — generates synthetic tutorial data for local evaluation</li>
+<li><code>massflow annotate --config ...</code></li>
+<li>SQLite-backed library workflows through <code>massflow db</code></li>
+<li>open-format ingestion for <code>mzML</code>, <code>mzXML</code>, <code>MGF</code>, and <code>MSP</code></li>
+<li>configurable <code>matchms</code>-based processing</li>
+<li><code>cosine</code> and <code>modified_cosine</code> similarity</li>
+<li>CSV and mzTab-M result export formats</li>
+</ul>
+<p>Advanced ML-backed engines and other experimental utilities remain outside the
+core support promise.</p>
+<hr />
+<h2 id="simple-data-flow-workflow">Simple Data Flow Workflow<a class="headerlink" href="#simple-data-flow-workflow" title="Permanent link">&para;</a></h2>
+<p><code>mermaid
+graph LR
+    Config[YAML Config] --&gt; CLI{MassFlow CLI}
+    Input[Input Files] --&gt; CLI
+    Library[Reference Library] --&gt; CLI
+    CLI --&gt; Processed[Processed Spectra]
+    Processed --&gt; Sim[Similarity Search]
+    Sim --&gt; Filter[FDR Filtering]
+    Filter --&gt; Out[CSV / mzTab + YAML Report]</code></p>
+<hr />
+<h2 id="high-level-components">High-Level Components<a class="headerlink" href="#high-level-components" title="Permanent link">&para;</a></h2>
+<h3 id="user-facing-surfaces">User-facing surfaces<a class="headerlink" href="#user-facing-surfaces" title="Permanent link">&para;</a></h3>
+<ul>
+<li><code>src/MassFlow/cli.py</code></li>
+<li>Defines the CLI commands:<ul>
+<li><code>init</code></li>
+<li><code>tutorial</code></li>
+<li><code>annotate</code></li>
+<li><code>convert</code></li>
+<li><code>db build</code></li>
+<li><code>db inspect</code></li>
+<li><code>db merge</code></li>
+<li><code>stream-server</code></li>
+<li><code>serve</code></li>
+<li><code>watch</code></li>
+<li><code>tui</code></li>
+</ul>
+</li>
+<li>Python API</li>
+<li>Core modules can also be imported directly for scripting or testing.</li>
+</ul>
+<h3 id="terminal-console">Terminal console<a class="headerlink" href="#terminal-console" title="Permanent link">&para;</a></h3>
+<ul>
+<li><code>src/MassFlow/tui/</code></li>
+<li>A Textual-based interactive console (<code>massflow tui</code>, requires the <code>tui</code>
+    extra) with four tabs: Browser (find/upload/load spectral files),
+    Viewer (interactive centroid stick plots), Identify (target-decoy
+    similarity search with mirror plots), and Diagnostics (problems with
+    plain-English fixes plus the quarantine log).</li>
+<li>All science-facing helpers are pure functions (NumPy/text in, text out)
+    so the plot glyph math and file logic are unit-testable headlessly;
+    heavy core imports (matchms, pyteomics) are deferred to worker threads.</li>
+</ul>
+<h3 id="orchestration">Orchestration<a class="headerlink" href="#orchestration" title="Permanent link">&para;</a></h3>
+<ul>
+<li><code>src/MassFlow/workflow.py</code></li>
+<li>Runs the end-to-end annotation pipeline.</li>
+<li>Coordinates loading, processing, searching, FDR filtering, and export.</li>
+<li>Uses multiprocessing to process experimental input files in parallel.</li>
+</ul>
+<h3 id="configuration">Configuration<a class="headerlink" href="#configuration" title="Permanent link">&para;</a></h3>
+<ul>
+<li><code>src/MassFlow/config.py</code></li>
+<li>Defines the Pydantic models used to validate YAML configuration files.</li>
+<li>Expands <code>~</code> for relevant input paths.</li>
+<li>Stores processing, similarity, workflow, and export settings.</li>
+</ul>
+<h3 id="data-access">Data access<a class="headerlink" href="#data-access" title="Permanent link">&para;</a></h3>
+<ul>
+<li><code>src/MassFlow/io.py</code></li>
+<li>Loads spectra from supported open formats and SQLite libraries.</li>
+<li>Rejects vendor raw formats instead of converting them implicitly.</li>
+<li>
+<p>Writes match results to CSV and mzTab-M formats, and can export spectra
+    as MGF or MSP.</p>
+</li>
+<li>
+<p><code>src/MassFlow/database.py</code></p>
+</li>
+<li>Stores and retrieves spectra in SQLite format.</li>
+<li>Supports database build, inspection, and merge workflows.</li>
+<li>Supports a hybrid storage mode where SQLite retains metadata plus a
+    <code>zarr_ref</code>/<code>zarr_index</code> reference pair and fragment arrays live in a
+    chunked Zarr store (see <code>src/MassFlow/zarr_store.py</code>), with a migration
+    utility (<code>scripts/migrations/0002_blobs_to_zarr.py</code>) for existing BLOB
+    libraries.</li>
+<li>Implements a fast NumPy-based <strong>Triage Bitmask</strong> scan during insertion to flag structurally significant features (e.g., Tyrosine immonium ions at 136.076 Da). These flags are stored as JSON in the <code>triage_flags</code> column for future ML routing.</li>
+</ul>
+<h3 id="processing">Processing<a class="headerlink" href="#processing" title="Permanent link">&para;</a></h3>
+<ul>
+<li><code>src/MassFlow/processing.py</code></li>
+<li>Applies metadata cleaning and peak filtering using <code>matchms</code>.</li>
+<li>Handles operations such as retention-time extraction, intensity filtering,
+    minimum peak enforcement, m/z range truncation, Top-N peak reduction, and
+    normalization.</li>
+</ul>
+<h3 id="similarity">Similarity<a class="headerlink" href="#similarity" title="Permanent link">&para;</a></h3>
+<ul>
+<li><code>src/MassFlow/similarity.py</code></li>
+<li>Implements similarity engines and result models.</li>
+<li>Core engines:<ul>
+<li><code>cosine</code></li>
+<li><code>modified_cosine</code></li>
+</ul>
+</li>
+<li>Experimental engines:<ul>
+<li><code>spec2vec</code></li>
+<li><code>ms2deepscore</code></li>
+<li><code>consensus</code> (via the <code>ConsensusEngine</code>)</li>
+<li><code>cascade</code></li>
+</ul>
+</li>
+<li><code>src/MassFlow/acceleration.py</code></li>
+<li>Numba-accelerated peak/neutral-loss matching prefilter that skips
+    query-reference pairs below <code>min_matched_peaks</code> before exact
+    modified-cosine scoring (pure-NumPy fallback with identical results).</li>
+<li><code>src/MassFlow/hnsw.py</code></li>
+<li>hnswlib-backed HNSW (Hierarchical Navigable Small World) index over
+    two-channel binned spectral vectors (<code>[binned exact m/z, binned
+    neutral losses]</code>) for sub-linear candidate retrieval on massive
+    libraries. The neutral-loss channel preserves recall for shifted
+    analogues under modified cosine. Used by the cascade engine as an
+    approximate pre-stage; spectral similarity is non-metric, so exact
+    scoring always follows.</li>
+</ul>
+<h3 id="data-models-and-consensus-scoring">Data models and consensus scoring<a class="headerlink" href="#data-models-and-consensus-scoring" title="Permanent link">&para;</a></h3>
+<ul>
+<li><code>src/MassFlow/models.py</code></li>
+<li>Defines strict Pydantic data contracts (<code>AnnotationHit</code>, <code>ConsensusInput</code>, <code>ConsensusResult</code>, <code>ConsensusConfig</code>, <code>MolecularStructure</code>).</li>
+<li>Provides a dependency-free, engine-agnostic language for communication between the lightweight core and heavy ML satellite repositories (e.g., <code>massflow-ml</code>).</li>
+<li>Implements rigorous structural validation (e.g., 5 ppm precursor m/z checks) and automatically calculates theoretical <code>isotopic_envelope</code> distributions for valid molecules.</li>
+<li>Consensus <em>scoring</em> is provided by the <code>ConsensusEngine</code> in <code>src/MassFlow/similarity.py</code>, which combines cosine, modified_cosine, and (when the <code>[ml]</code> extra is installed) Spec2Vec/MS2DeepScore sub-engines into a weighted consensus score. An earlier standalone <code>MassFlow.consensus</code> orchestrator module (with <code>generate_consensus</code>) is not part of the current codebase; the tie-breaking and credibility-check logic it implemented was removed alongside it.</li>
+</ul>
+<hr />
+<h2 id="scientific-data-integrity">Scientific Data Integrity<a class="headerlink" href="#scientific-data-integrity" title="Permanent link">&para;</a></h2>
+<p>MassFlow enforces strict physical boundaries at the point of ingestion, ensuring that automated annotation pipelines do not propagate chemically impossible results.</p>
+<h3 id="precursor-validation-5-ppm-tolerance">Precursor Validation (5 ppm Tolerance)<a class="headerlink" href="#precursor-validation-5-ppm-tolerance" title="Permanent link">&para;</a></h3>
+<p>Within the <code>SpectrumMetadata</code> contract (defined in <code>MassFlow.models</code>), an experimental <code>precursor_mz</code> is rigorously cross-referenced against the molecule's theoretical exact mass, charge state, and ionization adduct. The theoretical m/z is computed from the exact mass plus the adduct offset — via <code>MassFlow.cheminformatics.compute_adduct_offset</code> and its <code>_ADDUCT_SPECS</code> registry — divided by the absolute charge. If the experimental precursor m/z deviates from this theoretical value by more than <strong>5.0 ppm</strong>, the record is flagged <code>is_physically_valid = False</code> so downstream processing treats it as chemically implausible.</p>
+<p><strong>Supported Adducts:</strong>
+- <strong>Positive Mode:</strong> <code>[M+H]+</code>, <code>[M+NH4]+</code>, <code>[M+Na]+</code>, <code>[M+K]+</code>, <code>[M]+</code>, <code>[M+2H]2+</code>
+- <strong>Negative Mode:</strong> <code>[M-H]-</code>, <code>[M+Cl]-</code>, <code>[M+HCOO]-</code>, <code>[M+CH3COO]-</code>, <code>[M+FA-H]-</code> (Formate), <code>[M]-</code></p>
+<h3 id="theoretical-isotopic-envelopes">Theoretical Isotopic Envelopes<a class="headerlink" href="#theoretical-isotopic-envelopes" title="Permanent link">&para;</a></h3>
+<p>For advanced structural verification, the <code>MolecularStructure</code> model automatically calculates and caches the theoretical isotopic envelope (M, M+1, M+2, etc.) for any parsed SMILES string. By generating abundance-weighted centroid masses normalized to the base peak, the pipeline establishes a ground-truth MS1 signature for every reference candidate. This allows the <code>ConsensusEngine</code> and orthogonal ML models to evaluate candidate credibility by checking experimental MS1 isotopic patterns, providing a powerful orthogonal tie-breaking mechanism when MS2 fragmentation scores are ambiguous.</p>
+<hr />
+<h2 id="component-diagram">Component Diagram<a class="headerlink" href="#component-diagram" title="Permanent link">&para;</a></h2>
+<p><code>mermaid
+graph TD
+    CLI[CLI &amp; API] --&gt; WORKFLOW[Workflow]
+    WORKFLOW --&gt; CONFIG[Configuration]
+    WORKFLOW --&gt; IO[I/O Layer]
+    IO &lt;--&gt; DB[Database]
+    WORKFLOW --&gt; PROCESS[Processing]
+    PROCESS --&gt; SIM[Similarity Engine]
+    SIM --&gt; WORKFLOW
+    SIM --&gt; ML[ML Engines]</code></p>
+<hr />
+<h2 id="actual-annotation-workflow">Actual Annotation Workflow<a class="headerlink" href="#actual-annotation-workflow" title="Permanent link">&para;</a></h2>
+<p>The main production path begins with:</p>
+<ul>
+<li><code>massflow annotate --config path/to/config.yaml</code></li>
+</ul>
+<p>The CLI loads the config and calls <code>run_annotation_pipeline()</code>.</p>
+<h3 id="pipeline-steps">Pipeline steps<a class="headerlink" href="#pipeline-steps" title="Permanent link">&para;</a></h3>
+<ol>
+<li><strong>Configuration loading</strong></li>
+<li>The YAML file is parsed into <code>MassFlowConfig</code>.</li>
+<li>
+<p>Paths such as <code>input_path</code> and <code>library_path</code> have <code>~</code> expanded.</p>
+</li>
+<li>
+<p><strong>Library loading</strong></p>
+</li>
+<li>The workflow requires a configured library path.</li>
+<li>In the preferred config terminology, this is <code>input.library_path</code>.</li>
+<li>The library is loaded first and processed through the configured
+     <code>matchms</code> pipeline.</li>
+<li>If no valid spectra are found, the run fails.</li>
+<li>
+<p>If the library is small, the workflow logs a warning that FDR estimates
+     may be weak.</p>
+</li>
+<li>
+<p><strong>Experimental input discovery</strong></p>
+</li>
+<li>The workflow reads <code>input.input_path</code>, which may point to a single
+     spectral file or a directory of files.</li>
+<li>
+<p>If a directory is used, files are discovered recursively.</p>
+</li>
+<li>
+<p><strong>Pre-loading and Multiprocessing</strong></p>
+</li>
+<li>The parent process generates the decoy library ONCE.</li>
+<li>The fully processed reference library and decoys are loaded into shared memory.</li>
+<li>
+<p>Each experimental input file is dispatched to a worker process.</p>
+</li>
+<li>
+<p><strong>Query spectrum loading and processing</strong></p>
+</li>
+<li>Query spectra are loaded from the experimental file.</li>
+<li>Each spectrum is passed through metadata and peak processing.</li>
+<li>
+<p>Missing query IDs are filled in automatically.</p>
+</li>
+<li>
+<p><strong>Chunked reference searching (Zero I/O overhead)</strong></p>
+</li>
+<li>The worker searches its queries against the pre-loaded shared memory library in chunks to preserve RAM, entirely bypassing disk I/O.</li>
+<li>
+<p>Results are aggregated.</p>
+</li>
+<li>
+<p><strong>FDR calculation</strong></p>
+</li>
+<li>Entropy-based decoys are generated from the reference spectra:
+     each decoy preserves the precursor m/z and the Shannon entropy of its
+     source's noise-filtered fragment intensities while randomizing the
+     fragmentation pathways, avoiding the null-distribution bias of naive
+     fragment shuffling.</li>
+<li>Target and decoy scores are combined to estimate q-values.</li>
+<li>The workflow logs a target-decoy entropy-divergence diagnostic to
+     flag biased FDR calibration.</li>
+<li>
+<p>Final results are filtered by:</p>
+<ul>
+<li>score thresholds</li>
+<li>matched-peak thresholds where applicable</li>
+<li>configured FDR threshold</li>
+</ul>
+</li>
+<li>
+<p><strong>Result Export</strong></p>
+</li>
+<li>The workflow writes one result file per experimental input file.</li>
+<li>Output filenames follow the pattern:<ul>
+<li><code>&lt;input_stem&gt;_results.&lt;ext&gt;</code></li>
+</ul>
+</li>
+</ol>
+<hr />
+<h2 id="sequence-diagram">Sequence Diagram<a class="headerlink" href="#sequence-diagram" title="Permanent link">&para;</a></h2>
+<p>```mermaid
+sequenceDiagram
+    participant User
+    participant CLI
+    participant Workflow
+    participant IO
+    participant Process
+    participant Sim</p>
+<div class="language-text highlight"><pre><span></span><code>User-&gt;&gt;CLI: massflow annotate
+CLI-&gt;&gt;Workflow: run_annotation_pipeline()
+Workflow-&gt;&gt;IO: load reference library
+Workflow-&gt;&gt;Process: process reference
+loop each file
+    Workflow-&gt;&gt;IO: load query spectra
+    Workflow-&gt;&gt;Process: process queries
+    Workflow-&gt;&gt;Sim: search &amp; score
+    Workflow-&gt;&gt;Workflow: filter FDR
+    Workflow-&gt;&gt;IO: save results
+end
+Workflow--&gt;&gt;CLI: complete
+</code></pre></div>
+<p>```</p>
+<hr />
+<h2 id="supported-inputs-and-outputs">Supported Inputs and Outputs<a class="headerlink" href="#supported-inputs-and-outputs" title="Permanent link">&para;</a></h2>
+<h3 id="supported-direct-input-formats">Supported direct input formats<a class="headerlink" href="#supported-direct-input-formats" title="Permanent link">&para;</a></h3>
+<p>MassFlow directly loads:</p>
+<ul>
+<li><code>mzML</code></li>
+<li><code>mzXML</code></li>
+<li><code>MGF</code></li>
+<li><code>MSP</code></li>
+<li>SQLite libraries:</li>
+<li><code>.db</code></li>
+<li><code>.sqlite</code></li>
+</ul>
+<h3 id="unsupported-direct-input-formats">Unsupported direct input formats<a class="headerlink" href="#unsupported-direct-input-formats" title="Permanent link">&para;</a></h3>
+<p>MassFlow intentionally does <strong>not</strong> perform vendor raw conversion internally.</p>
+<p>Examples of vendor formats that must be converted before use include:</p>
+<ul>
+<li><code>.raw</code></li>
+<li><code>.d</code></li>
+<li><code>.wiff</code></li>
+<li><code>.lcd</code></li>
+<li><code>.t2d</code></li>
+<li><code>.baf</code></li>
+</ul>
+<p>Users should convert these to open formats such as <code>mzML</code> or <code>MGF</code> before
+running the annotation workflow.</p>
+<h3 id="standard-outputs">Standard outputs<a class="headerlink" href="#standard-outputs" title="Permanent link">&para;</a></h3>
+<p>The stable output formats are:</p>
+<ul>
+<li>CSV or mzTab-M result files written per experimental input</li>
+</ul>
+<p>The export format is selected via <code>export.format</code> in the config (supported
+values: <code>csv</code> or <code>mztab</code>).</p>
+<hr />
+<h2 id="core-vs-experimental-features">Core vs Experimental Features<a class="headerlink" href="#core-vs-experimental-features" title="Permanent link">&para;</a></h2>
+<h2 id="core-for-the-stable-annotation-workflow">Core for the stable annotation workflow<a class="headerlink" href="#core-for-the-stable-annotation-workflow" title="Permanent link">&para;</a></h2>
+<p>These are the features the docs should treat as the main supported path:</p>
+<ul>
+<li><code>massflow tutorial</code> — generates synthetic tutorial data for local evaluation</li>
+<li><code>massflow annotate --config ...</code></li>
+<li>YAML configuration via <code>MassFlowConfig</code></li>
+<li>open-format ingestion for <code>mzML</code>, <code>mzXML</code>, <code>MGF</code>, and <code>MSP</code></li>
+<li>explicit SQLite reference-library workflows</li>
+<li><code>matchms</code>-based metadata and peak processing</li>
+<li><code>cosine</code> and <code>modified_cosine</code></li>
+<li>target-decoy FDR filtering</li>
+<li>per-file CSV and mzTab-M result export</li>
+<li><code>massflow db build</code>, <code>inspect</code>, and <code>merge</code></li>
+</ul>
+<h2 id="experimental-or-less-stable-surfaces">Experimental or less-stable surfaces<a class="headerlink" href="#experimental-or-less-stable-surfaces" title="Permanent link">&para;</a></h2>
+<p>These features exist in the repository but should be treated more cautiously:</p>
+<ul>
+<li><code>spec2vec</code></li>
+<li><code>ms2deepscore</code></li>
+<li><code>consensus</code></li>
+<li><code>cascade</code></li>
+</ul>
+<p>See <code>README.md</code> for the user-facing guide to what is currently experimental, why it is classified that way, and how to approach those features safely.</p>
+<hr />
+<h2 id="module-responsibilities">Module Responsibilities<a class="headerlink" href="#module-responsibilities" title="Permanent link">&para;</a></h2>
+<h3 id="massflowcli"><code>MassFlow.cli</code><a class="headerlink" href="#massflowcli" title="Permanent link">&para;</a></h3>
+<p>Parses command-line arguments, configures logging, and dispatches CLI commands
+into the workflow or database layers.</p>
+<h3 id="massflowworkflow"><code>MassFlow.workflow</code><a class="headerlink" href="#massflowworkflow" title="Permanent link">&para;</a></h3>
+<p>Implements the annotation pipeline. It loads and processes the reference
+library, discovers input files, processes query spectra in parallel, performs
+chunked searching, applies FDR filtering, and writes output CSV files.</p>
+<h3 id="massflowconfig"><code>MassFlow.config</code><a class="headerlink" href="#massflowconfig" title="Permanent link">&para;</a></h3>
+<p>Defines the nested configuration schema used by the CLI and workflow.
+Validation is focused on structural correctness and basic parameter
+constraints rather than full runtime guarantees.</p>
+<h3 id="massflowio"><code>MassFlow.io</code><a class="headerlink" href="#massflowio" title="Permanent link">&para;</a></h3>
+<p>Provides the file-system boundary for MassFlow. It loads spectra from supported
+formats, rejects unsupported vendor raw inputs, and exports result tables.</p>
+<h3 id="massflowdatabase"><code>MassFlow.database</code><a class="headerlink" href="#massflowdatabase" title="Permanent link">&para;</a></h3>
+<p>Provides SQLite-backed storage for spectral libraries and helper methods for
+build, inspection, merge, and spectrum streaming. In addition to the default
+BLOB mode (<code>mz_array</code> / <code>intensity_array</code>), it supports a hybrid mode
+where SQLite retains only metadata plus a <code>zarr_ref</code> / <code>zarr_index</code>
+reference pair and fragment arrays are persisted in a chunked Zarr store
+(see <code>MassFlow.zarr_store</code>). The <code>migrate_blobs_to_zarr</code> helper (wrapped
+by <code>scripts/migrations/0002_blobs_to_zarr.py</code>) migrates existing BLOB
+libraries to the hybrid backend with bitwise verification.</p>
+<h3 id="massflowprocessing"><code>MassFlow.processing</code><a class="headerlink" href="#massflowprocessing" title="Permanent link">&para;</a></h3>
+<p>Applies the configured <code>matchms</code> metadata repairs and peak filtering pipeline.</p>
+<h3 id="massflowsimilarity"><code>MassFlow.similarity</code><a class="headerlink" href="#massflowsimilarity" title="Permanent link">&para;</a></h3>
+<p>Creates and runs the scoring engines. It also defines decoy generation and
+result structures used during FDR calculation. Modified-cosine scoring uses a
+Numba-accelerated peak/neutral-loss prefilter (<code>MassFlow.acceleration</code>) to
+skip pairs that cannot reach <code>min_matched_peaks</code>; the cascade engine can
+optionally use a HNSW (Hierarchical Navigable Small World) index
+(<code>MassFlow.hnsw</code>) for sub-linear candidate retrieval before exact scoring.
+External ML engines (Spec2Vec, MS2DeepScore) sit behind the
+<code>MLEngineProtocol</code> boundary and may run remotely over REST/gRPC
+(<code>MassFlow.ml_client</code>, <code>ml_endpoints</code> in the config); a circuit breaker plus
+classical modified_cosine fallbacks in the meta-engines and workflow keep
+runs alive when the ML service is unreachable or heavy dependencies are
+missing.</p>
+<h3 id="massflowstreaming-experimental"><code>MassFlow.streaming</code> (experimental)<a class="headerlink" href="#massflowstreaming-experimental" title="Permanent link">&para;</a></h3>
+<p>Implements the gRPC real-time annotation server (<code>StreamSpectra</code> bidirectional
+RPC plus <code>GetStatus</code> health probe). Incoming packets are validated through a
+Pydantic/matchms gate, buffered in a bounded async queue with quality-gated
+high-water-mark backpressure (low-quality spectra are shed under overrun and
+reported as <code>spectra_dropped_low_quality</code>), micro-batched, and routed through
+the <code>ConsensusEngine</code>; annotations stream back to the client as they complete.</p>
+<h3 id="massflowtui-interactive-requires-the-tui-extra"><code>MassFlow.tui</code> (interactive, requires the <code>tui</code> extra)<a class="headerlink" href="#massflowtui-interactive-requires-the-tui-extra" title="Permanent link">&para;</a></h3>
+<p>Implements the interactive terminal console (<code>massflow tui</code>): a spectral file
+browser with workspace upload, an interactive spectrum viewer with
+Unicode-glyph stick plots, a target-decoy identification tab with mirror
+plots, and a diagnostics tab that surfaces problems with plain-English fixes
+plus the quarantine log. All heavy work runs in Textual worker threads, and
+the science-facing helpers (peak downsampling, mirror alignment, plot
+rendering, file discovery, error hints) are pure functions covered by
+headless unit tests. See <code>docs/api/tui.md</code>.</p>
+<hr />
+<h2 id="design-principles">Design Principles<a class="headerlink" href="#design-principles" title="Permanent link">&para;</a></h2>
+<p>MassFlow follows a few simple design rules:</p>
+<ul>
+<li><strong>Config first:</strong> reproducible CLI runs are preferred over ad hoc scripts.</li>
+<li><strong>Open formats only:</strong> vendor conversion happens before MassFlow.</li>
+<li><strong>Small focused modules:</strong> I/O, processing, scoring, and orchestration stay
+  separated.</li>
+<li><strong>Predictable outputs:</strong> the core workflow should either produce CSV results
+  or return actionable errors.</li>
+<li><strong>Experimental boundaries:</strong> advanced engines and interactive utilities may
+  evolve without expanding the core support promise.</li>
+</ul>
+<hr />
+<h2 id="practical-example">Practical Example<a class="headerlink" href="#practical-example" title="Permanent link">&para;</a></h2>
+<p>A typical config-driven run looks like this:</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nt">project</span><span class="p">:</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">  </span><span class="nt">output_directory</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;results/standard_analysis&quot;</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="nt">input</span><span class="p">:</span>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">  </span><span class="nt">input_path</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;data/experiments/experiment.mzML&quot;</span>
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">  </span><span class="nt">library_path</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;data/libraries/library.msp&quot;</span>
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">  </span><span class="nt">format</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;mzml&quot;</span>
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="nt">similarity</span><span class="p">:</span>
+</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="w">  </span><span class="nt">algorithm</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;cosine&quot;</span>
+</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="w">  </span><span class="nt">ms1_tolerance</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0.02</span>
+</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="w">  </span><span class="nt">ms2_tolerance</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0.02</span>
+</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="w">  </span><span class="nt">tolerance_unit</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Da&quot;</span>
+</span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="w">  </span><span class="nt">min_score</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0.6</span>
+</span><span id="__span-0-15"><a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="w">  </span><span class="nt">min_matched_peaks</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">3</span>
+</span><span id="__span-0-16"><a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a><span class="w">  </span><span class="nt">fdr_threshold</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0.05</span>
+</span></code></pre></div>
+<p>Run it with:</p>
+<div class="language-shell highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>uv<span class="w"> </span>run<span class="w"> </span>massflow<span class="w"> </span>annotate<span class="w"> </span>--config<span class="w"> </span>massflow_config.yaml
+</span></code></pre></div>
+<p>This will process the experimental file, search it against the reference
+library, and write a CSV file into the configured output directory.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "navigation.indexes", "search.suggest", "search.highlight", "search.share", "content.code.copy", "content.code.annotate", "content.tabs.link"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+        <script src="../javascripts/mathjax.js"></script>
+      
+        <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+      
+    
+  </body>
+</html>

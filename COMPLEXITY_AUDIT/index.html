@@ -1,0 +1,2955 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A config-first Python toolkit for local tandem mass spectrometry (MS/MS) data annotation.">
+      
+      
+        <meta name="author" content="Eric Janusson">
+      
+      
+      
+        <link rel="prev" href="../CAPABILITY_MATRIX/">
+      
+      
+        <link rel="next" href="../api_reference/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Complexity Audit & Subsystem Classification - MassFlow</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/_mkdocstrings.css">
+    
+      <link rel="stylesheet" href="../stylesheets/ayu-dark.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="teal">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#complexity-audit-subsystem-classification" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="MassFlow" class="md-header__button md-logo" aria-label="MassFlow" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            MassFlow
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Complexity Audit & Subsystem Classification
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="teal"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="teal"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+          <a href="javascript:void(0)" class="md-search__icon md-icon" title="Share" aria-label="Share" data-clipboard data-clipboard-text="" data-md-component="search-share" tabindex="-1">
+            
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9a3 3 0 0 0-3 3 3 3 0 0 0 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.15c-.05.21-.08.43-.08.66 0 1.61 1.31 2.91 2.92 2.91s2.92-1.3 2.92-2.91A2.92 2.92 0 0 0 18 16.08"/></svg>
+          </a>
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/janusson/MassFlow" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    janusson/MassFlow
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../getting-started/installation/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Getting Started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../summary_diagrams/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  User Guide
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../ARCHITECTURE/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Architecture
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../CAPABILITY_MATRIX/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Product Contract & Capability Matrix
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    <li class="md-tabs__item md-tabs__item--active">
+      <a href="./" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Complexity Audit & Subsystem Classification
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../api_reference/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  API Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../post-v0.1-roadmap/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Roadmap
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../CHANGELOG/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Changelog
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="MassFlow" class="md-nav__button md-logo" aria-label="MassFlow" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    MassFlow
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/janusson/MassFlow" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    janusson/MassFlow
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/tutorial/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tutorial
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/quickstart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quickstart
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../summary_diagrams/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Diagrams & Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_2" id="__nav_3_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Core Workflow (Stable)
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Core Workflow (Stable)
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../user-guide/annotation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Annotation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../user-guide/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration (YAML)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../user-guide/database/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SQLite Library Management
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../user-guide/processing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Processing & Filtering
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../user-guide/validation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Scientific Validation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../user-guide/scientific_validation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Golden Test Suite
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../user-guide/similarity/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Classical Similarity
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../user-guide/results/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Result Export & FDR
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../user-guide/usage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Usage Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_3" id="__nav_3_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data & Math
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Data & Math
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../user-guide/data-requirements/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data Requirements
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../user-guide/scoring_logic/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Scoring Logic
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../multiprocessing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Multiprocessing & Memory Model
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ARCHITECTURE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../CAPABILITY_MATRIX/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Product Contract & Capability Matrix
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Complexity Audit & Subsystem Classification
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Complexity Audit & Subsystem Classification
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-subsystem-inventory" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Subsystem inventory
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="1. Subsystem inventory">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#11-srcmassflow-core-package" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.1 src/MassFlow — core package
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#12-cli-commands-clipy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.2 CLI commands (cli.py)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#13-extras-pyprojecttoml" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.3 Extras (pyproject.toml)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#14-scripts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.4 Scripts
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#15-data-examples-docs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.5 Data / examples / docs
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-duplicated-abstractions-findings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Duplicated abstractions — findings
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-package-boundary-how-experimental-features-are-kept-out-of-the-stable-path" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Package boundary — how experimental features are kept out of the stable path
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3. Package boundary — how experimental features are kept out of the stable path">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#31-existing-gates-verified" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.1 Existing gates (verified)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#32-added-in-this-pass" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.2 Added in this pass
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#33-what-is-deliberately-not-enforced-and-why" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.3 What is deliberately NOT enforced (and why)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-what-changed-in-this-pass" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. What changed in this pass
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-remaining-complexity-decisions-not-resolved-here" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Remaining complexity decisions (not resolved here)
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api_reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/tui/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Terminal Console (TUI)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/config/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/database/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Database
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/convert/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Conversion
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/io/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Input/Output
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/processing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Processing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/similarity/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Similarity
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/storage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Storage (Zarr)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/hnsw/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HNSW Indexing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/acceleration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Acceleration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/queue/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Streaming Queue
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/workflow/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workflow
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/models/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/cheminformatics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cheminformatics
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/consensus/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Consensus
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/server/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Server
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../post-v0.1-roadmap/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Roadmap
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../CHANGELOG/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-subsystem-inventory" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Subsystem inventory
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="1. Subsystem inventory">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#11-srcmassflow-core-package" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.1 src/MassFlow — core package
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#12-cli-commands-clipy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.2 CLI commands (cli.py)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#13-extras-pyprojecttoml" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.3 Extras (pyproject.toml)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#14-scripts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.4 Scripts
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#15-data-examples-docs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.5 Data / examples / docs
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-duplicated-abstractions-findings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Duplicated abstractions — findings
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-package-boundary-how-experimental-features-are-kept-out-of-the-stable-path" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Package boundary — how experimental features are kept out of the stable path
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3. Package boundary — how experimental features are kept out of the stable path">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#31-existing-gates-verified" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.1 Existing gates (verified)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#32-added-in-this-pass" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.2 Added in this pass
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#33-what-is-deliberately-not-enforced-and-why" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.3 What is deliberately NOT enforced (and why)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-what-changed-in-this-pass" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. What changed in this pass
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-remaining-complexity-decisions-not-resolved-here" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Remaining complexity decisions (not resolved here)
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="complexity-audit-subsystem-classification">Complexity Audit &amp; Subsystem Classification<a class="headerlink" href="#complexity-audit-subsystem-classification" title="Permanent link">&para;</a></h1>
+<blockquote>
+<p><strong>STATUS: authoritative (2026-08-25).</strong> Companion to
+<a href="../CAPABILITY_MATRIX/"><code>CAPABILITY_MATRIX.md</code></a>: the capability matrix says
+<em>what</em> is in the product; this document says <em>where the complexity lives</em>,
+<em>which tier each subsystem belongs to</em>, and <em>how the package boundary keeps
+experimental machinery from silently altering stable scientific behavior</em>.</p>
+<p>Classification legend:</p>
+<table>
+<thead>
+<tr>
+<th>Tier</th>
+<th>Meaning</th>
+<th>Change discipline</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Required (stable)</strong></td>
+<td>Part of the v0.1 product contract. Removing or changing it is a product decision</td>
+<td>Must not regress; full test gate + coverage</td>
+</tr>
+<tr>
+<td><strong>Optional but supported</strong></td>
+<td>Installed/available by default, contract-tested, but not the default path</td>
+<td>Must keep contract tests green</td>
+</tr>
+<tr>
+<td><strong>Experimental</strong></td>
+<td>Implemented and tested, outside the support promise; must be visibly flagged and never silently alter stable behavior</td>
+<td>May evolve freely; guards/fallbacks required</td>
+</tr>
+<tr>
+<td><strong>Deprecated</strong></td>
+<td>Kept only for compatibility with existing configs/CLI invocations; warns on use</td>
+<td>Remove only at a schema/CLI bump</td>
+</tr>
+<tr>
+<td><strong>Remove</strong></td>
+<td>Dead, duplicated, or superseded; deleted in this pass</td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+</blockquote>
+<hr />
+<h2 id="1-subsystem-inventory">1. Subsystem inventory<a class="headerlink" href="#1-subsystem-inventory" title="Permanent link">&para;</a></h2>
+<h3 id="11-srcmassflow-core-package">1.1 <code>src/MassFlow</code> — core package<a class="headerlink" href="#11-srcmassflow-core-package" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Module</th>
+<th>Lines</th>
+<th>Tier</th>
+<th>Classification / rationale</th>
+<th>Boundary</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>config.py</code></td>
+<td>1140</td>
+<td><strong>Required</strong> (stable schema) + <strong>deprecated</strong> legacy fields</td>
+<td>Strict Pydantic schema (<code>extra="forbid"</code>, line-numbered errors, relative-path resolution). Contains the deprecated <code>SimilarityConfig.tolerance</code> alias, <code>ProcessingConfig.precursor_mz</code>/<code>retention_time</code> legacy fields, <code>SolventConfig</code> (validated but not consumed by the pipeline), <code>WorkflowConfig</code> (empty placeholder kept for <code>workflow:</code> YAML compat), and <code>MassFlowConfig.output_directory</code> legacy property</td>
+<td>Deprecated fields warn or are inert; <code>tolerance</code> warns and maps onto <code>ms2_tolerance</code>; removal deferred to a schema bump</td>
+</tr>
+<tr>
+<td><code>io.py</code></td>
+<td>520</td>
+<td><strong>Required</strong></td>
+<td>File-system boundary: loaders (mzML/mzXML/MGF/MSP), validation layer, CSV/mzTab-M exporters, YAML reports, vendor-format rejection</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>processing.py</code></td>
+<td>360</td>
+<td><strong>Required</strong></td>
+<td><code>matchms</code>-based metadata/peak pipeline</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>similarity.py</code></td>
+<td>3135</td>
+<td><strong>Required</strong> (classical core) + <strong>experimental</strong> (meta/ML engines)</td>
+<td>Required: <code>SimilarityEngine</code> (cosine/modified_cosine), MS1 prefilter, <code>generate_decoys</code>, <code>calculate_fdr</code>, <code>calibrate_query_level_fdr</code>, <code>calculate_empirical_p_values</code>, <code>spectral_entropy</code>, <code>SearchResult</code>, <code>get_similarity_engine</code> factory. Experimental: <code>ConsensusEngine</code>, <code>CascadeEngine</code>, <code>Spec2VecEngine</code>, <code>MS2DeepScoreEngine</code>, <code>MLRouter</code>, entry-point discovery, remote-endpoint routing</td>
+<td>Experimental engines are flagged by <code>workflow.experimental_surface_flags</code> at the run boundary; ML engines raise <code>RuntimeError</code> when dependencies are missing (no silent swap); consensus/cascade degrade to classical only with explicit warnings + degraded-mode flags</td>
+</tr>
+<tr>
+<td><code>workflow.py</code></td>
+<td>1202</td>
+<td><strong>Required</strong></td>
+<td>Orchestration, per-file failure model (<code>FileExecutionResult</code>), provenance, TDC block, worker-owned library backends</td>
+<td>New in this pass: <code>experimental_surface_flags()</code> + run-start warning</td>
+</tr>
+<tr>
+<td><code>library.py</code></td>
+<td>431</td>
+<td><strong>Required</strong></td>
+<td>Library normalization (<code>prepare_library</code>), worker-openable <code>LibrarySpec</code>, <code>RawFileLibraryStore</code></td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>storage.py</code></td>
+<td>382</td>
+<td><strong>Required</strong></td>
+<td><code>SpectralStore</code> — the single backend interface (metadata query, iteration, batched access, provenance) + factory</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>database.py</code></td>
+<td>2370</td>
+<td><strong>Required</strong></td>
+<td><code>SpectralDatabase</code> (SQLite/hybrid store), schema, migrations. Contains legacy-schema migration helpers (<code>migrate_legacy_peaks_database</code>, <code>_decode_legacy_peaks_payload</code>, <code>LegacyDatabaseSchemaError</code>)</td>
+<td>Legacy helpers are <strong>deprecated tooling</strong> for pre-array-schema DBs; new DBs never hit them</td>
+</tr>
+<tr>
+<td><code>zarr_store.py</code></td>
+<td>2463</td>
+<td><strong>Optional but supported</strong></td>
+<td><code>ZarrSpectralStore</code>/<code>ZarrPeakArrayStore</code> — supported alternative backend (<code>storage_backend: zarr|hybrid</code>), peak-fidelity contract (no silent truncation), storage-contract tests</td>
+<td>zarr is a core dependency (no extra); backend selected explicitly in config; default remains <code>sqlite</code></td>
+</tr>
+<tr>
+<td><code>models.py</code>, <code>cheminformatics.py</code></td>
+<td>386+727</td>
+<td><strong>Required</strong></td>
+<td>5 ppm precursor validation, adduct registry, isotopic envelopes</td>
+<td>Enforced as a gate in the streaming path; model-layer checks in the classical path (see CAPABILITY_MATRIX C-11/D-8)</td>
+</tr>
+<tr>
+<td><code>protocols.py</code></td>
+<td>134</td>
+<td><strong>Experimental</strong></td>
+<td><code>MLEngineProtocol</code> — contract for the ML satellite boundary</td>
+<td>Only consumed by ML engines</td>
+</tr>
+<tr>
+<td><code>ml_client.py</code></td>
+<td>573</td>
+<td><strong>Experimental</strong></td>
+<td>Remote ML engines (REST/gRPC) + circuit breaker</td>
+<td>Only active when <code>similarity.ml_endpoints</code> is configured (flagged)</td>
+</tr>
+<tr>
+<td><code>hnsw.py</code></td>
+<td>585</td>
+<td><strong>Experimental</strong></td>
+<td>HNSW two-channel candidate index (<code>[hnsw]</code> extra)</td>
+<td>Only active inside <code>cascade</code> with <code>hnsw_enabled=true</code> (config-validated); flagged</td>
+</tr>
+<tr>
+<td><code>acceleration.py</code></td>
+<td>521</td>
+<td><strong>Experimental</strong> (as a whole) with a <strong>supported</strong> default-on part</td>
+<td>Numba peak/neutral-loss prefilter: default-on for <code>modified_cosine</code> but <strong>numerically identical</strong> to the pure-NumPy fallback (identity-tested end-to-end, incl. decoys) — an optimization, not a science change. HNSW spectral binning: experimental</td>
+<td>Prefilter falls back to NumPy when numba is absent</td>
+</tr>
+<tr>
+<td><code>convert.py</code></td>
+<td>104</td>
+<td><strong>Experimental</strong></td>
+<td>Thin wrapper around external ProteoWizard <code>msconvert</code>; the annotate pipeline rejects vendor formats</td>
+<td>CLI help marks it EXPERIMENTAL</td>
+</tr>
+<tr>
+<td><code>log_config.py</code></td>
+<td>103</td>
+<td><strong>Required</strong></td>
+<td>Structured logging setup</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>streaming/</code> (server 1189, engine 734, queue 542)</td>
+<td>2465</td>
+<td><strong>Experimental</strong></td>
+<td>gRPC streaming server (loopback default, TLS/auth, bounded queue); <code>stream-server</code> CLI command</td>
+<td>CLI help marks it EXPERIMENTAL; safe-by-default binds/auth</td>
+</tr>
+<tr>
+<td><code>tui/</code> (8 modules)</td>
+<td>2114</td>
+<td><strong>Experimental</strong></td>
+<td>Textual interactive console (<code>[tui]</code> extra)</td>
+<td>Extra-gated; CLI help marks it EXPERIMENTAL</td>
+</tr>
+<tr>
+<td><code>generated/</code> + <code>streaming/generated/</code></td>
+<td>439</td>
+<td><strong>Experimental</strong></td>
+<td>Compiled protobuf/gRPC stubs (ml + streaming)</td>
+<td>Excluded from lint; regenerated via <code>scripts/protoc_gen.sh</code></td>
+</tr>
+<tr>
+<td><code>__init__.py</code></td>
+<td>90</td>
+<td><strong>Required</strong></td>
+<td>Public package surface; lazy submodule accessors</td>
+<td>Fixed in this pass: removed the dead <code>try/except PackageNotFoundError</code> version probe</td>
+</tr>
+</tbody>
+</table>
+<h3 id="12-cli-commands-clipy">1.2 CLI commands (<code>cli.py</code>)<a class="headerlink" href="#12-cli-commands-clipy" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Command</th>
+<th>Tier</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>init</code>, <code>tutorial</code>, <code>annotate</code></td>
+<td><strong>Required</strong></td>
+<td>Stable product entry points</td>
+</tr>
+<tr>
+<td><code>db build</code> / <code>db inspect</code> / <code>db merge</code></td>
+<td><strong>Required</strong></td>
+<td>SQLite library workflows</td>
+</tr>
+<tr>
+<td><code>convert</code></td>
+<td><strong>Experimental</strong></td>
+<td>External-tool wrapper (help text marked)</td>
+</tr>
+<tr>
+<td><code>stream-server</code></td>
+<td><strong>Experimental</strong></td>
+<td>gRPC streaming (help text marked)</td>
+</tr>
+<tr>
+<td><code>serve</code></td>
+<td><strong>Deprecated</strong></td>
+<td>Alias for <code>stream-server</code>; prints a deprecation notice</td>
+</tr>
+<tr>
+<td><code>watch</code></td>
+<td><strong>Experimental</strong></td>
+<td><code>[watch]</code> extra (help text marked)</td>
+</tr>
+<tr>
+<td><code>tui</code></td>
+<td><strong>Experimental</strong></td>
+<td><code>[tui]</code> extra (help text marked)</td>
+</tr>
+</tbody>
+</table>
+<p>New in this pass: <code>annotate</code> prints a prominent <strong>EXPERIMENTAL SURFACES ACTIVE</strong>
+notice when the configuration selects an experimental engine, routing, HNSW,
+or remote-ML endpoints — an experimental run is never silent.</p>
+<h3 id="13-extras-pyprojecttoml">1.3 Extras (<code>pyproject.toml</code>)<a class="headerlink" href="#13-extras-pyprojecttoml" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Extra</th>
+<th>Tier</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>(none — base)</td>
+<td><strong>Required</strong></td>
+<td>Includes <code>zarr</code> (core dependency; the redundant <code>[zarr]</code> extra was <strong>removed</strong> in this pass)</td>
+</tr>
+<tr>
+<td><code>chem</code></td>
+<td><strong>Optional</strong></td>
+<td>RDKit structural validation</td>
+</tr>
+<tr>
+<td><code>ml</code></td>
+<td><strong>Experimental</strong></td>
+<td>torch/gensim/spec2vec/ms2deepscore</td>
+</tr>
+<tr>
+<td><code>hnsw</code></td>
+<td><strong>Experimental</strong></td>
+<td>hnswlib</td>
+</tr>
+<tr>
+<td><code>watch</code></td>
+<td><strong>Experimental</strong></td>
+<td>watchfiles</td>
+</tr>
+<tr>
+<td><code>tui</code></td>
+<td><strong>Experimental</strong></td>
+<td>textual</td>
+</tr>
+</tbody>
+</table>
+<h3 id="14-scripts">1.4 Scripts<a class="headerlink" href="#14-scripts" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Path</th>
+<th>Tier</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>scripts/generate_tutorial_data.py</code></td>
+<td><strong>Required</strong></td>
+<td>Backs <code>massflow tutorial</code></td>
+</tr>
+<tr>
+<td><code>scripts/migrations/0001_peaks_to_arrays.py</code>, <code>0002_blobs_to_zarr.py</code></td>
+<td><strong>Deprecated tooling</strong></td>
+<td>One-shot migration utilities for legacy (pre-array-schema / BLOB-only) databases; new databases never need them</td>
+</tr>
+<tr>
+<td><code>scripts/benchmark_*.py</code>, <code>scripts/measure_baseline.py</code></td>
+<td><strong>Dev tooling</strong></td>
+<td>Opt-in benchmarks; never run by pytest</td>
+</tr>
+<tr>
+<td><code>scripts/experiments/</code></td>
+<td><strong>Research prototypes</strong></td>
+<td>Scratch/exploratory tests; never collected by pytest (<code>testpaths=["tests"]</code>)</td>
+</tr>
+<tr>
+<td><code>scripts/protoc_gen.sh</code></td>
+<td><strong>Dev tooling</strong></td>
+<td>Regenerates protobuf stubs</td>
+</tr>
+<tr>
+<td><code>scripts/mock_instrument_stream.py</code>, <code>scripts/repro_isotope.py</code>, <code>scripts/fetch_real_data.py</code></td>
+<td><strong>Dev tooling</strong></td>
+<td>Standalone utilities</td>
+</tr>
+</tbody>
+</table>
+<h3 id="15-data-examples-docs">1.5 Data / examples / docs<a class="headerlink" href="#15-data-examples-docs" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Path</th>
+<th>Tier</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>examples/massflow-ml-satellite/</code></td>
+<td><strong>Experimental</strong></td>
+<td>Reference satellite server for the ML boundary</td>
+</tr>
+<tr>
+<td><code>docs/CAPABILITY_MATRIX.md</code>, <code>docs/COMPLEXITY_AUDIT.md</code></td>
+<td><strong>Required (docs)</strong></td>
+<td>Product contract + this audit</td>
+</tr>
+<tr>
+<td><code>ARCHITECTURE.md</code> (repo root)</td>
+<td><strong>Remove</strong></td>
+<td>Byte-identical duplicate of <code>docs/ARCHITECTURE.md</code> (which is a superset). <strong>Deleted in this pass</strong>; <code>docs.yml</code> no longer copies it; references updated</td>
+</tr>
+<tr>
+<td><code>docs/index.md</code>, <code>README.md</code></td>
+<td><strong>Required (docs)</strong></td>
+<td>Fixed in this pass: experimental surfaces no longer labeled Stable (engines table, watch, FBMN, LSP, 5 ppm scope, <code>--extra zarr</code> install line, HNSW-in-default-pipeline diagram)</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="2-duplicated-abstractions-findings">2. Duplicated abstractions — findings<a class="headerlink" href="#2-duplicated-abstractions-findings" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Finding</th>
+<th>Verdict</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>D-1</td>
+<td><code>ARCHITECTURE.md</code> existed twice (root + <code>docs/</code>), kept in sync by a copy step in <code>docs.yml</code></td>
+<td><strong>Resolved in this pass</strong> — root copy deleted, copy step removed, references repointed at <code>docs/ARCHITECTURE.md</code></td>
+</tr>
+<tr>
+<td>D-2</td>
+<td>Storage abstractions: <code>SpectralStore</code> (interface) vs <code>SpectralDatabase</code> (SQLite impl) vs <code>ZarrSpectralStore</code></td>
+<td><strong>Not duplication</strong> — the storage-unification audit made <code>SpectralStore</code> the one interface; <code>database.py</code>/<code>zarr_store.py</code> are its implementations; <code>create_spectral_store</code> is the factory; the annotation layer consumes only the interface</td>
+</tr>
+<tr>
+<td>D-3</td>
+<td>DataFrame representations</td>
+<td><strong>Single representation</strong> — Polars only (<code>io.py</code>); no pandas anywhere in <code>src/</code>; <code>process_spectra_batch</code> uses Polars lazyframes internally</td>
+</tr>
+<tr>
+<td>D-4</td>
+<td>Redundant Pydantic models</td>
+<td><code>WorkflowConfig</code> (empty placeholder), <code>SolventConfig</code> (unconsumed), legacy <code>ProcessingConfig.precursor_mz</code>/<code>retention_time</code>, <code>SimilarityConfig.tolerance</code>, <code>MassFlowConfig.output_directory</code> — all <strong>deprecated compat surface</strong>, kept for existing configs, not dead code in the sense of <em>duplicated</em> logic</td>
+</tr>
+<tr>
+<td>D-5</td>
+<td>Generated protobuf stubs in two directories (<code>generated/</code>, <code>streaming/generated/</code>)</td>
+<td>Distinct contracts (ml vs streaming) — not duplication</td>
+</tr>
+<tr>
+<td>D-6</td>
+<td><code>[zarr]</code> extra duplicating a core dependency</td>
+<td><strong>Resolved in this pass</strong> — extra removed (zarr is always installed)</td>
+</tr>
+<tr>
+<td>D-7</td>
+<td><code>database.py</code> legacy-schema decode/migration helpers vs current schema</td>
+<td><strong>Deprecated tooling</strong>, not duplication: they exist to open pre-array-schema DBs and raise <code>LegacyDatabaseSchemaError</code> otherwise</td>
+</tr>
+<tr>
+<td>D-8</td>
+<td><code>scripts/experiments/</code> overlap with <code>tests/</code></td>
+<td>Not collected (<code>testpaths=["tests"]</code>); documented research prototypes</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="3-package-boundary-how-experimental-features-are-kept-out-of-the-stable-path">3. Package boundary — how experimental features are kept out of the stable path<a class="headerlink" href="#3-package-boundary-how-experimental-features-are-kept-out-of-the-stable-path" title="Permanent link">&para;</a></h2>
+<h3 id="31-existing-gates-verified">3.1 Existing gates (verified)<a class="headerlink" href="#31-existing-gates-verified" title="Permanent link">&para;</a></h3>
+<ol>
+<li><strong>Engine selection</strong>: <code>algorithm</code> defaults to <code>cosine</code>; every experimental engine requires an explicit config value; ML engines raise <code>RuntimeError</code> if dependencies are missing (no silent swap); consensus/cascade degrade to classical <strong>only</strong> with a warning and a <code>degraded_mode_flags</code> entry recorded in the report sidecar.</li>
+<li><strong>Routing</strong>: <code>enable_routing</code> defaults <code>false</code>.</li>
+<li><strong>HNSW</strong>: <code>hnsw_enabled</code> defaults <code>false</code>, and config validation rejects <code>hnsw_enabled</code> with any engine other than <code>cascade</code>.</li>
+<li><strong>Storage</strong>: <code>storage_backend</code> defaults <code>sqlite</code>; <code>zarr</code>/<code>hybrid</code> are explicit choices with contract tests.</li>
+<li><strong>Streaming</strong>: loopback bind by default; TLS/<code>--admin-token</code>/<code>--allow-remote-control</code> required for remote/control-plane use.</li>
+<li><strong>Numba prefilter</strong>: default-on, but numerically identical to the pure-NumPy fallback (identity-tested with decoys); it is an optimization, not a science change.</li>
+<li><strong>Pytest</strong>: default selection runs unit + integration + scientific-validation; <code>benchmark</code>/<code>slow</code>/<code>optional</code> are opt-in; <code>scripts/experiments/</code> is never collected.</li>
+</ol>
+<h3 id="32-added-in-this-pass">3.2 Added in this pass<a class="headerlink" href="#32-added-in-this-pass" title="Permanent link">&para;</a></h3>
+<ol>
+<li><strong><code>workflow.experimental_surface_flags(config)</code></strong> — deterministic list of active experimental surfaces (<code>experimental_engine:*</code>, <code>experimental_routing</code>, <code>experimental_hnsw</code>, <code>experimental_remote_ml</code>).</li>
+<li><strong><code>run_annotation_pipeline</code></strong> logs a <code>EXPERIMENTAL SURFACES ACTIVE</code> warning before any processing when the list is non-empty.</li>
+<li><strong><code>massflow annotate</code></strong> prints the same notice to the console.</li>
+<li><strong>CLI help/docstrings</strong> for <code>convert</code>, <code>stream-server</code>, <code>watch</code>, <code>tui</code> explicitly say EXPERIMENTAL.</li>
+<li><strong>README + docs/index.md</strong> no longer label experimental machinery (consensus, cascade, HNSW, hybrid storage, watch, streaming) as Stable; the "four pillars" framing is now explicitly an experimental/optional layer over a boring stable core.</li>
+<li><strong>Redundant <code>[zarr]</code> extra removed</strong>; <strong>root <code>ARCHITECTURE.md</code> duplicate removed</strong>; <strong>dead version probe in <code>__init__.py</code> removed</strong>.</li>
+</ol>
+<h3 id="33-what-is-deliberately-not-enforced-and-why">3.3 What is deliberately NOT enforced (and why)<a class="headerlink" href="#33-what-is-deliberately-not-enforced-and-why" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Experimental engines are <strong>not refused</strong> without an opt-in flag: consensus/cascade are implemented, tested (including golden known-answer tests), and documented; the boundary requirement is <em>visibility</em> (notice + provenance + warnings), not removal. Refusing them would delete tested functionality, which this pass must not do.</li>
+<li>The deprecated config surface (<code>tolerance</code>, <code>workflow:</code>, <code>solvents:</code>, legacy processing fields) is kept so existing YAML files keep loading; removal is deferred to a v0.2 schema bump.</li>
+</ul>
+<hr />
+<h2 id="4-what-changed-in-this-pass">4. What changed in this pass<a class="headerlink" href="#4-what-changed-in-this-pass" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Change</th>
+<th>Files</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>experimental_surface_flags</code> + run-start warning</td>
+<td><code>src/MassFlow/workflow.py</code></td>
+</tr>
+<tr>
+<td>CLI experimental notice + EXPERIMENTAL help text (convert, stream-server, watch, tui)</td>
+<td><code>src/MassFlow/cli.py</code></td>
+</tr>
+<tr>
+<td>Dead version probe removed</td>
+<td><code>src/MassFlow/__init__.py</code></td>
+</tr>
+<tr>
+<td>Redundant <code>[zarr]</code> extra removed</td>
+<td><code>pyproject.toml</code></td>
+</tr>
+<tr>
+<td>Root <code>ARCHITECTURE.md</code> duplicate deleted; <code>docs.yml</code> copy step removed; references repointed</td>
+<td><code>ARCHITECTURE.md</code> (deleted), <code>.github/workflows/docs.yml</code>, <code>AGENTS.md</code>, <code>CONTRIBUTING.md</code></td>
+</tr>
+<tr>
+<td>README: engines table, pillar framing, pipeline-diagram note, install extras</td>
+<td><code>README.md</code></td>
+</tr>
+<tr>
+<td><code>docs/index.md</code>: Stable/Experimental table corrected</td>
+<td><code>docs/index.md</code></td>
+</tr>
+<tr>
+<td>Install extras doc corrected</td>
+<td><code>docs/getting-started/installation.md</code></td>
+</tr>
+<tr>
+<td>Boundary tests</td>
+<td><code>tests/test_cli.py</code>, <code>tests/test_workflow.py</code></td>
+</tr>
+<tr>
+<td>Contradiction log updated</td>
+<td><code>docs/CAPABILITY_MATRIX.md</code></td>
+</tr>
+</tbody>
+</table>
+<p>No scientific functionality was deleted, altered, or added in this pass. The
+golden known-answer suite (including consensus/cascade runs) is unchanged.</p>
+<hr />
+<h2 id="5-remaining-complexity-decisions-not-resolved-here">5. Remaining complexity decisions (not resolved here)<a class="headerlink" href="#5-remaining-complexity-decisions-not-resolved-here" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Decision</th>
+<th>Options</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>R-1</td>
+<td>Deprecated config surface removal (<code>tolerance</code>, <code>workflow:</code>, <code>solvents:</code>, legacy <code>precursor_mz</code>/<code>retention_time</code>)</td>
+<td>Remove at a v0.2 schema bump with a migration error message</td>
+</tr>
+<tr>
+<td>R-2</td>
+<td>Legacy-DB migration helpers + <code>scripts/migrations/</code></td>
+<td>Keep as tooling; remove once pre-array-schema DBs are out of circulation</td>
+</tr>
+<tr>
+<td>R-3</td>
+<td><code>-m core</code> marker discipline</td>
+<td>Retired in the pytest-config audit; the default selection + <code>-m scientific</code> is the contract gate. Reintroduce only if a stable-only CI job is wanted</td>
+</tr>
+<tr>
+<td>R-4</td>
+<td><code>streaming/engine.py</code> + <code>ml_client.py</code> both speak gRPC</td>
+<td>Distinct contracts (instrument stream vs ML scoring); a shared transport helper would be a refactor, not a simplification</td>
+</tr>
+</tbody>
+</table>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "navigation.indexes", "search.suggest", "search.highlight", "search.share", "content.code.copy", "content.code.annotate", "content.tabs.link"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+        <script src="../javascripts/mathjax.js"></script>
+      
+        <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+      
+    
+  </body>
+</html>
