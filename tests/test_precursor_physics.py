@@ -17,6 +17,8 @@ from matchms import Spectrum
 from MassFlow.config import SimilarityConfig
 from MassFlow.similarity import SimilarityEngine
 
+pytestmark = pytest.mark.scientific
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

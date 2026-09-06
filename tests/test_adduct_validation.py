@@ -3,6 +3,10 @@
 from MassFlow.cheminformatics import calculate_theoretical_mass
 from MassFlow.models import MolecularStructure, SpectrumMetadata
 
+import pytest
+
+pytestmark = pytest.mark.scientific
+
 # Caffeine is used as the base molecule for these tests.
 CAFFEINE_SMILES = "CN1C=NC2=C1C(=O)N(C(=O)N2C)C"
 CAFFEINE_FORMULA = "C8H10N4O2"

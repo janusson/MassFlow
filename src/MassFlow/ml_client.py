@@ -387,12 +387,16 @@ class RemoteMLEngine(MLEngineProtocol):
         include_decoys: bool = True,
         ref_precursor_mzs: np.ndarray | None = None,
         ref_is_decoy: np.ndarray | None = None,
+        decoy_min_relative_intensity: float | None = None,
+        decoy_mz_shift_da: float | None = None,
     ) -> List["SearchResult"]:
         """Run a remote similarity search through the circuit breaker.
 
         Returns ``SearchResult``-shaped dicts.  ``ref_precursor_mzs`` and
         ``ref_is_decoy`` are accepted for interface compatibility but are
-        derived remotely from ``reference_spectra``.
+        derived remotely from ``reference_spectra``. The decoy-control
+        parameters are accepted for interface compatibility; decoy
+        construction happens inside the remote service.
         """
         if not query_spectra or not list(reference_spectra):
             return []

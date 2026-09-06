@@ -725,7 +725,10 @@ export:
   format: "csv"
 """)
         config = MassFlowConfig.from_yaml(str(config_path))
-        with pytest.raises((RuntimeError, FileNotFoundError)):
+        # The unified library loader rejects a missing path with ValueError
+        # (same contract as prepare_library); a nonexistent/empty parse also
+        # surfaces as RuntimeError/FileNotFoundError on other platforms.
+        with pytest.raises((RuntimeError, FileNotFoundError, ValueError)):
             load_reference_library(config)
 
 
@@ -990,6 +993,8 @@ class TestGRPCServerIntegration:
             port=unused_tcp_port,
             queue_capacity=32,
             top_n=3,
+            admin_token="test-admin-token",
+            allow_remote_control=True,
         )
 
         yield grpc_server, unused_tcp_port
@@ -1043,7 +1048,7 @@ class TestGRPCServerIntegration:
             precursor_mz=350.0,
         )
         response_queue: asyncio.Queue[pb.AnnotationResponse | None] = asyncio.Queue()
-        await servicer._ingest_spectrum(low_packet, response_queue)
+        await servicer._ingest_spectrum(low_packet, "test-conn", response_queue)
 
         async with grpc.aio.insecure_channel(f"localhost:{port}") as channel:
             stub = pb_grpc.MassFlowStreamingStub(channel)
@@ -1135,7 +1140,7 @@ class TestGRPCServerIntegration:
 
     @pytest.mark.asyncio
     async def test_control_stop_start(self, server):
-        """Send STOP, then START control messages."""
+        """Send STOP, then START control messages (admin-token protected)."""
         import grpc
 
         grpc_server, port = server
@@ -1167,12 +1172,20 @@ class TestGRPCServerIntegration:
                     )
                 )
 
-            call = stub.StreamSpectra(request_gen(), timeout=10.0)
+            call = stub.StreamSpectra(
+                request_gen(),
+                timeout=10.0,
+                metadata=(("authorization", "Bearer test-admin-token"),),
+            )
             responses = []
             async for resp in call:
                 responses.append(resp)
 
-            # Should get at least the annotation for "after_start".
+            # Control acks plus the annotation for "after_start".
+            control_acks = [r for r in responses if r.status == "control"]
+            assert len(control_acks) == 2, (
+                f"Expected 2 control acks (STOP, START), got {len(control_acks)}"
+            )
             assert any(r.spectrum_id == "after_start" for r in responses)
 
     @pytest.mark.asyncio

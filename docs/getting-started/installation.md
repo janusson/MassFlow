@@ -27,18 +27,28 @@ This will automatically create a `.venv` directory, resolve the locked dependenc
 
 ### Optional Features
 
-MassFlow offers several experimental features that require heavy external dependencies (like PyTorch or NetworkX) that are not installed by default to keep the core lightweight. You can opt-in to these by syncing specific dependency groups:
+MassFlow keeps the core dependency set lightweight. Heavier external dependencies (PyTorch, RDKit, hnswlib, Textual, …) are available as **optional extras** that you opt into explicitly:
 
 ```shell
-# For Machine Learning engines (Spec2Vec, MS2DeepScore)
-uv sync --group ml
+# Machine-learning engines (Spec2Vec, MS2DeepScore, torch, gensim)
+uv sync --extra ml
 
-# For GraphML molecular networking
-uv sync --group network
+# Chemistry tools (RDKit-based structural validation)
+uv sync --extra chem
 
-# For interactive HTML visualization
-uv sync --group viz
+# HNSW approximate candidate retrieval (hnswlib)
+uv sync --extra hnsw
+
+# File-watching mode (`massflow watch`)
+uv sync --extra watch
+
+# Interactive terminal console (`massflow tui`)
+uv sync --extra tui
 ```
+
+(Zarr needs no extra: it is always installed as a core dependency.)
+
+Extras can be combined, e.g. `uv sync --extra ml --extra hnsw`. The equivalent `pip` syntax is `pip install -e ".[ml,hnsw]"`.
 
 You can now run MassFlow commands natively via `uv run`:
 
@@ -76,14 +86,39 @@ massflow --help
 
 If you intend to contribute to MassFlow or run the automated test gate, you need to install the development dependencies (such as `pytest` and `pytest-cov`).
 
-Using `uv`:
+Using `uv` (recommended):
 ```shell
-uv sync --all-groups
+uv sync --all-groups --all-extras
 uv run pytest
 ```
 
 Using `pip`:
 ```shell
-pip install -e .[dev]
-pytest
+pip install -e .
+pip install -e ".[chem,ml,hnsw,watch,tui]"  # optional extras as needed
 ```
+
+## Reproducible Environments
+
+MassFlow treats dependency reproducibility as a first-class property:
+
+- **`uv.lock` is committed.** The lockfile pins the exact resolved versions
+  of every dependency (including transitive ones) for the supported Python
+  version.
+- **Supported Python version:** 3.13 (`requires-python = ">=3.13,<3.14"`,
+  `.python-version`).
+- **CI installs strictly from the lockfile** (`uv sync --frozen`) and fails
+  when the lockfile is out of date (`uv lock --check`).
+
+Two people checking out the same commit therefore recreate the same
+environment with:
+
+```shell
+git checkout <commit>
+uv sync --frozen
+```
+
+The resolved dependency versions and the committed lockfile's SHA-256 are
+recorded in every run's provenance file (`run_provenance.json`), so a given
+result can always be traced back to the exact software environment that
+produced it.

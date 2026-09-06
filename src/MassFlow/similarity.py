@@ -10,6 +10,7 @@ calculation, result filtering/formatting, decoy generation, and FDR estimation.
 from __future__ import annotations
 
 import concurrent.futures
+import hashlib
 import importlib.metadata
 import logging
 from collections import defaultdict
@@ -623,11 +624,32 @@ def generate_decoys(
     Examples
     --------
     >>> decoys = generate_decoys(reference_spectra)
+
+    Notes
+    -----
+    **Chunk-invariance:** each spectrum derives its own RNG seed from a
+    stable hash of ``(random_seed, m/z array, intensity array)``, so
+    ``decoy(spectrum)`` depends only on the spectrum and the master seed.
+    Decoys are therefore identical whether the library is processed in one
+    pass or in chunks (e.g. the workflow's streaming-library path), which
+    keeps the FDR null distribution identical across execution modes. The
+    hash is content-based (not id-based) so it is stable across processes
+    and does not depend on ``PYTHONHASHSEED``.
     """
-    rng = np.random.default_rng(random_seed)
     decoys: List[Spectrum] = []
 
     for spec in spectra:
+        # Independent per-spectrum RNG stream derived from the spectrum's
+        # content (see Notes above): chunk boundaries cannot change the
+        # decoy of any spectrum.
+        mz_array = np.asarray(spec.peaks.mz, dtype=np.float64)
+        intensity_array = np.asarray(spec.peaks.intensities, dtype=np.float64)
+        seed_digest = hashlib.sha256(
+            str(random_seed).encode("ascii")
+            + mz_array.tobytes()
+            + intensity_array.tobytes()
+        ).digest()
+        rng = np.random.default_rng(int.from_bytes(seed_digest[:8], "little"))
         decoy_metadata = spec.metadata.copy()
         decoy_metadata["is_decoy"] = True
         decoy_id = str(spec.get("id", "unknown")) + "_decoy"
@@ -637,8 +659,6 @@ def generate_decoys(
         if name:
             decoy_metadata["compound_name"] = f"{name}_decoy"
 
-        mz_array = np.asarray(spec.peaks.mz, dtype=np.float64)
-        intensity_array = np.asarray(spec.peaks.intensities, dtype=np.float64)
         n_peaks = mz_array.size
 
         # Preserved ion information content (entropy) of the source.
@@ -713,11 +733,39 @@ def calculate_empirical_p_values(
     target_scores: np.ndarray, decoy_scores: np.ndarray
 ) -> np.ndarray:
     """
-    Calculate empirical p-values for target scores against a decoy null distribution.
+    Calculate per-query empirical p-values against a decoy null distribution.
 
-    Uses binary search on sorted decoy scores for O(N log M) time and O(1) extra
-    memory, avoiding the O(N × M) intermediate array that could exhaust RAM for
-    very large libraries.
+    COMPETITION UNIT (contract): inputs are per-query best scores, aligned
+    with the target-decoy competition used by :func:`calculate_fdr`. Each
+    entry of ``target_scores`` is ONE query's best (maximum) target score;
+    each entry of ``decoy_scores`` is ONE query's best decoy score (only
+    queries that produced at least one decoy hit).
+
+    For a target score ``s`` the p-value is
+
+        p = (1 + #{decoy scores >= s}) / (1 + #{decoy scores})
+
+    i.e. the fraction of decoy competitions that matched or beat ``s``,
+    with a +1 pseudo-count in numerator and denominator. Ties are counted
+    against the target (conservative). When no decoy scores exist the
+    null is empty and every p-value is 1.0 (no calibration possible).
+
+    Uses binary search on sorted decoy scores for O(N log M) time and O(1)
+    extra memory, avoiding the O(N x M) intermediate array that could
+    exhaust RAM for very large libraries.
+
+    Parameters
+    ----------
+    target_scores : np.ndarray
+        Per-query best target scores. Shape: (N,), dtype: float.
+    decoy_scores : np.ndarray
+        Per-query best decoy scores. Shape: (M,), dtype: float.
+
+    Returns
+    -------
+    np.ndarray
+        Empirical p-values for each target score, same order as
+        ``target_scores``.
     """
     if len(decoy_scores) == 0:
         return np.ones_like(target_scores)
@@ -735,55 +783,64 @@ def calculate_empirical_p_values(
 def calculate_fdr(
     target_scores: np.ndarray, decoy_scores: np.ndarray
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Calculate q-values (False Discovery Rate) for target scores.
-    Uses the conservative target-decoy pseudo-count formula: FDR = (decoys + 1) / targets
-    to prevent overly optimistic 0.0 FDR values, particularly for small libraries.
+    """Calculate per-query target-decoy competition (TDC) q-values.
 
-    **Heterogeneous engine assumption (post-v0.1 MLRouter)**
+    COMPETITION UNIT (contract): the unit of competition is the **query
+    spectrum**, not the individual hit. ``target_scores`` and
+    ``decoy_scores`` must be per-query best scores: each entry of
+    ``target_scores`` is ONE query's best (maximum) score against the
+    target library, and each entry of ``decoy_scores`` is ONE query's best
+    score against the decoy library. Queries without a target hit do not
+    appear in ``target_scores``; queries without a decoy hit do not appear
+    in ``decoy_scores``. Multiple hits of the same query therefore never
+    enter the competition more than once.
 
-    When scores originate from multiple scoring engines (e.g. classical cosine
-    for "easy" spectra and ML consensus for "hard" spectra), the pooled
-    target and decoy score vectors passed to this function span heterogeneous
-    score distributions. The target-decoy competition (TDC) framework remains
-    statistically valid under the following assumption:
+    Estimate: for a score threshold ``t``,
 
-    1. The decoy distribution is constructed from ALL engines' decoy hits,
-       producing a **conservative** pooled null. This means q-values may
-       *overestimate* FDR (i.e. be stricter than the true FDR) when one
-       engine's score scale is compressed relative to the others, because
-       compressed-scale targets are more likely to be out-competed by
-       wide-scale decoys in the pooled ranking.
-    2. The proportion of true positives among top-scoring matches is
-       preserved after merging because FDR is a rank-based procedure — it
-       only cares about the relative ordering of target vs decoy scores.
-    3. For rigorous per-engine FDR, users should run separate workflows.
-       The pooled approach is a pragmatic default that errs on the side of
-       caution.
+        FDR(t) = (1 + #{decoy scores >= t}) / #{target scores >= t}
+
+    clipped to [0, 1] (conservative +1 pseudo-count prevents optimistic
+    0.0 values, particularly for small libraries). The q-value of a target
+    score ``s`` is the monotone closure min_{t <= s} FDR(t); it estimates
+    the expected fraction of false positives among all accepted queries
+    whose best target score is at least ``s``.
+
+    TIES are handled conservatively: on equal scores, decoys are ranked
+    BEFORE targets, so a tied decoy is always counted against the target.
+
+    HETEROGENEOUS ENGINES: because each query's target hit and decoy hit
+    are scored by the same engine (classical, consensus, cascade, or the
+    router-assigned engine for that query), both the numerator and the
+    denominator are per-query counts on the same score scale. Pooling
+    across engines at the query level is therefore valid: a false-positive
+    query's best target score is exchangeable with its best decoy score
+    under the null, regardless of which engine scored it.
 
     Parameters
     ----------
     target_scores : np.ndarray
-        Array of scores from the target library search. Shape: (N,), dtype: float.
+        Per-query best target scores. Shape: (N,), dtype: float.
     decoy_scores : np.ndarray
-        Array of scores from the decoy library search. Shape: (M,), dtype: float.
+        Per-query best decoy scores. Shape: (M,), dtype: float.
 
     Returns
     -------
     tuple[np.ndarray, np.ndarray, np.ndarray]
         A tuple containing:
-        - sorted_scores: Combined target and decoy scores sorted in descending order. Shape: (N+M,), dtype: float.
-        - q_values: Calculated q-values corresponding to each score. Shape: (N+M,), dtype: float.
-        - is_target: Boolean mask indicating if the score belongs to a target (True) or decoy (False). Shape: (N+M,), dtype: bool.
+        - sorted_scores: Combined per-query target and decoy scores sorted
+          in descending order (decoys first on ties). Shape: (N+M,).
+        - q_values: q-values corresponding to each sorted score. Shape: (N+M,).
+        - is_target: Boolean mask; True for target scores, False for decoys.
     """
-    import polars as pl
-
     if len(target_scores) == 0 and len(decoy_scores) == 0:
         return np.array([]), np.array([]), np.array([], dtype=bool)
 
     if len(decoy_scores) == 0:
+        # No null evidence: no calibration is possible. q = 1/cum_targets
+        # (monotone-closed) is the conservative bound that every accepted
+        # query shares when the null is empty.
         sort_idx = np.argsort(target_scores)[::-1]
         sorted_scores = target_scores[sort_idx]
-        # Conservative pseudo-count when no decoys exist: FDR = 1 / cum_targets
         cum_targets = np.arange(1, len(sorted_scores) + 1)
         fdr = np.minimum(1.0 / cum_targets, 1.0)
         q_values = np.minimum.accumulate(fdr[::-1])[::-1]
@@ -797,47 +854,139 @@ def calculate_fdr(
         is_target = np.zeros_like(sorted_scores, dtype=bool)
         return sorted_scores, q_values, is_target
 
-    # Use Polars for efficient sorting and cumulative calculations
-    df = pl.DataFrame(
-        {
-            "score": np.concatenate([target_scores, decoy_scores]),
-            "is_target": np.concatenate(
-                [
-                    np.ones_like(target_scores, dtype=bool),
-                    np.zeros_like(decoy_scores, dtype=bool),
-                ]
-            ),
-        }
-    )
-
-    # Sort descending by score, then targets first on ties
-    df = df.sort(["score", "is_target"], descending=[True, True])
-
-    df = df.with_columns(
+    scores = np.concatenate([target_scores, decoy_scores])
+    is_target = np.concatenate(
         [
-            pl.col("is_target").cast(pl.Int64).cum_sum().alias("cum_targets"),
-            (~pl.col("is_target")).cast(pl.Int64).cum_sum().alias("cum_decoys"),
+            np.ones(len(target_scores), dtype=bool),
+            np.zeros(len(decoy_scores), dtype=bool),
         ]
     )
 
-    # Apply conservative FDR formula: (cum_decoys + 1) / cum_targets
-    df = df.with_columns(
-        pl.when(pl.col("cum_targets") > 0)
-        .then((pl.col("cum_decoys") + 1) / pl.col("cum_targets"))
-        .otherwise(1.0)
-        .clip(0, 1)
-        .alias("fdr")
+    # Sort descending by score; on ties, decoys (False) rank before targets
+    # (True) so a tied decoy is always counted against the target.
+    # lexsort uses the LAST key as the primary key: -scores descending,
+    # then is_target ascending (decoys first) within ties.
+    order = np.lexsort((is_target, -scores))
+    sorted_scores = scores[order]
+    sorted_is_target = is_target[order]
+
+    cum_targets = np.cumsum(sorted_is_target)
+    cum_decoys = np.cumsum(~sorted_is_target)
+
+    # Conservative pseudo-count formula: FDR = (cum_decoys + 1) / cum_targets.
+    # Leading decoy ranks have cum_targets == 0; their FDR is defined as 1.0.
+    with np.errstate(divide="ignore", invalid="ignore"):
+        fdr_raw = (cum_decoys + 1.0) / cum_targets
+    fdr = np.where(cum_targets > 0, fdr_raw, 1.0)
+    fdr = np.minimum(fdr, 1.0)
+
+    # q-values: minimum FDR over all lower-scoring ranks (monotone closure).
+    q_values = np.minimum.accumulate(fdr[::-1])[::-1]
+
+    return sorted_scores, q_values, sorted_is_target
+
+
+def calibrate_query_level_fdr(
+    results: Sequence[SearchResult],
+) -> tuple[dict[str, float], dict[str, float], dict[str, int]]:
+    """Calibrate a flat list of search results with per-query TDC.
+
+    The competition unit is the query spectrum (see :func:`calculate_fdr`):
+    each query contributes its best target hit and its best decoy hit
+    exactly once, regardless of how many hits it produced. Hits of the same
+    query are therefore calibrated together, and duplicate scores across
+    queries map to the same q-value.
+
+    Parameters
+    ----------
+    results : list of dict
+        ``SearchResult`` dicts (with ``query_id``, ``score``, ``is_decoy``)
+        as returned by any similarity engine.
+
+    Returns
+    -------
+    tuple[dict[str, float], dict[str, float], dict[str, int]]
+        - ``q_by_query``: q-value per query id (1.0 when the query has no
+          target hit and therefore no calibratable annotation).
+        - ``p_by_query``: empirical p-value per query id (diagnostic; see
+          :func:`calculate_empirical_p_values`).
+        - ``summary``: counts for provenance reporting:
+          ``n_competing_queries``, ``n_target_competitions``,
+          ``n_decoy_competitions``.
+    """
+    best_target: dict[str, float] = {}
+    best_decoy: dict[str, float] = {}
+    for res in results:
+        query_id = res.get("query_id")
+        if query_id is None:
+            continue
+        score = float(res["score"])
+        if res.get("is_decoy", False):
+            if score > best_decoy.get(query_id, -np.inf):
+                best_decoy[query_id] = score
+        else:
+            if score > best_target.get(query_id, -np.inf):
+                best_target[query_id] = score
+
+    query_ids = sorted(set(best_target) | set(best_decoy))
+    target_scores = np.array(
+        [best_target.get(q, -np.inf) for q in query_ids], dtype=np.float64
+    )
+    decoy_scores = np.array(
+        [best_decoy.get(q, -np.inf) for q in query_ids], dtype=np.float64
     )
 
-    # Calculate q-values (minimum FDR for all lower scores)
-    # In Polars, we can reverse, cum_min, and reverse back
-    df = df.with_columns(pl.col("fdr").reverse().cum_min().reverse().alias("q_value"))
+    # Only finite best scores enter the calibration: a query without a
+    # target hit cannot be a discovery, and a query without a decoy hit
+    # contributes nothing to the null.
+    finite_targets = target_scores[np.isfinite(target_scores)]
+    finite_decoys = decoy_scores[np.isfinite(decoy_scores)]
 
-    return (
-        df.get_column("score").to_numpy(),
-        df.get_column("q_value").to_numpy(),
-        df.get_column("is_target").to_numpy(),
-    )
+    q_by_query: dict[str, float] = {}
+    p_by_query: dict[str, float] = {}
+
+    if finite_targets.size > 0:
+        sorted_scores, q_values, _ = calculate_fdr(finite_targets, finite_decoys)
+        p_values = calculate_empirical_p_values(finite_targets, finite_decoys)
+
+        ascending_scores = sorted_scores[::-1]
+        ascending_q = q_values[::-1]
+
+        # Conservative per-score lookup: identical scores share the q-value
+        # of their LAST (lowest-ranked) occurrence, which is the largest
+        # q-value within the tie block.
+        q_by_score: dict[float, float] = {}
+        for score in np.unique(finite_targets):
+            index = int(np.searchsorted(ascending_scores, score, side="right")) - 1
+            if index < 0:
+                q_by_score[float(score)] = 1.0
+            else:
+                q_by_score[float(score)] = float(ascending_q[index])
+
+        # p is a function of the score only; identical scores share it.
+        p_by_score: dict[float, float] = {}
+        for score, p_value in zip(finite_targets, p_values):
+            p_by_score[float(score)] = float(p_value)
+
+        for query_id, best in best_target.items():
+            if np.isfinite(best):
+                q_by_query[query_id] = q_by_score[float(best)]
+                p_by_query[query_id] = p_by_score[float(best)]
+            else:
+                q_by_query[query_id] = 1.0
+                p_by_query[query_id] = 1.0
+
+    # Queries with no target hit cannot be annotated: uncalibrated.
+    for query_id in query_ids:
+        q_by_query.setdefault(query_id, 1.0)
+        p_by_query.setdefault(query_id, 1.0)
+
+    summary = {
+        "n_competing_queries": len(query_ids),
+        "n_target_competitions": int(finite_targets.size),
+        "n_decoy_competitions": int(finite_decoys.size),
+    }
+    return q_by_query, p_by_query, summary
 
 
 class SimilarityEngine:
@@ -886,6 +1035,8 @@ class SimilarityEngine:
         include_decoys: bool = True,
         ref_precursor_mzs: np.ndarray | None = None,
         ref_is_decoy: np.ndarray | None = None,
+        decoy_min_relative_intensity: float | None = None,
+        decoy_mz_shift_da: float | None = None,
     ) -> List[SearchResult]:
         """Run a similarity search of query spectra against a reference library.
 
@@ -921,6 +1072,14 @@ class SimilarityEngine:
             Pre-computed flat ``bool`` array indicating which references are decoys.
             When provided alongside ``ref_precursor_mzs``, the array length must
             match ``len(reference_spectra)``.
+        decoy_min_relative_intensity : float or None, optional
+            Baseline noise floor (fraction of the base peak) used when this
+            call generates decoys (``include_decoys=True``). When None, the
+            module default (1% of base peak) is used. Keeps decoys identical
+            to those generated by the parent workflow's config-driven call.
+        decoy_mz_shift_da : float or None, optional
+            Per-peak m/z jitter (Da) used when this call generates decoys.
+            When None, the module default (1.0 Da) is used.
 
         Returns
         -------
@@ -936,7 +1095,19 @@ class SimilarityEngine:
 
         if include_decoys:
             ref_list = list(reference_spectra)
-            decoy_spectra = generate_decoys(ref_list)
+            decoy_spectra = generate_decoys(
+                ref_list,
+                min_relative_intensity=(
+                    decoy_min_relative_intensity
+                    if decoy_min_relative_intensity is not None
+                    else _DEFAULT_DECOY_MIN_RELATIVE_INTENSITY
+                ),
+                mz_shift_da=(
+                    decoy_mz_shift_da
+                    if decoy_mz_shift_da is not None
+                    else _DEFAULT_DECOY_MZ_SHIFT_DA
+                ),
+            )
             all_references = ref_list + decoy_spectra
             n_targets = len(ref_list)
         else:
@@ -1338,6 +1509,8 @@ class _MLEngineBase(MLEngineProtocol):
         include_decoys: bool = True,
         ref_precursor_mzs: np.ndarray | None = None,
         ref_is_decoy: np.ndarray | None = None,
+        decoy_min_relative_intensity: float | None = None,
+        decoy_mz_shift_da: float | None = None,
     ) -> List[SearchResult]:
         """Run similarity search. Override in subclasses."""
         raise NotImplementedError("Subclasses must implement search()")
@@ -1413,6 +1586,8 @@ class Spec2VecEngine(_MLEngineBase):
         include_decoys: bool = True,
         ref_precursor_mzs: np.ndarray | None = None,
         ref_is_decoy: np.ndarray | None = None,
+        decoy_min_relative_intensity: float | None = None,
+        decoy_mz_shift_da: float | None = None,
     ) -> List[SearchResult]:
         """Run Spec2Vec similarity search.
 
@@ -1470,6 +1645,8 @@ class MS2DeepScoreEngine(_MLEngineBase):
         include_decoys: bool = True,
         ref_precursor_mzs: np.ndarray | None = None,
         ref_is_decoy: np.ndarray | None = None,
+        decoy_min_relative_intensity: float | None = None,
+        decoy_mz_shift_da: float | None = None,
     ) -> List[SearchResult]:
         """Run MS2DeepScore similarity search.
 
@@ -1579,6 +1756,22 @@ class ConsensusEngine(_MLEngineBase):
             )
 
         self._model_loaded = bool(self._sub_engines)
+        # Per-search degradation record: reset at the start of every search
+        # and populated whenever the engine silently downgrades what it
+        # computed (sub-engine failures, total fallback). The workflow reads
+        # this after search() to mark the file execution as degraded.
+        self._degraded_flags: list[str] = []
+
+    @property
+    def degraded_mode_flags(self) -> list[str]:
+        """Degradation flags recorded by the most recent ``search()`` call.
+
+        Values: ``consensus_subengine_failed:<algo>`` for each sub-engine
+        that raised during the last search, and
+        ``consensus_all_subengines_failed`` when every sub-engine failed and
+        the engine fell back to modified_cosine.
+        """
+        return list(self._degraded_flags)
 
     # ------------------------------------------------------------------
     # Classical fallback (circuit-breaker / missing-dependency safety net)
@@ -1611,6 +1804,8 @@ class ConsensusEngine(_MLEngineBase):
         include_decoys: bool = True,
         ref_precursor_mzs: np.ndarray | None = None,
         ref_is_decoy: np.ndarray | None = None,
+        decoy_min_relative_intensity: float | None = None,
+        decoy_mz_shift_da: float | None = None,
     ) -> List[SearchResult]:
         """Run consensus similarity search across configured sub-engines.
 
@@ -1635,6 +1830,12 @@ class ConsensusEngine(_MLEngineBase):
             Pre-computed reference precursor m/z array (passed through).
         ref_is_decoy : np.ndarray or None
             Pre-computed reference decoy flags (passed through).
+        decoy_min_relative_intensity : float or None, optional
+            Decoy noise floor passed through to sub-engines that generate
+            decoys (see :meth:`SimilarityEngine.search`).
+        decoy_mz_shift_da : float or None, optional
+            Decoy m/z jitter passed through to sub-engines that generate
+            decoys.
 
         Returns
         -------
@@ -1648,10 +1849,14 @@ class ConsensusEngine(_MLEngineBase):
         cutoff = min_score if min_score is not None else self.config.min_score
         min_engines = self.config.consensus_min_engines
 
+        # Reset the per-search degradation record.
+        self._degraded_flags = []
+
         if not self._sub_engines:
             logger.warning(
                 "Consensus has no sub-engines; falling back to modified_cosine."
             )
+            self._degraded_flags.append("consensus_all_subengines_failed")
             return self._get_fallback_engine().search(
                 query_spectra=query_spectra,
                 reference_spectra=ref_list,
@@ -1660,6 +1865,8 @@ class ConsensusEngine(_MLEngineBase):
                 include_decoys=include_decoys,
                 ref_precursor_mzs=ref_precursor_mzs,
                 ref_is_decoy=ref_is_decoy,
+                decoy_min_relative_intensity=decoy_min_relative_intensity,
+                decoy_mz_shift_da=decoy_mz_shift_da,
             )
 
         # ------------------------------------------------------------------
@@ -1680,11 +1887,14 @@ class ConsensusEngine(_MLEngineBase):
                     include_decoys=include_decoys,
                     ref_precursor_mzs=ref_precursor_mzs,
                     ref_is_decoy=ref_is_decoy,
+                    decoy_min_relative_intensity=decoy_min_relative_intensity,
+                    decoy_mz_shift_da=decoy_mz_shift_da,
                 )
                 engine_results.append((algo, weight, raw))
                 logger.debug("Sub-engine '%s' returned %d raw results.", algo, len(raw))
             except Exception as exc:
                 failed_algos.append(algo)
+                self._degraded_flags.append(f"consensus_subengine_failed:{algo}")
                 logger.warning(
                     "Sub-engine '%s' failed during search, skipping: %s",
                     algo,
@@ -1698,6 +1908,7 @@ class ConsensusEngine(_MLEngineBase):
                     "modified_cosine scoring.",
                     ", ".join(failed_algos),
                 )
+                self._degraded_flags.append("consensus_all_subengines_failed")
                 return self._get_fallback_engine().search(
                     query_spectra=query_spectra,
                     reference_spectra=ref_list,
@@ -1706,6 +1917,8 @@ class ConsensusEngine(_MLEngineBase):
                     include_decoys=include_decoys,
                     ref_precursor_mzs=ref_precursor_mzs,
                     ref_is_decoy=ref_is_decoy,
+                    decoy_min_relative_intensity=decoy_min_relative_intensity,
+                    decoy_mz_shift_da=decoy_mz_shift_da,
                 )
             return []
 
@@ -1896,6 +2109,20 @@ class CascadeEngine(_MLEngineBase):
         self._hnsw_index: Optional[HNSWSpectralIndex] = None
         self._hnsw_index_ref_ids: tuple[str, ...] = ()
 
+        # Per-search degradation record (see ``degraded_mode_flags``).
+        self._degraded_flags: list[str] = []
+
+    @property
+    def degraded_mode_flags(self) -> list[str]:
+        """Degradation flags recorded by the most recent ``search()`` call.
+
+        Values: ``cascade_stage_failed:<algo>`` per stage that raised,
+        ``cascade_hnsw_failed`` when HNSW candidate retrieval failed, and
+        ``cascade_fallback`` when the engine fell back to classical
+        modified_cosine scoring.
+        """
+        return list(self._degraded_flags)
+
     # ------------------------------------------------------------------
     # Classical fallback (circuit-breaker / missing-dependency safety net)
     # ------------------------------------------------------------------
@@ -1927,6 +2154,8 @@ class CascadeEngine(_MLEngineBase):
         include_decoys: bool,
         ref_precursor_mzs: Optional[np.ndarray],
         ref_is_decoy: Optional[np.ndarray],
+        decoy_min_relative_intensity: Optional[float],
+        decoy_mz_shift_da: Optional[float],
     ) -> List[SearchResult]:
         """Run the classical fallback engine with cascade-style thresholds."""
         logger.warning(
@@ -1934,14 +2163,20 @@ class CascadeEngine(_MLEngineBase):
             "(threshold=%.3f).",
             threshold,
         )
+        self._degraded_flags.append("cascade_fallback")
+        # Decoys (when requested) are already part of ``ref_list``: they were
+        # appended before the cascade stages, so the fallback must not
+        # generate a second decoy set.
         results = self._get_fallback_engine().search(
             query_spectra=query_spectra,
             reference_spectra=ref_list,
             min_score=threshold,
             top_n=top_n,
-            include_decoys=include_decoys,
+            include_decoys=False,
             ref_precursor_mzs=ref_precursor_mzs,
             ref_is_decoy=ref_is_decoy,
+            decoy_min_relative_intensity=decoy_min_relative_intensity,
+            decoy_mz_shift_da=decoy_mz_shift_da,
         )
         return results
 
@@ -2058,6 +2293,8 @@ class CascadeEngine(_MLEngineBase):
         include_decoys: bool = True,
         ref_precursor_mzs: np.ndarray | None = None,
         ref_is_decoy: np.ndarray | None = None,
+        decoy_min_relative_intensity: float | None = None,
+        decoy_mz_shift_da: float | None = None,
     ) -> List[SearchResult]:
         """Run cascaded similarity search with sequential filtering.
 
@@ -2099,6 +2336,10 @@ class CascadeEngine(_MLEngineBase):
             Pre-computed reference precursor m/z array (passed through).
         ref_is_decoy : np.ndarray or None
             Pre-computed reference decoy flags (passed through).
+        decoy_min_relative_intensity : float or None, optional
+            Decoy noise floor used when this call generates decoys.
+        decoy_mz_shift_da : float or None, optional
+            Decoy m/z jitter used when this call generates decoys.
 
         Returns
         -------
@@ -2114,6 +2355,48 @@ class CascadeEngine(_MLEngineBase):
             min_score if min_score is not None else self.config.cascade_upper_bound
         )
 
+        # Reset the per-search degradation record.
+        self._degraded_flags = []
+
+        # Decoys participate in the cascade exactly like targets: they are
+        # generated ONCE here and then winnowed by the same stages. The
+        # stages below always search with include_decoys=False so decoys are
+        # never duplicated. (Without this, decoys would never be scored in
+        # the single-file/streaming execution path and the FDR null would be
+        # empty.)
+        if include_decoys:
+            generated_decoys = generate_decoys(
+                ref_list,
+                min_relative_intensity=(
+                    decoy_min_relative_intensity
+                    if decoy_min_relative_intensity is not None
+                    else _DEFAULT_DECOY_MIN_RELATIVE_INTENSITY
+                ),
+                mz_shift_da=(
+                    decoy_mz_shift_da
+                    if decoy_mz_shift_da is not None
+                    else _DEFAULT_DECOY_MZ_SHIFT_DA
+                ),
+            )
+            ref_list = ref_list + generated_decoys
+            if ref_precursor_mzs is not None:
+                decoy_precursor_mzs = np.array(
+                    [
+                        float(decoy.get("precursor_mz"))
+                        if decoy.get("precursor_mz") is not None
+                        else 0.0
+                        for decoy in generated_decoys
+                    ],
+                    dtype=np.float64,
+                )
+                ref_precursor_mzs = np.concatenate(
+                    [ref_precursor_mzs, decoy_precursor_mzs]
+                )
+            if ref_is_decoy is not None:
+                ref_is_decoy = np.concatenate(
+                    [ref_is_decoy, np.ones(len(generated_decoys), dtype=bool)]
+                )
+
         if not self._stages:
             return self._run_classical_fallback(
                 query_spectra,
@@ -2123,6 +2406,8 @@ class CascadeEngine(_MLEngineBase):
                 include_decoys,
                 ref_precursor_mzs,
                 ref_is_decoy,
+                decoy_min_relative_intensity,
+                decoy_mz_shift_da,
             )
 
         # ------------------------------------------------------------------
@@ -2160,6 +2445,7 @@ class CascadeEngine(_MLEngineBase):
                         len(current_refs),
                     )
                     if not hnsw_filtered_refs:
+                        self._degraded_flags.append("cascade_hnsw_no_candidates")
                         return []
 
                     current_refs = hnsw_filtered_refs
@@ -2177,6 +2463,7 @@ class CascadeEngine(_MLEngineBase):
                     "to full cascade scoring.",
                     exc,
                 )
+                self._degraded_flags.append("cascade_hnsw_failed")
 
         # ------------------------------------------------------------------
         # Phase 1: run stages sequentially, winnowing the reference set
@@ -2203,26 +2490,23 @@ class CascadeEngine(_MLEngineBase):
                     algo,
                     exc,
                 )
-                # If the very first stage fails we cannot filter at all:
-                # fall back to classical modified_cosine scoring so the run
-                # still produces annotations (e.g. remote ML endpoint
-                # unreachable with an open circuit breaker).
-                if stage_idx == 0:
-                    return self._run_classical_fallback(
-                        query_spectra,
-                        current_refs,
-                        stage_threshold,
-                        top_n,
-                        include_decoys,
-                        current_ref_precursor_mzs,
-                        current_ref_is_decoy,
-                    )
-                # If a later non-final stage fails we cannot continue filtering.
-                if not is_last:
-                    return []
-                # If the final stage fails, return what we have from the
-                # previous stage (handled below).
-                stage_results = []
+                self._degraded_flags.append(f"cascade_stage_failed:{algo}")
+                # A failed stage means the cascade cannot continue filtering.
+                # Fall back to classical modified_cosine scoring over the
+                # current candidate set so the run still produces annotations
+                # (e.g. remote ML endpoint unreachable with an open circuit
+                # breaker), instead of silently returning no results.
+                return self._run_classical_fallback(
+                    query_spectra,
+                    current_refs,
+                    stage_threshold,
+                    top_n,
+                    include_decoys,
+                    current_ref_precursor_mzs,
+                    current_ref_is_decoy,
+                    decoy_min_relative_intensity,
+                    decoy_mz_shift_da,
+                )
 
             if is_last:
                 # Final stage: these are the results to return (after
@@ -2350,6 +2634,18 @@ class MLRouter:
             SimilarityEngine | _MLEngineBase | MLEngineProtocol | None
         ) = None
         self._fallback_engine: SimilarityEngine | None = None
+        # Per-search degradation record (see ``degraded_mode_flags``).
+        self._degraded_flags: list[str] = []
+
+    @property
+    def degraded_mode_flags(self) -> list[str]:
+        """Degradation flags recorded by the most recent ``route_and_search``.
+
+        Value: ``routing_hard_fallback:<engine>`` when the hard (ML) engine
+        failed or timed out and the batch was re-run with the configured
+        classical fallback engine.
+        """
+        return list(self._degraded_flags)
 
     # ------------------------------------------------------------------
     # Lazy engine builders
@@ -2487,6 +2783,8 @@ class MLRouter:
         include_decoys: bool = True,
         ref_precursor_mzs: np.ndarray | None = None,
         ref_is_decoy: np.ndarray | None = None,
+        decoy_min_relative_intensity: float | None = None,
+        decoy_mz_shift_da: float | None = None,
     ) -> List[SearchResult]:
         """Classify queries and dispatch to the appropriate engine.
 
@@ -2509,6 +2807,10 @@ class MLRouter:
             Pre-computed reference precursor m/z array.
         ref_is_decoy : np.ndarray or None
             Pre-computed reference decoy flags.
+        decoy_min_relative_intensity : float or None, optional
+            Decoy noise floor passed through to engines that generate decoys.
+        decoy_mz_shift_da : float or None, optional
+            Decoy m/z jitter passed through to engines that generate decoys.
 
         Returns
         -------
@@ -2520,6 +2822,9 @@ class MLRouter:
         # --- Classify every query ------------------------------------------------
         easy_queries: List[Spectrum] = []
         hard_queries: List[Spectrum] = []
+
+        # Reset the per-search degradation record.
+        self._degraded_flags = []
 
         for q in query_spectra:
             decision = self.classify(q)
@@ -2550,6 +2855,8 @@ class MLRouter:
                 include_decoys=include_decoys,
                 ref_precursor_mzs=ref_precursor_mzs,
                 ref_is_decoy=ref_is_decoy,
+                decoy_min_relative_intensity=decoy_min_relative_intensity,
+                decoy_mz_shift_da=decoy_mz_shift_da,
             )
             # Tag results with routing information
             for res in easy_results:
@@ -2570,6 +2877,8 @@ class MLRouter:
                 include_decoys=include_decoys,
                 ref_precursor_mzs=ref_precursor_mzs,
                 ref_is_decoy=ref_is_decoy,
+                decoy_min_relative_intensity=decoy_min_relative_intensity,
+                decoy_mz_shift_da=decoy_mz_shift_da,
             )
             # Tag results with routing information
             routed_tag: str = self._config.routing_hard_engine
@@ -2595,6 +2904,8 @@ class MLRouter:
         include_decoys: bool,
         ref_precursor_mzs: np.ndarray | None,
         ref_is_decoy: np.ndarray | None,
+        decoy_min_relative_intensity: float | None = None,
+        decoy_mz_shift_da: float | None = None,
     ) -> List[SearchResult]:
         """Run the hard engine with a timeout; fall back on failure.
 
@@ -2614,6 +2925,8 @@ class MLRouter:
                 include_decoys=include_decoys,
                 ref_precursor_mzs=ref_precursor_mzs,
                 ref_is_decoy=ref_is_decoy,
+                decoy_min_relative_intensity=decoy_min_relative_intensity,
+                decoy_mz_shift_da=decoy_mz_shift_da,
             )
 
         try:
@@ -2633,12 +2946,18 @@ class MLRouter:
                 len(hard_queries),
                 self._config.routing_fallback_engine,
             )
+            self._degraded_flags.append(
+                f"routing_hard_fallback:{self._config.routing_fallback_engine}"
+            )
         except Exception as exc:
             logger.warning(
                 "Hard engine '%s' failed: %s; falling back to '%s'.",
                 self._config.routing_hard_engine,
                 exc,
                 self._config.routing_fallback_engine,
+            )
+            self._degraded_flags.append(
+                f"routing_hard_fallback:{self._config.routing_fallback_engine}"
             )
 
         # --- Fallback path -------------------------------------------------------
@@ -2649,6 +2968,8 @@ class MLRouter:
             include_decoys=include_decoys,
             ref_precursor_mzs=ref_precursor_mzs,
             ref_is_decoy=ref_is_decoy,
+            decoy_min_relative_intensity=decoy_min_relative_intensity,
+            decoy_mz_shift_da=decoy_mz_shift_da,
         )
         for res in fb_results:
             res["_fallback"] = True  # type: ignore[typeddict-unknown-key]

@@ -255,16 +255,29 @@ def process_spectra_batch(
     # Use LazyFrame to prepare filters without immediate execution
     lf = pl.LazyFrame(metadata_rows)
 
-    # Apply batch-level metadata filters (e.g. minimum peaks, m/z range)
+    # Apply batch-level metadata filters, gated on the same documented
+    # toggles as the per-spectrum path (peak_processing):
+    #   - filter_min_peaks controls the minimum-peak-count rejection;
+    #   - filter_by_mz controls the precursor m/z window.
+    # Without this gating, the batch path silently dropped spectra even when
+    # the toggles were disabled (a configuration that said "do not filter"
+    # filtered anyway).
     mz_min = getattr(config, "mz_min", 0.0)
     mz_max = getattr(config, "mz_max", 1000.0)
     min_peaks = getattr(config, "min_peaks", 1)
 
-    filtered_lf = lf.filter(
-        (pl.col("precursor_mz") >= mz_min)
-        & (pl.col("precursor_mz") <= mz_max)
-        & (pl.col("peak_count") >= min_peaks)
-    )
+    batch_filters = []
+    if getattr(config, "filter_by_mz", False):
+        batch_filters.append(
+            (pl.col("precursor_mz") >= mz_min) & (pl.col("precursor_mz") <= mz_max)
+        )
+    if getattr(config, "filter_min_peaks", False):
+        batch_filters.append(pl.col("peak_count") >= min_peaks)
+
+    if batch_filters:
+        filtered_lf = lf.filter(batch_filters)
+    else:
+        filtered_lf = lf
 
     # Compute vectorized m/z offsets and neutral losses for the entire batch metadata table
     # (This represents the relationship of the PRECURSOR to nominal mass ranges)

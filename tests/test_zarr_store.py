@@ -5,6 +5,9 @@ Covers:
 - ABC contract compliance (all SpectralStore abstract methods).
 - Flat layout round-trip correctness (backward compatibility).
 - Tensor layout (3-D peak tensor) round-trip correctness.
+- Peak fidelity: storing a spectrum never silently changes its data
+  (arbitrary peak counts, explicit Top-N reduction with provenance,
+  atomic over-capacity rejection, manifest-validated reopen).
 - Metadata query caching and invalidation.
 - Thread-safety: concurrent reads from multiple threads.
 - Cloud URL detection and read-only guard for remote stores.
@@ -28,6 +31,7 @@ from MassFlow.storage import create_spectral_store
 from MassFlow.zarr_store import (
     ZarrSpectralStore,
     MetadataQueryCache,
+    PeakCapacityError,
     RetryConfig,
     _is_remote_url,
     _retry_with_backoff,
@@ -474,18 +478,42 @@ class TestPopulatedTensorStore:
         mz_list, int_list = populated_tensor_store.batch_get_arrays(ids)
         assert len(mz_list) == 3
 
-    def test_tensor_truncation(self, tensor_store: ZarrSpectralStore) -> None:
-        """Spectra exceeding max_peaks_per_spectrum are truncated."""
+    def test_over_capacity_raises_by_default(
+        self, tensor_store: ZarrSpectralStore
+    ) -> None:
+        """Over-capacity spectra raise (default ``peak_reduction="none"``).
+
+        The batch is rejected atomically: no spectrum is written, no peak is
+        altered, and the error names the offending spectrum and counts.
+        """
         large_spec = Spectrum(
             mz=np.arange(200, dtype=np.float64),
             intensities=np.ones(200, dtype=np.float64),
             metadata={"id": "large", "precursor_mz": 500.0},
         )
-        tensor_store.add_spectra(iter([large_spec]), category="test")
-        spec = tensor_store.get_spectrum_by_id("large")
-        assert spec is not None
-        # max_peaks_per_spectrum is 128 for tensor_store fixture.
-        assert spec.peaks.mz.size <= 128
+        with pytest.raises(PeakCapacityError) as excinfo:
+            tensor_store.add_spectra(iter([large_spec]), category="test")
+        message = str(excinfo.value)
+        assert "large" in message  # offending spectrum is named
+        assert "200" in message  # original peak count
+        assert "128" in message  # capacity (tensor_store fixture)
+        assert tensor_store.get_total_spectra_count() == 0
+        assert tensor_store.get_spectrum_by_id("large") is None
+
+    def test_over_capacity_batch_rejected_atomically(
+        self, tensor_store: ZarrSpectralStore, sample_spectrum: Spectrum
+    ) -> None:
+        """A batch mixing under- and over-capacity spectra writes nothing."""
+        large_spec = Spectrum(
+            mz=np.arange(200, dtype=np.float64),
+            intensities=np.ones(200, dtype=np.float64),
+            metadata={"id": "large", "precursor_mz": 500.0},
+        )
+        with pytest.raises(PeakCapacityError):
+            tensor_store.add_spectra(
+                iter([sample_spectrum, large_spec]), category="test"
+            )
+        assert tensor_store.get_total_spectra_count() == 0
 
     def test_tensor_padding(self, tensor_store: ZarrSpectralStore) -> None:
         """Spectra with fewer peaks are padded but returned at correct size."""
@@ -873,3 +901,392 @@ def test_large_batch_memory_safety(
     assert len(mz_list) == 500
 
     store.close()
+
+
+# ---------------------------------------------------------------------------
+# Peak fidelity: storing a spectrum never silently changes its data
+# ---------------------------------------------------------------------------
+
+
+def _peak_spec(spectrum_id: str, n_peaks: int, precursor_mz: float = 400.0) -> Spectrum:
+    """A deterministic spectrum with ``n_peaks`` peaks (m/z 100 .. 100+n)."""
+    mz = np.arange(n_peaks, dtype=np.float64) + 100.0
+    intensities = np.linspace(0.1, 1.0, n_peaks)
+    return Spectrum(
+        mz=mz,
+        intensities=intensities,
+        metadata={"id": spectrum_id, "precursor_mz": precursor_mz},
+    )
+
+
+class TestPeakFidelity:
+    """Round-trip integrity across layouts and peak counts."""
+
+    def test_flat_store_roundtrips_arbitrary_peak_counts(self, tmp_path: Path) -> None:
+        """The flat layout stores spectra of ANY peak count exactly."""
+        store = ZarrSpectralStore(
+            tmp_path / "arbitrary.zarr", overwrite=True, layout="flat"
+        )
+        sizes = [1, 2, 3, 64, 511, 512, 513, 2048, 5000]
+        spectra = [_peak_spec(f"p{n}", n, precursor_mz=500.0) for n in sizes]
+        store.add_spectra(iter(spectra), category="test")
+        assert store.get_total_spectra_count() == len(sizes)
+        for spec, n in zip(store.get_spectra(), sizes):
+            assert spec.peaks.mz.size == n
+            assert np.array_equal(spec.peaks.mz, np.arange(n, dtype=np.float64) + 100.0)
+            assert np.array_equal(spec.peaks.intensities, np.linspace(0.1, 1.0, n))
+        store.close()
+
+    def test_tensor_roundtrips_exactly_up_to_capacity(self, tmp_path: Path) -> None:
+        """The tensor layout round-trips counts 1..M exactly, M itself included."""
+        capacity = 64
+        store = ZarrSpectralStore(
+            tmp_path / "exact.zarr",
+            overwrite=True,
+            layout="tensor",
+            max_peaks_per_spectrum=capacity,
+        )
+        sizes = [1, 2, 31, 63, 64]
+        spectra = [_peak_spec(f"s{n}", n) for n in sizes]
+        store.add_spectra(iter(spectra), category="test")
+        for spec, n in zip(store.get_spectra(), sizes):
+            assert spec.peaks.mz.size == n
+            assert np.array_equal(spec.peaks.mz, np.arange(n, dtype=np.float64) + 100.0)
+            assert np.array_equal(spec.peaks.intensities, np.linspace(0.1, 1.0, n))
+        store.close()
+
+    def test_no_peak_loss_under_default_settings(self, tmp_path: Path) -> None:
+        """Default construction loses no peaks, in either layout.
+
+        Defaults: ``layout="flat"`` (no capacity) and the tensor defaults
+        ``max_peaks_per_spectrum=512`` with ``peak_reduction="none"``.
+        """
+        for layout in ("flat", "tensor"):
+            store = ZarrSpectralStore(
+                tmp_path / f"default_{layout}.zarr", overwrite=True, layout=layout
+            )
+            # 512 is the default tensor capacity; stay at or under it.
+            spectra = [_peak_spec(f"d{n}", n) for n in (1, 128, 511, 512)]
+            store.add_spectra(iter(spectra), category="test")
+            for spec, n in zip(store.get_spectra(), (1, 128, 511, 512)):
+                assert spec.peaks.mz.size == n
+                assert np.array_equal(
+                    spec.peaks.mz, np.arange(n, dtype=np.float64) + 100.0
+                )
+            store.close()
+
+    def test_flat_store_has_no_peak_capacity(self, tmp_path: Path) -> None:
+        """Peak-reduction policies do not apply to (and cannot be set on) the
+        flat layout: it stores every peak exactly."""
+        store = ZarrSpectralStore(
+            tmp_path / "flat_cap.zarr", overwrite=True, layout="flat"
+        )
+        big = _peak_spec("big", 5000)
+        store.add_spectra(iter([big]), category="test")
+        spec = store.get_spectrum_by_id("big")
+        assert spec is not None
+        assert spec.peaks.mz.size == 5000
+        store.close()
+
+    def test_reduction_requires_tensor_layout(self, tmp_path: Path) -> None:
+        """peak_reduction='topN' only exists where a capacity exists."""
+        with pytest.raises(ValueError, match="requires layout='tensor'"):
+            ZarrSpectralStore(tmp_path / "x.zarr", layout="flat", peak_reduction="topN")
+
+    def test_invalid_reduction_policy_raises(self, tmp_path: Path) -> None:
+        with pytest.raises(ValueError, match="peak_reduction"):
+            ZarrSpectralStore(
+                tmp_path / "x.zarr", layout="tensor", peak_reduction="median"
+            )
+
+    def test_invalid_tensor_capacity_raises(self, tmp_path: Path) -> None:
+        with pytest.raises(ValueError, match="max_peaks_per_spectrum"):
+            ZarrSpectralStore(
+                tmp_path / "x.zarr", layout="tensor", max_peaks_per_spectrum=0
+            )
+
+
+class TestTopNReduction:
+    """Explicit Top-N reduction: most-intense peaks, recorded in provenance."""
+
+    def test_reduction_keeps_most_intense_peaks_and_records_provenance(
+        self, tmp_path: Path
+    ) -> None:
+        """peak_reduction='topN' retains the N most intense peaks (NOT the
+        first N in m/z order) and records the reduction in provenance."""
+        capacity = 16
+        store = ZarrSpectralStore(
+            tmp_path / "red.zarr",
+            overwrite=True,
+            layout="tensor",
+            max_peaks_per_spectrum=capacity,
+            peak_reduction="topN",
+        )
+        # m/z 100..299; the first 150 peaks are weak (1.0), the last 50
+        # ascend 2.0..51.0.  First-N-by-m/z would keep m/z 100..115;
+        # Top-N-by-intensity must keep m/z 284..299.
+        mz = np.arange(200, dtype=np.float64) + 100.0
+        intensities = np.ones(200, dtype=np.float64)
+        intensities[150:] = np.arange(2.0, 52.0)  # 2.0..51.0 at indices 150..199
+        spectrum = Spectrum(
+            mz=mz,
+            intensities=intensities,
+            metadata={"id": "reduced", "precursor_mz": 500.0},
+        )
+        store.add_spectra(iter([spectrum]), category="test")
+
+        stored = store.get_spectrum_by_id("reduced")
+        assert stored is not None
+        assert stored.peaks.mz.size == capacity
+        # The 16 most intense peaks: m/z 284..299, intensities 36.0..51.0.
+        assert np.array_equal(stored.peaks.mz, np.arange(284.0, 300.0))
+        assert np.array_equal(stored.peaks.intensities, np.arange(36.0, 52.0))
+
+        # Provenance: the reduction is recorded in the stored metadata.
+        record = stored.get("peak_reduction")
+        assert record == {
+            "mode": "topN",
+            "max_peaks": capacity,
+            "original_peak_count": 200,
+        }
+        store.close()
+
+    def test_reduction_is_deterministic_and_ties_are_stable(
+        self, tmp_path: Path
+    ) -> None:
+        """Repeated reduction yields identical arrays; equal intensities keep
+        their original (m/z) order."""
+        # Intensities: 5, 4, 3, 3, 2, 1, 1, 1 — the two peaks with intensity
+        # 3.0 (m/z 300 and 400) are a tie.  Stable selection keeps the first
+        # of the tied pair (m/z 300), so the retained m/z are 100..500.
+        mz = np.array([100.0, 200.0, 300.0, 400.0, 500.0, 600.0, 700.0, 800.0])
+        intensities = np.array([5.0, 4.0, 3.0, 3.0, 2.0, 1.0, 1.0, 1.0])
+        spectrum = Spectrum(
+            mz=mz,
+            intensities=intensities,
+            metadata={"id": "ties", "precursor_mz": 500.0},
+        )
+
+        results: list[tuple[np.ndarray, np.ndarray]] = []
+        for i in range(2):
+            store = ZarrSpectralStore(
+                tmp_path / f"ties_{i}.zarr",
+                overwrite=True,
+                layout="tensor",
+                max_peaks_per_spectrum=5,
+                peak_reduction="topN",
+            )
+            store.add_spectra(iter([spectrum]), category="test")
+            stored = store.get_spectrum_by_id("ties")
+            assert stored is not None
+            results.append((stored.peaks.mz, stored.peaks.intensities))
+            store.close()
+
+        assert np.array_equal(results[0][0], results[1][0])
+        assert np.array_equal(results[0][1], results[1][1])
+        # Stable tie-break: m/z 300 (first of the 3.0-intensity pair) is kept.
+        assert np.array_equal(
+            results[0][0], np.array([100.0, 200.0, 300.0, 400.0, 500.0])
+        )
+        assert np.array_equal(results[0][1], np.array([5.0, 4.0, 3.0, 3.0, 2.0]))
+
+    def test_reduction_record_survives_reopen(self, tmp_path: Path) -> None:
+        """The provenance record is part of the store, not just the session."""
+        path = tmp_path / "persist_red.zarr"
+        store1 = ZarrSpectralStore(
+            path,
+            overwrite=True,
+            layout="tensor",
+            max_peaks_per_spectrum=8,
+            peak_reduction="topN",
+        )
+        big = _peak_spec("big", 100)
+        store1.add_spectra(iter([big]), category="test")
+        store1.close()
+
+        store2 = ZarrSpectralStore(
+            path, layout="tensor", max_peaks_per_spectrum=8, peak_reduction="topN"
+        )
+        stored = store2.get_spectrum_by_id("big")
+        assert stored is not None
+        assert stored.peaks.mz.size == 8
+        assert stored.get("peak_reduction") == {
+            "mode": "topN",
+            "max_peaks": 8,
+            "original_peak_count": 100,
+        }
+        store2.close()
+
+    def test_under_capacity_spectra_are_never_reduced(self, tmp_path: Path) -> None:
+        """No reduction happens (and no record is written) at or under the
+        capacity, even when the reduction policy is active."""
+        store = ZarrSpectralStore(
+            tmp_path / "noop.zarr",
+            overwrite=True,
+            layout="tensor",
+            max_peaks_per_spectrum=16,
+            peak_reduction="topN",
+        )
+        small = _peak_spec("small", 10)
+        store.add_spectra(iter([small]), category="test")
+        stored = store.get_spectrum_by_id("small")
+        assert stored is not None
+        assert stored.peaks.mz.size == 10
+        assert stored.get("peak_reduction") is None
+        store.close()
+
+
+class TestSimilarityEquivalenceAcrossStorage:
+    """Storing a spectrum (without reduction) never changes similarity scores."""
+
+    def test_cosine_scores_identical_before_and_after_storage(
+        self, tmp_path: Path
+    ) -> None:
+        from MassFlow.config import SimilarityConfig
+        from MassFlow.similarity import SimilarityEngine
+
+        engine = SimilarityEngine(
+            SimilarityConfig(algorithm="cosine", min_score=0.0, min_matched_peaks=0)
+        )
+        rng = np.random.default_rng(7)
+        refs: list[Spectrum] = []
+        for i in range(5):
+            n_peaks = 60 + i * 10
+            mz = np.sort(rng.uniform(50.0, 900.0, size=n_peaks))
+            intensities = rng.uniform(0.01, 1.0, size=n_peaks)
+            refs.append(
+                Spectrum(
+                    mz=mz,
+                    intensities=intensities,
+                    metadata={
+                        "id": f"ref_{i}",
+                        "precursor_mz": 300.0 + i,
+                        "charge": 1,
+                    },
+                )
+            )
+        query = refs[0]
+
+        for layout, capacity in (("flat", None), ("tensor", 200)):
+            store = ZarrSpectralStore(
+                tmp_path / f"sim_{layout}.zarr",
+                overwrite=True,
+                layout=layout,
+                max_peaks_per_spectrum=capacity or 512,
+            )
+            store.add_spectra(iter(refs), category="library")
+            stored = list(store.get_spectra())
+
+            for original, stored_spec in zip(refs, stored):
+                before = engine.search(
+                    [query], [original], min_score=0.0, include_decoys=False
+                )
+                after = engine.search(
+                    [query], [stored_spec], min_score=0.0, include_decoys=False
+                )
+                # The identical pair (query == ref_0) must produce a hit so
+                # this test actually compares non-trivial scores.
+                if original.get("id") == "ref_0":
+                    assert len(before) == 1 and len(after) == 1
+                if before and after:
+                    assert before[0]["score"] == pytest.approx(
+                        after[0]["score"], abs=1e-12
+                    )
+            store.close()
+
+
+class TestStoreManifest:
+    """The persisted manifest prevents silent misreads on reopen."""
+
+    def test_reopen_with_wrong_layout_raises(self, tmp_path: Path) -> None:
+        path = tmp_path / "m.zarr"
+        store1 = ZarrSpectralStore(
+            path, overwrite=True, layout="tensor", max_peaks_per_spectrum=64
+        )
+        store1.add_spectra(iter([_peak_spec("a", 10)]), category="test")
+        store1.close()
+        with pytest.raises(ValueError, match="layout"):
+            ZarrSpectralStore(path, layout="flat")
+
+        flat_path = tmp_path / "m_flat.zarr"
+        flat1 = ZarrSpectralStore(flat_path, overwrite=True, layout="flat")
+        flat1.add_spectra(iter([_peak_spec("b", 10)]), category="test")
+        flat1.close()
+        with pytest.raises(ValueError, match="layout"):
+            ZarrSpectralStore(flat_path, layout="tensor")
+
+    def test_reopen_with_wrong_capacity_raises(self, tmp_path: Path) -> None:
+        path = tmp_path / "m2.zarr"
+        store1 = ZarrSpectralStore(
+            path, overwrite=True, layout="tensor", max_peaks_per_spectrum=64
+        )
+        store1.add_spectra(iter([_peak_spec("a", 10)]), category="test")
+        store1.close()
+        with pytest.raises(ValueError, match="max_peaks_per_spectrum"):
+            ZarrSpectralStore(path, layout="tensor", max_peaks_per_spectrum=128)
+
+    def test_reopen_with_different_reduction_policy_raises(
+        self, tmp_path: Path
+    ) -> None:
+        path = tmp_path / "m3.zarr"
+        store1 = ZarrSpectralStore(
+            path,
+            overwrite=True,
+            layout="tensor",
+            max_peaks_per_spectrum=64,
+            peak_reduction="topN",
+        )
+        store1.add_spectra(iter([_peak_spec("a", 10)]), category="test")
+        store1.close()
+        with pytest.raises(ValueError, match="peak_reduction"):
+            ZarrSpectralStore(path, layout="tensor", max_peaks_per_spectrum=64)
+
+    def test_legacy_store_without_manifest_is_adopted(self, tmp_path: Path) -> None:
+        """Pre-manifest stores are inferred from their arrays and adopted."""
+        import zarr
+
+        from MassFlow.zarr_store import _MANIFEST_ATTR
+
+        path = tmp_path / "legacy.zarr"
+        store1 = ZarrSpectralStore(
+            path, overwrite=True, layout="tensor", max_peaks_per_spectrum=64
+        )
+        store1.add_spectra(iter([_peak_spec("a", 10)]), category="test")
+        store1.close()
+        # Simulate a store created before manifests existed (zarr v3 keeps
+        # attributes inside zarr.json).
+        group = zarr.open_group(path, mode="a")
+        del group.attrs[_MANIFEST_ATTR]
+
+        store2 = ZarrSpectralStore(path, layout="tensor", max_peaks_per_spectrum=64)
+        assert store2.get_total_spectra_count() == 1
+        stored = store2.get_spectrum_by_id("a")
+        assert stored is not None and stored.peaks.mz.size == 10
+        store2.close()
+
+        # A capacity mismatch against the legacy store is still caught.
+        with pytest.raises(ValueError, match="max_peaks_per_spectrum"):
+            ZarrSpectralStore(path, layout="tensor", max_peaks_per_spectrum=128)
+
+    def test_legacy_tensor_store_rejects_reduction_policy(self, tmp_path: Path) -> None:
+        """Legacy tensor stores (possibly containing silently truncated
+        spectra) may only be reopened with the strict policy."""
+        import zarr
+
+        from MassFlow.zarr_store import _MANIFEST_ATTR
+
+        path = tmp_path / "legacy2.zarr"
+        store1 = ZarrSpectralStore(
+            path, overwrite=True, layout="tensor", max_peaks_per_spectrum=64
+        )
+        store1.add_spectra(iter([_peak_spec("a", 10)]), category="test")
+        store1.close()
+        group = zarr.open_group(path, mode="a")
+        del group.attrs[_MANIFEST_ATTR]
+        with pytest.raises(ValueError, match="peak_reduction"):
+            ZarrSpectralStore(
+                path,
+                layout="tensor",
+                max_peaks_per_spectrum=64,
+                peak_reduction="topN",
+            )

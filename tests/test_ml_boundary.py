@@ -528,14 +528,25 @@ END IONS
             def search(self, *args, **kwargs):
                 raise ConnectionError("ML service unreachable")
 
+        # The worker opens the library store itself; only the compact spec
+        # would cross the process boundary.
+        from MassFlow.library import LibrarySpec, open_library
+        from MassFlow.storage import create_spectral_store
+
+        store_path = tmp_path / "lib.db"
+        store = create_spectral_store(store_path, backend="sqlite")
+        store.add_spectra(iter([reference]), category="library")
+        store.close()
+        library_spec = LibrarySpec(
+            path=store_path, kind="store", storage_backend="sqlite"
+        )
+
         # Preserve module state; this test mutates worker globals.
         saved_state = (
             workflow._worker_engine,
             workflow._worker_router,
-            workflow._worker_references,
-            workflow._worker_decoys,
-            workflow._worker_ref_precursor_mzs,
-            workflow._worker_ref_is_decoy,
+            workflow._worker_backend,
+            workflow._worker_library_spec,
             workflow._worker_fallback_engine,
         )
         try:
@@ -543,27 +554,30 @@ END IONS
             # fallback path without implementing MLEngineProtocol.
             workflow._worker_engine = _FailingEngine()  # type: ignore[assignment]
             workflow._worker_router = None
-            workflow._worker_references = [reference]
-            workflow._worker_decoys = []
-            workflow._worker_ref_precursor_mzs = np.array([400.0], dtype=np.float64)
-            workflow._worker_ref_is_decoy = np.zeros(1, dtype=bool)
+            workflow._worker_backend = open_library(library_spec, config.processing)
+            workflow._worker_library_spec = library_spec
             workflow._worker_fallback_engine = None
 
-            file_path, spectra, results = workflow._process_single_file(
-                query_file, config
+            file_result = workflow._process_single_file(
+                query_file, config, library_size=1
             )
         finally:
             (
                 workflow._worker_engine,
                 workflow._worker_router,
-                workflow._worker_references,
-                workflow._worker_decoys,
-                workflow._worker_ref_precursor_mzs,
-                workflow._worker_ref_is_decoy,
+                workflow._worker_backend,
+                workflow._worker_library_spec,
                 workflow._worker_fallback_engine,
             ) = saved_state
 
-        # The run completed and produced classical hits.
-        assert file_path == query_file
-        assert len(spectra) == 1
-        assert any(result["reference_id"] == "r1" for result in results)
+        # The configured engine failed, so the classical fallback ran: the
+        # file must be reported as DEGRADED (not silently successful), the
+        # degradation must be explicit, and classical hits were produced.
+        assert file_result.input_path == query_file
+        assert file_result.status == "degraded"
+        assert any(
+            flag.startswith("engine_fallback:")
+            for flag in file_result.degraded_mode_flags
+        )
+        assert len(file_result.query_spectra) == 1
+        assert any(result["reference_id"] == "r1" for result in file_result.results)

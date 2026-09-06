@@ -16,9 +16,9 @@ can never crash the run.
 
 !!! note "Standalone `MassFlow.consensus` module removed"
 
-    The v0.2-era orchestrator module `MassFlow.consensus` (with
-    `generate_consensus` / `ConsensusResult`) was removed during the v1.0
-    engine lockdown. Consensus *scoring* now lives in
+    The standalone orchestrator module `MassFlow.consensus` (with
+    `generate_consensus` / `ConsensusResult`) is not part of the current
+    codebase. Consensus *scoring* now lives in
     `MassFlow.similarity.ConsensusEngine`, and the engine-agnostic data
     contracts (`ConsensusInput`, `ConsensusResult`, `ConsensusConfig`)
     live in `MassFlow.models`. See the [Similarity page](similarity.md)

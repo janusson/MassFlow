@@ -64,4 +64,4 @@ Beyond chemical structures, MassFlow validates the physical properties of the ma
 
 During the library ingestion phase (`massflow db build`), MassFlow performs a fast NumPy-based scan of every spectrum to identify **diagnostic fragments**.
 
-These fragments (e.g., the Tyrosine immonium ion at `136.076` Da) are stored in a `triage_flags` bitmask in the SQLite database. This allows the v0.2 Orchestrator to route specific spectra to specialized ML models without having to re-scan the raw peak data, drastically reducing GPU overhead for large-scale metabolomics studies.
+These fragments (e.g., the Tyrosine immonium ion at `136.076` Da) are stored in a `triage_flags` bitmask in the SQLite database, so downstream stages can route specific spectra toward specialized ML models without re-scanning the raw peak data.

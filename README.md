@@ -6,27 +6,34 @@
 [![Python 3.13+](https://img.shields.io/badge/python-3.13+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-**MassFlow is a local-first, high-throughput tandem mass spectrometry (MS/MS)
+**MassFlow is a local-first, config-driven tandem mass spectrometry (MS/MS)
 annotation engine.** It turns experimental spectra (`.mzML`, `.mgf`) and
 reference libraries (`.msp`, SQLite/Zarr databases) into calibrated structural
-annotations — reproducible, configuration-driven, and fast enough for
-all-vs-all molecular networking at scale.
+annotations — reproducible, configuration-driven, and deterministic.
 
-Built on four engineering pillars:
+The **stable product contract** (see [`docs/CAPABILITY_MATRIX.md`](docs/CAPABILITY_MATRIX.md))
+is deliberately boring: open-format ingestion → `matchms` processing →
+`cosine` / `modified_cosine` scoring → entropy-preserving decoys with
+per-query target-decoy FDR → CSV / mzTab-M exports with provenance sidecars,
+over SQLite libraries by default. **Everything in the "Performance
+architecture" section below is experimental or optional** — it accelerates or
+extends the stable pipeline and is never required for correct results.
 
-1. **Hybrid Zarr storage** — metadata in SQLite, float64 peak arrays in
-   compressed, chunked Zarr. Lock-free concurrent reads, no BLOB I/O
-   bottleneck.
-2. **Two-channel HNSW indexing** — sub-linear analogue discovery. Spectra are
-   embedded as `[binned m/z, binned neutral losses]`, so modified-cosine
-   matches survive even when analogue precursors shift.
-3. **Entropy-preserving FDR** — decoys preserve precursor m/z *and* the
-   spectral information content (√I-weighted Shannon entropy after a strict
-   base-peak noise filter), keeping target-decoy calibration honest.
+Optional/experimental extensions built on top of that core:
+
+1. **Hybrid/Zarr storage backends** — metadata in SQLite, float64 peak arrays
+   in compressed, chunked Zarr (`input.storage_backend: zarr|hybrid`;
+   default is `sqlite`). Supported and contract-tested, but not the default.
+2. **Two-channel HNSW indexing** — sub-linear candidate retrieval for the
+   experimental `cascade` engine (`[hnsw]` extra, opt-in).
+3. **Entropy-preserving FDR** — part of the stable core: decoys preserve
+   precursor m/z *and* the spectral information content (√I-weighted Shannon
+   entropy after a strict base-peak noise filter), keeping target-decoy
+   calibration honest.
 4. **Fail-safe ML microservice boundary** — Spec2Vec/MS2DeepScore run behind
    a remote REST/gRPC contract with a circuit breaker; the core never
    hard-depends on PyTorch or Gensim and always falls back to classical
-   scoring.
+   scoring. Experimental (`[ml]` extra or remote endpoints).
 
 ```shell
 # One-liner to generate tutorial data, build the database, and run annotation
@@ -42,6 +49,10 @@ uv run massflow annotate --config tutorial/tutorial_config.yaml
 ---
 
 ## Performance architecture
+
+> **Experimental/optional layer.** Nothing in this section is required for the
+> stable product contract; each pillar is opt-in and covered by its own tests.
+> The stable pipeline never depends on these stages for correct results.
 
 ### 1 · Hybrid SQLite + Zarr storage engine
 
@@ -187,6 +198,10 @@ graph TD
     FDR --> Out[CSV / mzTab-M + YAML report]
 ```
 
+> The HNSW index and Numba prefilter stages are **opt-in experimental**
+> acceleration (cascade engine, `[hnsw]` extra). The default pipeline scores
+> with `cosine` / `modified_cosine` directly.
+
 ## Installation
 
 MassFlow requires **Python 3.13+** and uses `uv` for reproducible
@@ -196,9 +211,11 @@ environments:
 git clone https://github.com/janusson/MassFlow && cd MassFlow
 uv python pin 3.13 && uv sync
 
-# Optional extras
-uv sync --extra zarr --extra hnsw   # Zarr storage + HNSW indexing
-uv sync --extra ml                  # Spec2Vec / MS2DeepScore (heavy)
+# Optional extras (experimental features only; the stable core needs none)
+uv sync --extra hnsw   # HNSW candidate retrieval (experimental cascade stage)
+uv sync --extra ml     # Spec2Vec / MS2DeepScore (heavy, experimental)
+uv sync --extra tui    # interactive terminal console (experimental)
+# zarr needs no extra: it is always installed as a core dependency
 ```
 
 ## Quickstart
@@ -215,6 +232,34 @@ uv run massflow db build --input tutorial/tutorial_library.msp \
 # Annotate
 uv run massflow annotate --config tutorial/tutorial_config.yaml
 ```
+
+## Terminal console (TUI)
+
+A postmodern, keyboard-first interface for finding, uploading, viewing, and
+identifying MS/MS data — no browser required:
+
+```shell
+uv sync --extra tui
+uv run massflow tui --input experiments/run_01.mzML --library libraries/ALL_GNPS.msp
+```
+
+Four tabs:
+
+- **Browser** — recursive spectral-file discovery (`.mzml`, `.mzxml`, `.mgf`,
+  `.msp`, `.db`, `.zarr`), vendor files flagged with a conversion hint,
+  collision-safe workspace upload, and a library inspector.
+- **Viewer** — interactive centroid stick plots (zoom, precursor marker) with
+  a metadata panel per spectrum.
+- **Identify** — target-decoy similarity search with q-value calibration,
+  score gauges, and mirror plots (query up, reference down).
+- **Diagnostics** — every problem with a plain-English fix, plus the
+  quarantine log of spectra the validation layer rejected.
+
+Errors never dump tracebacks over the UI: each failure is captured with a
+stage and an actionable hint (`massflow convert` for vendor files,
+`pip install massflow[ml]` for missing ML engines, migration advice for
+legacy databases, ...). See [docs/api/tui.md](docs/api/tui.md) for the full
+key bindings and design rationale.
 
 A minimal config:
 
@@ -245,7 +290,9 @@ similarity:
   fdr_threshold: 0.01
 
   # --- HNSW candidate pre-stage (sub-linear search) ---
-  hnsw_enabled: true
+  # HNSW candidate retrieval only exists inside the cascade engine:
+  # hnsw_enabled: true requires algorithm: "cascade".
+  hnsw_enabled: false
   hnsw_m: 32
   hnsw_ef_construction: 400
   hnsw_ef_search: 200
@@ -298,10 +345,17 @@ uv run python scripts/migrations/0002_blobs_to_zarr.py --input results/library.d
 
 ```shell
 uv run massflow stream-server --config massflow_config.yaml \
-    --host "[::]" --port 50051 \
+    --host "127.0.0.1" --port 50051 \
     --queue-capacity 2048 --queue-high-water-mark 0.8 \
     --queue-low-quality-threshold 0.5
 ```
+
+The default bind is loopback-only (`127.0.0.1`). For a remote bind you must
+provide TLS credentials (`--tls-cert` / `--tls-key`) or explicitly accept an
+insecure deployment (`--allow-insecure-remote`). Control-plane operations
+(`SET_CONFIG`, `LOAD_LIBRARY`, `START`, `STOP`) require `--admin-token`;
+config/library mutation additionally requires `--allow-remote-control`. See
+the security model in `MassFlow.streaming.server` for details.
 
 The bidirectional `StreamSpectra` RPC accepts `SpectrumPacket` streams from
 instrument clients and yields `AnnotationResponse` objects computed by the
@@ -313,10 +367,10 @@ a deprecated alias.)
 
 | Engine | Status | Notes |
 | --- | --- | --- |
-| `cosine`, `modified_cosine` | Stable | Primary scoring paths; exact-mass + neutral-loss aware |
-| `cascade` | Stable | HNSW pre-stage → Numba prefilter → exact re-scoring |
-| `consensus` | Stable | Weighted ensemble of engines, classical fallback built in |
-| `spec2vec`, `ms2deepscore` | Remote | Served via the massflow-ml boundary (`massflow[ml]`) |
+| `cosine`, `modified_cosine` | **Stable** | Primary scoring paths of the v0.1 product contract |
+| `cascade` | Experimental | HNSW pre-stage → Numba prefilter → exact re-scoring; opt-in, `[ml]`-free classical stages work |
+| `consensus` | Experimental | Weighted ensemble of engines with classical fallback built in |
+| `spec2vec`, `ms2deepscore` | Experimental | Require the massflow-ml boundary (`massflow[ml]`) or remote endpoints |
 
 ## The ML satellite in one glance
 

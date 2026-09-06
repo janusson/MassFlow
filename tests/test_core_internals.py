@@ -302,9 +302,15 @@ class TestProcessSpectraBatch:
             intensities=np.array([1.0], dtype=np.float64),
             metadata={"id": "out_of_range", "precursor_mz": 2000.0, "charge": 1},
         )
-        cfg = config.ProcessingConfig(mz_max=1000.0, min_peaks=1)
+        # The precursor m/z window only applies when filter_by_mz is on.
+        cfg = config.ProcessingConfig(mz_max=1000.0, min_peaks=1, filter_by_mz=True)
         result = processing.process_spectra_batch([s], cfg)
         assert len(result) == 0
+
+        # With the toggle off the spectrum is kept (documented semantics).
+        cfg_off = config.ProcessingConfig(mz_max=1000.0, min_peaks=1)
+        result_off = processing.process_spectra_batch([s], cfg_off)
+        assert len(result_off) == 1
 
     def test_batch_filters_by_peak_count(self):
         s = Spectrum(
@@ -312,9 +318,18 @@ class TestProcessSpectraBatch:
             intensities=np.array([1.0], dtype=np.float64),
             metadata={"id": "few_peaks", "precursor_mz": 200.0, "charge": 1},
         )
-        cfg = config.ProcessingConfig(min_peaks=5, noise_threshold=0.0)
+        # The minimum-peak-count rejection only applies when
+        # filter_min_peaks is on.
+        cfg = config.ProcessingConfig(
+            min_peaks=5, noise_threshold=0.0, filter_min_peaks=True
+        )
         result = processing.process_spectra_batch([s], cfg)
         assert len(result) == 0
+
+        # With the toggle off the spectrum is kept (documented semantics).
+        cfg_off = config.ProcessingConfig(min_peaks=5, noise_threshold=0.0)
+        result_off = processing.process_spectra_batch([s], cfg_off)
+        assert len(result_off) == 1
 
     def test_batch_handles_list_charge(self):
         s = Spectrum(

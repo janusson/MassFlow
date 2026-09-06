@@ -2,6 +2,13 @@
 
 This document provides a concise reference for all public classes, attributes, methods, and functions in the MassFlow package.
 
+## `MassFlow.acceleration`
+
+- `build_flat_peak_arrays(spectra: Sequence[Spectrum]) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]`
+- `prefilter_candidate_pairs(query_spectra, reference_spectra, min_matched_peaks, ms2_tolerance, ...) -> np.ndarray`
+
+Numba-accelerated peak/neutral-loss prefilter used by `SimilarityEngine` to skip query–reference pairs below `min_matched_peaks` before exact modified-cosine scoring, with a pure-NumPy fallback when `numba` is not installed.
+
 ## `MassFlow.cheminformatics`
 
 - `calculate_tanimoto_similarity(smiles1: str, smiles2: str) -> Optional[float]`
@@ -15,12 +22,16 @@ This document provides a concise reference for all public classes, attributes, m
 - `version_callback(value: bool) -> Any`
 - `main_callback(version: Optional[bool]) -> Any`
 - `run_init(output: str, force: bool) -> Any`
+- `run_tutorial(output: str, force: bool) -> Any`
 - `run_annotate(config: str) -> Any`
 - `run_convert(input: str, output: str) -> Any`
-- `run_db_build(input: str, output: str, config: str, category: str) -> Any`
+- `run_db_build(input: str, output: str, config: str, category: str, backend: str) -> Any`
 - `run_db_inspect(file: str) -> Any`
 - `run_db_merge(inputs: List[str], output: str) -> Any`
+- `run_stream_server(config: str, host: str, port: int, ...) -> Any`
+- `run_serve(config: str, host: str, port: int, ...) -> Any`
 - `run_watch(config: str) -> Any`
+- `run_tui(input: Optional[str], library: Optional[str], workspace: Optional[str]) -> Any`
 - `main() -> Any`
 
 ## `MassFlow.config`
@@ -69,6 +80,8 @@ This document provides a concise reference for all public classes, attributes, m
   - `solvents: List[SolventConfig]`
   - `precursor_mz: float`
   - `retention_time: float`
+  - `decoy_min_relative_intensity: float`
+  - `decoy_mz_shift_da: float`
   - `validate_precursor_mz(v: float) -> float`
 - **`class SimilarityConfig`**
   - `algorithm: Literal['cosine', 'modified_cosine', 'spec2vec', 'ms2deepscore', 'consensus', 'cascade']`
@@ -78,6 +91,21 @@ This document provides a concise reference for all public classes, attributes, m
   - `cascade_tier2: Literal['spec2vec', 'ms2deepscore']`
   - `cascade_lower_bound: float`
   - `cascade_upper_bound: float`
+  - `cascade_stages: list[str]`
+  - `consensus_min_engines: int`
+  - `hnsw_enabled: bool`
+  - `hnsw_m: int`
+  - `hnsw_ef_construction: int`
+  - `hnsw_ef_search: int`
+  - `hnsw_candidates_per_query: int`
+  - `hnsw_bin_width: float`
+  - `hnsw_mz_min: float`
+  - `hnsw_mz_max: float`
+  - `hnsw_random_seed: int`
+  - `ml_endpoints: Optional[dict[str, str]]`
+  - `ml_request_timeout_seconds: float`
+  - `ml_circuit_breaker_threshold: int`
+  - `ml_circuit_breaker_cooldown_seconds: float`
   - `model_path: Optional[Path]`
   - `ms1_tolerance: float`
   - `resolution_ppm: Optional[float]`
@@ -93,7 +121,7 @@ This document provides a concise reference for all public classes, attributes, m
 - **`class WorkflowConfig`**
   - (no active fields; reserved for future pipeline stages)
 - **`class ExportConfig`**
-  - `format: Literal['csv', 'pickle', 'msp', 'mgf', 'json', 'xlsx', 'parquet', 'fbmn', 'mztab']`
+  - `format: Literal['csv', 'mztab']` (only these two are wired into the workflow)
 - **`class MassFlowConfig`**
   - `project: ProjectConfig`
   - `input: InputConfig`
@@ -126,6 +154,7 @@ This document provides a concise reference for all public classes, attributes, m
 - `create_migrated_spectra_table(connection: sqlite3.Connection) -> None`
 - `migrate_legacy_peaks_database(db_path: Union[str, Path]) -> dict[str, Any]`
 - `migrate_legacy_peaks_to_arrays(db_path: Union[str, Path]) -> dict[str, Any]`
+- `migrate_blobs_to_zarr(db_path: Union[str, Path], ...) -> dict[str, Any]`
 - **`class SpectralDatabase`**
   - `__init__(db_path: Union[str, Path], allow_destructive_upgrade: bool) -> Any`
   - `add_spectra(spectra: Iterator[Spectrum], category: str, batch_size: int) -> int`
@@ -134,6 +163,21 @@ This document provides a concise reference for all public classes, attributes, m
   - `get_category_counts() -> dict[str, int]`
   - `get_precursor_mz_range() -> tuple[float, float]`
   - `close() -> None`
+
+`SpectralDatabase` also supports hybrid mode: when opened with a `zarr_path` (or built with `--backend hybrid`), peak arrays live in a chunked Zarr store referenced by `zarr_ref`/`zarr_index` columns.
+
+## `MassFlow.hnsw`
+
+- `spectrum_to_binned_vector(spectrum: Spectrum, bin_width: float, mz_min: float, mz_max: float) -> np.ndarray`
+- `bin_spectra(spectra: Iterable[Spectrum], bin_width: float, mz_min: float, mz_max: float) -> np.ndarray`
+- **`class HNSWSpectralIndex`**
+  - `__init__(dim: int, m: int, ef_construction: int, seed: int, ...) -> Any`
+  - `add_spectra(vectors: np.ndarray, ids: list[str]) -> None`
+  - `search(query_vector: np.ndarray, k: int, ef_search: int) -> tuple[np.ndarray, np.ndarray]`
+  - `save(path: Path) -> None`
+  - `load(path: Path, ...) -> 'HNSWSpectralIndex'`
+
+hnswlib-backed two-channel candidate index (`[binned exact m/z, binned neutral losses]`) used by `CascadeEngine` for sub-linear approximate candidate retrieval. Requires the `hnsw` extra.
 
 ## `MassFlow.io`
 
@@ -149,11 +193,27 @@ This document provides a concise reference for all public classes, attributes, m
 - `save_spectra_to_mgf(spectra: Iterable[Spectrum], export_path: Path) -> None`
 - `save_match_results_to_mztab(results: list[dict[str, Any]], output_path: Path, query_spectra: Optional[Iterable[Spectrum]]) -> None`
 
+## `MassFlow.library`
+
+- **`class LibrarySpec`** — compact, pickle-safe store reference (path + backend) crossed between processes.
+- **`class RawFileLibraryStore`** — read-only `SpectralStore` adapter over raw spectral files (mzML/mzXML/MGF/MSP); writes are rejected explicitly.
+- `prepare_library(config: MassFlowConfig) -> LibrarySpec` — normalize a raw spectral library into a store in the configured backend (`sqlite`/`zarr`/`hybrid`); store inputs (`.db`/`.zarr`) are used directly.
+- `open_library(spec: LibrarySpec, config: MassFlowConfig) -> SpectralStore`
+- `library_spec_for_config(config: MassFlowConfig) -> LibrarySpec`
+
+Worker-owned backend model: the parent builds the library once, workers open it themselves, so RAM scales with chunk size, not library size.
+
 ## `MassFlow.log_config`
 
 - **`class StructuredFormatter`**
   - `format(record: Any) -> Any`
 - `setup_structured_logging(level: Any) -> Any`
+
+## `MassFlow.ml_client`
+
+- **`class CircuitBreaker`** — fail-fast wrapper (open/half-open/closed) protecting remote scoring.
+- **`class CircuitOpenError`** (exception)
+- **`class RemoteMLEngine`** (implements `MLEngineProtocol`) — REST (`http(s)://`) or gRPC (`grpc://`) client for remote Spec2Vec/MS2DeepScore scoring via the `massflow.v1.ml` service; used when `SimilarityConfig.ml_endpoints` is configured. Core MassFlow stays free of PyTorch/Gensim.
 
 ## `MassFlow.models`
 
@@ -225,6 +285,13 @@ This document provides a concise reference for all public classes, attributes, m
 - `process_spectra_batch(spectra: List[Spectrum], config: ProcessingConfig) -> List[Spectrum]`
 - `process_spectra(spectra: Iterator[Spectrum], config: ProcessingConfig) -> Iterator[Spectrum]`
 
+## `MassFlow.protocols`
+
+- **`class MLEngineProtocol`** (abstract base)
+  - `score(query_spectra, reference_spectra) -> list[list[float]]`
+
+Engine-agnostic contract implemented by local ML engines and by `RemoteMLEngine` (see `MassFlow.ml_client`) so core MassFlow never depends on PyTorch/Gensim at import time.
+
 ## `MassFlow.similarity`
 
 - **`class SearchResult`**
@@ -256,6 +323,50 @@ This document provides a concise reference for all public classes, attributes, m
   - `search(query_spectra: List[Spectrum], reference_spectra: List[Spectrum], min_score: float | None, top_n: int | None, include_decoys: bool) -> List[SearchResult]`
 - `get_similarity_engine(config: SimilarityConfig) -> SimilarityEngine | ConsensusEngine | CascadeEngine`
 
+## `MassFlow.tui` (interactive terminal console, requires the `tui` extra)
+
+- `MassFlow.tui.state` — `SpectrumSummary`, `SearchHit`, `IdentificationRequest`,
+  `IdentificationOutcome`, `QueryLoadResult`, `LibraryInfo` dataclasses
+- `MassFlow.tui.spectrum_data` — `downsample_peaks`, `display_entropy`,
+  `summarize_spectrum`, `peak_bounds`, `mirror_align`, `format_mz`,
+  `format_retention_time`, `annotation_status`
+- `MassFlow.tui.plot` — `render_stick_plot`, `render_mirror_plot`,
+  `render_score_gauge`, `render_axis_labels`
+- `MassFlow.tui.files` — `classify_file`, `discover_spectral_files`,
+  `copy_into_workspace`, `human_size`, `guess_backend`
+- `MassFlow.tui.diagnostics` — `TuiError`, `Problem`, `suggest_fix`,
+  `parse_quarantine_log`, `QuarantineEntry`
+- `MassFlow.tui.pipeline` — `load_query_preview`, `inspect_library`,
+  `run_identification`, `capture_quarantine_records`
+- `MassFlow.tui.app` — `MassFlowApp` (Textual application)
+
+## `MassFlow.storage`
+
+- **`class SpectralStore`** (abstract base)
+  - `add_spectra(spectra, category, batch_size) -> int`
+  - `get_spectra(category, name_pattern) -> Iterator[Spectrum]`
+  - `get_total_spectra_count() -> int`
+  - `get_category_counts() -> dict[str, int]`
+  - `get_precursor_mz_range() -> tuple[float, float]`
+  - `close() -> None`
+- `create_spectral_store(path: Union[str, Path], mode: str, category: str, ...) -> SpectralStore`
+
+Factory for the SQLite (`SpectralDatabase`), Zarr, and hybrid backends.
+
+## `MassFlow.streaming.queue`
+
+- **`class BoundedQueue`**
+  - `put(packet: QueuedPacket) -> None`
+  - `get() -> QueuedPacket`
+  - `stats() -> QueueStats`
+- `compute_packet_quality(packet: QueuedPacket) -> float`
+- **`class QueueStats`**
+- **`class QueuedPacket`**
+- **`class OverflowPolicy`** (`drop_oldest`, `block`, `drop_newest`)
+- **`class QueueFull`** (exception)
+
+Quality-gated bounded queue used by the gRPC streaming server for backpressure and low-quality packet shedding.
+
 ## `MassFlow.streaming.server`
 
 - **`class MassFlowStreamingServicer`**
@@ -265,3 +376,19 @@ This document provides a concise reference for all public classes, attributes, m
 ## `MassFlow.workflow`
 
 - `run_annotation_pipeline(config: MassFlowConfig, config_path: Path | str | None) -> None`
+
+## `MassFlow.zarr_store`
+
+- **`class ZarrSpectralStore`** (implements `SpectralStore`)
+  - `add_spectra(spectra, category, batch_size) -> int`
+  - `get_spectra(category, name_pattern) -> Iterator[Spectrum]`
+  - `get_spectrum_by_id(spectrum_id: str) -> Optional[Spectrum]`
+  - `batch_get_arrays(indices) -> tuple[list[np.ndarray], list[np.ndarray]]`
+  - `get_total_spectra_count() -> int`
+  - `get_category_counts() -> dict[str, int]`
+  - `get_precursor_mz_range() -> tuple[float, float]`
+  - `cache_stats() -> dict[str, int]`
+  - `is_remote() -> bool`
+  - `close() -> None`
+- **`class ZarrPeakArrayStore`**
+  - Chunked, compressed storage of fragment `mz`/`intensity` arrays with lock-free concurrent reads for multiprocessing.

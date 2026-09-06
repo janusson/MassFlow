@@ -32,6 +32,18 @@ Exports
 * ``validate_streaming_spectrum`` – Pre-scoring validation + peak filtering gate.
 * ``QueuedPacket`` – Internal representation of an ingested spectrum.
 * ``QueueStats`` – Live throughput / latency metrics.
+
+Security
+--------
+The server defaults to a loopback-only bind (``127.0.0.1``), no TLS on
+loopback, a disabled control plane (no admin token configured), and remote
+config mutation blocked. Remote binds require TLS (or an explicit
+``--allow-insecure-remote`` override, which logs a prominent warning).
+Control operations require ``--admin-token``; config/library mutation
+additionally requires ``--allow-remote-control``. Every administrative
+action is audit-logged to ``massflow.streaming.security``. See
+``MassFlow.streaming.server`` for the full security model and
+``tests/test_streaming_security.py`` for the regression suite.
 """
 
 from MassFlow.streaming.engine import (

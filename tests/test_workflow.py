@@ -11,7 +11,12 @@ import pytest
 from matchms import Spectrum
 
 from MassFlow.config import InputConfig, MassFlowConfig, ProjectConfig, SimilarityConfig
-from MassFlow.workflow import _process_single_file, run_annotation_pipeline
+from MassFlow.workflow import (
+    FileExecutionResult,
+    _process_single_file,
+    experimental_surface_flags,
+    run_annotation_pipeline,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -62,21 +67,17 @@ def test_run_annotation_pipeline_success(
         input=InputConfig(input_path=exp_path, library_path=ref_path),
         similarity=SimilarityConfig(fdr_threshold=1.0),
     )
-    # Mock Data
+    # Mock Data: queries may be mocks, but the library is now written to a
+    # real worker store, so the library spectrum must be a real Spectrum.
     mock_query = MagicMock()
     mock_query.get.side_effect = lambda k, d=None: "Query1" if k == "id" else d
 
-    mock_ref = MagicMock()
-    mock_ref.get.return_value = "Ref1"
-    mock_ref.metadata = {"compound_name": "Ref1_MOCK", "id": "Ref1"}
-    mock_ref.peaks.mz = np.array([100.0, 200.0])
-    mock_ref.peaks.intensities = np.array([1.0, 1.0])
+    mock_ref = make_spectrum("Ref1", precursor_mz=200.0)
 
     # Mock load_spectra to return iterables
-    # First call for reference (run_annotation_pipeline),
-    # Second call for query (_process_single_file),
-    # Third call for reference again (_process_single_file)
-    mock_load.side_effect = [[mock_ref], [mock_query], [mock_ref]]
+    # First call for the library (prepare_library store build),
+    # Second call for query (_process_single_file).
+    mock_load.side_effect = [[mock_ref], [mock_query]]
 
     # Mock process_spectra to pass through
     mock_process.side_effect = lambda s, c: s
@@ -97,10 +98,16 @@ def test_run_annotation_pipeline_success(
     # Run
     run_annotation_pipeline(config)
 
-    # Verify
-    assert mock_load.call_count == 3
+    # Verify: the library is streamed from the worker store (round-tripped
+    # spectra, identified by metadata, not object identity).
+    assert mock_load.call_count == 2
     mock_engine_cls.assert_called_with(config.similarity)
-    assert search_calls == [([mock_query], [mock_ref])]
+    assert len(search_calls) == 1
+    queries_seen, library_seen = search_calls[0]
+    assert queries_seen == [mock_query]
+    assert len(library_seen) == 1
+    assert library_seen[0].get("id") == "Ref1"
+    assert float(library_seen[0].get("precursor_mz")) == 200.0
 
     expected_out_file = out_dir / "experimental_results.csv"
     expected_report_file = out_dir / "experimental_results.report.yaml"
@@ -119,6 +126,62 @@ def test_run_annotation_pipeline_success(
     assert report_payload["similarity"] == config.similarity.model_dump(mode="json")
 
 
+def test_experimental_surface_flags_stable_configuration_is_empty(tmp_path):
+    """The default stable configuration must flag no experimental surface."""
+    config = MassFlowConfig(
+        project=ProjectConfig(output_directory=tmp_path / "results"),
+        input=InputConfig(
+            input_path=tmp_path / "q.mgf",
+            library_path=tmp_path / "ref.msp",
+            format="mgf",
+        ),
+    )
+    assert experimental_surface_flags(config) == []
+
+
+def test_experimental_surface_flags_identify_each_surface(tmp_path):
+    """Every experimental surface is flagged independently and visibly."""
+    from MassFlow.config import ProcessingConfig
+
+    base = dict(
+        project=ProjectConfig(output_directory=tmp_path / "results"),
+        input=InputConfig(
+            input_path=tmp_path / "q.mgf",
+            library_path=tmp_path / "ref.msp",
+            format="mgf",
+        ),
+        processing=ProcessingConfig(min_peaks=1),
+    )
+
+    cases = [
+        (SimilarityConfig(algorithm="consensus"), ["experimental_engine:consensus"]),
+        (SimilarityConfig(algorithm="cascade"), ["experimental_engine:cascade"]),
+        (SimilarityConfig(algorithm="spec2vec"), ["experimental_engine:spec2vec"]),
+        (
+            SimilarityConfig(algorithm="ms2deepscore"),
+            ["experimental_engine:ms2deepscore"],
+        ),
+        (SimilarityConfig(enable_routing=True), ["experimental_routing"]),
+        (
+            # Cascade + HNSW: BOTH surfaces are active and both are flagged.
+            SimilarityConfig(hnsw_enabled=True, algorithm="cascade"),
+            ["experimental_engine:cascade", "experimental_hnsw"],
+        ),
+        (
+            SimilarityConfig(ml_endpoints={"spec2vec": "http://ml:8080/spec2vec"}),
+            ["experimental_remote_ml"],
+        ),
+        # The classical engines are never flagged.
+        (SimilarityConfig(algorithm="cosine"), []),
+        (SimilarityConfig(algorithm="modified_cosine"), []),
+    ]
+    for similarity, expected in cases:
+        config = MassFlowConfig(**base, similarity=similarity)
+        assert experimental_surface_flags(config) == expected, (
+            f"algorithm={similarity.algorithm}: expected {expected}"
+        )
+
+
 @patch("MassFlow.workflow.ProcessPoolExecutor")
 @patch("MassFlow.workflow.processing.process_spectra")
 @patch("MassFlow.workflow.io.load_spectra")
@@ -132,12 +195,9 @@ def test_run_annotation_pipeline_no_query_spectra(
         max_workers=1
     )
 
-    # Ref loaded first (valid), Query loaded second (empty)
-    mock_ref = MagicMock()
-    mock_ref.get.return_value = "Ref1"
-    mock_ref.metadata = {"compound_name": "Ref1_MOCK", "id": "Ref1"}
-    mock_ref.peaks.mz = np.array([100.0, 200.0])
-    mock_ref.peaks.intensities = np.array([1.0, 1.0])
+    # Ref loaded first (valid), Query loaded second (empty). The library is
+    # written to a real worker store, so it must be a real Spectrum.
+    mock_ref = make_spectrum("Ref1", precursor_mz=200.0)
 
     mock_load.side_effect = [[mock_ref], []]
     mock_process.side_effect = lambda s, c: s
@@ -221,10 +281,11 @@ def test_run_annotation_pipeline_small_library_warning_threshold(
     ref_path = tmp_path / "reference.msp"
     ref_path.touch()
 
-    mock_process_single_file.return_value = (
-        exp_path,
-        [query_spectrum],
-        [],
+    mock_process_single_file.return_value = FileExecutionResult(
+        status="success",
+        input_path=exp_path,
+        query_spectra=[query_spectrum],
+        results=[],
     )
 
     config = MassFlowConfig(
@@ -322,13 +383,14 @@ def test_process_single_file_logs_and_returns_empty_on_malformed_input(
     )
 
     with caplog.at_level(logging.ERROR):
-        processed_file, query_spectra, results = _process_single_file(
-            Path("bad.mgf"), config
-        )
+        result = _process_single_file(Path("bad.mgf"), config)
 
-    assert processed_file == Path("bad.mgf")
-    assert query_spectra == []
-    assert results == []
+    assert result.input_path == Path("bad.mgf")
+    assert result.status == "failed"
+    assert result.query_spectra == []
+    assert result.results == []
+    assert len(result.fatal_errors) == 1
+    assert "Malformed spectral file" in result.fatal_errors[0]
     assert "Failed to process bad.mgf" in caplog.text
 
 
@@ -396,15 +458,13 @@ def test_process_single_file_tiny_library_fdr_sensitivity(
     )
 
     with patch("MassFlow.workflow._worker_engine", fake_engine):
-        processed_file, query_spectra, results = _process_single_file(
-            Path("query.mgf"), config
-        )
+        result = _process_single_file(Path("query.mgf"), config)
 
-    assert processed_file == Path("query.mgf")
-    assert query_spectra == [query]
-    assert len(results) == expected_result_count
+    assert result.input_path == Path("query.mgf")
+    assert result.query_spectra == [query]
+    assert len(result.results) == expected_result_count
     if expected_q_value is not None:
-        assert results[0]["q_value"] == pytest.approx(expected_q_value)
+        assert result.results[0]["q_value"] == pytest.approx(expected_q_value)
 
 
 @pytest.mark.parametrize("export_format", ["csv", "mztab"])
@@ -450,11 +510,9 @@ def test_run_annotation_pipeline_export_routing(
     mock_query = MagicMock()
     mock_query.get.side_effect = lambda k, d=None: "Query1" if k == "id" else d
 
-    mock_ref = MagicMock()
-    mock_ref.get.return_value = "Ref1"
-    mock_ref.metadata = {"compound_name": "Ref1_MOCK", "id": "Ref1"}
-    mock_ref.peaks.mz = np.array([100.0, 200.0])
-    mock_ref.peaks.intensities = np.array([1.0, 1.0])
+    # The library is now written to a real worker store, so the library
+    # spectra must be real matchms.Spectrum objects (queries may stay mocked).
+    mock_ref = make_spectrum("Ref1", precursor_mz=200.0)
 
     mock_load.side_effect = [[mock_ref], [mock_query], [mock_ref]]
     mock_process.side_effect = lambda s, c: s
@@ -538,7 +596,9 @@ def test_run_annotation_pipeline_nested_input_dirs(
 
     # Ignore the rest
     with patch("MassFlow.workflow._process_single_file") as mock_psf:
-        mock_psf.return_value = (Path("mock"), [], [])
+        mock_psf.return_value = FileExecutionResult(
+            status="success", input_path=Path("mock")
+        )
         run_annotation_pipeline(config)
 
         # Check that both valid.mgf and sample.d were submitted
@@ -589,12 +649,10 @@ def test_process_single_file_deduplicates_query_ids(mock_load, mock_process, tmp
     )
 
     with patch("MassFlow.workflow._worker_engine", fake_engine):
-        processed_file, processed_queries, results = _process_single_file(
-            Path("query.mgf"), config
-        )
+        result = _process_single_file(Path("query.mgf"), config)
 
     # Validate that the IDs have been rewritten to be unique
-    extracted_ids = [q.get("id") for q in processed_queries]
+    extracted_ids = [q.get("id") for q in result.query_spectra]
 
     assert extracted_ids[0] == "duplicate_id"
     assert extracted_ids[1] == "duplicate_id_1"

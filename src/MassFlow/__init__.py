@@ -9,12 +9,7 @@ package version and handles sub-module imports for convenient access.
 
 from __future__ import annotations
 
-import importlib.metadata
-
-try:
-    __version__ = "0.1.0"
-except importlib.metadata.PackageNotFoundError:
-    __version__ = "unknown"
+__version__ = "0.1.0"
 
 __all__ = [
     "MassFlowConfig",

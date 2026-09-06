@@ -14,10 +14,11 @@ harmonization is deferred to :mod:`MassFlow.processing` after import.
 
 from __future__ import annotations
 
+import json
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterable, Iterator, Optional
+from typing import Any, Callable, Iterable, Iterator, Optional
 
 import numpy as np
 import polars as pl
@@ -45,7 +46,9 @@ quarantine_logger = logging.getLogger("quarantine")
 
 
 def _validate_spectra_iterator(
-    spectra: Iterable[Spectrum], source_path: Path
+    spectra: Iterable[Spectrum],
+    source_path: Path,
+    rejection_reporter: Optional[Callable[[str], None]] = None,
 ) -> Iterator[Spectrum]:
     """
     A high-performance validation layer for spectrum iterators.
@@ -67,6 +70,12 @@ def _validate_spectra_iterator(
         An iterator of raw spectrum objects from a loader.
     source_path : Path
         The file path the spectrum was loaded from (for logging).
+    rejection_reporter : Callable[[str], None] or None
+        Optional callback invoked with the rejection reason for every
+        spectrum dropped by this validation layer. Used by the workflow to
+        make spectrum-level rejections observable in the per-file execution
+        result and provenance (a scientific analysis must never silently
+        drop data).
 
     Yields
     ------
@@ -131,6 +140,8 @@ def _validate_spectra_iterator(
         if is_valid:
             yield spectrum
         else:
+            if rejection_reporter is not None:
+                rejection_reporter(rejection_reason)
             quarantine_logger.warning(
                 f"Quarantined Spectrum | Source: {source_path.name} | "
                 f"ID: {spec_id} | Reason: {rejection_reason}"
@@ -138,7 +149,9 @@ def _validate_spectra_iterator(
 
 
 def load_spectra(
-    file_path: Path, file_format: Optional[str] = None
+    file_path: Path,
+    file_format: Optional[str] = None,
+    rejection_reporter: Optional[Callable[[str], None]] = None,
 ) -> Iterator[Spectrum]:
     """
     Load spectra from an open spectral file or a MassFlow-native store.
@@ -158,6 +171,10 @@ def load_spectra(
         Explicit format override. Accepted values are ``mzml``, ``mzxml``,
         ``mgf``, ``msp``, ``db``, and ``sqlite``. If omitted, the format is
         inferred from the file extension.
+    rejection_reporter : Callable[[str], None] or None
+        Optional callback invoked with the rejection reason for every
+        spectrum dropped by the validation layer (see
+        :func:`_validate_spectra_iterator`).
 
     Yields
     ------
@@ -223,7 +240,7 @@ def load_spectra(
         raise ValueError(f"Format '{fmt}' is not supported by MassFlow.")
 
     # Step 3: Yield spectra through the validation layer
-    yield from _validate_spectra_iterator(loader, path)
+    yield from _validate_spectra_iterator(loader, path, rejection_reporter)
 
 
 def _build_results_dataframe(
@@ -236,15 +253,23 @@ def _build_results_dataframe(
     This is an internal helper shared by the various export functions to ensure
     consistent data shaping, merging, and status labeling.
     """
-    # Sanitize any numpy scalars in result dicts before they enter Polars.
-    # numpy bool/int/float scalars trigger DeprecationWarnings (and future
-    # errors) when interpreted as indices during DataFrame construction.
+    # Sanitize result dicts before they enter Polars:
+    # * numpy bool/int/float scalars trigger DeprecationWarnings (and future
+    #   errors) when interpreted as indices during DataFrame construction;
+    # * nested structures (e.g. the consensus engine's ``score_breakdown``
+    #   dict) cannot be written to CSV/mzTab-M by Polars, so they are
+    #   serialized to compact deterministic JSON. Scientific data is never
+    #   dropped: the breakdown remains recoverable from the exported row.
     clean_results = []
     for r in results:
-        clean_r = r.copy()
-        for key in ("is_decoy",):
-            if key in clean_r and hasattr(clean_r[key], "item"):
-                clean_r[key] = clean_r[key].item()
+        clean_r = {}
+        for key, value in r.items():
+            if isinstance(value, dict):
+                clean_r[key] = json.dumps(value, sort_keys=True, separators=(",", ":"))
+            elif hasattr(value, "item"):
+                clean_r[key] = value.item()
+            else:
+                clean_r[key] = value
         clean_results.append(clean_r)
 
     if query_spectra is not None:

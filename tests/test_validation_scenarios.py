@@ -1,4 +1,7 @@
 from MassFlow.models import MolecularStructure
+import pytest
+
+pytestmark = pytest.mark.scientific
 
 
 def test_molecular_structure_ethanol_envelope():

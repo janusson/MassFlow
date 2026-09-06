@@ -83,6 +83,9 @@ class QueuedPacket:
     collision_energy: float
     acquisition_timestamp_ns: int
     enqueue_time_ns: int = field(default_factory=time.time_ns)
+    # Owning gRPC connection (used to route responses back to the client
+    # that sent the packet — responses must never cross connections).
+    connection_id: str = ""
 
 
 # --------------------------------------------------------------------------
@@ -278,7 +281,7 @@ class BoundedQueue:
         self,
         packet: QueuedPacket,
         timeout: float | None = None,
-    ) -> None:
+    ) -> bool:
         """Enqueue a packet, governed by the active overflow policy.
 
         Parameters
@@ -292,6 +295,12 @@ class BoundedQueue:
             discarded, ``total_dropped`` is incremented, and a critical
             warning is logged.  ``None`` means block indefinitely.
 
+        Returns
+        -------
+        bool
+            ``True`` if the packet was enqueued, ``False`` if it was
+            dropped (quality gate, backpressure timeout, or shutdown).
+
         Raises
         ------
         QueueFull
@@ -303,7 +312,7 @@ class BoundedQueue:
             logger.warning(
                 "Queue is shut down; dropping spectrum %s.", packet.spectrum_id
             )
-            return
+            return False
 
         # ── High-water-mark quality gate ───────────────────────────────
         # When the buffer is filling up but not yet full, shed low-quality
@@ -311,7 +320,7 @@ class BoundedQueue:
         if not self.is_full and self.is_above_high_water_mark:
             if compute_packet_quality(packet) < self._low_quality_threshold:
                 self._drop_low_quality(packet)
-                return
+                return False
 
         if self.is_full:
             if self._reject_on_full:
@@ -347,7 +356,7 @@ class BoundedQueue:
                 self._queue.put_nowait(packet)
                 self._stats.total_ingested += 1
                 self._stats.current_depth = self._queue.qsize()
-                return
+                return True
 
             # --- BLOCK policy with optional timeout ---
             if timeout is not None:
@@ -366,7 +375,7 @@ class BoundedQueue:
                         self._capacity,
                         packet.spectrum_id,
                     )
-                    return
+                    return False
             else:
                 await self._queue.put(packet)
         else:
@@ -374,6 +383,7 @@ class BoundedQueue:
 
         self._stats.total_ingested += 1
         self._stats.current_depth = self._queue.qsize()
+        return True
 
     def try_put_nowait(self, packet: QueuedPacket) -> None:
         """Enqueue a packet without blocking.

@@ -19,6 +19,9 @@ from MassFlow.cheminformatics import (
 )
 from MassFlow.models import MolecularStructure, SpectrumMetadata
 from MassFlow.similarity import _ms1_prefilter, calculate_fdr, generate_decoys
+import pytest
+
+pytestmark = pytest.mark.scientific
 
 
 # ---------------------------------------------------------------------------

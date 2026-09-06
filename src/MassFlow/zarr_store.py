@@ -16,13 +16,37 @@ Two complementary storage layouts are supported:
 
 ``"tensor"`` (cloud-optimized, experimental)
     ``peaks/tensor`` --- shape ``(2, B, M)`` where channel 0 = m/z, channel 1
-    = intensity, *B* is the number of batch-chunks, and *M* is the maximum
-    peaks per spectrum within a batch.  Each batch slice ``tensor[:, b, :]``
-    contains all peak data for one batch of spectra, zero-padded to *M*.
-    ``peaks/peak_counts`` records the true number of peaks per spectrum so
-    callers can strip padding.  The 2-D chunking maps directly to pairwise
-    similarity batch-processing: reading one reference batch reads exactly
-    the tensor slices needed with no amplification.
+    = intensity, *B* is the number of batch-chunks, and *M* is the configured
+    peak capacity per spectrum (``max_peaks_per_spectrum``).  Each batch slice
+    ``tensor[:, b, :]`` contains all peak data for one batch of spectra,
+    zero-padded to *M*.  ``peaks/peak_counts`` records the true number of
+    peaks per spectrum so callers can strip padding.  The 2-D chunking maps
+    directly to pairwise similarity batch-processing: reading one reference
+    batch reads exactly the tensor slices needed with no amplification.
+
+Peak capacity and scientific fidelity
+-------------------------------------
+Storing a spectrum must never silently change its scientific data.  The
+flat layout stores every peak exactly (arbitrary peak counts).  The tensor
+layout has a fixed per-spectrum capacity *M*; what happens to an
+over-capacity spectrum is governed by the explicit ``peak_reduction``
+policy:
+
+``"none"`` (default)
+    ``add_spectra`` raises :class:`PeakCapacityError` naming the spectrum
+    and its peak count; the batch is rejected atomically.  No data is
+    written, no data is altered.
+
+``"topN"``
+    The spectrum is explicitly reduced to its *M* most intense peaks
+    (deterministic, stable tie-breaking) and the reduction is recorded in
+    the spectrum's stored provenance metadata (``peak_reduction`` inside
+    ``extra_metadata``) so every consumer of the store can see that a
+    transformation was applied.
+
+The active layout, capacity, and reduction policy are persisted in a store
+manifest (``.zattrs``) and validated on every open, so a store cannot be
+re-opened with parameters that would silently reinterpret its data.
 
 Cloud storage is enabled by passing an ``fsspec``-compatible URL as
 ``store_path`` (e.g. ``s3://my-bucket/library.zarr`` or
@@ -97,9 +121,16 @@ _DEFAULT_BOUNDARY_CHUNK_SIZE: int = 4096
 # Spectra per batch for the tensor layout.
 _DEFAULT_TENSOR_BATCH_SIZE: int = 1024
 
-# Default max peaks per spectrum in tensor mode.  Spectra exceeding this
-# are truncated; shorter spectra are zero-padded.
+# Default peak capacity per spectrum in tensor mode.  Spectra exceeding
+# this capacity are NEVER silently altered: the active ``peak_reduction``
+# policy decides between an explicit error and an explicit, provenance-
+# recorded Top-N reduction.
 _DEFAULT_MAX_PEAKS: int = 512
+
+# Root-group attribute holding the persisted store manifest (layout,
+# capacity, reduction policy).  Validated on every open so a store cannot
+# be re-opened with parameters that silently reinterpret its data.
+_MANIFEST_ATTR: str = "massflow_store_manifest"
 
 # Legacy sidecar filename — checked during initialisation for automatic
 # migration to the native-metadata format.
@@ -117,6 +148,54 @@ _DEFAULT_CACHE_TTL: float = 300.0  # seconds
 _BACKOFF_BASE: float = 1.0
 _BACKOFF_MULTIPLIER: float = 2.0
 _BACKOFF_MAX: float = 60.0
+
+
+class PeakCapacityError(ValueError):
+    """A spectrum exceeds the tensor-layout peak capacity.
+
+    Raised by :meth:`ZarrSpectralStore.add_spectra` when a spectrum has more
+    peaks than ``max_peaks_per_spectrum`` and no explicit peak-reduction
+    policy (``peak_reduction="topN"``) is active.  The batch is rejected
+    atomically — nothing is written — so a storage limit can never silently
+    alter scientific data.
+    """
+
+
+def _top_n_peaks(
+    mz: np.ndarray,
+    intensities: np.ndarray,
+    n: int,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Retain the ``n`` most intense peaks, deterministically.
+
+    This is an explicit scientific transformation: unlike the legacy
+    behaviour (silently keeping the first ``n`` peaks in m/z order), it keeps
+    the peaks that dominate cosine scoring.  Ties in intensity are broken by
+    original order (stable sort), and the retained peaks are returned in
+    ascending m/z order, matching the input convention.  When ``n`` >= the
+    number of peaks the arrays are returned unchanged (copies).
+
+    Parameters
+    ----------
+    mz : np.ndarray
+        float64 m/z values, expected m/z-ascending.
+    intensities : np.ndarray
+        float64 intensities aligned with ``mz``.
+    n : int
+        Maximum number of peaks to retain (must be >= 1).
+
+    Returns
+    -------
+    tuple[np.ndarray, np.ndarray]
+        The retained (m/z, intensity) arrays, m/z-ascending.
+    """
+    mz = np.asarray(mz, dtype=np.float64)
+    intensities = np.asarray(intensities, dtype=np.float64)
+    if n >= mz.size:
+        return mz.copy(), intensities.copy()
+    order = np.argsort(-intensities, kind="stable")
+    keep = np.sort(order[:n])
+    return mz[keep].copy(), intensities[keep].copy()
 
 
 def _default_compressor() -> Optional[Any]:
@@ -561,8 +640,16 @@ class ZarrSpectralStore(SpectralStore):
     tensor_batch_size : int, optional
         Spectra per batch in tensor layout.
     max_peaks_per_spectrum : int, optional
-        Maximum peaks per spectrum in tensor layout (spectra are truncated
-        or padded to this size).
+        Peak capacity per spectrum in tensor layout (shorter spectra are
+        zero-padded to this size).  Over-capacity spectra are never silently
+        altered: see ``peak_reduction``.
+    peak_reduction : str, optional
+        Explicit policy for spectra exceeding ``max_peaks_per_spectrum`` in
+        tensor layout.  ``"none"`` (default) raises :class:`PeakCapacityError`
+        and rejects the batch atomically.  ``"topN"`` retains the N most
+        intense peaks and records the reduction in the spectrum's stored
+        provenance metadata (``extra_metadata.peak_reduction``).  Requires
+        ``layout="tensor"``.
     remote_timeout : float, optional
         Timeout in seconds for individual remote read operations.
     remote_retries : int, optional
@@ -608,6 +695,7 @@ class ZarrSpectralStore(SpectralStore):
         layout: str = "flat",
         tensor_batch_size: int = _DEFAULT_TENSOR_BATCH_SIZE,
         max_peaks_per_spectrum: int = _DEFAULT_MAX_PEAKS,
+        peak_reduction: str = "none",
         remote_timeout: float = _DEFAULT_REMOTE_TIMEOUT,
         remote_retries: int = _DEFAULT_REMOTE_RETRIES,
         cache_ttl: float = _DEFAULT_CACHE_TTL,
@@ -623,6 +711,7 @@ class ZarrSpectralStore(SpectralStore):
         # --- Tensor layout config ---
         self._tensor_batch_size = tensor_batch_size
         self._max_peaks = max_peaks_per_spectrum
+        self._peak_reduction = peak_reduction
 
         # --- Remote / retry config ---
         self._remote_timeout = remote_timeout
@@ -646,6 +735,20 @@ class ZarrSpectralStore(SpectralStore):
         if self._layout not in ("flat", "tensor"):
             raise ValueError(
                 f"Unsupported layout: '{self._layout}'. Must be 'flat' or 'tensor'."
+            )
+        if peak_reduction not in ("none", "topN"):
+            raise ValueError(
+                f"Unsupported peak_reduction: '{peak_reduction}'. "
+                "Must be 'none' or 'topN'."
+            )
+        if peak_reduction == "topN" and self._layout != "tensor":
+            raise ValueError(
+                "peak_reduction='topN' requires layout='tensor': the flat "
+                "layout stores every peak exactly and has no peak capacity."
+            )
+        if self._layout == "tensor" and max_peaks_per_spectrum < 1:
+            raise ValueError(
+                "max_peaks_per_spectrum must be >= 1 for the tensor layout."
             )
 
         super().__init__(store_path)
@@ -707,6 +810,11 @@ class ZarrSpectralStore(SpectralStore):
                     # Group may already exist in a concurrent session.
                     pass
 
+        # Validate (or adopt) the persisted store manifest.  The layout,
+        # peak capacity, and reduction policy must match the constructor
+        # arguments, or a later read would silently reinterpret the data.
+        self._validate_or_write_manifest()
+
         # Attempt migration from legacy metadata_index.json if present.
         self._maybe_migrate_legacy_metadata()
 
@@ -730,6 +838,117 @@ class ZarrSpectralStore(SpectralStore):
         self._metadata_cache.clear()
         self._root = None
         self._store = None
+
+    # ------------------------------------------------------------------
+    # Store manifest (layout / capacity / reduction policy persistence)
+    # ------------------------------------------------------------------
+
+    def _validate_or_write_manifest(self) -> None:
+        """Validate the persisted store manifest, or adopt one on first open.
+
+        Stores created before the manifest existed (legacy) are inferred from
+        the on-disk arrays: a store with a ``peaks/tensor`` array is a tensor
+        store whose capacity is the tensor's third dimension.  A mismatch
+        between the constructor arguments and the persisted manifest raises
+        ``ValueError`` instead of silently misreading the data.
+        """
+        manifest = self._read_manifest()
+
+        if manifest is None:
+            inferred_layout = self._infer_layout_from_arrays()
+            if inferred_layout != self._layout:
+                raise ValueError(
+                    f"Store at {self.store_path} was created with layout="
+                    f"{inferred_layout!r} but is being opened with layout="
+                    f"{self._layout!r}. Reopen with the original layout or "
+                    "rebuild the store."
+                )
+            if self._layout == "tensor":
+                pg = self._peaks_group()
+                # A fresh store has no tensor array yet; only existing
+                # (legacy) stores carry the capacity in their shape.
+                if "tensor" in pg:
+                    inferred_m = int(pg["tensor"].shape[2])
+                    if inferred_m != self._max_peaks:
+                        raise ValueError(
+                            f"Store at {self.store_path} was created with "
+                            f"max_peaks_per_spectrum={inferred_m} but is being "
+                            f"opened with max_peaks_per_spectrum={self._max_peaks}. "
+                            "Reopen with the original capacity or rebuild the store."
+                        )
+                    # Legacy tensor stores were built before the reduction policy
+                    # existed; some may contain silently truncated spectra.  The
+                    # only safe policy for such stores is the strict one.
+                    if self._peak_reduction != "none":
+                        raise ValueError(
+                            f"Legacy tensor store at {self.store_path} has no "
+                            "persisted peak-reduction policy; only "
+                            "peak_reduction='none' may be used with it."
+                        )
+                    logger.warning(
+                        "Legacy tensor store %s adopted with capacity %d. "
+                        "Note: pre-manifest stores may contain spectra that were "
+                        "silently truncated at write time; rebuild the store to "
+                        "guarantee peak fidelity.",
+                        self.store_path,
+                        inferred_m,
+                    )
+            if not self._is_remote:
+                self._write_manifest()
+            return
+
+        mismatches: list[str] = []
+        if manifest.get("layout") != self._layout:
+            mismatches.append(f"layout {manifest.get('layout')!r} != {self._layout!r}")
+        if (
+            self._layout == "tensor"
+            and manifest.get("max_peaks_per_spectrum") != self._max_peaks
+        ):
+            mismatches.append(
+                f"max_peaks_per_spectrum {manifest.get('max_peaks_per_spectrum')!r}"
+                f" != {self._max_peaks!r}"
+            )
+        if manifest.get("peak_reduction") != self._peak_reduction:
+            mismatches.append(
+                f"peak_reduction {manifest.get('peak_reduction')!r}"
+                f" != {self._peak_reduction!r}"
+            )
+        if mismatches:
+            raise ValueError(
+                f"Store at {self.store_path} was created with a different "
+                f"configuration ({'; '.join(mismatches)}). Reopen with the "
+                "original parameters or rebuild the store."
+            )
+
+    def _read_manifest(self) -> Optional[dict[str, Any]]:
+        """Return the persisted store manifest, or ``None`` for legacy stores."""
+        if self._root is None:
+            raise RuntimeError("ZarrSpectralStore is not open.")
+        try:
+            attrs = dict(self._root.attrs)
+        except Exception:
+            return None
+        manifest = attrs.get(_MANIFEST_ATTR)
+        return manifest if isinstance(manifest, dict) else None
+
+    def _write_manifest(self) -> None:
+        """Persist the active layout / capacity / policy as the store manifest."""
+        if self._root is None:
+            raise RuntimeError("ZarrSpectralStore is not open.")
+        self._root.attrs[_MANIFEST_ATTR] = {
+            "layout": self._layout,
+            "max_peaks_per_spectrum": self._max_peaks,
+            "peak_reduction": self._peak_reduction,
+        }
+
+    def _infer_layout_from_arrays(self) -> str:
+        """Infer the layout of a legacy (pre-manifest) store from its arrays."""
+        pg = self._peaks_group()
+        if "tensor" in pg:
+            return "tensor"
+        if "mz_flat" in pg:
+            return "flat"
+        return self._layout  # Empty store: nothing to infer.
 
     # ------------------------------------------------------------------
     # Store re-open helper (for read-only concurrent access)
@@ -1144,8 +1363,13 @@ class ZarrSpectralStore(SpectralStore):
     ) -> int:
         """Append spectra to the Zarr store (thread-safe).
 
-        For the tensor layout, spectra are padded/truncated to
-        ``max_peaks_per_spectrum`` and stored in the 3-D tensor.
+        Spectra are stored exactly as given: no peak is ever added, dropped,
+        or reordered implicitly.  The tensor layout stores spectra up to
+        ``max_peaks_per_spectrum`` peaks and zero-pads shorter ones; an
+        over-capacity spectrum is either rejected with
+        :class:`PeakCapacityError` (default) or explicitly reduced to its
+        most intense peaks with the reduction recorded in provenance
+        (``peak_reduction="topN"``).  The flat layout has no peak limit.
         """
         if self._is_remote:
             raise RuntimeError(
@@ -1265,7 +1489,13 @@ class ZarrSpectralStore(SpectralStore):
         spectra_list: list[Spectrum],
         category: str,
     ) -> int:
-        """Append spectra using the 3-D tensor layout."""
+        """Append spectra using the 3-D tensor layout.
+
+        Over-capacity spectra are handled explicitly before any write (the
+        whole batch fails atomically): ``peak_reduction="none"`` raises
+        :class:`PeakCapacityError`; ``peak_reduction="topN"`` retains the
+        most intense peaks and records the reduction in provenance metadata.
+        """
         n_new = len(spectra_list)
         M = self._max_peaks
 
@@ -1276,13 +1506,36 @@ class ZarrSpectralStore(SpectralStore):
         for i, spec in enumerate(spectra_list):
             mz_arr = np.asarray(spec.peaks.mz, dtype=np.float64)
             intensity_arr = np.asarray(spec.peaks.intensities, dtype=np.float64)
-            n_peaks = min(mz_arr.size, M)
+            original_count = mz_arr.size
+
+            reduction_record: Optional[dict[str, Any]] = None
+            if original_count > M:
+                if self._peak_reduction == "none":
+                    raise PeakCapacityError(
+                        f"Spectrum {spec.get('id', '<no id>')!r} has "
+                        f"{original_count} peaks, exceeding the tensor-layout "
+                        f"capacity of {M} (max_peaks_per_spectrum). No peak-"
+                        "reduction policy is active, so the batch was rejected "
+                        "unchanged: nothing was written. Set "
+                        "peak_reduction='topN' to explicitly reduce "
+                        "over-capacity spectra (recorded in provenance)."
+                    )
+                mz_arr, intensity_arr = _top_n_peaks(mz_arr, intensity_arr, M)
+                reduction_record = {
+                    "mode": "topN",
+                    "max_peaks": M,
+                    "original_peak_count": int(original_count),
+                }
+
+            n_peaks = mz_arr.size
             peak_counts[i] = n_peaks
 
-            tensor_data[0, i, :n_peaks] = mz_arr[:n_peaks]
-            tensor_data[1, i, :n_peaks] = intensity_arr[:n_peaks]
+            tensor_data[0, i, :n_peaks] = mz_arr
+            tensor_data[1, i, :n_peaks] = intensity_arr
 
-            entry = self._make_metadata_entry(spec, category)
+            entry = self._make_metadata_entry(
+                spec, category, peak_reduction=reduction_record
+            )
             metadata_entries.append(entry)
 
         fd, lock_acquired = self._acquire_write_lock()
@@ -1335,8 +1588,18 @@ class ZarrSpectralStore(SpectralStore):
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _make_metadata_entry(spec: Spectrum, category: str) -> dict[str, Any]:
-        """Build a metadata dict from a Spectrum for storage."""
+    def _make_metadata_entry(
+        spec: Spectrum,
+        category: str,
+        peak_reduction: Optional[dict[str, Any]] = None,
+    ) -> dict[str, Any]:
+        """Build a metadata dict from a Spectrum for storage.
+
+        ``peak_reduction`` (when given) is recorded inside the spectrum's
+        ``extra_metadata`` under the ``peak_reduction`` key: any intentional
+        storage-stage transformation is part of the stored provenance and
+        round-trips into reconstructed spectra.
+        """
         pmz = spec.get("precursor_mz")
         extra_meta = spec.metadata.copy()
         for reserved in (
@@ -1349,6 +1612,8 @@ class ZarrSpectralStore(SpectralStore):
             "adduct",
         ):
             extra_meta.pop(reserved, None)
+        if peak_reduction is not None:
+            extra_meta["peak_reduction"] = peak_reduction
         extra_json = json.dumps(extra_meta, default=str)
 
         return {
@@ -1636,6 +1901,20 @@ class ZarrSpectralStore(SpectralStore):
     def layout(self) -> str:
         """Return the active storage layout (``"flat"`` or ``"tensor"``)."""
         return self._layout
+
+    def backend_provenance(self) -> dict[str, Any]:
+        """Describe this backend's identity for run provenance.
+
+        Returns
+        -------
+        dict
+            ``{"backend": "zarr", "path": str, "spectrum_count": int}``.
+        """
+        return {
+            "backend": "zarr",
+            "path": str(self.store_path),
+            "spectrum_count": self.get_total_spectra_count(),
+        }
 
 
 # ===================================================================

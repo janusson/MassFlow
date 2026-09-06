@@ -28,17 +28,18 @@ We prioritize stability, predictability, and correct data handling over cutting-
 | Surface | Status | Notes |
 | --- | --- | --- |
 | `massflow annotate --config ...` | **Stable** | Main documented workflow |
-| `massflow watch --config ...` | **Stable** | Interactive live-reloading workflow |
 | YAML configuration | **Stable** | Standardized execution parameters |
-| Open-format ingestion (`mzML`, `mzXML`, `MGF`, `MSP`) | **Stable** | Vendor raw conversion via `convert` is supported |
+| Open-format ingestion (`mzML`, `mzXML`, `MGF`, `MSP`) | **Stable** | Vendor raw formats rejected with an actionable error; `massflow convert` (experimental wrapper) can convert them externally |
 | SQLite library workflows (`massflow db ...`) | **Stable** | Recommended for reusable local libraries |
 | `cosine` and `modified_cosine` | **Stable** | Best-supported classical scoring paths |
-| CSV, mzTab-M, and FBMN export | **Stable** | Main reporting surfaces (w/ YAML provenance reports) |
-| Scientific Validation (5 ppm checks) | **Stable** | Built-in strict physical integrity checks |
-| Orchestrator API (`ConsensusEngine`, etc.) | *Experimental* | Engine-agnostic data contracts for v0.2 ML integration |
-| Advanced Engines (`spec2vec`, `ms2deepscore`, `cascade`) | *Experimental* | Higher setup and complex scientific validation |
-| GraphML networking & Visualization | *Experimental* | Optional and non-core |
-| Language Server (LSP) | *Experimental* | Editor integration for real-time validation |
+| CSV and mzTab-M export | **Stable** | Main reporting surfaces (w/ YAML provenance reports). FBMN export is **not shipped** |
+| Model-layer scientific validation (5 ppm precursor check, isotopic envelopes) | **Stable (model layer)** | Implemented and tested in `MassFlow.models`/`cheminformatics`; enforced as an ingestion gate in the streaming path. Not enforced as a gate on library/query spectra in the classical `annotate` path |
+| `massflow watch --config ...` | *Experimental* | Interactive live-reloading workflow (`[watch]` extra) |
+| `massflow stream-server` | *Experimental* | Real-time gRPC streaming (loopback default, TLS/auth required for remote) |
+| `massflow tui` | *Experimental* | Interactive terminal console (`[tui]` extra) |
+| Advanced Engines (`spec2vec`, `ms2deepscore`, `consensus`, `cascade`) | *Experimental* | Higher setup and complex scientific validation; outside the stable support promise |
+| GraphML networking & Visualization | *Planned* | Documented in places, **not implemented** — do not rely on it |
+| Language Server (LSP) | Removed | The standalone LSP module is not part of the codebase; `docs/api/server.md` documents the removal |
 
 ---
 

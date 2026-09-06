@@ -149,6 +149,8 @@ test_data/
 
 # Data and Results
 results/
+massflow_workspace/
+massflow_quarantine.log
 
 # Development
 requirements-dev.txt
@@ -175,7 +177,7 @@ notes.md
 todo.md
 
 # Dev
-uv.lock
+# NOTE: uv.lock is intentionally COMMITTED (reproducible environments).
 console_log.txt
 .aider.chat.history.md
 .aider.input.history

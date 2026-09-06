@@ -1883,6 +1883,114 @@ class SpectralDatabase(SpectralStore):
             float(row[1]) if row[1] is not None else 0.0,
         )
 
+    # Metadata-field mapping shared by :meth:`metadata_query` and the
+    # per-row reconstruction path.  Mirrors the Zarr backend's field set so
+    # both backends expose the SAME metadata contract.
+    _METADATA_FIELD_TO_COLUMN: dict[str, str] = {
+        "id": "original_id",
+        "name": "name",
+        "precursor_mz": "precursor_mz",
+        "charge": "charge",
+        "ionmode": "ionmode",
+        "adduct": "adduct",
+        "category": "category",
+        "extra_metadata": "metadata",
+    }
+
+    def metadata_query(
+        self,
+        fields: list[str],
+        indices: Optional[np.ndarray] = None,
+        category: Optional[str] = None,
+    ) -> dict[str, np.ndarray]:
+        """Batch-read metadata fields as flat numpy arrays.
+
+        Implements the unified :class:`MassFlow.storage.SpectralStore`
+        metadata-lookup contract (identical semantics to the Zarr backend):
+        ``indices`` are positional spectrum indices in iteration order
+        (``ORDER BY id``), and unknown fields raise ``ValueError``.
+
+        Parameters
+        ----------
+        fields : list of str
+            Metadata field names to retrieve.
+        indices : np.ndarray or None
+            Positional spectrum indices (``int64``).  ``None`` means all.
+        category : str or None
+            If provided, only return rows whose ``category`` matches.
+
+        Returns
+        -------
+        dict[str, np.ndarray]
+            Mapping of field name to a numpy array aligned by index.
+
+        Raises
+        ------
+        ValueError
+            If any requested field is not present in the store.
+        """
+        if not self.conn:
+            raise ConnectionError("Database not connected.")
+        available = sorted(self._METADATA_FIELD_TO_COLUMN)
+        for field in fields:
+            if field not in self._METADATA_FIELD_TO_COLUMN:
+                raise ValueError(
+                    f"Unknown metadata field: '{field}'. Available: {available}"
+                )
+
+        if self.get_total_spectra_count() == 0:
+            return {f: np.array([], dtype=np.float64) for f in fields}
+
+        columns = [self._METADATA_FIELD_TO_COLUMN[f] for f in fields]
+        sql = "SELECT " + ", ".join(columns) + " FROM spectra"
+        params: list[Any] = []
+        if category is not None:
+            sql += " WHERE category = ?"
+            params.append(category)
+        sql += " ORDER BY id"
+
+        cursor = self.conn.cursor()
+        cursor.execute(sql, params)
+        rows = cursor.fetchall()
+
+        result: dict[str, np.ndarray] = {}
+        for position, field in enumerate(fields):
+            values = [row[position] for row in rows]
+            if field == "precursor_mz":
+                result[field] = np.asarray(
+                    [float(v) if v is not None else np.nan for v in values],
+                    dtype=np.float64,
+                )
+            elif field == "charge":
+                result[field] = np.asarray(
+                    [int(v) if v is not None else 0 for v in values], dtype=np.int64
+                )
+            else:
+                result[field] = np.asarray(
+                    ["" if v is None else str(v) for v in values], dtype=object
+                )
+
+        if indices is not None:
+            idx_arr = np.asarray(indices, dtype=np.int64)
+            result = {f: arr[idx_arr] for f, arr in result.items()}
+        return result
+
+    def backend_provenance(self) -> dict[str, Any]:
+        """Describe this backend's identity for run provenance.
+
+        Returns
+        -------
+        dict
+            ``{"backend": "sqlite" | "hybrid", "path": str,
+            "spectrum_count": int}``.
+        """
+        backend = "hybrid" if self._zarr_path is not None else "sqlite"
+        return {
+            "backend": backend,
+            "path": str(self.store_path),
+            "spectrum_count": self.get_total_spectra_count(),
+        }
+
     def get_spectrum_by_id(self, spectrum_id: str) -> Optional[Spectrum]:
         """
         Retrieve a single spectrum by its unique identifier (``original_id``).

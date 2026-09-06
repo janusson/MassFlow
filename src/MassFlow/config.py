@@ -13,9 +13,13 @@ whether certain workflow toggles are currently implemented, are enforced in the
 orchestrating modules.
 """
 
+import difflib
+import hashlib
+import json
 import logging
+import os
 from pathlib import Path
-from typing import List, Literal, Optional, Union
+from typing import Any, List, Literal, Optional, Union, get_args
 
 import pyteomics.mass as pmass
 import yaml
@@ -31,6 +35,24 @@ from pydantic import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Environment variable that restores the legacy CWD-relative path resolution
+# (see :meth:`MassFlowConfig.from_yaml`).
+_COMPAT_CWD_PATHS_ENV = "MASSFLOW_COMPAT_CWD_PATHS"
+
+
+class MassFlowBaseModel(BaseModel):
+    """Strict configuration base model.
+
+    * ``extra="forbid"`` — unknown YAML keys (e.g. a misspelled
+      ``ms2_tolerence``) are rejected with a human-readable error instead of
+      being silently ignored.
+    * ``populate_by_name=True`` — fields with validation aliases accept both
+      the canonical name and the alias (e.g. ``library_path`` /
+      ``reference_library``).
+    """
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
 
 def register_custom_modifications(modifications: dict) -> None:
@@ -119,22 +141,20 @@ class LineNumberLoader(yaml.SafeLoader):
         return mapping
 
 
-class ProjectConfig(BaseModel):
+class ProjectConfig(MassFlowBaseModel):
     """Project metadata and output locations shared across a MassFlow run."""
 
     name: str = "MassFlow_Project"
     output_directory: Path = Path("results")
 
 
-class InputConfig(BaseModel):
+class InputConfig(MassFlowBaseModel):
     """
     Input path and format hints for annotation.
 
     The ``input_path`` can point to either a single spectral file or a
     directory containing multiple files.
     """
-
-    model_config = ConfigDict(populate_by_name=True)
 
     input_path: Path = Field(
         ...,
@@ -172,7 +192,7 @@ class InputConfig(BaseModel):
         self.library_path = value
 
 
-class SolventConfig(BaseModel):
+class SolventConfig(MassFlowBaseModel):
     """
     Named solvent/adduct mass used as optional contextual processing metadata.
 
@@ -222,7 +242,7 @@ class SolventConfig(BaseModel):
         return v
 
 
-class ProcessingConfig(BaseModel):
+class ProcessingConfig(MassFlowBaseModel):
     """
     Parameters for metadata harmonization and peak-level processing.
 
@@ -359,6 +379,21 @@ class ProcessingConfig(BaseModel):
             raise ValueError(f"{info.field_name} cannot be negative. Received: {v}")
         return v
 
+    @model_validator(mode="after")
+    def validate_top_n_requires_n_max(self) -> "ProcessingConfig":
+        """Reject a Top-N reduction toggle that would silently do nothing.
+
+        ``reduce_to_top_n_peaks=True`` without a positive ``n_max`` is a
+        configuration error: the processing pipeline would otherwise accept
+        the toggle and leave every spectrum unreduced, silently.
+        """
+        if self.reduce_to_top_n_peaks and (self.n_max is None or self.n_max <= 0):
+            raise ValueError(
+                "reduce_to_top_n_peaks=True requires n_max to be set to a "
+                "positive value."
+            )
+        return self
+
     # Metadata context
     instrument: Optional[str] = None
     mode: Literal["positive", "negative", ""] = ""
@@ -394,7 +429,7 @@ class ProcessingConfig(BaseModel):
         return v
 
 
-class SimilarityConfig(BaseModel):
+class SimilarityConfig(MassFlowBaseModel):
     """
     Settings for similarity scoring with classical and ML-based algorithms.
 
@@ -438,6 +473,50 @@ class SimilarityConfig(BaseModel):
     ms2_tolerance: float = Field(
         default=0.02, description="Fragment mass tolerance in Da"
     )
+
+    # Legacy alias documented for compatibility: ``tolerance`` (fragment
+    # tolerance in Da) maps onto ``ms2_tolerance``.  Kept as a REAL field so
+    # it is never silently ignored; excluded from the normalized config so
+    # provenance always shows the effective ``ms2_tolerance``.
+    tolerance: Optional[float] = Field(
+        default=None,
+        validation_alias=AliasChoices("tolerance"),
+        exclude=True,
+        description=(
+            "DEPRECATED legacy alias for ms2_tolerance (fragment mass tolerance in Da)."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def apply_legacy_tolerance(self) -> "SimilarityConfig":
+        """Map the deprecated ``tolerance`` key onto ``ms2_tolerance``.
+
+        Setting both keys with different values is ambiguous and rejected;
+        setting only the legacy key applies it as the fragment tolerance
+        with a deprecation warning.
+        """
+        if "tolerance" in self.model_fields_set and self.tolerance is not None:
+            if (
+                "ms2_tolerance" in self.model_fields_set
+                and self.ms2_tolerance != self.tolerance
+            ):
+                raise ValueError(
+                    "Both 'tolerance' (legacy) and 'ms2_tolerance' were set "
+                    "with different values; remove the deprecated "
+                    "'tolerance' key and use 'ms2_tolerance' only."
+                )
+            if self.tolerance < 0:
+                raise ValueError(
+                    f"tolerance cannot be negative. Received: {self.tolerance}"
+                )
+            if self.ms2_tolerance != self.tolerance:
+                logger.warning(
+                    "'tolerance' is deprecated; use 'ms2_tolerance'. "
+                    "Applying tolerance=%.4f as ms2_tolerance.",
+                    self.tolerance,
+                )
+            self.ms2_tolerance = self.tolerance
+        return self
 
     min_score: float = 0.6
     analog_search: bool = False
@@ -654,6 +733,14 @@ class SimilarityConfig(BaseModel):
         ),
     )
 
+    # Leaf engines that can appear as consensus members / cascade stages.
+    _LEAF_ENGINES: tuple[str, ...] = (
+        "cosine",
+        "modified_cosine",
+        "spec2vec",
+        "ms2deepscore",
+    )
+
     @model_validator(mode="after")
     def validate_hnsw_parameters(self) -> "SimilarityConfig":
         """Ensure HNSW construction parameters define a usable graph.
@@ -673,6 +760,43 @@ class SimilarityConfig(BaseModel):
                 "hnsw_mz_min must be < hnsw_mz_max for a non-empty binning "
                 f"range. Received [{self.hnsw_mz_min}, {self.hnsw_mz_max})."
             )
+        return self
+
+    @model_validator(mode="after")
+    def validate_engine_combinations(self) -> "SimilarityConfig":
+        """Reject engine selections that would silently ignore settings.
+
+        * HNSW candidate retrieval only exists inside the cascade engine:
+          ``hnsw_enabled=True`` with any other ``algorithm`` is a
+          configuration error (the index would be built and never used).
+        * ``cascade_stages`` must be a non-empty list of leaf engines.
+        * ``consensus_weights`` keys must be leaf engines with positive
+          weights.
+        """
+        if self.hnsw_enabled and self.algorithm != "cascade":
+            raise ValueError(
+                "hnsw_enabled=True requires algorithm='cascade': HNSW "
+                "candidate retrieval is only used by the cascade engine."
+            )
+        if not self.cascade_stages:
+            raise ValueError("cascade_stages must be a non-empty list of engines.")
+        for stage in self.cascade_stages:
+            if stage not in self._LEAF_ENGINES:
+                raise ValueError(
+                    f"cascade_stages contains unknown engine {stage!r}; valid "
+                    f"leaf engines: {list(self._LEAF_ENGINES)}."
+                )
+        for name, weight in self.consensus_weights.items():
+            if name not in self._LEAF_ENGINES:
+                raise ValueError(
+                    f"consensus_weights contains unknown engine {name!r}; valid "
+                    f"leaf engines: {list(self._LEAF_ENGINES)}."
+                )
+            if weight <= 0:
+                raise ValueError(
+                    f"consensus_weights[{name!r}] must be a positive weight; "
+                    f"received {weight}."
+                )
         return self
 
     @field_validator("ml_endpoints")
@@ -731,7 +855,7 @@ class SimilarityConfig(BaseModel):
         return v
 
 
-class WorkflowConfig(BaseModel):
+class WorkflowConfig(MassFlowBaseModel):
     """
     High-level workflow feature flags (reserved for future pipeline stages).
 
@@ -743,7 +867,7 @@ class WorkflowConfig(BaseModel):
     pass
 
 
-class ExportConfig(BaseModel):
+class ExportConfig(MassFlowBaseModel):
     """
     Declared export preferences for result output.
 
@@ -757,7 +881,7 @@ class ExportConfig(BaseModel):
     )
 
 
-class MassFlowConfig(BaseModel):
+class MassFlowConfig(MassFlowBaseModel):
     """
     Root configuration object loaded from MassFlow YAML files.
 
@@ -771,6 +895,21 @@ class MassFlowConfig(BaseModel):
     similarity: SimilarityConfig = Field(default_factory=SimilarityConfig)
     workflow: WorkflowConfig = Field(default_factory=WorkflowConfig)
     export: ExportConfig = Field(default_factory=ExportConfig)
+    modifications: dict[str, dict] = Field(
+        default_factory=dict,
+        description=(
+            "User-defined chemical modifications registered into pyteomics "
+            "(name -> {formula, type}) before any spectral processing occurs."
+        ),
+    )
+    config_path: Optional[Path] = Field(
+        default=None,
+        description=(
+            "Absolute path of the YAML configuration file this object was "
+            "loaded from (None for programmatically constructed configs). "
+            "Set by from_yaml(); written into provenance."
+        ),
+    )
 
     # Legacy alias for root output_directory to map to project.output_directory
     @property
@@ -787,6 +926,34 @@ class MassFlowConfig(BaseModel):
             The path to the configured output directory.
         """
         return self.project.output_directory
+
+    def normalized_config(self) -> dict[str, Any]:
+        """Canonical, JSON-safe representation of the effective configuration.
+
+        This is the normalized configuration representation written into
+        provenance (per-file reports and the run-level provenance file): it
+        contains the schema version, the absolute source config path (when
+        loaded from YAML), the full effective configuration with all paths in
+        their resolved (absolute) form, and a SHA-256 digest over the
+        canonical JSON so a downstream consumer can verify that a result was
+        produced by exactly this configuration.
+
+        Returns
+        -------
+        dict
+            ``{"schema_version": 1, "config_file": ...,
+            "effective_config": {...}, "config_digest_sha256": ...}``
+        """
+        payload: dict[str, Any] = {
+            "schema_version": 1,
+            "config_file": str(self.config_path) if self.config_path else None,
+            "effective_config": json.loads(self.model_dump_json()),
+        }
+        canonical = json.dumps(payload, sort_keys=True)
+        payload["config_digest_sha256"] = hashlib.sha256(
+            canonical.encode("utf-8")
+        ).hexdigest()
+        return payload
 
     @classmethod
     def from_yaml(cls, path: Union[str, Path]) -> "MassFlowConfig":
@@ -827,15 +994,21 @@ class MassFlowConfig(BaseModel):
         if data is None:
             data = {}
 
+        # The line-number loader injects ``__lines__`` bookkeeping into every
+        # mapping; strip it before validation (strict models reject unknown
+        # keys) but keep it for error reporting.
+        raw_data = data
+        clean_data = _strip_line_markers(data)
+
         try:
-            config_instance = cls(**data)
+            config_instance = cls(**clean_data)
         except ValidationError as e:
             error_messages = []
             for err in e.errors():
                 loc = err["loc"]
                 msg = err["msg"].replace("Value error, ", "")
 
-                current = data
+                current = raw_data
                 line_num = "Unknown"
                 for i, part in enumerate(loc):
                     if (
@@ -852,26 +1025,116 @@ class MassFlowConfig(BaseModel):
                         break
 
                 key_path = " -> ".join(str(k) for k in loc)
+                if err["type"] == "extra_forbidden":
+                    msg = _format_extra_key_error(cls, loc, msg)
                 error_messages.append(f"Line {line_num}, Key '{key_path}': {msg}")
 
             raise ValueError(
                 "Configuration validation failed:\n" + "\n".join(error_messages)
             ) from e
 
+        # Record the canonical (absolute) source path for provenance.
+        config_instance.config_path = path.resolve()
+
+        # Resolve relative paths against the configuration file's directory
+        # (deterministic, independent of the caller's working directory),
+        # unless the documented compatibility mode is enabled.
+        if not _compat_cwd_paths():
+            base_dir = path.resolve().parent
+            config_instance.project.output_directory = _resolve_config_path(
+                config_instance.project.output_directory, base_dir
+            )
+            config_instance.input.input_path = _resolve_config_path(
+                config_instance.input.input_path, base_dir
+            )
+            if config_instance.input.library_path is not None:
+                config_instance.input.library_path = _resolve_config_path(
+                    config_instance.input.library_path, base_dir
+                )
+
         # Register any user-defined chemical modifications into pyteomics
         # before any spectral processing occurs.
-        _mods = data.get("modifications")
-        if _mods and isinstance(_mods, dict):
-            register_custom_modifications(_mods)
-
-        # Expand user for relevant Path fields in InputConfig
-        if config_instance.input.input_path:
-            config_instance.input.input_path = (
-                config_instance.input.input_path.expanduser()
-            )
-        if config_instance.input.library_path:
-            config_instance.input.library_path = (
-                config_instance.input.library_path.expanduser()
-            )
+        register_custom_modifications(config_instance.modifications)
 
         return config_instance
+
+
+def _strip_line_markers(data: Any) -> Any:
+    """Recursively remove the ``__lines__`` bookkeeping keys injected by
+    :class:`LineNumberLoader`."""
+    if isinstance(data, dict):
+        return {
+            key: _strip_line_markers(value)
+            for key, value in data.items()
+            if key != "__lines__"
+        }
+    if isinstance(data, list):
+        return [_strip_line_markers(item) for item in data]
+    return data
+
+
+def _compat_cwd_paths() -> bool:
+    """Whether the legacy CWD-relative path resolution is enabled.
+
+    Controlled by the ``MASSFLOW_COMPAT_CWD_PATHS`` environment variable
+    (set to ``1``/``true``/``yes``).  Documented in
+    ``docs/user-guide/configuration.md``.
+    """
+    return os.environ.get(_COMPAT_CWD_PATHS_ENV, "0").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+
+
+def _resolve_config_path(p: Path, base_dir: Path) -> Path:
+    """Resolve *p* against *base_dir* (the YAML file's directory).
+
+    ``~`` is expanded first; absolute paths are returned unchanged.
+    """
+    p = p.expanduser()
+    if p.is_absolute():
+        return p
+    return (base_dir / p).resolve()
+
+
+def _resolve_model_type(annotation: Any) -> Optional[type]:
+    """Unwrap Optional/Union/Annotated annotations to find a nested model."""
+    for candidate in get_args(annotation):
+        if isinstance(candidate, type) and hasattr(candidate, "model_fields"):
+            return candidate
+    return None
+
+
+def _format_extra_key_error(model_cls: type, loc: tuple, _original_msg: str) -> str:
+    """Human-readable message for an unknown configuration key, with a
+    spelling suggestion when one is close enough."""
+    current_cls: Any = model_cls
+    for part in loc[:-1]:
+        if isinstance(part, int):
+            return f"Unknown configuration key '{loc[-1]}'."
+        fields = current_cls.model_fields
+        if part not in fields:
+            return f"Unknown configuration key '{loc[-1]}'."
+        annotation = fields[part].annotation
+        if isinstance(annotation, type) and hasattr(annotation, "model_fields"):
+            current_cls = annotation
+        else:
+            nested = _resolve_model_type(annotation)
+            if nested is None:
+                return f"Unknown configuration key '{loc[-1]}'."
+            current_cls = nested
+
+    bad_key = str(loc[-1])
+    allowed = sorted(current_cls.model_fields.keys())
+    suggestion = difflib.get_close_matches(bad_key, allowed, n=1, cutoff=0.6)
+    where = f" under '{' -> '.join(str(k) for k in loc[:-1])}'" if loc[:-1] else ""
+    if suggestion:
+        return (
+            f"Unknown configuration key '{bad_key}'{where}. "
+            f"Did you mean '{suggestion[0]}'?"
+        )
+    return (
+        f"Unknown configuration key '{bad_key}'{where}. "
+        f"Allowed keys: {', '.join(allowed)}."
+    )

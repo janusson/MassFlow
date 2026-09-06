@@ -46,6 +46,14 @@ uv run python examples/massflow-ml-satellite/grpc_server.py --port 9090
 uv run python examples/massflow-ml-satellite/client_smoke.py
 ```
 
+## Security note
+
+The satellite reference servers are **unauthenticated and bind to
+`0.0.0.0`** in the run examples above — they are demos with a dummy model.
+For anything beyond a local smoke test, run the satellite on loopback
+(`--host 127.0.0.1`) or behind a TLS-terminating reverse proxy with its own
+auth, since anyone who can reach the port can submit scoring jobs.
+
 ## The contract in one glance
 
 A search request carries the algorithm name, float64 query spectra, and

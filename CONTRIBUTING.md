@@ -112,6 +112,37 @@ Run the full test suite before opening a pull request:
 uv run pytest
 ```
 
+`pytest` from a clean checkout runs exactly the intended release suite:
+**unit + integration + scientific-validation tests** under `tests/`.
+Collection is explicit (`testpaths = ["tests"]`); scratch and exploratory
+tests under `scripts/experiments/` are never collected, and benchmarks,
+slow tests, and optional-dependency tests are excluded unless requested:
+
+```bash
+# Benchmark suite (opt-in; never runs by default, never blocks CI)
+uv run pytest -m benchmark -s
+
+# Slow / long-running tests (opt-in)
+uv run pytest -m slow
+
+# Optional-dependency tests (e.g. hnswlib-backed HNSW; skipped locally
+# when the extra is not installed, run in CI with --all-extras)
+uv run pytest -m optional
+
+# Scientific-validation group (also part of the default suite; CI runs it
+# explicitly)
+uv run pytest -m scientific
+```
+
+New tests belong to a group:
+
+- default (unmarked) — unit and core integration tests;
+- `scientific` — scientific-validation tests (module-level
+  `pytestmark = pytest.mark.scientific`);
+- `benchmark` — anything in `tests/benchmarks/` (marked automatically);
+- `slow` — long-running tests;
+- `optional` — tests that require an optional dependency extra.
+
 If you are changing a specific area, run the relevant tests first:
 
 ```bash
@@ -119,6 +150,31 @@ uv run pytest tests/test_workflow.py
 uv run pytest tests/test_cli.py
 uv run pytest tests/test_cli_db.py
 ```
+
+### The golden scientific-validation suite
+
+`tests/test_scientific_validation.py` is a **known-answer** suite: every
+expected score, candidate set, q-value, and annotation status is derived
+from the published formulas (Watrous 2012 cosine / modified cosine;
+Elias & Gygi 2007 target-decoy competition; Li et al. 2021 spectral-entropy
+decoys), verified against an independent reference implementation, and
+recorded in `tests/scientific_validation/ground_truth_results.json`. The
+suite re-runs the pipeline and asserts the recorded ground truth is
+reproduced byte-for-byte (see
+`docs/user-guide/scientific_validation.md`).
+
+A change that alters any scientific output — scoring, candidate sets,
+matched peak counts, FDR calibration, ranking, export — must break these
+tests. Do not regenerate the fixtures to "fix" such a failure: regenerate
+only when the scientific contract intentionally changes, and review the
+diff of `ground_truth_results.json` as a scientific decision:
+
+```bash
+uv run python tests/scientific_validation/generate_ground_truth.py
+```
+
+The generator refuses to write the manifest if the pipeline diverges from
+the reference formulas.
 
 When fixing a bug:
 
@@ -131,7 +187,7 @@ When fixing a bug:
 If your change affects how users run the program, update the relevant docs:
 
 - `README.md` for quickstart and user-facing workflow changes
-- `ARCHITECTURE.md` for structural or boundary changes
+- `docs/ARCHITECTURE.md` for structural or boundary changes
 - `CHANGELOG.md` for release-facing summaries
 - `docs/post-v0.1-roadmap.md` if the work changes release planning
 

@@ -1,12 +1,5 @@
 import pytest
 
-try:
-    from rdkit import Chem
-
-    _HAS_RDKIT = True
-except ImportError:
-    _HAS_RDKIT = False
-
 from MassFlow.cheminformatics import (
     _formula_to_monoisotopic_mass,
     _mol_to_pyteomics_formula,
@@ -14,6 +7,15 @@ from MassFlow.cheminformatics import (
     calculate_theoretical_mass,
 )
 from MassFlow.models import MolecularStructure, SpectrumMetadata
+
+pytestmark = pytest.mark.scientific
+
+try:
+    from rdkit import Chem
+
+    _HAS_RDKIT = True
+except ImportError:
+    _HAS_RDKIT = False
 
 
 # Helper to calculate theoretical m/z for [M+H]+ using pyteomics SSOT.

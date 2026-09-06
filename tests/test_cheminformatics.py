@@ -9,6 +9,8 @@ from MassFlow.cheminformatics import (
     get_isotopic_distribution,
 )
 
+pytestmark = pytest.mark.scientific
+
 
 def test_tanimoto_similarity():
     # Aspirin

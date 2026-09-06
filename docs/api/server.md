@@ -12,18 +12,21 @@ in a bounded async queue with quality-gated high-water-mark backpressure
 `spectra_dropped_low_quality`), micro-batched, and routed through the
 `ConsensusEngine` for weighted multi-engine scoring.
 
-Start the server with the `serve` / `stream-server` CLI commands:
+Start the server with the `stream-server` CLI command:
 
 ```bash
-uv run massflow serve --config massflow_config.yaml
+uv run massflow stream-server --config massflow_config.yaml
 ```
+
+(`massflow serve` remains as a deprecated alias and prints a deprecation
+notice.)
 
 or directly with `uv run python -m MassFlow.streaming.server --config massflow_config.yaml` (protobuf stubs must be compiled first via `scripts/protoc_gen.sh`).
 
 !!! note "LSP language server removed"
 
-    The v0.2-era LSP language server module `MassFlow.server` (IDE
-    integration) was removed during the v1.0 engine lockdown. Real-time
+    The standalone LSP language server module `MassFlow.server` (IDE
+    integration) is not part of the current codebase. Real-time
     server functionality is now provided exclusively by the gRPC
     streaming server in `MassFlow.streaming`.
 

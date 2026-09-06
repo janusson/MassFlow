@@ -4,7 +4,13 @@ version = "0.1.0"
 description = "A scientific Python package for mass spectrometry processing and analysis."
 readme = "README.md"
 license = {text = "MIT"}
-requires-python = ">=3.13"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.13",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+]
+requires-python = ">=3.13,<3.14"
 dependencies = [
     "grpcio>=1.60.0",
     "lxml",
@@ -25,10 +31,6 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = [
-    "pytest>=8.0",
-    "pytest-cov>=5.0",
-]
 chem = [
     "rdkit>=2025.9.6",
 ]
@@ -38,14 +40,14 @@ ml = [
     "spec2vec>=0.8.0",
     "ms2deepscore>=1.0.0",
 ]
-zarr = [
-    "zarr>=3.0",
-]
 hnsw = [
     "hnswlib>=0.8.0",
 ]
 watch = [
     "watchfiles>=1.1.1",
+]
+tui = [
+    "textual>=8.0.0",
 ]
 
 [project.scripts]
@@ -94,10 +96,25 @@ extend-exclude = [
 ]
 
 [tool.pytest.ini_options]
-addopts = "-m 'not benchmark'"
+# Explicit discovery: the release test suite lives under tests/ only.
+# Scratch/experimental tests under scripts/experiments/ are NEVER collected.
+testpaths = ["tests"]
+# The default selection is the release suite: unit + integration +
+# scientific-validation tests.  Benchmarks, slow tests, and
+# optional-dependency tests run only when requested explicitly.
+addopts = "-m 'not benchmark and not slow and not optional' --strict-markers"
+# Explicit loop scope for async fixtures: pytest-asyncio >= 1.0 warns that
+# the "fixture" caching-scope default will change to "function" in the
+# future. All async fixtures in the suite are function-scoped, so pin the
+# future default now.
+asyncio_default_fixture_loop_scope = "function"
 markers = [
-    "core: tests that must pass for the v0.1 stable release contract",
-    "benchmark: performance and latency benchmark tests (run with -m benchmark)",
+    "unit: fast, isolated unit tests (run by default)",
+    "integration: cross-module integration tests (run by default)",
+    "scientific: scientific-validation tests (run by default; CI runs them explicitly)",
+    "benchmark: performance benchmarks (opt-in: -m benchmark)",
+    "slow: long-running tests (opt-in: -m slow)",
+    "optional: tests requiring optional dependency extras (opt-in: -m optional)",
 ]
 
 [tool.coverage.run]

@@ -11,6 +11,8 @@ from matchms import Spectrum
 
 from MassFlow.similarity import generate_decoys
 
+pytestmark = pytest.mark.scientific
+
 
 def make_spectrum(
     spec_id: str, precursor_mz: float = 100.0, intensities=None

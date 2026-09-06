@@ -61,12 +61,11 @@ uv run massflow convert --input data/raw_files/ --output data/mzml_files/
 
 ---
 
-## Network Visualization (`visualize`)
+## Network Visualization (not shipped)
 
-If you have enabled Molecular Networking (an experimental feature) via your configuration, MassFlow will export a `.graphml` file. You can compile this file into an interactive HTML visualization using:
-
-```shell
-uv run massflow visualize results/molecular_network.graphml --output results/network.html
-```
-
-You can then open the resulting HTML file in your web browser to explore the clusters of identified and unidentified spectra. (Requires the `viz` optional dependencies).
+!!! warning "Not implemented"
+    Molecular networking / GraphML export and the `massflow visualize`
+    command are **planned, not implemented** in the current release. The
+    configuration key and this workflow do not exist yet — do not rely on
+    them. See [docs/index.md](../index.md) (Stable vs. Experimental) and
+    `docs/CAPABILITY_MATRIX.md` for the authoritative capability list.

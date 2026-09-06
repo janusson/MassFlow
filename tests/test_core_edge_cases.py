@@ -173,7 +173,7 @@ def test_peak_processing_edge_cases(empty_spectrum, zero_intensity_spectrum):
 
 
 def test_process_spectra_batch_edge_cases():
-    config = ProcessingConfig(min_peaks=1, noise_threshold=0.0)
+    config = ProcessingConfig(min_peaks=1, noise_threshold=0.0, filter_min_peaks=True)
 
     # Empty list
     assert process_spectra_batch([], config) == []

@@ -11,8 +11,8 @@ Covers:
 - :func:`migrate_blobs_to_zarr`: verified BLOB → Zarr migration,
   idempotency, orphan recovery, and the 0002 migration script wrapper.
 
-These tests cover the experimental hybrid backend and are intentionally not
-marked ``@pytest.mark.core``.
+These tests cover the experimental hybrid backend and run in the default
+release suite (no special marker).
 """
 
 from __future__ import annotations

@@ -30,11 +30,26 @@ from matchms import Spectrum
 
 class SpectralStore(ABC):
     """
-    Abstract interface for spectral data persistence.
+    Single backend interface for spectral data persistence and retrieval.
 
-    All storage backends (SQLite BLOB, Zarr, or future implementations) must
-    implement this contract so downstream components (I/O layer, CLI, workflow)
-    can operate against a uniform API.
+    This is the ONE interface every MassFlow storage backend (SQLite BLOB,
+    Zarr, hybrid, and the raw-file adapter in :mod:`MassFlow.library`)
+    implements, and the only interface the annotation layer, the CLI
+    database commands, and the streaming server consume.  The annotation
+    layer never cares whether the underlying library is SQLite or Zarr.
+
+    The interface supports everything the annotation engine requires:
+
+    * metadata lookup (:meth:`metadata_query`, :meth:`get_spectrum_by_id`)
+    * precursor-range filtering (:meth:`get_precursor_mz_range`, plus
+      ``precursor_mz`` in :meth:`metadata_query`)
+    * sequential spectrum iteration (:meth:`get_spectra` /
+      :meth:`iter_spectra`)
+    * batched spectrum access (:meth:`batch_get_arrays`,
+      :meth:`iter_processed_chunks`)
+    * spectrum count (:meth:`get_total_spectra_count` /
+      :meth:`spectrum_count`)
+    * backend provenance (:meth:`backend_provenance`)
 
     Parameters
     ----------
@@ -171,6 +186,85 @@ class SpectralStore(ABC):
         -------
         int
             Spectrum count.
+        """
+        ...
+
+    def spectrum_count(self) -> int:
+        """Alias for :meth:`get_total_spectra_count` (annotation-path naming)."""
+        return self.get_total_spectra_count()
+
+    def iter_spectra(self) -> Iterator[Spectrum]:
+        """Yield every spectrum in the store, unfiltered.
+
+        Sequential iteration for the annotation engine's lazy chunking
+        (see :meth:`iter_processed_chunks`).  Spectra are yielded as stored
+        (already processed for MassFlow-built stores).
+        """
+        yield from self.get_spectra()
+
+    def iter_processed_chunks(
+        self, chunk_size: int = 10000
+    ) -> Iterator[list[Spectrum]]:
+        """Yield processed spectra in bounded chunks.
+
+        The annotation engine chunks the stream internally so per-worker
+        memory is bounded by ``chunk_size`` spectra, never the library size.
+        """
+        chunk: list[Spectrum] = []
+        for spectrum in self.get_spectra():
+            chunk.append(spectrum)
+            if len(chunk) >= chunk_size:
+                yield chunk
+                chunk = []
+        if chunk:
+            yield chunk
+
+    @abstractmethod
+    def metadata_query(
+        self,
+        fields: list[str],
+        indices: Optional[np.ndarray] = None,
+        category: Optional[str] = None,
+    ) -> dict[str, np.ndarray]:
+        """Batch-read metadata fields as flat numpy arrays.
+
+        This is the primary metadata-lookup primitive: the annotation
+        engine can obtain ``precursor_mz`` (precursor-range filtering),
+        ``id``, ``name``, ``charge``, ``category`` etc. for a batch of
+        spectra without reconstructing ``matchms.Spectrum`` objects.
+
+        Parameters
+        ----------
+        fields : list of str
+            Metadata field names to retrieve.
+        indices : np.ndarray or None
+            Spectrum indices to query (``int64``).  ``None`` means all.
+        category : str or None
+            If provided, only return rows whose ``category`` matches.
+
+        Returns
+        -------
+        dict[str, np.ndarray]
+            Mapping of field name to a ``float64`` / ``int64`` / ``str``
+            numpy array aligned by spectrum index.
+
+        Raises
+        ------
+        ValueError
+            If any requested field is not present in the store.
+        """
+        ...
+
+    @abstractmethod
+    def backend_provenance(self) -> dict[str, Any]:
+        """Describe the backend that physically stores this library.
+
+        Returns
+        -------
+        dict
+            ``{"backend": "sqlite" | "zarr" | "hybrid" | ...,
+            "path": str, "spectrum_count": int}`` — the unambiguous
+            backend identity recorded in run provenance.
         """
         ...
 

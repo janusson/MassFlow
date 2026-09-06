@@ -655,6 +655,7 @@ class TestSpectralBinning:
 
 
 @pytest.mark.skipif(not _HAS_HNSWLIB, reason="hnswlib not installed")
+@pytest.mark.optional
 class TestHNSWSpectralIndex:
     """hnswlib-backed index wrapper."""
 
@@ -874,6 +875,7 @@ class TestHNSWSpectralIndex:
 
 
 @pytest.mark.skipif(not _HAS_HNSWLIB, reason="hnswlib not installed")
+@pytest.mark.optional
 class TestCascadeHNSWIntegration:
     """Seamless HNSW candidate retrieval inside the cascade engine."""
 
@@ -1077,8 +1079,11 @@ class TestHNSWConfig:
         with pytest.raises(ValueError, match="hnsw_mz_min"):
             SimilarityConfig(hnsw_enabled=True, hnsw_mz_min=2000.0, hnsw_mz_max=1000.0)
 
+    @pytest.mark.optional
     def test_hnsw_parameters_flow_to_index(self) -> None:
-        """Config values reach the constructed HNSW index."""
+        """Config values reach the constructed HNSW index (needs hnswlib)."""
+        if not _HAS_HNSWLIB:
+            pytest.skip("hnswlib not installed")
         spectra = make_random_library(10, seed=81)
         config = self._cascade_config(
             hnsw_enabled=True,

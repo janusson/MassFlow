@@ -181,6 +181,7 @@ async def run(
     burst_interval_s: float,
     verbose: bool,
     timeout_s: Optional[float],
+    admin_token: Optional[str] = None,
 ) -> None:
     """Main async entry point for the mock client."""
 
@@ -196,12 +197,16 @@ async def run(
     target = f"{host}:{port}"
     print(f"Connecting to gRPC server at {target} ...")
 
+    metadata = None
+    if admin_token:
+        metadata = (("authorization", f"Bearer {admin_token}"),)
+
     async with grpc.aio.insecure_channel(target) as channel:
         stub = pb_grpc.MassFlowStreamingStub(channel)
 
         # Check server status first.
         try:
-            status = await stub.GetStatus(empty_pb2.Empty())
+            status = await stub.GetStatus(empty_pb2.Empty(), metadata=metadata)
             print(
                 f"Server status: active={status.is_active}, queue_depth={status.queue_depth}"
             )
@@ -218,6 +223,7 @@ async def run(
                     spectra, rate_hz, burst, burst_size, burst_interval_s
                 ),
                 timeout=timeout_s,
+                metadata=metadata,
             )
             await _response_printer(call, verbose)
         except grpc.aio.AioRpcError as exc:
@@ -287,6 +293,14 @@ def main() -> None:
         default=None,
         help="Stream timeout in seconds.",
     )
+    parser.add_argument(
+        "--admin-token",
+        default=None,
+        help=(
+            "Bearer token for control-plane operations "
+            "(required by servers started with --admin-token)."
+        ),
+    )
 
     args = parser.parse_args()
     logging.basicConfig(level=logging.WARNING)
@@ -302,6 +316,7 @@ def main() -> None:
             burst_interval_s=args.burst_interval,
             verbose=args.verbose,
             timeout_s=args.timeout,
+            admin_token=args.admin_token,
         )
     )
 

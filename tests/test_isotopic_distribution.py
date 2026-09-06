@@ -3,6 +3,9 @@ from MassFlow.cheminformatics import (
     get_isotopic_distribution,
 )
 from MassFlow.models import IsotopicDistribution, MolecularStructure
+import pytest
+
+pytestmark = pytest.mark.scientific
 
 # Caffeine SMILES and formula for dual-path testing
 CAFFEINE_SMILES = "CN1C=NC2=C1C(=O)N(C(=O)N2C)C"

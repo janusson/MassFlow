@@ -191,17 +191,69 @@ def run_annotate(
 ):
     """Run the stable MassFlow annotation pipeline using a YAML configuration file."""
     from MassFlow.config import MassFlowConfig
-    from MassFlow.workflow import run_annotation_pipeline
+    from MassFlow.workflow import experimental_surface_flags, run_annotation_pipeline
 
     try:
         cfg = MassFlowConfig.from_yaml(config)
-        run_annotation_pipeline(cfg, config_path=config)
-        console.print(
-            f"[bold green]✓ Annotation complete![/bold green] Results saved to {cfg.project.output_directory}"
-        )
+
+        # Package boundary: experimental engine/routing/HNSW/remote-ML
+        # surfaces must be visibly flagged at the CLI, never silent.
+        experimental_flags = experimental_surface_flags(cfg)
+        if experimental_flags:
+            console.print(
+                "[bold yellow]⚠ EXPERIMENTAL SURFACES ACTIVE:[/bold yellow] "
+                + ", ".join(experimental_flags)
+                + "\n  This run uses features outside the stable MassFlow "
+                "product contract (docs/CAPABILITY_MATRIX.md); treat its "
+                "output accordingly."
+            )
+
+        results = run_annotation_pipeline(cfg, config_path=config)
     except Exception as e:
         logger.error(f"Annotation failed: {e}")
         raise typer.Exit(1)
+
+    # Failure model: the CLI exit status reflects the run outcome. A file
+    # that failed must never be reported as a clean success.
+    n_failed = sum(1 for r in results if r.status == "failed")
+    n_degraded = sum(1 for r in results if r.status == "degraded")
+    n_ok = len(results) - n_failed - n_degraded
+
+    for r in results:
+        if r.status == "failed":
+            console.print(
+                f"[bold red]✗ FAILED[/bold red] {r.input_path}: "
+                f"{'; '.join(r.fatal_errors)}"
+            )
+        elif r.status == "degraded":
+            console.print(
+                f"[bold yellow]⚠ DEGRADED[/bold yellow] {r.input_path}: "
+                f"{', '.join(r.degraded_mode_flags)}"
+            )
+        else:
+            console.print(
+                f"[bold green]✓ {r.input_path}[/bold green]: "
+                f"{r.hits_produced} hit(s), {r.spectra_loaded} spectra loaded, "
+                f"{r.spectra_rejected} rejected"
+            )
+
+    if n_failed > 0:
+        console.print(
+            f"[bold red]✗ Annotation incomplete: {n_failed} file(s) failed, "
+            f"{n_degraded} degraded, {n_ok} succeeded. "
+            f"Failure reports written to {cfg.project.output_directory}.[/bold red]"
+        )
+        raise typer.Exit(1)
+
+    if n_degraded > 0:
+        console.print(
+            f"[bold yellow]⚠ Annotation finished with {n_degraded} degraded "
+            f"file(s); check the report sidecars for details.[/bold yellow]"
+        )
+
+    console.print(
+        f"[bold green]✓ Annotation complete![/bold green] Results saved to {cfg.project.output_directory}"
+    )
 
 
 @app.command("convert")
@@ -215,7 +267,13 @@ def run_convert(
         ..., "--output", help="Path to output directory for converted .mzML files."
     ),
 ):
-    """Convert vendor raw files to open formats (mzML) using ProteoWizard msconvert."""
+    """Convert vendor raw files to open formats (mzML) using ProteoWizard msconvert.
+
+    EXPERIMENTAL: this is a thin wrapper around the external ProteoWizard
+    ``msconvert`` binary. The annotation pipeline itself rejects vendor
+    formats (UnsupportedVendorFormatError) and never uses this converter
+    internally.
+    """
     from MassFlow.convert import MSConvertNotFoundError, convert_directory
 
     input_path = Path(input)
@@ -466,6 +524,11 @@ def _run_stream_server_impl(
     queue_high_water_mark: float,
     queue_low_quality_threshold: float,
     top_n: int,
+    tls_cert: Optional[str] = None,
+    tls_key: Optional[str] = None,
+    admin_token: Optional[str] = None,
+    allow_remote_control: bool = False,
+    allow_insecure_remote: bool = False,
 ) -> None:
     """Run the asyncio gRPC streaming server lifecycle.
 
@@ -474,6 +537,7 @@ def _run_stream_server_impl(
     ``asyncio`` event loop with graceful SIGINT/SIGTERM draining.
     """
     import asyncio
+    from pathlib import Path
 
     from MassFlow.streaming.queue import OverflowPolicy
     from MassFlow.streaming.server import run_server
@@ -497,6 +561,11 @@ def _run_stream_server_impl(
                 high_water_mark=queue_high_water_mark,
                 low_quality_threshold=queue_low_quality_threshold,
                 top_n=top_n,
+                tls_cert_path=Path(tls_cert) if tls_cert else None,
+                tls_key_path=Path(tls_key) if tls_key else None,
+                admin_token=admin_token,
+                allow_remote_control=allow_remote_control,
+                allow_insecure_remote=allow_insecure_remote,
             )
         )
     except KeyboardInterrupt:
@@ -512,7 +581,10 @@ def run_stream_server(
         ..., "--config", help="Path to configuration YAML file."
     ),
     host: str = typer.Option(
-        "[::]", "--host", help="Bind address (default: [::] for all interfaces)."
+        "127.0.0.1",
+        "--host",
+        help="Bind address (default: 127.0.0.1 loopback only). "
+        "Non-loopback binds require TLS (or --allow-insecure-remote).",
     ),
     port: int = typer.Option(50051, "--port", help="TCP port (default: 50051)."),
     queue_capacity: int = typer.Option(
@@ -548,14 +620,55 @@ def run_stream_server(
     top_n: int = typer.Option(
         5, "--top-n", help="Number of top annotation hits per spectrum."
     ),
+    tls_cert: Optional[str] = typer.Option(
+        None, "--tls-cert", help="PEM certificate chain for TLS (requires --tls-key)."
+    ),
+    tls_key: Optional[str] = typer.Option(
+        None, "--tls-key", help="PEM private key for TLS (requires --tls-cert)."
+    ),
+    admin_token: Optional[str] = typer.Option(
+        None,
+        "--admin-token",
+        envvar="MASSFLOW_ADMIN_TOKEN",
+        help=(
+            "Bearer token required for control-plane operations. When unset "
+            "the control plane is disabled entirely (no remote config or "
+            "library changes are possible)."
+        ),
+    ),
+    allow_remote_control: bool = typer.Option(
+        False,
+        "--allow-remote-control",
+        help=(
+            "Permit authenticated clients to mutate the running config / "
+            "reload libraries (SET_CONFIG, LOAD_LIBRARY). Requires "
+            "--admin-token."
+        ),
+    ),
+    allow_insecure_remote: bool = typer.Option(
+        False,
+        "--allow-insecure-remote",
+        help=(
+            "Explicitly allow a non-loopback bind WITHOUT TLS. Refused by "
+            "default; the server logs a prominent security warning."
+        ),
+    ),
 ):
     """
     Start the gRPC streaming server for real-time spectral annotation.
+
+    EXPERIMENTAL: the streaming server is outside the stable product
+    contract (docs/CAPABILITY_MATRIX.md).
 
     The server listens for instrument clients sending MS2 spectra over the
     bidirectional StreamSpectra RPC and returns structural annotations as
     they are computed by the consensus engine. Backpressure is handled by a
     bounded queue with quality-gated high-water-mark shedding.
+
+    Security defaults: loopback-only bind (127.0.0.1), no TLS on loopback,
+    control plane disabled unless --admin-token is set, and remote config
+    mutation disabled unless --allow-remote-control is set. Non-loopback
+    binds require --tls-cert/--tls-key or an explicit --allow-insecure-remote.
 
     Prerequisites: run ``scripts/protoc_gen.sh`` to compile the protobuf stubs.
     """
@@ -569,6 +682,11 @@ def run_stream_server(
         queue_high_water_mark=queue_high_water_mark,
         queue_low_quality_threshold=queue_low_quality_threshold,
         top_n=top_n,
+        tls_cert=tls_cert,
+        tls_key=tls_key,
+        admin_token=admin_token,
+        allow_remote_control=allow_remote_control,
+        allow_insecure_remote=allow_insecure_remote,
     )
 
 
@@ -578,7 +696,9 @@ def run_serve(
         ..., "--config", help="Path to configuration YAML file."
     ),
     host: str = typer.Option(
-        "[::]", "--host", help="Bind address (default: [::] for all interfaces)."
+        "127.0.0.1",
+        "--host",
+        help="Bind address (default: 127.0.0.1 loopback only). ",
     ),
     port: int = typer.Option(50051, "--port", help="TCP port (default: 50051)."),
     queue_capacity: int = typer.Option(
@@ -613,6 +733,28 @@ def run_serve(
     ),
     top_n: int = typer.Option(
         5, "--top-n", help="Number of top annotation hits per spectrum."
+    ),
+    tls_cert: Optional[str] = typer.Option(
+        None, "--tls-cert", help="PEM certificate chain for TLS (requires --tls-key)."
+    ),
+    tls_key: Optional[str] = typer.Option(
+        None, "--tls-key", help="PEM private key for TLS (requires --tls-cert)."
+    ),
+    admin_token: Optional[str] = typer.Option(
+        None,
+        "--admin-token",
+        envvar="MASSFLOW_ADMIN_TOKEN",
+        help="Bearer token required for control-plane operations.",
+    ),
+    allow_remote_control: bool = typer.Option(
+        False,
+        "--allow-remote-control",
+        help="Permit authenticated config/library mutation (requires --admin-token).",
+    ),
+    allow_insecure_remote: bool = typer.Option(
+        False,
+        "--allow-insecure-remote",
+        help="Explicitly allow a non-loopback bind WITHOUT TLS.",
     ),
 ):
     """
@@ -632,6 +774,11 @@ def run_serve(
         queue_high_water_mark=queue_high_water_mark,
         queue_low_quality_threshold=queue_low_quality_threshold,
         top_n=top_n,
+        tls_cert=tls_cert,
+        tls_key=tls_key,
+        admin_token=admin_token,
+        allow_remote_control=allow_remote_control,
+        allow_insecure_remote=allow_insecure_remote,
     )
 
 
@@ -645,7 +792,9 @@ def run_watch(
     Watch the workspace for file changes and re-run the annotation pipeline dynamically.
     Outputs high-tech Rich tables that gracefully handle pane resizing in Tmux/Zellij.
 
-    Requires the optional 'watch' extra: pip install massflow[watch]
+    EXPERIMENTAL: interactive live-reloading loop, requires the optional
+    'watch' extra (pip install massflow[watch]). Outside the stable product
+    contract (docs/CAPABILITY_MATRIX.md).
     """
     try:
         from watchfiles import watch  # type: ignore[import-untyped]  # noqa: F401
@@ -742,7 +891,13 @@ def run_watch(
         try:
             # Silence core logger during interactive watch to prevent table corruption
             logging.getLogger("MassFlow").setLevel(logging.CRITICAL)
-            run_annotation_pipeline(cfg, config_path=config)
+            results = run_annotation_pipeline(cfg, config_path=config)
+            n_failed = sum(1 for r in results if r.status == "failed")
+            if n_failed:
+                console.print(
+                    f"[bold red]⚠ {n_failed} file(s) FAILED in the last run; "
+                    f"check the _failed.report.yaml sidecars.[/bold red]"
+                )
         except Exception as e:
             console.print(f"[bold red]Pipeline Error:[/bold red] {e}")
 
@@ -759,6 +914,59 @@ def run_watch(
                 live.update(generate_results_table())
     except KeyboardInterrupt:
         console.print("\n[bold yellow]Stopping watch mode.[/bold yellow]")
+
+
+@app.command("tui")
+def run_tui(
+    input: str = typer.Option(
+        None,
+        "--input",
+        help="Optional experimental file to preload into the console.",
+    ),
+    library: str = typer.Option(
+        None,
+        "--library",
+        help="Optional reference library to preselect (.msp/.mgf/.db/.zarr).",
+    ),
+    workspace: str = typer.Option(
+        None,
+        "--workspace",
+        help="Upload directory for imported files (default: ./massflow_workspace).",
+    ),
+):
+    """
+    Launch the interactive MassFlow terminal console.
+
+    EXPERIMENTAL: interactive console requiring the optional 'tui' extra
+    (pip install massflow\[tui]); outside the stable product contract
+    (docs/CAPABILITY_MATRIX.md).
+
+    Find, upload, view, and identify MS/MS data without leaving the terminal:
+    a spectral file browser, an interactive centroid stick-plot viewer, a
+    target-decoy similarity search tab with mirror plots, and a diagnostics
+    tab with plain-English fixes plus the quarantine log.
+
+    Requires the optional TUI extra: pip install massflow\[tui]
+    """
+    try:
+        from MassFlow.tui.app import MassFlowApp
+    except ImportError as e:
+        console.print(
+            "[bold red]Error:[/bold red] The interactive console requires the "
+            "optional 'textual' package.\n"
+            "Install it with: pip install massflow\\[tui]"
+        )
+        raise typer.Exit(1) from e
+
+    initial_query = Path(input).expanduser() if input else None
+    initial_library = Path(library).expanduser() if library else None
+    workspace_path = Path(workspace).expanduser() if workspace else None
+
+    MassFlowApp(
+        initial_query=initial_query,
+        initial_library=initial_library,
+        workspace=workspace_path,
+    ).run()
 
 
 def main():

@@ -9,16 +9,29 @@ on:
 permissions:
   contents: read
 
+# The normal PR path verifies: formatting, linting, type checking, unit
+# tests, core integration tests, and scientific-validation tests — all
+# against the committed lockfile, on every supported Python/OS combination
+# declared by the project (Python 3.13 on Linux and macOS).
+# Benchmarks and slow tests never run in CI: they are opt-in only
+# (`-m benchmark` / `-m slow`) and can never block an ordinary test run.
+
 jobs:
-  lint-and-typecheck:
+  lockfile-and-lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - name: Install uv
         run: curl -LsSf https://astral.sh/uv/install.sh | sh
-      - name: Run Ruff (lint)
+      - name: Lockfile is committed and in sync
+        # CI must use the committed uv.lock: fail when it is missing or
+        # out of date relative to pyproject.toml.
+        run: uv lock --check
+      - name: Formatting (ruff format --check)
+        run: uv run ruff format --check .
+      - name: Linting (ruff check)
         run: uv run ruff check .
-      - name: Run MyPy (typecheck)
+      - name: Type checking (mypy)
         run: uv run mypy .
 
   smoke:
@@ -31,17 +44,19 @@ jobs:
           python-version: 3.13
       - name: Install uv
         run: curl -LsSf https://astral.sh/uv/install.sh | sh
-      - name: Install core deps
-        run: uv sync
+      - name: Install core deps from lockfile
+        run: uv sync --frozen
       - name: Run quickstart (smoke)
         run: uv run massflow annotate --config tutorial/tutorial_config.yaml
 
   test:
-    needs: [lint-and-typecheck, smoke]
-    runs-on: ubuntu-latest
+    needs: [lockfile-and-lint, smoke]
     strategy:
+      fail-fast: false
       matrix:
+        os: [ubuntu-latest, macos-latest]
         python-version: ["3.13"]
+    runs-on: ${{ matrix.os }}
 
     steps:
       - uses: actions/checkout@v4
@@ -54,11 +69,18 @@ jobs:
       - name: Install uv
         run: curl -LsSf https://astral.sh/uv/install.sh | sh
 
-      - name: Install dependencies
-        run: uv sync --all-extras
+      - name: Install dependencies from lockfile
+        run: uv sync --all-extras --frozen
 
-      - name: Run tests with pytest
+      - name: Release suite — unit + core integration tests (with coverage)
+        # The default selection: everything except benchmark/slow/optional.
         run: uv run pytest --cov=src/MassFlow --cov-report=xml --cov-fail-under=80 -v
+
+      - name: Scientific-validation tests (explicit group)
+        run: uv run pytest -m scientific -v
+
+      - name: Optional-dependency tests (explicit group)
+        run: uv run pytest -m optional -v
 
       - name: Upload coverage
         uses: codecov/codecov-action@v4

@@ -4,6 +4,7 @@ Tests for MassFlow I/O module.
 
 from unittest.mock import patch
 
+import csv
 import numpy as np
 import pytest
 from matchms import Spectrum
@@ -135,6 +136,36 @@ def test_save_match_results(tmp_path):
         content = f.read()
         assert "query_id,reference_id,score" in content
         assert "q1,r1,0.95" in content
+
+
+def test_save_match_results_serializes_nested_score_breakdown(tmp_path):
+    """Consensus/router results carry a dict ``score_breakdown``; Polars
+    cannot write nested data to CSV, so it must be serialized to compact
+    deterministic JSON — never dropped, never a crash (regression: the
+    consensus engine crashed the whole run at export time)."""
+    results = [
+        {
+            "query_id": "q1",
+            "reference_id": "r1",
+            "score": 0.5,
+            "score_breakdown": {"cosine": 0.0, "modified_cosine": 1.0},
+            "is_decoy": False,
+        }
+    ]
+    out_path = tmp_path / "results.csv"
+
+    io.save_match_results(results, out_path)
+
+    assert out_path.exists()
+    with open(out_path, newline="") as f:
+        rows = list(csv.DictReader(f))
+    assert rows[0]["score_breakdown"] == '{"cosine":0.0,"modified_cosine":1.0}'
+    assert rows[0]["score"] == "0.5"
+
+    # The same dict must not break the mzTab-M exporter either.
+    mztab_path = tmp_path / "results.mztab"
+    io.save_match_results_to_mztab(results, mztab_path)
+    assert '{"cosine":0.0,"modified_cosine":1.0}' in mztab_path.read_text()
 
 
 def test_save_spectra_to_msp(tmp_path, mock_spectrum):

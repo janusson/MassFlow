@@ -22,6 +22,8 @@ from MassFlow.similarity import (
     spectral_entropy,
 )
 
+pytestmark = pytest.mark.scientific
+
 
 def _is_non_decreasing(arr: np.ndarray) -> bool:
     return bool(np.all(np.diff(arr) >= -1e-8))
@@ -55,15 +57,20 @@ def test_calculate_fdr_no_targets_returns_all_ones_and_is_target_false():
     assert not np.any(is_target)
 
 
-def test_calculate_fdr_ties_put_targets_before_decoys():
+def test_calculate_fdr_ties_put_decoys_before_targets():
     targets = np.array([0.8], dtype=float)
     decoys = np.array([0.8], dtype=float)
 
     sorted_scores, q_values, is_target = calculate_fdr(targets, decoys)
 
-    # When scores tie, targets must be ordered before decoys (is_target True first)
-    assert is_target[0]
-    assert not is_target[1]
+    # When scores tie, decoys must be ordered before targets (is_target
+    # False first) so the tied decoy is counted against the target:
+    # conservative tie-breaking.
+    assert not is_target[0]
+    assert is_target[1]
+    # The target's q-value is 1.0: with one target and a tied decoy the
+    # +1 pseudo-count FDR = (1 + 1) / 1 = 2.0, clipped to 1.0.
+    assert q_values[1] == pytest.approx(1.0)
 
 
 def test_calculate_fdr_mixed_case_monotonicity_and_bounds():

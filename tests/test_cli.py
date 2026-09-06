@@ -43,6 +43,73 @@ def test_run_annotate_failure():
             mock_logger.error.assert_called_once()
 
 
+def test_run_annotate_flags_experimental_surfaces(tmp_path):
+    """The CLI boundary must visibly flag experimental engine selection."""
+    from MassFlow.config import (
+        InputConfig,
+        ProcessingConfig,
+        ProjectConfig,
+        SimilarityConfig,
+    )
+
+    experimental_config = MassFlowConfig(
+        project=ProjectConfig(output_directory=tmp_path / "results"),
+        input=InputConfig(
+            input_path=tmp_path / "q.mgf",
+            library_path=tmp_path / "ref.msp",
+            format="mgf",
+        ),
+        processing=ProcessingConfig(min_peaks=1),
+        similarity=SimilarityConfig(algorithm="consensus", min_score=0.0),
+    )
+    runner = CliRunner()
+    with (
+        patch(
+            "MassFlow.config.MassFlowConfig.from_yaml",
+            return_value=experimental_config,
+        ),
+        patch("MassFlow.workflow.run_annotation_pipeline", return_value=[]),
+    ):
+        result = runner.invoke(cli.app, ["annotate", "--config", "config.yaml"])
+
+        assert result.exit_code == 0
+        assert "EXPERIMENTAL SURFACES ACTIVE" in result.stdout
+        assert "experimental_engine:consensus" in result.stdout
+
+
+def test_run_annotate_silent_for_stable_configuration(tmp_path):
+    """A pure stable configuration must not print the experimental notice."""
+    from MassFlow.config import (
+        InputConfig,
+        ProcessingConfig,
+        ProjectConfig,
+        SimilarityConfig,
+    )
+
+    stable_config = MassFlowConfig(
+        project=ProjectConfig(output_directory=tmp_path / "results"),
+        input=InputConfig(
+            input_path=tmp_path / "q.mgf",
+            library_path=tmp_path / "ref.msp",
+            format="mgf",
+        ),
+        processing=ProcessingConfig(min_peaks=1),
+        similarity=SimilarityConfig(algorithm="cosine", min_score=0.0),
+    )
+    runner = CliRunner()
+    with (
+        patch(
+            "MassFlow.config.MassFlowConfig.from_yaml",
+            return_value=stable_config,
+        ),
+        patch("MassFlow.workflow.run_annotation_pipeline", return_value=[]),
+    ):
+        result = runner.invoke(cli.app, ["annotate", "--config", "config.yaml"])
+
+        assert result.exit_code == 0
+        assert "EXPERIMENTAL SURFACES ACTIVE" not in result.stdout
+
+
 def test_run_init_success(tmp_path):
     """Test successful execution of run_init."""
     output_file = tmp_path / "test_config.yaml"

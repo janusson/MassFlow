@@ -53,6 +53,8 @@ class MLEngineProtocol(ABC):
         include_decoys: bool = True,
         ref_precursor_mzs: np.ndarray | None = None,
         ref_is_decoy: np.ndarray | None = None,
+        decoy_min_relative_intensity: float | None = None,
+        decoy_mz_shift_da: float | None = None,
     ) -> List["SearchResult"]:
         """Run similarity search and return ranked results.
 
@@ -72,6 +74,13 @@ class MLEngineProtocol(ABC):
             Pre-computed reference precursor m/z array (float64).
         ref_is_decoy : np.ndarray or None
             Pre-computed boolean decoy flags for references.
+        decoy_min_relative_intensity : float or None
+            Decoy noise floor (fraction of the base peak); forwarded to
+            engines that generate decoys locally. Ignored by engines that
+            score decoys supplied in ``reference_spectra``.
+        decoy_mz_shift_da : float or None
+            Decoy m/z jitter (Da); forwarded to engines that generate
+            decoys locally.
 
         Returns
         -------

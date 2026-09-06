@@ -1,5 +1,11 @@
 # MassFlow Architecture
 
+> **This file is a component-level reference only.** The authoritative product
+> contract, capability matrix, contradiction log, and core/experimental/future
+> research boundaries live in
+> [`docs/CAPABILITY_MATRIX.md`](CAPABILITY_MATRIX.md). Where the two documents
+> disagree, `CAPABILITY_MATRIX.md` governs.
+
 ## Overview
 
 MassFlow is a local, CLI-first toolkit for tandem mass spectrometry (MS/MS)
@@ -65,8 +71,21 @@ graph LR
     - `stream-server`
     - `serve`
     - `watch`
+    - `tui`
 - Python API
   - Core modules can also be imported directly for scripting or testing.
+
+### Terminal console
+
+- `src/MassFlow/tui/`
+  - A Textual-based interactive console (`massflow tui`, requires the `tui`
+    extra) with four tabs: Browser (find/upload/load spectral files),
+    Viewer (interactive centroid stick plots), Identify (target-decoy
+    similarity search with mirror plots), and Diagnostics (problems with
+    plain-English fixes plus the quarantine log).
+  - All science-facing helpers are pure functions (NumPy/text in, text out)
+    so the plot glyph math and file logic are unit-testable headlessly;
+    heavy core imports (matchms, pyteomics) are deferred to worker threads.
 
 ### Orchestration
 
@@ -139,7 +158,7 @@ graph LR
   - Defines strict Pydantic data contracts (`AnnotationHit`, `ConsensusInput`, `ConsensusResult`, `ConsensusConfig`, `MolecularStructure`).
   - Provides a dependency-free, engine-agnostic language for communication between the lightweight core and heavy ML satellite repositories (e.g., `massflow-ml`).
   - Implements rigorous structural validation (e.g., 5 ppm precursor m/z checks) and automatically calculates theoretical `isotopic_envelope` distributions for valid molecules.
-- Consensus *scoring* is provided by the `ConsensusEngine` in `src/MassFlow/similarity.py`, which combines cosine, modified_cosine, and (when the `[ml]` extra is installed) Spec2Vec/MS2DeepScore sub-engines into a weighted consensus score. The standalone `MassFlow.consensus` orchestrator module (the v0.2 Orchestrator API with `generate_consensus`) was removed in the v1.0 engine lockdown; the tie-breaking and credibility-check logic it implemented is no longer part of the codebase.
+- Consensus *scoring* is provided by the `ConsensusEngine` in `src/MassFlow/similarity.py`, which combines cosine, modified_cosine, and (when the `[ml]` extra is installed) Spec2Vec/MS2DeepScore sub-engines into a weighted consensus score. An earlier standalone `MassFlow.consensus` orchestrator module (with `generate_consensus`) is not part of the current codebase; the tie-breaking and credibility-check logic it implemented was removed alongside it.
 
 ---
 
@@ -390,6 +409,16 @@ Pydantic/matchms gate, buffered in a bounded async queue with quality-gated
 high-water-mark backpressure (low-quality spectra are shed under overrun and
 reported as `spectra_dropped_low_quality`), micro-batched, and routed through
 the `ConsensusEngine`; annotations stream back to the client as they complete.
+
+### `MassFlow.tui` (interactive, requires the `tui` extra)
+Implements the interactive terminal console (`massflow tui`): a spectral file
+browser with workspace upload, an interactive spectrum viewer with
+Unicode-glyph stick plots, a target-decoy identification tab with mirror
+plots, and a diagnostics tab that surfaces problems with plain-English fixes
+plus the quarantine log. All heavy work runs in Textual worker threads, and
+the science-facing helpers (peak downsampling, mirror alignment, plot
+rendering, file discovery, error hints) are pure functions covered by
+headless unit tests. See `docs/api/tui.md`.
 
 ---
 

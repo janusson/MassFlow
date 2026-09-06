@@ -596,14 +596,16 @@ class StreamingEngine:
                     }
                 )
             else:
-                best_q = float(hits[0].get("fdr_q_value") or np.nan)
+                # Uncalibrated by design: streaming responses carry raw
+                # consensus scores; TDC q-values are only defined for batch
+                # workflows (see _build_annotation_response).
                 responses.append(
                     {
                         "spectrum_id": pkt.spectrum_id,
                         "status": "annotated",
                         "error_message": "",
                         "top_hits": hits,
-                        "fdr_q_value": best_q,
+                        "fdr_q_value": float("nan"),
                     }
                 )
 
@@ -636,7 +638,6 @@ def _build_annotation_response(
         }
 
     hits = [_packet_to_search_result(packet, r) for r in results]
-    best_q = float(results[0].get("q_value") or np.nan)
 
     logger.debug(
         "Annotated %s: %d hits in %.0f µs (best score=%.3f).",
@@ -651,7 +652,12 @@ def _build_annotation_response(
         "status": "annotated",
         "error_message": "",
         "top_hits": hits,
-        "fdr_q_value": best_q,
+        # Streaming annotations carry raw consensus scores; they are NOT
+        # calibrated. Target-decoy FDR is only defined over a batch of
+        # competing queries (see docs/user-guide/scoring_logic.md), so a
+        # single-packet q-value would be meaningless (always 1.0). NaN
+        # signals "uncalibrated" instead of a false calibrated value.
+        "fdr_q_value": float("nan"),
     }
 
 
@@ -682,9 +688,15 @@ def load_reference_library(
     ------
     RuntimeError
         If no spectra could be loaded from the configured library.
+
+    Notes
+    -----
+    Loading goes through the unified
+    :class:`MassFlow.storage.SpectralStore` interface (:mod:`MassFlow.library`):
+    store libraries are read via their own backend, raw files via the
+    read-only raw-file adapter — the same code path the batch pipeline uses.
     """
-    from MassFlow.io import load_spectra
-    from MassFlow.processing import process_spectra
+    from MassFlow.library import library_spec_for_config, open_library
 
     library_path = config.input.library_path
     if library_path is None:
@@ -692,14 +704,14 @@ def load_reference_library(
 
     logger.info("Loading reference library from %s", library_path)
 
-    raw = load_spectra(library_path)
-    raw_list = list(raw)
-    if not raw_list:
-        raise RuntimeError(f"No spectra loaded from library: {library_path}")
-
-    processed = list(process_spectra(raw_list, config.processing))
+    spec = library_spec_for_config(config)
+    backend = open_library(spec, config.processing)
+    try:
+        processed = list(backend.iter_spectra())
+    finally:
+        backend.close()
     if not processed:
-        raise RuntimeError("All spectra were discarded during library processing.")
+        raise RuntimeError(f"No spectra loaded from library: {library_path}")
 
     # Streaming libraries frequently lack unique identifiers (e.g. MSP
     # files without an ID field).  Consensus scoring aggregates results by

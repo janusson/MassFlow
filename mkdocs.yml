@@ -79,7 +79,9 @@ extra_css:
 
 extra_javascript:
   - javascripts/mathjax.js
-  - https://polyfill.io/v3/polyfill.min.js?features=es6
+  # MathJax 3 requires no polyfills on any supported browser; polyfill.io
+  # (acquired by a third party in 2024) is a known supply-chain risk and is
+  # deliberately NOT loaded.
   - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
 
 nav:
@@ -96,22 +98,31 @@ nav:
           - SQLite Library Management: user-guide/database.md
           - Processing & Filtering: user-guide/processing.md
           - Scientific Validation: user-guide/validation.md
+          - Golden Test Suite: user-guide/scientific_validation.md
           - Classical Similarity: user-guide/similarity.md
           - Result Export & FDR: user-guide/results.md
           - Usage Reference: user-guide/usage.md
       - Data & Math:
           - Data Requirements: user-guide/data-requirements.md
           - Scoring Logic: user-guide/scoring_logic.md
+          - Multiprocessing & Memory Model: multiprocessing.md
   - Architecture: ARCHITECTURE.md
+  - Product Contract & Capability Matrix: CAPABILITY_MATRIX.md
+  - Complexity Audit & Subsystem Classification: COMPLEXITY_AUDIT.md
   - API Reference:
       - Overview: api_reference.md
       - CLI: api/cli.md
+      - Terminal Console (TUI): api/tui.md
       - Configuration: api/config.md
       - Database: api/database.md
       - Conversion: api/convert.md
       - Input/Output: api/io.md
       - Processing: api/processing.md
       - Similarity: api/similarity.md
+      - Storage (Zarr): api/storage.md
+      - HNSW Indexing: api/hnsw.md
+      - Acceleration: api/acceleration.md
+      - Streaming Queue: api/queue.md
       - Workflow: api/workflow.md
       - Models: api/models.md
       - Cheminformatics: api/cheminformatics.md
