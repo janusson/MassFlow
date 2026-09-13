@@ -68,6 +68,31 @@ Hybrid (Zarr) mode replaces the two BLOB columns with:
 
 - ``zarr_ref``
 - ``zarr_index``
+
+Library provenance schema (additive, ``PRAGMA user_version >= 1``)
+--------------------------------------------------------------------
+Two lightweight tables record *how a library database came to be*, so that
+``massflow db inspect`` can answer lineage questions and annotation result
+sidecars can link back to the exact database build:
+
+- ``store_meta`` — key/value store metadata: ``schema_version`` and the
+  ``created_at`` timestamp of the first MassFlow open.
+- ``library_builds`` — one row per library build / merge event: exact UTC
+  ``built_at`` timestamp, MassFlow version, the input file(s) used
+  (``source_path`` + streaming ``source_sha256``), the ``category`` and
+  ``spectrum_count`` stored, the storage backend, the full processing and
+  similarity (target-decoy) configuration as JSON, the processing
+  fingerprint, the effective-config digest, and free-form ``details`` JSON
+  (e.g. the list of input databases for a merge).
+
+The provenance schema is additive and idempotent: opening an existing
+pre-provenance database upgrades it in place with ``CREATE TABLE IF NOT
+EXISTS`` + ``PRAGMA user_version`` (raw SQLite only — no ORM, no migration
+framework). Pre-existing databases keep ``user_version = 0`` until the next
+MassFlow open. Recording a build row is an explicit caller action
+(:meth:`SpectralDatabase.record_library_build`); plain ``add_spectra``
+writes never create history rows, so scientific payload bytes are
+unaffected.
 """
 
 from __future__ import annotations
@@ -110,6 +135,78 @@ CURRENT_SPECTRA_COLUMNS = {
     "triage_flags",
 }
 LEGACY_PEAKS_COLUMN = "peaks"
+
+# ---------------------------------------------------------------------------
+# Library provenance schema (see module docstring). Additive and idempotent:
+# existing databases are upgraded in place on their next MassFlow open.
+# ---------------------------------------------------------------------------
+
+# Version of the library-provenance schema, persisted via PRAGMA user_version
+# (and mirrored in store_meta['schema_version'] for tooling that only reads
+# tables). user_version == 0 means "pre-provenance database".
+PROVENANCE_SCHEMA_VERSION = 1
+
+LIBRARY_BUILDS_TABLE = "library_builds"
+STORE_META_TABLE = "store_meta"
+
+# store_meta keys
+STORE_META_SCHEMA_VERSION_KEY = "schema_version"
+STORE_META_CREATED_AT_KEY = "created_at"
+
+
+def record_library_build_provenance(
+    store: Any,
+    *,
+    logger_tag: str,
+    source_path: Optional[Union[str, Path]] = None,
+    spectrum_count: int,
+    category: str,
+    storage_backend: str,
+    processing_config: Optional[Union[dict[str, Any], str]] = None,
+    similarity_config: Optional[Union[dict[str, Any], str]] = None,
+    processing_fingerprint: Optional[str] = None,
+    config_digest_sha256: Optional[str] = None,
+    details: Optional[dict[str, Any]] = None,
+) -> Optional[int]:
+    """Record a library build row on a store that supports provenance.
+
+    Best-effort bridge used by the CLI and :func:`MassFlow.library.prepare_library`
+    against the unified :class:`MassFlow.storage.SpectralStore` interface:
+    SQLite-backed stores (``sqlite`` / ``hybrid``) implement
+    :meth:`SpectralDatabase.record_library_build`; other backends (e.g. pure
+    Zarr stores) simply return ``None`` without error. A failure to record is
+    logged as a warning and never fails the build itself.
+
+    Returns
+    -------
+    int or None
+        The recorded ``library_builds.id``, or None when the backend does not
+        support provenance history or recording failed.
+    """
+    record = getattr(store, "record_library_build", None)
+    if record is None:
+        return None
+    try:
+        return int(
+            record(
+                source_path=source_path,
+                spectrum_count=spectrum_count,
+                category=category,
+                storage_backend=storage_backend,
+                processing_config=processing_config,
+                similarity_config=similarity_config,
+                processing_fingerprint=processing_fingerprint,
+                config_digest_sha256=config_digest_sha256,
+                details=details,
+            )
+        )
+    except Exception as exc:
+        logger.warning(
+            "Could not record library build provenance for %s: %s",
+            logger_tag,
+            exc,
+        )
+        return None
 
 
 class LegacyDatabaseSchemaError(RuntimeError):
@@ -167,8 +264,12 @@ def _create_sqlite_connection(db_path: Union[str, Path]) -> sqlite3.Connection:
     """
     database_path = Path(db_path)
     database_path.parent.mkdir(parents=True, exist_ok=True)
-    connection = sqlite3.connect(database_path)
+    connection = sqlite3.connect(database_path, timeout=30.0)
     connection.row_factory = sqlite3.Row
+    # Busy timeout: readers must tolerate brief writer locks (e.g. schema
+    # upgrades or provenance rows) when several MassFlow processes open the
+    # same store (annotation workers, db inspect, concurrent Zarr readers).
+    connection.execute("PRAGMA busy_timeout = 30000")
     return connection
 
 
@@ -411,6 +512,122 @@ def _ensure_zarr_columns(connection: sqlite3.Connection) -> None:
     if "zarr_index" not in columns:
         cursor.execute("ALTER TABLE spectra ADD COLUMN zarr_index INTEGER")
     connection.commit()
+
+
+def _ensure_provenance_schema(connection: sqlite3.Connection) -> None:
+    """
+    Create the library-provenance tables and version markers if missing.
+
+    The provenance schema (``library_builds`` + ``store_meta``) is additive:
+    databases created before the provenance schema existed are upgraded in
+    place on their next MassFlow open. The upgrade is idempotent and performs
+    no writes at all when the tables are already present, so warm opens (and
+    concurrent read-only workers) never contend for a write lock.
+
+    Parameters
+    ----------
+    connection : sqlite3.Connection
+        Open SQLite connection.
+
+    Returns
+    -------
+    None
+
+    Examples
+    --------
+    >>> _ensure_provenance_schema(connection)
+    """
+    if has_table(connection, LIBRARY_BUILDS_TABLE) and has_table(
+        connection, STORE_META_TABLE
+    ):
+        return
+
+    cursor = connection.cursor()
+    cursor.execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS {LIBRARY_BUILDS_TABLE} (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            built_at TEXT NOT NULL,
+            massflow_version TEXT,
+            source_path TEXT,
+            source_sha256 TEXT,
+            source_size INTEGER,
+            category TEXT,
+            spectrum_count INTEGER,
+            storage_backend TEXT,
+            processing_config TEXT,
+            similarity_config TEXT,
+            processing_fingerprint TEXT,
+            config_digest_sha256 TEXT,
+            details TEXT
+        )
+        """
+    )
+    cursor.execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS {STORE_META_TABLE} (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        )
+        """
+    )
+    cursor.execute(
+        f"INSERT OR IGNORE INTO {STORE_META_TABLE} (key, value) VALUES (?, ?)",
+        (STORE_META_SCHEMA_VERSION_KEY, str(PROVENANCE_SCHEMA_VERSION)),
+    )
+    cursor.execute(
+        f"INSERT OR IGNORE INTO {STORE_META_TABLE} (key, value) VALUES (?, ?)",
+        (STORE_META_CREATED_AT_KEY, datetime.now(timezone.utc).isoformat()),
+    )
+    # Mirror the schema version in PRAGMA user_version (standard SQLite
+    # schema-version marker). Never downgrade a version another tool set.
+    cursor.execute("PRAGMA user_version")
+    current_version = int(cursor.fetchone()[0])
+    if current_version < PROVENANCE_SCHEMA_VERSION:
+        cursor.execute(f"PRAGMA user_version = {PROVENANCE_SCHEMA_VERSION}")
+    connection.commit()
+
+
+def _json_value(value: Optional[Union[dict[str, Any], str]]) -> Optional[str]:
+    """Serialize a config dict (or pass through an existing JSON string)."""
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return value
+    return json.dumps(value, sort_keys=True)
+
+
+def _parse_json_column(raw: Any, default: Any = None) -> Any:
+    """Parse a JSON TEXT column, tolerating NULL and unparseable values."""
+    if raw is None:
+        return default
+    if isinstance(raw, bytes):
+        raw = raw.decode("utf-8", errors="replace")
+    try:
+        return json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        return raw
+
+
+def _stream_file_sha256(path: Path) -> str:
+    """Streaming SHA-256 of a file's contents (large inputs stay bounded)."""
+    import hashlib
+
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _installed_massflow_version() -> Optional[str]:
+    """Resolved massflow package version, or None when not installed."""
+    import importlib.metadata as metadata
+
+    try:
+        return metadata.version("massflow")
+    except metadata.PackageNotFoundError:
+        return None
 
 
 def _json_serialize_metadata(metadata: dict[str, Any]) -> str:
@@ -1328,6 +1545,10 @@ class SpectralDatabase(SpectralStore):
         if self._zarr_path is not None:
             _ensure_zarr_columns(self.conn)
 
+        # Library-provenance schema (store_meta + library_builds): additive,
+        # idempotent, and a no-op on warm opens (see _ensure_provenance_schema).
+        _ensure_provenance_schema(self.conn)
+
     def _attach_zarr_store(self) -> None:
         """
         Open the hybrid-mode Zarr array store and validate its identity.
@@ -1991,6 +2212,178 @@ class SpectralDatabase(SpectralStore):
             "spectrum_count": self.get_total_spectra_count(),
         }
 
+    # ------------------------------------------------------------------
+    # Library provenance: build history, store metadata, lineage queries
+    # ------------------------------------------------------------------
+
+    def get_schema_version(self) -> int:
+        """Return the persisted provenance schema version (``PRAGMA
+        user_version``); ``0`` marks a pre-provenance database."""
+        if not self.conn:
+            raise ConnectionError("Database not connected.")
+        cursor = self.conn.cursor()
+        cursor.execute("PRAGMA user_version")
+        return int(cursor.fetchone()[0])
+
+    def get_store_created_at(self) -> Optional[str]:
+        """UTC timestamp of the first MassFlow open, or None when unknown."""
+        if not self.conn:
+            raise ConnectionError("Database not connected.")
+        if not has_table(self.conn, STORE_META_TABLE):
+            return None
+        cursor = self.conn.cursor()
+        cursor.execute(
+            f"SELECT value FROM {STORE_META_TABLE} WHERE key = ?",
+            (STORE_META_CREATED_AT_KEY,),
+        )
+        row = cursor.fetchone()
+        return str(row[0]) if row is not None else None
+
+    def record_library_build(
+        self,
+        *,
+        source_path: Optional[Union[str, Path]] = None,
+        spectrum_count: int,
+        category: str,
+        storage_backend: str,
+        processing_config: Optional[Union[dict[str, Any], str]] = None,
+        similarity_config: Optional[Union[dict[str, Any], str]] = None,
+        processing_fingerprint: Optional[str] = None,
+        config_digest_sha256: Optional[str] = None,
+        source_sha256: Optional[str] = None,
+        massflow_version: Optional[str] = None,
+        details: Optional[dict[str, Any]] = None,
+    ) -> int:
+        """Record one library build / merge event in the provenance history.
+
+        This is the single write path behind ``library_builds`` rows: it
+        stores the input file used (with a streaming SHA-256 when available),
+        the effective processing and similarity (target-decoy) configuration
+        JSON, the processing fingerprint, the effective-config digest, and an
+        exact UTC timestamp. Plain ``add_spectra`` calls never create history
+        rows, so scientific payload bytes are unaffected by provenance.
+
+        Parameters
+        ----------
+        source_path : str or Path or None
+            The input file this build ingested (None for e.g. merges, whose
+            inputs are listed in ``details``).
+        spectrum_count : int
+            Number of spectra stored by this build.
+        category : str
+            Category label applied to the stored spectra.
+        storage_backend : str
+            Effective backend (``sqlite`` / ``hybrid`` / ``zarr``).
+        processing_config : dict or str or None
+            Processing configuration JSON (dict or serialized string).
+        similarity_config : dict or str or None
+            Similarity / target-decoy configuration JSON, when available.
+        processing_fingerprint : str or None
+            SHA-256 of the processing configuration (the library.py cache
+            fingerprint).
+        config_digest_sha256 : str or None
+            SHA-256 of the effective MassFlow configuration that produced the
+            build.
+        source_sha256 : str or None
+            Pre-computed content hash of the source file. When None and
+            ``source_path`` exists, the hash is computed here (streaming).
+        massflow_version : str or None
+            MassFlow version that performed the build (defaults to the
+            installed version).
+        details : dict or None
+            Free-form JSON extras (e.g. ``{"merged_sources": [...]}``).
+
+        Returns
+        -------
+        int
+            The new ``library_builds.id`` row identifier.
+        """
+        if not self.conn:
+            raise ConnectionError("Database not connected.")
+        _ensure_provenance_schema(self.conn)
+
+        source = Path(source_path) if source_path is not None else None
+        if source_sha256 is None and source is not None and source.is_file():
+            source_sha256 = _stream_file_sha256(source)
+        version = massflow_version or _installed_massflow_version()
+
+        cursor = self.conn.cursor()
+        cursor.execute(
+            f"""
+            INSERT INTO {LIBRARY_BUILDS_TABLE} (
+                built_at, massflow_version, source_path, source_sha256,
+                source_size, category, spectrum_count, storage_backend,
+                processing_config, similarity_config, processing_fingerprint,
+                config_digest_sha256, details
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                datetime.now(timezone.utc).isoformat(),
+                version,
+                str(source) if source is not None else None,
+                source_sha256,
+                source.stat().st_size
+                if source is not None and source.is_file()
+                else None,
+                category,
+                int(spectrum_count),
+                storage_backend,
+                _json_value(processing_config),
+                _json_value(similarity_config),
+                processing_fingerprint,
+                config_digest_sha256,
+                _json_value(details),
+            ),
+        )
+        self.conn.commit()
+        row_id = cursor.lastrowid
+        if row_id is None:
+            raise RuntimeError("Library build row was not assigned an id.")
+        return int(row_id)
+
+    def get_library_builds(self, limit: int = 20) -> list[dict[str, Any]]:
+        """Return recorded build-history rows, newest first.
+
+        Parameters
+        ----------
+        limit : int
+            Maximum number of rows to return.
+
+        Returns
+        -------
+        list of dict
+            Each dict carries the ``library_builds`` columns with the JSON
+            columns (``processing_config``, ``similarity_config``,
+            ``details``) parsed back into objects.
+        """
+        if not self.conn:
+            raise ConnectionError("Database not connected.")
+        if not has_table(self.conn, LIBRARY_BUILDS_TABLE):
+            return []
+        cursor = self.conn.cursor()
+        cursor.execute(
+            f"SELECT * FROM {LIBRARY_BUILDS_TABLE} ORDER BY id DESC LIMIT ?",
+            (int(limit),),
+        )
+        rows = []
+        for row in cursor.fetchall():
+            parsed = {key: row[key] for key in row.keys()}
+            parsed["processing_config"] = _parse_json_column(
+                parsed.get("processing_config")
+            )
+            parsed["similarity_config"] = _parse_json_column(
+                parsed.get("similarity_config")
+            )
+            parsed["details"] = _parse_json_column(parsed.get("details"))
+            rows.append(parsed)
+        return rows
+
+    def get_latest_library_build(self) -> Optional[dict[str, Any]]:
+        """Return the most recent build-history row, or None when the store
+        has no recorded history (e.g. built before the provenance schema)."""
+        builds = self.get_library_builds(limit=1)
+        return builds[0] if builds else None
+
     def get_spectrum_by_id(self, spectrum_id: str) -> Optional[Spectrum]:
         """
         Retrieve a single spectrum by its unique identifier (``original_id``).
@@ -2355,6 +2748,9 @@ class SpectralDatabase(SpectralStore):
 __all__ = [
     "CURRENT_SPECTRA_COLUMNS",
     "LEGACY_PEAKS_COLUMN",
+    "LIBRARY_BUILDS_TABLE",
+    "PROVENANCE_SCHEMA_VERSION",
+    "STORE_META_TABLE",
     "LegacyDatabaseSchemaError",
     "SpectralDatabase",
     "create_current_spectra_table",
@@ -2367,4 +2763,5 @@ __all__ = [
     "legacy_migration_error_message",
     "migrate_legacy_peaks_database",
     "migrate_legacy_peaks_to_arrays",
+    "record_library_build_provenance",
 ]

@@ -3,13 +3,15 @@ Spectral processing and filtering module for MassFlow.
 
 This module serves as a facade for the ``matchms`` library, providing a streamlined
 interface for cleaning, filtering, and normalizing mass spectral data. It implements
-a two-stage processing pipeline: metadata standardization (e.g., repairing InChIKeys,
-deriving formulas) and peak-level filtering (e.g., noise removal, m/z range truncation).
+a three-stage processing pipeline: metadata standardization (e.g., repairing InChIKeys,
+deriving formulas), strict physical-integrity validation of declared chemistry
+(5 ppm precursor gate, see ``physical_integrity_reason``), and peak-level filtering
+(e.g., noise removal, m/z range truncation).
 It is designed to fail fast on invalid data while logging detailed diagnostics.
 """
 
 import logging
-from typing import Iterable, Iterator, List, Optional, Tuple
+from typing import Any, Callable, Iterable, Iterator, List, Optional, Tuple
 
 import numpy as np
 import polars as pl
@@ -39,6 +41,273 @@ from MassFlow.config import ProcessingConfig
 _WATER_MASS: float = pmass.calculate_mass(formula="H2O")
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Strict physical-integrity gate (5 ppm precursor validation)
+# ---------------------------------------------------------------------------
+#
+# The classical batch pipeline constructs the ``SpectrumMetadata`` /
+# ``MolecularStructure`` contracts (MassFlow.models) for every spectrum that
+# declares a structural claim (formula, smiles, or inchi) and rejects spectra
+# whose declared chemistry is malformed or physically impossible (> 5 ppm
+# precursor deviation). Spectra without structural claims are exempt and pass
+# through without any model construction (the dominant case for raw
+# experimental query files, so the gate adds no measurable cost there).
+
+# ``MolecularStructure`` auto-fills a theoretical isotopic envelope on every
+# construction (~3.4 ms/spectrum: pyteomics isotopologue enumeration). The
+# classical annotation pipeline never consumes isotopic envelopes (they are
+# used only by the model layer / experimental ML surfaces), so the gate pins
+# a non-empty placeholder to suppress the auto-fill. The 5 ppm verdicts are
+# unaffected: the envelope is never part of the physical-validity logic.
+_ISOTOPIC_ENVELOPE_SKIP_MARKER = [(0.0, 0.0)]
+
+# Quarantine logger: the same dedicated logger io.py uses for spectra rejected
+# by the I/O validation layer, so gate rejections appear in the quarantine log
+# tail surfaced by the diagnostics surface (tui/diagnostics.py).
+quarantine_logger = logging.getLogger("quarantine")
+
+
+class PhysicalIntegrityError(Exception):
+    """Raised when a reference library fails the strict physical-integrity gate.
+
+    A library spectrum that declares a molecular structure whose metadata is
+    malformed or whose precursor m/z contradicts the declared chemistry by
+    more than 5 ppm is a data-integrity failure: silently searching a shrunk
+    target pool would change every FDR calibration. The annotate path
+    therefore aborts the run and reports this error instead of proceeding
+    with a silently altered library.
+    """
+
+    def __init__(self, message: str, rejection_reasons: List[str]) -> None:
+        super().__init__(message)
+        self.rejection_reasons = rejection_reasons
+
+
+def _spectrum_identifier(spectrum: Spectrum) -> str:
+    """Best-effort human-readable identifier for a spectrum in messages."""
+    for key in ("id", "spectrum_id", "scans", "compound_name", "name"):
+        value = spectrum.get(key)
+        if value not in (None, ""):
+            return str(value)
+    return "<unknown>"
+
+
+def _clean_optional_str(value: Any) -> Optional[str]:
+    """Return a stripped string, or None for empty / non-string values."""
+    if value is None:
+        return None
+    if isinstance(value, str):
+        cleaned = value.strip()
+        return cleaned or None
+    return None
+
+
+def _short_exception_message(exc: Exception) -> str:
+    """One-line, truncated representation of a validation exception."""
+    text = " ".join(str(exc).split())
+    return text[:200] or exc.__class__.__name__
+
+
+def physical_integrity_reason(spectrum: Spectrum) -> Optional[str]:
+    """Verdict of the strict 5 ppm physical-integrity gate for one spectrum.
+
+    This is the classical-annotate counterpart of the streaming ingestion
+    gate (``MassFlow.streaming.engine.validate_streaming_spectrum``): it runs
+    the existing ``SpectrumMetadata`` / ``MolecularStructure`` contracts from
+    :mod:`MassFlow.models` against harmonized spectrum metadata and returns a
+    human-readable rejection reason when the spectrum must not enter the
+    search pool.
+
+    The check activates **only** for spectra that declare a structural claim
+    (``formula``, ``smiles``, or ``inchi``). Spectra without such a claim are
+    exempt (``None``) and pay no construction cost. Within a claim, the
+    verdicts follow the model contracts exactly:
+
+    * an unparseable SMILES/InChI claim is rejected;
+    * a declared ``exact_mass`` conflicting with the formula-derived mass by
+      more than 5 ppm is rejected;
+    * with a complete context (structure, charge, and an adduct -- explicit
+      or imputed from ``ionmode``), a precursor m/z deviating from the
+      theoretical m/z by more than 5 ppm is rejected;
+    * a non-registry adduct with an otherwise complete context is rejected;
+    * malformed structural metadata (e.g. an unparseable formula) is
+      rejected with the underlying error.
+
+    Missing context (no charge, no adduct, no derivable ion mode) disables
+    the strict mass check for that spectrum, exactly as documented for
+    ``SpectrumMetadata``; without RDKit, smiles/inchi-only claims degrade to
+    the documented formula-only fallback.
+
+    Parameters
+    ----------
+    spectrum : matchms.Spectrum
+        A spectrum whose metadata has already been harmonized by
+        :func:`metadata_processing`.
+
+    Returns
+    -------
+    str or None
+        A rejection reason, or ``None`` when the spectrum passes the gate
+        (or is exempt from it).
+    """
+    # Import lazily: models.py pulls in the optional RDKit stack, which must
+    # stay out of the import graph for environments without the [chem] extra.
+    from MassFlow.models import MolecularStructure, SpectrumMetadata
+
+    precursor_raw = spectrum.get("precursor_mz")
+    if precursor_raw is None:
+        return None
+    try:
+        precursor_mz = float(precursor_raw)
+    except (TypeError, ValueError):
+        return None
+    if not np.isfinite(precursor_mz) or precursor_mz <= 0:
+        return None
+
+    formula = _clean_optional_str(spectrum.get("formula"))
+    smiles = _clean_optional_str(spectrum.get("smiles"))
+    inchi = _clean_optional_str(spectrum.get("inchi"))
+    if not (formula or smiles or inchi):
+        # Fast path: no structural claim -> nothing to verify. This is the
+        # dominant case for raw experimental query files.
+        return None
+
+    spec_id = _spectrum_identifier(spectrum)
+
+    # exact_mass is only meaningful alongside a structural claim; keep it
+    # None when absent so the models auto-fill it from the formula. Note:
+    # matchms normalizes the ``exact_mass`` metadata key to ``parent_mass``
+    # on Spectrum construction, so read the canonical key first.
+    exact_mass: Optional[float] = None
+    exact_mass_raw = spectrum.get("parent_mass") or spectrum.get("exact_mass")
+    if exact_mass_raw not in (None, ""):
+        try:
+            exact_mass = float(exact_mass_raw)
+        except (TypeError, ValueError):
+            return (
+                f"spectrum {spec_id}: malformed exact_mass metadata "
+                f"({exact_mass_raw!r}) cannot be parsed as a number"
+            )
+        if not np.isfinite(exact_mass):
+            return (
+                f"spectrum {spec_id}: malformed exact_mass metadata "
+                f"({exact_mass_raw!r}) is not a finite number"
+            )
+
+    # Charge: 0 / missing is treated as unknown (mirroring the streaming
+    # gate), which disables the strict mass check per the model contract.
+    # Normalize container-style charge values (mzML/MGF loaders can produce
+    # lists/iterables) the same way the batch metadata extraction does.
+    charge_raw = spectrum.get("charge")
+    if isinstance(charge_raw, (list, tuple)) and len(charge_raw) > 0:
+        charge_raw = charge_raw[0]
+    elif hasattr(charge_raw, "__iter__") and not isinstance(charge_raw, (str, bytes)):
+        try:
+            charge_raw = next(iter(charge_raw))
+        except (StopIteration, TypeError):
+            charge_raw = None
+    charge: Optional[int] = None
+    if charge_raw not in (None, 0, "", "0"):
+        try:
+            charge = int(charge_raw)
+        except (TypeError, ValueError):
+            charge = None
+
+    # ionmode participates in the model via adduct imputation and the strict
+    # positive/negative/neutral literal. An unparseable value means "unknown
+    # ion mode": pass None so the model does not impute an adduct.
+    ion_mode: Optional[str] = None
+    ionmode_raw = _clean_optional_str(spectrum.get("ionmode"))
+    if ionmode_raw in ("positive", "negative", "neutral"):
+        ion_mode = ionmode_raw
+
+    adduct = _clean_optional_str(spectrum.get("adduct"))
+
+    try:
+        molecule = MolecularStructure(
+            formula=formula,
+            smiles=smiles,
+            inchi=inchi,
+            exact_mass=exact_mass,
+            # Suppress the ~3.4 ms/spectrum isotopic-envelope auto-fill; the
+            # envelope is not consumed by the classical annotation path and
+            # the physical verdicts are unaffected (see module notes).
+            isotopic_envelope=_ISOTOPIC_ENVELOPE_SKIP_MARKER,
+        )
+    except Exception as exc:  # malformed structural metadata (e.g. formula)
+        return (
+            f"spectrum {spec_id}: malformed structural metadata "
+            f"({_short_exception_message(exc)})"
+        )
+
+    if not molecule.is_physically_valid:
+        if molecule.formula and molecule.exact_mass is not None:
+            # The formula was resolved (declared or auto-filled), so an
+            # invalid verdict with an exact mass present is a mass conflict.
+            try:
+                from MassFlow.cheminformatics import _formula_to_monoisotopic_mass
+
+                formula_mass = _formula_to_monoisotopic_mass(molecule.formula)
+                ppm_error = abs(molecule.exact_mass - formula_mass) / formula_mass * 1e6
+                return (
+                    f"spectrum {spec_id}: declared exact mass "
+                    f"{molecule.exact_mass} conflicts with the formula-derived "
+                    f"mass {formula_mass} of {molecule.formula} by "
+                    f"{ppm_error:.2f} ppm (>5.0 ppm limit)"
+                )
+            except Exception:
+                pass
+        return (
+            f"spectrum {spec_id}: declared SMILES/InChI could not be parsed "
+            "as a valid chemical structure"
+        )
+
+    try:
+        metadata = SpectrumMetadata(
+            spectrum_id=spec_id,
+            precursor_mz=precursor_mz,
+            charge=charge,
+            ion_mode=ion_mode,
+            adduct=adduct,
+            molecule=molecule,
+        )
+    except Exception as exc:  # malformed metadata (field-level constraints)
+        return (
+            f"spectrum {spec_id}: malformed metadata for strict precursor "
+            f"validation ({_short_exception_message(exc)})"
+        )
+
+    if metadata.is_physically_valid:
+        return None
+
+    # The molecule is valid, so an invalid spectrum verdict is either an
+    # unsupported adduct or a >5 ppm precursor deviation. Recompute the
+    # display values (identical arithmetic to the model validator).
+    from MassFlow.cheminformatics import compute_adduct_offset
+
+    effective_adduct = metadata.adduct
+    offset = compute_adduct_offset(effective_adduct) if effective_adduct else None
+    if offset is None:
+        return (
+            f"spectrum {spec_id}: adduct {effective_adduct!r} is not supported "
+            "by the MassFlow adduct registry; strict precursor validation "
+            "cannot confirm the declared structure"
+        )
+    if metadata.charge and molecule.exact_mass is not None:
+        theoretical_mz = (molecule.exact_mass + offset) / abs(metadata.charge)
+        ppm_error = abs(precursor_mz - theoretical_mz) / theoretical_mz * 1e6
+        return (
+            f"spectrum {spec_id}: precursor m/z {precursor_mz:.4f} deviates "
+            f"{ppm_error:.2f} ppm from the theoretical m/z "
+            f"{theoretical_mz:.4f} of the declared structure "
+            f"(formula {molecule.formula or 'unknown'}, adduct "
+            f"{effective_adduct}); limit is 5.0 ppm"
+        )
+    return (
+        f"spectrum {spec_id}: declared structure is not physically consistent "
+        "with the precursor m/z (strict 5 ppm validation)"
+    )
 
 
 def compute_spectral_metrics(
@@ -206,10 +475,26 @@ def peak_processing(
 
 
 def process_spectra_batch(
-    spectra: List[Spectrum], config: ProcessingConfig
+    spectra: List[Spectrum],
+    config: ProcessingConfig,
+    rejection_reporter: Optional[Callable[[str], None]] = None,
 ) -> List[Spectrum]:
     """
     Process a batch of spectra using Polars for high-performance metadata operations.
+
+    Parameters
+    ----------
+    spectra : list of matchms.Spectrum
+        Spectra to process.
+    config : ProcessingConfig
+        Processing parameters.
+    rejection_reporter : Callable[[str], None] or None
+        Optional callback invoked with the rejection reason for every
+        spectrum dropped by the strict 5 ppm physical-integrity gate. Used by
+        the workflow to make chemistry rejections observable in the per-file
+        execution result (a scientific analysis must never silently drop
+        data). Peak-filter drops are *not* reported here; they remain
+        config-driven and are counted by the caller via the length delta.
     """
     if not spectra:
         return []
@@ -314,6 +599,20 @@ def process_spectra_batch(
             )
             continue
 
+        # Strict 5 ppm physical-integrity gate: a spectrum that declares a
+        # molecular structure whose metadata is malformed or whose precursor
+        # m/z contradicts the declared chemistry must never enter the search
+        # pool (mirrors the streaming ingestion gate).
+        physics_reason = physical_integrity_reason(spec)
+        if physics_reason is not None:
+            quarantine_logger.warning(
+                "Quarantined Spectrum | Source: processing gate | "
+                f"ID: {_spectrum_identifier(spec)} | Reason: {physics_reason}"
+            )
+            if rejection_reporter is not None:
+                rejection_reporter(physics_reason)
+            continue
+
         try:
             # Apply peak-level processing
             spec = peak_processing(spec, config)
@@ -338,11 +637,24 @@ def process_spectra_batch(
 
 
 def process_spectra(
-    spectra: Iterable[Spectrum], config: ProcessingConfig
+    spectra: Iterable[Spectrum],
+    config: ProcessingConfig,
+    rejection_reporter: Optional[Callable[[str], None]] = None,
 ) -> Iterator[Spectrum]:
     """
     Orchestrate the full spectral processing pipeline.
     Processes in chunks to optimize Polars batch performance while staying memory-aware.
+
+    Parameters
+    ----------
+    spectra : Iterable[matchms.Spectrum]
+        Spectra to process.
+    config : ProcessingConfig
+        Processing parameters.
+    rejection_reporter : Callable[[str], None] or None
+        Optional callback invoked with the rejection reason for every
+        spectrum dropped by the strict 5 ppm physical-integrity gate (see
+        :func:`process_spectra_batch`).
     """
     chunk_size = 5000
     chunk = []
@@ -353,8 +665,8 @@ def process_spectra(
         chunk.append(spectrum)
 
         if len(chunk) >= chunk_size:
-            yield from process_spectra_batch(chunk, config)
+            yield from process_spectra_batch(chunk, config, rejection_reporter)
             chunk.clear()
 
     if chunk:
-        yield from process_spectra_batch(chunk, config)
+        yield from process_spectra_batch(chunk, config, rejection_reporter)

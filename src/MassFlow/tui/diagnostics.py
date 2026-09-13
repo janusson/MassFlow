@@ -115,7 +115,7 @@ def suggest_fix(exception: BaseException) -> Optional[str]:
     name = exception.__class__.__name__
     message = str(exception)
 
-    if name == "UnsupportedVendorFormatError" or "vendor" in message.lower():
+    if name == "UnsupportedVendorFormatError" or "open data formats" in message.lower():
         return (
             "Vendor raw formats (.raw, .d, .wiff, ...) must be converted to an "
             "open format first. Run: massflow convert --input <dir> --output <dir> "
@@ -139,6 +139,11 @@ def suggest_fix(exception: BaseException) -> Optional[str]:
         return "The database file is unreadable or corrupt. Inspect it with: massflow db inspect <file>."
     if name == "ValidationError":
         return "The configuration failed schema validation. Fix the YAML (the error lists the offending keys) and reload."
+    if "hnswlib" in message.lower() or "massflow[hnsw]" in message:
+        return (
+            "HNSW-accelerated candidate retrieval requires the optional "
+            "'hnswlib' package. Install it with: pip install massflow[hnsw]"
+        )
     if "machine-learning" in message.lower() or "massflow[ml]" in message:
         return (
             _ML_INSTALL_RE.sub(r"\1", message)
@@ -150,6 +155,14 @@ def suggest_fix(exception: BaseException) -> Optional[str]:
         return (
             "Target-decoy FDR is statistically weak on small libraries. Use a "
             "larger reference library, or relax fdr_threshold toward 1.0."
+        )
+    if name == "PhysicalIntegrityError" or "physical-integrity" in message.lower():
+        return (
+            "A spectrum declares a chemical structure (formula/SMILES/InChI) "
+            "whose precursor m/z or exact mass contradicts it by more than "
+            "5 ppm. Fix or remove the offending library entries (the error "
+            "names them), or curate the library with `massflow db build`, "
+            "which quarantines such spectra."
         )
     if name in {"MemoryError"}:
         return "The operation ran out of memory. Reduce the preview size or use a database-backed library (massflow db build)."

@@ -93,6 +93,10 @@ graph LR
   - Runs the end-to-end annotation pipeline.
   - Coordinates loading, processing, searching, FDR filtering, and export.
   - Uses multiprocessing to process experimental input files in parallel.
+  - Runs strict pre-flight checks (`preflight_annotation_run`) before any
+    expensive work: engine/optional-extras availability, reference-library
+    and query-input existence/format, vendor-raw rejection — with
+    actionable errors and no output artifacts on failure.
 
 ### Configuration
 
@@ -118,6 +122,7 @@ graph LR
     utility (`scripts/migrations/0002_blobs_to_zarr.py`) for existing BLOB
     libraries.
   - Implements a fast NumPy-based **Triage Bitmask** scan during insertion to flag structurally significant features (e.g., Tyrosine immonium ions at 136.076 Da). These flags are stored as JSON in the `triage_flags` column for future ML routing.
+  - Records a lightweight **library-provenance history** (`store_meta` + `library_builds` tables, `PRAGMA user_version` >= 1) for every build/merge event — input files with SHA-256, config hash, processing and similarity (target-decoy) configuration, exact timestamps — surfaced by `db inspect` and linked from annotation result sidecars.
 
 ### Processing
 
@@ -167,7 +172,16 @@ graph LR
 MassFlow enforces strict physical boundaries at the point of ingestion, ensuring that automated annotation pipelines do not propagate chemically impossible results.
 
 ### Precursor Validation (5 ppm Tolerance)
-Within the `SpectrumMetadata` contract (defined in `MassFlow.models`), an experimental `precursor_mz` is rigorously cross-referenced against the molecule's theoretical exact mass, charge state, and ionization adduct. The theoretical m/z is computed from the exact mass plus the adduct offset — via `MassFlow.cheminformatics.compute_adduct_offset` and its `_ADDUCT_SPECS` registry — divided by the absolute charge. If the experimental precursor m/z deviates from this theoretical value by more than **5.0 ppm**, the record is flagged `is_physically_valid = False` so downstream processing treats it as chemically implausible.
+Within the `SpectrumMetadata` contract (defined in `MassFlow.models`), an experimental `precursor_mz` is rigorously cross-referenced against the molecule's theoretical exact mass, charge state, and ionization adduct. The theoretical m/z is computed from the exact mass plus the adduct offset — via `MassFlow.cheminformatics.compute_adduct_offset` and its `_ADDUCT_SPECS` registry — divided by the absolute charge. If the experimental precursor m/z deviates from this theoretical value by more than **5.0 ppm**, the record is flagged `is_physically_valid = False` so downstream processing treats it as chemically implausible. The same gate covers malformed structural metadata: unparseable SMILES/InChI claims, formula/exact-mass conflicts beyond 5 ppm, and non-registry adducts in an otherwise complete context.
+
+**Enforcement surface** — the verdicts are consumed by three gates:
+
+1. **Classical `annotate` / `db build` processing gate** (`MassFlow.processing`, run after `matchms` harmonization for every spectrum declaring a formula, SMILES, or InChI):
+   - query spectra failing the gate are rejected with a human-readable reason, counted in `spectra_rejected`, and recorded in the quarantine log; a query file whose spectra are all rejected is an explicit `failed` result (`<stem>_failed.report.yaml`), never an empty success;
+   - a raw reference library containing a failing entry **aborts the annotate run** with `processing.PhysicalIntegrityError` before any file is processed — a silently shrunk target pool would corrupt every query's FDR calibration. Pre-built MassFlow stores are trusted (they are produced by `db build`, which runs the same gate and quarantines invalid entries);
+   - spectra without structural claims are exempt and pass at no measurable cost (the dominant case for raw experimental files).
+2. **Streaming ingestion gate** (`MassFlow.streaming.engine.validate_streaming_spectrum`, experimental `stream-server`) rejects packets failing the Pydantic field constraints before scoring.
+3. **Model layer** — direct construction of `SpectrumMetadata`/`MolecularStructure` always computes the verdict.
 
 **Supported Adducts:**
 - **Positive Mode:** `[M+H]+`, `[M+NH4]+`, `[M+Na]+`, `[M+K]+`, `[M]+`, `[M+2H]2+`
@@ -203,6 +217,20 @@ The main production path begins with:
 The CLI loads the config and calls `run_annotation_pipeline()`.
 
 ### Pipeline steps
+
+0. **Pre-flight validation (fail fast)**
+   - Before any library store is built or any file is searched,
+     `preflight_annotation_run()` validates: (a) the configured similarity
+     surface is constructible with the installed optional extras (a pure ML
+     engine without `massflow[ml]` aborts with the install instruction
+     instead of crashing workers later); (b) the reference library is
+     configured, exists, and is a loadable open-format/store input (vendor
+     raw and unknown formats abort with zero artifacts); (c) the query
+     input exists and is dispatchable — vendor files inside a directory are
+     announced and then fail explicitly per file (batch robustness).
+     Warnings (``optional_extra_warnings``) surface degradations from
+     missing ``[ml]``/``[hnsw]`` extras. The CLI prints `fix:` hints
+     (``MassFlow.tui.diagnostics.suggest_fix``) for every failure.
 
 1. **Configuration loading**
    - The YAML file is parsed into `MassFlowConfig`.
@@ -384,6 +412,18 @@ reference pair and fragment arrays are persisted in a chunked Zarr store
 (see ``MassFlow.zarr_store``). The ``migrate_blobs_to_zarr`` helper (wrapped
 by ``scripts/migrations/0002_blobs_to_zarr.py``) migrates existing BLOB
 libraries to the hybrid backend with bitwise verification.
+
+SQLite-backed stores also carry a lightweight **library-provenance schema**
+(``store_meta`` + ``library_builds``, ``PRAGMA user_version >= 1``): every
+``db build``, ``db merge``, or annotate library-store build records its input
+file(s) with content SHA-256, the effective config hash, the processing and
+similarity (target-decoy) configuration JSON, and an exact UTC timestamp.
+``massflow db inspect`` renders this history (library versions, processing
+history, target-decoy configuration), and the annotate provenance sidecars
+link every result to the exact build row. The schema is additive and
+idempotent — raw SQL ``CREATE TABLE IF NOT EXISTS`` upgrades pre-provenance
+databases in place on their next open, and provenance writes never alter
+scientific payload bytes.
 
 ### `MassFlow.processing`
 Applies the configured `matchms` metadata repairs and peak filtering pipeline.

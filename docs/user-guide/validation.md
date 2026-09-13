@@ -10,14 +10,25 @@ A cornerstone of MassFlow's data integrity is the **5.0 ppm precursor tolerance 
 
 In high-resolution mass spectrometry, the experimental precursor m/z must align with the theoretical monoisotopic mass of the candidate molecule, adjusted for its ionization adduct and charge state.
 
-When the `MassFlow.models` layer processes a candidate structure (via SMILES or InChI), it automatically:
+When the `MassFlow.models` layer processes a candidate structure (via a chemical formula, SMILES, or InChI), it automatically:
 
-1. Calculates the **exact monoisotopic mass** of the neutral molecule.
+1. Calculates the **exact monoisotopic mass** of the neutral molecule (formula-first, pyteomics; structure parsing via RDKit when no formula is declared).
 2. Identifies the **adduct offset** (e.g., +1.007276 Da for `[M+H]+`).
 3. Computes the **theoretical m/z**: $(ExactMass + AdductOffset) / |Charge|$.
 4. Compares this to your experimental `precursor_mz`.
 
-If the deviation is greater than **5.0 ppm**, the record is rejected with a `ValidationError`. This prevents "lucky" MS2 matches from being reported if the parent mass doesn't physically support the identification.
+If the deviation is greater than **5.0 ppm**, the record is flagged `is_physically_valid = False` by `MolecularStructure` / `SpectrumMetadata`. This prevents "lucky" MS2 matches from being reported if the parent mass doesn't physically support the identification.
+
+### Where the check is enforced
+
+* **Model layer** — the two Pydantic contracts above always compute the verdict (`is_physically_valid`); this is the stable core implementation, and both streaming and classical paths consume it.
+* **Streaming ingestion gate** (experimental `stream-server`) — incoming packets that violate the contracts are rejected with a structured `StreamingValidationError` before scoring.
+* **Classical `annotate` / `db build` processing gate** — during metadata processing (`MassFlow.processing`), every spectrum that declares a structural claim (formula, SMILES, or InChI) is checked after `matchms` harmonization:
+  * a *query* spectrum that fails the gate (malformed claim, unsupported adduct with a complete context, or a **>5 ppm** precursor deviation) is **rejected and counted** (`spectra_rejected`) with a human-readable reason in the quarantine log; a file whose spectra are all rejected is an explicit `failed` result with the reasons in `<stem>_failed.report.yaml`;
+  * a *raw reference library* entry that fails the gate **aborts the annotate run** with a `PhysicalIntegrityError` listing the offending spectra, because a silently shrunk target pool would change every query's FDR calibration. `massflow db build` is the curation workflow: it quarantines such entries (they are never stored) and reports the stored count.
+  * spectra **without** structural claims are exempt — the check only applies to declared chemistry, so raw experimental files (which carry no formula/SMILES) pass through at no measurable cost.
+
+An adduct is required for the precursor-mass comparison: it may be declared explicitly or imputed from `ionmode` (`positive` → `[M+H]+`, `negative` → `[M-H]-`). When no adduct and no ion mode are available, or when the charge is unknown, the strict comparison is skipped for that spectrum exactly as documented for `SpectrumMetadata`.
 
 ### Supported Adducts & Offsets
 

@@ -21,7 +21,7 @@ To successfully pass the `SpectrumMetadata` and `MolecularStructure` validation 
 | `intensity_array` | Array of fragment intensities. | List of floats. Must match the length of `mz_array`. |
 
 ### Charge Imputation
-If the `charge` is missing, the `matchms` filtering sequence (`make_charge_int`) will attempt to derive it. However, if the charge cannot be determined and the pipeline reaches the strict mass validation layer with a missing charge, the spectrum will be rejected.
+If the `charge` is missing, the `matchms` filtering sequence (`make_charge_int`) will attempt to derive it. If the charge cannot be determined, the strict 5 ppm mass comparison is skipped for that spectrum (an unknown charge disables the check per the `SpectrumMetadata` contract); the spectrum remains analyzable through classical cosine scoring.
 
 ## Optional & Conditionally Required Metadata
 
@@ -41,14 +41,14 @@ MassFlow rigorously validates the relationship between `precursor_mz`, `charge`,
 Structural identifiers are optional, but their presence fundamentally alters how MassFlow validates the spectrum.
 
 #### The 5 ppm Strict Mass Validation
-If a **`smiles`** or **`inchi`** is provided, MassFlow triggers rigorous structural validation:
+If a **`smiles`**, **`inchi`**, or **`formula`** is provided, MassFlow triggers rigorous structural validation:
 
-1.  **Parsing:** The structure is parsed using RDKit. If the SMILES/InChI is syntactically invalid, the spectrum is flagged as physically invalid.
-2.  **Theoretical Calculation:** RDKit calculates the theoretical monoisotopic exact mass of the molecule.
-3.  **Conflict Checking:** If your library provides an `exact_mass` field alongside the SMILES, MassFlow checks for conflicts. If the provided mass deviates from the RDKit-calculated mass by **> 5.0 ppm**, the pipeline flags the spectrum as physically invalid, assuming a corrupted library entry.
-4.  **Adduct Validation:** If the exact mass is known (calculated from SMILES) and the `adduct` is standard, MassFlow calculates the theoretical *m/z* of the precursor ion. If the experimental `precursor_mz` deviates from this theoretical *m/z* by **> 5.0 ppm**, the spectrum is flagged as physically invalid.
+1.  **Parsing:** The structure is parsed using RDKit (when a formula is not already declared). If the SMILES/InChI is syntactically invalid and the `matchms` repair filters could not fix it, the spectrum is flagged as physically invalid.
+2.  **Theoretical Calculation:** The theoretical monoisotopic exact mass of the molecule is calculated (pyteomics from the declared formula; RDKit + pyteomics from the structure otherwise).
+3.  **Conflict Checking:** If your library provides an `exact_mass` field alongside the structure, MassFlow checks for conflicts. If the provided mass deviates from the calculated mass by **> 5.0 ppm**, the spectrum is flagged as physically invalid, assuming a corrupted library entry.
+4.  **Adduct Validation:** If the exact mass is known and the `adduct` is standard, MassFlow calculates the theoretical *m/z* of the precursor ion. If the experimental `precursor_mz` deviates from this theoretical *m/z* by **> 5.0 ppm**, the spectrum is flagged as physically invalid.
 
-*Note: In future updates, "physically invalid" spectra will gracefully fallback to classical Cosine scoring, bypassing advanced structural checks rather than crashing the pipeline.*
+**Enforcement in the pipeline** — "physically invalid" spectra are rejected by the processing gate in the classical `annotate`/`db build` paths (see `docs/user-guide/validation.md`): query spectra are rejected and counted per file (an all-rejected file is an explicit failure), raw reference-library entries abort the annotate run, and `db build` quarantines them. Spectra without structural claims are exempt from the gate.
 
 #### Isotopic Envelope Generation
 When a valid **`smiles`** is present, MassFlow automatically calculates a theoretical MS1 isotopic envelope (M, M+1, M+2, etc., normalized to the base peak). This theoretical envelope acts as a ground-truth signature, used by advanced ML routing and the `ConsensusEngine` to break ties between competing MS2 fragmentation annotations. If `smiles` is missing, this advanced credibility check cannot be performed.
@@ -69,4 +69,4 @@ During ingestion, MassFlow runs a series of `matchms` filters (configurable via 
 3.  `harmonize_undefined_*`: Cleans up undefined strings (e.g., "N/A", "null") in structural fields.
 4.  `derive_formula_from_name` & `derive_adduct_from_name`: Attempts to extract missing data from the `compound_name` string.
 
-If these filters cannot repair a non-standard entry, and it lacks the critical fields (or violates the 5 ppm physics check when SMILES are present), the spectrum will be flagged or rejected depending on the active validation mode.
+If these filters cannot repair a non-standard entry, and it lacks the critical fields (or violates the 5 ppm physics check when structural identifiers are present), the spectrum is rejected by the strict processing gate: counted per query file (see the [failure model](results.md)), fatal for raw reference libraries during `annotate`, and quarantined during `db build`.

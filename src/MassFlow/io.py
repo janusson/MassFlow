@@ -35,11 +35,72 @@ logger = logging.getLogger(__name__)
 
 PROPRIETARY_FORMATS = {".raw", ".d", ".wiff", ".lcd", ".t2d", ".baf"}
 
+# Open-format spectral files the loader dispatches to the matchms importers.
+TEXT_SPECTRA_EXTENSIONS = frozenset({".mzml", ".mzxml", ".mgf", ".msp"})
+
+# MassFlow-native stores that ``load_spectra`` reads through a spectral store.
+STORE_SPECTRA_EXTENSIONS = frozenset({".db", ".sqlite", ".zarr"})
+
+VENDOR_FORMAT_ERROR_MESSAGE = (
+    "MassFlow requires open data formats. Please convert vendor files to .mzML "
+    "or .mgf using ProteoWizard or MS-DIAL prior to pipeline ingestion."
+)
+
 
 class UnsupportedVendorFormatError(Exception):
     """Raised when ``load_spectra`` receives a vendor-specific raw data format."""
 
     pass
+
+
+def is_vendor_raw(path: Path) -> bool:
+    """True when ``load_spectra`` would reject *path* as a vendor raw input.
+
+    This is the loader's own classification (extension set plus Bruker/Agilent
+    ``.d`` directory semantics), kept here so pre-flight checks, discovery, and
+    the loader itself can never drift apart.
+
+    Parameters
+    ----------
+    path : Path
+        File or directory to classify (existence is not required).
+
+    Returns
+    -------
+    bool
+        True for vendor raw formats (``.raw``, ``.d`` directories/files,
+        ``.wiff``, ``.lcd``, ``.t2d``, ``.baf``).
+    """
+    path = Path(path)
+    return path.suffix.lower() in PROPRIETARY_FORMATS or (
+        path.is_dir() and path.suffix.lower() == ".d"
+    )
+
+
+def is_store_input(path: Path) -> bool:
+    """True when *path* is a MassFlow-native store (SQLite/Zarr).
+
+    Zarr stores are directories carrying the ``.zgroup`` marker (or a ``.zarr``
+    suffix). Existence of the underlying arrays is not verified here.
+    """
+    path = Path(path)
+    if path.is_dir():
+        return (path / ".zgroup").exists() or path.suffix.lower() == ".zarr"
+    return path.suffix.lower() in STORE_SPECTRA_EXTENSIONS
+
+
+def is_loadable_spectral_input(path: Path) -> bool:
+    """True when *path* is an input ``load_spectra`` can dispatch.
+
+    Covers open-format spectral files (mzML/mzXML/MGF/MSP) and MassFlow stores
+    (``.db``/``.sqlite``/``.zarr``). Vendor raw formats and unknown extensions
+    are never loadable. The check is extension/marker based (no parsing), so it
+    is safe for cheap pre-flight validation.
+    """
+    path = Path(path)
+    if path.is_dir():
+        return is_store_input(path)
+    return path.suffix.lower() in TEXT_SPECTRA_EXTENSIONS or is_store_input(path)
 
 
 quarantine_logger = logging.getLogger("quarantine")
@@ -199,15 +260,12 @@ def load_spectra(
     if not path.exists():
         raise FileNotFoundError(f"Input path does not exist: {path}")
 
-    ext = path.suffix.lower()
-
     # Step 1: Check for unsupported vendor formats
-    if ext in PROPRIETARY_FORMATS or (path.is_dir() and ext == ".d"):
-        raise UnsupportedVendorFormatError(
-            "MassFlow requires open data formats. Please convert vendor files to .mzML or .mgf using ProteoWizard or MS-DIAL prior to pipeline ingestion."
-        )
+    if is_vendor_raw(path):
+        raise UnsupportedVendorFormatError(VENDOR_FORMAT_ERROR_MESSAGE)
 
     # Step 2: Determine loading function
+    ext = path.suffix.lower()
     fmt = (file_format or ext.lstrip(".")).lower()
     loader = None
     # Disable matchms internal harmonization to allow MassFlow's processing module to handle it

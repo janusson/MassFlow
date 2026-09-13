@@ -110,7 +110,7 @@ def run_fdr_block(hits: list[SearchResult], library_size: int = 10) -> list[Any]
         ):
             with patch(
                 "MassFlow.workflow.processing.process_spectra",
-                side_effect=lambda spectra, config: spectra,
+                side_effect=lambda spectra, config, **kwargs: spectra,
             ):
                 result = _process_single_file(
                     Path("query.mgf"), config, library_size=library_size
@@ -396,7 +396,7 @@ class TestSmallLibraries:
                 ):
                     with patch(
                         "MassFlow.workflow.processing.process_spectra",
-                        side_effect=lambda spectra, config: spectra,
+                        side_effect=lambda spectra, config, **kwargs: spectra,
                     ):
                         with patch(
                             "MassFlow.workflow._emit_small_library_warning"
@@ -735,7 +735,7 @@ class TestExecutionModeEquivalence:
             with patch("MassFlow.workflow.io.load_spectra", side_effect=mock_load):
                 with patch(
                     "MassFlow.workflow.processing.process_spectra",
-                    side_effect=lambda spectra, config: spectra,
+                    side_effect=lambda spectra, config, **kwargs: spectra,
                 ):
                     with patch("MassFlow.workflow.io.save_match_results") as mock_save:
                         run_annotation_pipeline(config)
@@ -843,7 +843,7 @@ class TestDecoyConfigThreading:
             ):
                 with patch(
                     "MassFlow.workflow.processing.process_spectra",
-                    side_effect=lambda spectra, config: spectra,
+                    side_effect=lambda spectra, config, **kwargs: spectra,
                 ):
                     result = _process_single_file(Path("query.mgf"), config)
 

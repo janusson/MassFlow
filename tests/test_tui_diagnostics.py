@@ -129,6 +129,29 @@ class TestSuggestFix:
         assert hint is not None
         assert "massflow[ml]" in hint
 
+    def test_hnsw_missing(self):
+        hint = suggest_fix(
+            RuntimeError(
+                "HNSW-accelerated candidate retrieval requires hnswlib. "
+                "Install it with: pip install massflow[hnsw]"
+            )
+        )
+        assert hint is not None
+        assert "massflow[hnsw]" in hint
+
+    def test_hnsw_missing_engine_message(self):
+        """The cascade-without-hnsw hint must match the engine's own message."""
+        hint = suggest_fix(
+            RuntimeError(
+                "Cascade is configured with hnsw_enabled: true but the "
+                "optional 'hnsw' extra (hnswlib) is not installed: candidate "
+                "retrieval falls back to exact cascade scoring. Install it "
+                "with: pip install massflow[hnsw]"
+            )
+        )
+        assert hint is not None
+        assert "pip install massflow[hnsw]" in hint
+
     def test_import_error(self):
         assert suggest_fix(ImportError("No module named 'torch'")) is not None
 
@@ -140,6 +163,20 @@ class TestSuggestFix:
 
     def test_unknown_exception(self):
         assert suggest_fix(KeyError("missing")) is None
+
+    def test_physical_integrity_error(self):
+        from MassFlow.processing import PhysicalIntegrityError
+
+        hint = suggest_fix(
+            PhysicalIntegrityError(
+                "Reference library lib.msp contains 1 spectrum that fail the "
+                "strict 5 ppm physical-integrity validation: ...",
+                rejection_reasons=["spectrum ref_off: precursor m/z ..."],
+            )
+        )
+        assert hint is not None
+        assert "5 ppm" in hint
+        assert "db build" in hint
 
 
 class TestParseQuarantineLog:

@@ -155,6 +155,7 @@ Numba-accelerated peak/neutral-loss prefilter used by `SimilarityEngine` to skip
 - `migrate_legacy_peaks_database(db_path: Union[str, Path]) -> dict[str, Any]`
 - `migrate_legacy_peaks_to_arrays(db_path: Union[str, Path]) -> dict[str, Any]`
 - `migrate_blobs_to_zarr(db_path: Union[str, Path], ...) -> dict[str, Any]`
+- `record_library_build_provenance(store, *, logger_tag: str, ...) -> Optional[int]`
 - **`class SpectralDatabase`**
   - `__init__(db_path: Union[str, Path], allow_destructive_upgrade: bool) -> Any`
   - `add_spectra(spectra: Iterator[Spectrum], category: str, batch_size: int) -> int`
@@ -162,9 +163,16 @@ Numba-accelerated peak/neutral-loss prefilter used by `SimilarityEngine` to skip
   - `get_total_spectra_count() -> int`
   - `get_category_counts() -> dict[str, int]`
   - `get_precursor_mz_range() -> tuple[float, float]`
+  - `record_library_build(source_path: Path, spectrum_count: int, category: str, ...) -> int`
+  - `get_library_builds(limit: int = 20) -> list[dict]`
+  - `get_latest_library_build() -> Optional[dict]`
+  - `get_schema_version() -> int`
+  - `get_store_created_at() -> Optional[str]`
   - `close() -> None`
 
 `SpectralDatabase` also supports hybrid mode: when opened with a `zarr_path` (or built with `--backend hybrid`), peak arrays live in a chunked Zarr store referenced by `zarr_ref`/`zarr_index` columns.
+
+SQLite-backed stores additionally persist a library-provenance history (`store_meta` + `library_builds`, `PRAGMA user_version` >= 1): every build/merge records the input file(s) with SHA-256, the config hash, processing and similarity (target-decoy) configuration JSON, and an exact UTC timestamp — queryable via `db inspect` and linked from annotation result sidecars.
 
 ## `MassFlow.hnsw`
 
@@ -200,6 +208,7 @@ hnswlib-backed two-channel candidate index (`[binned exact m/z, binned neutral l
 - `prepare_library(config: MassFlowConfig) -> LibrarySpec` — normalize a raw spectral library into a store in the configured backend (`sqlite`/`zarr`/`hybrid`); store inputs (`.db`/`.zarr`) are used directly.
 - `open_library(spec: LibrarySpec, config: MassFlowConfig) -> SpectralStore`
 - `library_spec_for_config(config: MassFlowConfig) -> LibrarySpec`
+- `processing_fingerprint(processing_config: ProcessingConfig) -> str` — SHA-256 over the processing configuration (cache key; recorded in `library_builds.processing_fingerprint`)
 
 Worker-owned backend model: the parent builds the library once, workers open it themselves, so RAM scales with chunk size, not library size.
 
@@ -280,10 +289,10 @@ Worker-owned backend model: the parent builds the library once, workers open it 
 
 - `compute_spectral_metrics(mz_array: np.ndarray, precursor_mz: float) -> Tuple[np.ndarray, np.ndarray]`
 - `metadata_processing(spectrum: Spectrum, config: Optional[ProcessingConfig]) -> Optional[Spectrum]`
-- `calculate_triage_flags(spectrum: Spectrum) -> Spectrum`
+- `physical_integrity_reason(spectrum: Spectrum) -> Optional[str]`
 - `peak_processing(spectrum: Spectrum, config: ProcessingConfig) -> Optional[Spectrum]`
-- `process_spectra_batch(spectra: List[Spectrum], config: ProcessingConfig) -> List[Spectrum]`
-- `process_spectra(spectra: Iterator[Spectrum], config: ProcessingConfig) -> Iterator[Spectrum]`
+- `process_spectra_batch(spectra: List[Spectrum], config: ProcessingConfig, rejection_reporter: Optional[Callable] = None) -> List[Spectrum]`
+- `process_spectra(spectra: Iterator[Spectrum], config: ProcessingConfig, rejection_reporter: Optional[Callable] = None) -> Iterator[Spectrum]`
 
 ## `MassFlow.protocols`
 

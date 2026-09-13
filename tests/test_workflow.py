@@ -80,7 +80,7 @@ def test_run_annotation_pipeline_success(
     mock_load.side_effect = [[mock_ref], [mock_query]]
 
     # Mock process_spectra to pass through
-    mock_process.side_effect = lambda s, c: s
+    mock_process.side_effect = lambda s, c, **kwargs: s
 
     # Mock Engine
     mock_engine_instance = mock_engine_cls.return_value
@@ -200,7 +200,7 @@ def test_run_annotation_pipeline_no_query_spectra(
     mock_ref = make_spectrum("Ref1", precursor_mz=200.0)
 
     mock_load.side_effect = [[mock_ref], []]
-    mock_process.side_effect = lambda s, c: s
+    mock_process.side_effect = lambda s, c, **kwargs: s
 
     exp_path = tmp_path / "exp.mgf"
     exp_path.touch()
@@ -224,7 +224,7 @@ def test_run_annotation_pipeline_no_reference_spectra(
     """Test error when no reference spectra are found."""
     # First call returns empty (ref)
     mock_load.side_effect = [[]]
-    mock_process.side_effect = lambda s, c: s
+    mock_process.side_effect = lambda s, c, **kwargs: s
 
     exp_path = tmp_path / "exp.mgf"
     exp_path.touch()
@@ -275,7 +275,7 @@ def test_run_annotation_pipeline_small_library_warning_threshold(
     query_spectrum = make_spectrum("query_1", precursor_mz=250.0)
 
     mock_load.return_value = reference_spectra
-    mock_process.side_effect = lambda spectra, config: spectra
+    mock_process.side_effect = lambda spectra, config, **kwargs: spectra
     exp_path = tmp_path / "experimental.mgf"
     exp_path.touch()
     ref_path = tmp_path / "reference.msp"
@@ -318,7 +318,7 @@ def test_run_annotation_pipeline_empty_data_directory(
     input_dir.mkdir()
 
     mock_load.return_value = [make_spectrum("ref_1")]
-    mock_process.side_effect = lambda spectra, config: spectra
+    mock_process.side_effect = lambda spectra, config, **kwargs: spectra
 
     ref_path = tmp_path / "reference.msp"
     ref_path.touch()
@@ -347,7 +347,7 @@ def test_run_annotation_pipeline_non_spectral_files_only(
     (input_dir / "table.csv").write_text("col1,col2\n1,2\n")
 
     mock_load.return_value = [make_spectrum("ref_1")]
-    mock_process.side_effect = lambda spectra, config: spectra
+    mock_process.side_effect = lambda spectra, config, **kwargs: spectra
 
     ref_path = tmp_path / "reference.msp"
     ref_path.touch()
@@ -371,7 +371,7 @@ def test_process_single_file_logs_and_returns_empty_on_malformed_input(
 ):
     """Malformed query files should be logged and skipped by the worker helper."""
     mock_load.side_effect = ValueError("Malformed spectral file")
-    mock_process.side_effect = lambda spectra, config: spectra
+    mock_process.side_effect = lambda spectra, config, **kwargs: spectra
 
     config = MassFlowConfig(
         project=ProjectConfig(output_directory=tmp_path),
@@ -413,7 +413,7 @@ def test_process_single_file_tiny_library_fdr_sensitivity(
     reference = make_spectrum("ref_1", precursor_mz=100.0)
 
     mock_load.side_effect = [[query], [reference]]
-    mock_process.side_effect = lambda spectra, config: spectra
+    mock_process.side_effect = lambda spectra, config, **kwargs: spectra
 
     fake_engine = MagicMock()
     fake_engine.search.return_value = [
@@ -515,7 +515,7 @@ def test_run_annotation_pipeline_export_routing(
     mock_ref = make_spectrum("Ref1", precursor_mz=200.0)
 
     mock_load.side_effect = [[mock_ref], [mock_query], [mock_ref]]
-    mock_process.side_effect = lambda s, c: s
+    mock_process.side_effect = lambda s, c, **kwargs: s
 
     mock_engine_instance = mock_engine_cls.return_value
     mock_results = [{"query_id": "Query1", "score": 0.9}]
@@ -587,7 +587,7 @@ def test_run_annotation_pipeline_nested_input_dirs(
     ref_path.touch()
 
     mock_load.return_value = [make_spectrum("ref_1")]
-    mock_process.side_effect = lambda spectra, config: spectra
+    mock_process.side_effect = lambda spectra, config, **kwargs: spectra
 
     config = MassFlowConfig(
         project=ProjectConfig(output_directory=tmp_path / "results"),
@@ -634,7 +634,7 @@ def test_process_single_file_deduplicates_query_ids(mock_load, mock_process, tmp
     reference = make_spectrum("ref_1", precursor_mz=100.0)
 
     mock_load.side_effect = [query_spectra, [reference]]
-    mock_process.side_effect = lambda spectra, config: spectra
+    mock_process.side_effect = lambda spectra, config, **kwargs: spectra
 
     fake_engine = MagicMock()
     fake_engine.search.return_value = []

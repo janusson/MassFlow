@@ -156,7 +156,7 @@ class TestProcessSingleFile:
         with patch("MassFlow.workflow.io.load_spectra", return_value=iter([s1, s2])):
             with patch(
                 "MassFlow.workflow.processing.process_spectra",
-                side_effect=lambda x, c: x,
+                side_effect=lambda x, c, **kwargs: x,
             ):
                 result = _process_single_file(tmp_path / "q.mgf", cfg)
                 ids = [q.get("id") for q in result.query_spectra]
@@ -180,7 +180,7 @@ class TestProcessSingleFile:
         with patch("MassFlow.workflow.io.load_spectra", return_value=iter([s])):
             with patch(
                 "MassFlow.workflow.processing.process_spectra",
-                side_effect=lambda x, c: x,
+                side_effect=lambda x, c, **kwargs: x,
             ):
                 result = _process_single_file(tmp_path / "q.mgf", cfg)
                 assert len(result.query_spectra) == 1
@@ -212,7 +212,7 @@ class TestProcessSingleFile:
         with patch("MassFlow.workflow.io.load_spectra", side_effect=mock_load):
             with patch(
                 "MassFlow.workflow.processing.process_spectra",
-                side_effect=lambda x, c: x,
+                side_effect=lambda x, c, **kwargs: x,
             ):
                 result = _process_single_file(tmp_path / "q.mgf", cfg)
                 assert isinstance(result.query_spectra, list)
@@ -228,7 +228,7 @@ class TestProcessSingleFile:
         with patch("MassFlow.workflow.io.load_spectra", return_value=iter([q])):
             with patch(
                 "MassFlow.workflow.processing.process_spectra",
-                side_effect=lambda x, c: x,
+                side_effect=lambda x, c, **kwargs: x,
             ):
                 result = _process_single_file(tmp_path / "q.mgf", cfg)
                 assert result.status == "failed"
@@ -279,7 +279,7 @@ class TestProcessSingleFile:
             with patch("MassFlow.workflow.io.load_spectra", return_value=iter([q])):
                 with patch(
                     "MassFlow.workflow.processing.process_spectra",
-                    side_effect=lambda x, c: x,
+                    side_effect=lambda x, c, **kwargs: x,
                 ):
                     result = _process_single_file(
                         tmp_path / "q.mgf", cfg, library_size=1

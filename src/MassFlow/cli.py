@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, List, Literal, Optional
 
 import typer
 from rich.console import Console
@@ -24,6 +24,7 @@ from rich.text import Text
 
 from MassFlow import __version__
 from MassFlow.log_config import setup_structured_logging
+from MassFlow.tui.diagnostics import suggest_fix
 
 app = typer.Typer(
     help="MassFlow: A robust, config-first Python toolkit for local tandem mass spectrometry (MS/MS) annotation.",
@@ -36,6 +37,73 @@ app.add_typer(db_app, name="db")
 
 logger = logging.getLogger(__name__)
 console = Console()
+
+
+# ---------------------------------------------------------------------------
+# Failure rendering: human-first errors with a plain-English fix, mirroring
+# MassFlow.tui.diagnostics (hints are printed, never raw tracebacks).
+# ---------------------------------------------------------------------------
+
+
+def _console_safe(text: str) -> str:
+    """Escape rich-markup brackets so plain text renders literally."""
+    return text.replace("[", "\\[")
+
+
+def _print_run_failure(label: str, exception: BaseException) -> None:
+    """Print a run failure with an actionable fix hint when one is known."""
+    console.print(f"[bold red]✗ {label}:[/bold red] {_console_safe(str(exception))}")
+    hint = suggest_fix(exception)
+    if hint:
+        console.print(f"[yellow]  fix: {_console_safe(hint)}[/yellow]")
+
+
+# ---------------------------------------------------------------------------
+# Database-command pre-flight checks: fail before any store is created.
+# ---------------------------------------------------------------------------
+
+
+def _preflight_db_build_source(source: Path) -> None:
+    """Validate a ``db build --input`` source before the output store exists.
+
+    A vendor raw or otherwise unloadable input currently fails *after*
+    ``create_spectral_store`` has already created the output database,
+    leaving an empty ``.db``/``.zarr`` behind. These checks raise the same
+    errors the loader would raise (same class, same message) but before any
+    output file is created.
+    """
+    from MassFlow import io
+
+    if not source.exists():
+        raise FileNotFoundError(f"Input path does not exist: {source}")
+    if io.is_vendor_raw(source):
+        raise io.UnsupportedVendorFormatError(io.VENDOR_FORMAT_ERROR_MESSAGE)
+    if not io.is_loadable_spectral_input(source):
+        raise ValueError(
+            f"Unsupported db build input: {source}. MassFlow builds from "
+            f"open-format spectral files (.msp, .mgf, .mzML, .mzXML) and "
+            f"MassFlow stores (.db, .sqlite, .zarr); proprietary vendor "
+            f"formats must be converted first (massflow convert)."
+        )
+
+
+def _preflight_db_merge_inputs(input_paths: List[Path]) -> None:
+    """Validate ``db merge --inputs`` before the output store is created.
+
+    Each input must exist and be a MassFlow store; a missing path would
+    otherwise be silently *created* as an empty SQLite file by the open
+    call, corrupting the merge with phantom empty inputs.
+    """
+    from MassFlow import io
+
+    for input_path in input_paths:
+        if not input_path.exists():
+            raise FileNotFoundError(f"Input database does not exist: {input_path}")
+        if not io.is_store_input(input_path):
+            raise ValueError(
+                f"Merge input is not a MassFlow database: {input_path} "
+                f"(expected .db/.sqlite/.zarr store)."
+            )
 
 
 def setup_logging() -> None:
@@ -59,6 +127,35 @@ def main_callback(
     MassFlow: A robust, config-first Python toolkit for local tandem mass spectrometry (MS/MS) annotation.
     """
     setup_logging()
+
+
+@app.command("config-wizard")
+def run_config_wizard(
+    output: str = typer.Option(
+        "massflow_config.yaml",
+        "--output",
+        help="Path where the configuration YAML should be created.",
+    ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        help="Overwrite existing configuration if it exists.",
+    ),
+):
+    """Interactively guide the user through creating a MassFlow configuration file."""
+    from MassFlow.wizard import run_config_wizard as wizard_impl
+
+    output_path = Path(output)
+    if output_path.exists() and not force:
+        logger.error(
+            f"Configuration file already exists at {output_path}. Use --force to overwrite."
+        )
+        raise typer.Exit(1)
+    try:
+        wizard_impl(output_path)
+    except Exception as e:
+        logger.error(f"Configuration wizard failed: {e}")
+        raise typer.Exit(1)
 
 
 @app.command("init")
@@ -191,7 +288,11 @@ def run_annotate(
 ):
     """Run the stable MassFlow annotation pipeline using a YAML configuration file."""
     from MassFlow.config import MassFlowConfig
-    from MassFlow.workflow import experimental_surface_flags, run_annotation_pipeline
+    from MassFlow.workflow import (
+        experimental_surface_flags,
+        optional_extra_warnings,
+        run_annotation_pipeline,
+    )
 
     try:
         cfg = MassFlowConfig.from_yaml(config)
@@ -208,9 +309,18 @@ def run_annotate(
                 "output accordingly."
             )
 
+        # Optional-extras warnings (e.g. a meta-engine configured without
+        # massflow[ml], or cascade + hnsw_enabled without massflow[hnsw])
+        # print the plain-English install fix before the run starts. The
+        # pipeline's own pre-flight then validates files/engine availability
+        # and fails fast with the same style of message.
+        for warning in optional_extra_warnings(cfg):
+            console.print(f"[bold yellow]⚠ {_console_safe(warning)}[/bold yellow]")
+
         results = run_annotation_pipeline(cfg, config_path=config)
     except Exception as e:
         logger.error(f"Annotation failed: {e}")
+        _print_run_failure("Annotation failed", e)
         raise typer.Exit(1)
 
     # Failure model: the CLI exit status reflects the run outcome. A file
@@ -290,9 +400,11 @@ def run_convert(
         )
     except MSConvertNotFoundError as e:
         logger.error(str(e))
+        _print_run_failure("Conversion failed", e)
         raise typer.Exit(1)
     except Exception as e:
         logger.error(f"Conversion failed: {e}")
+        _print_run_failure("Conversion failed", e)
         raise typer.Exit(1)
 
 
@@ -334,6 +446,11 @@ def run_db_build(
         if backend == "sqlite" and cfg.input.storage_backend != "sqlite":
             effective_backend = cfg.input.storage_backend
 
+        # Pre-flight: validate the source BEFORE the output store is created.
+        # A vendor raw or unloadable input must not leave an empty database
+        # file behind after failing.
+        _preflight_db_build_source(Path(input))
+
         logger.info(f"Initializing {effective_backend} store at {output}")
         store = create_spectral_store(Path(output), backend=effective_backend)
 
@@ -342,17 +459,193 @@ def run_db_build(
         cleaned_spectra = processing.process_spectra(raw_spectra, cfg.processing)
 
         added = store.add_spectra(cleaned_spectra, category=category)
+        if added == 0:
+            store.close()
+            raise ValueError(f"No valid spectra were extracted from {input}.")
+
+        # Record the build in the store's provenance history (source file,
+        # config hash, processing parameters, exact timestamp) so `db
+        # inspect` and annotation sidecars can trace this database's lineage.
+        from MassFlow.database import record_library_build_provenance
+        from MassFlow.library import processing_fingerprint
+
+        normalized = cfg.normalized_config()
+        build_id = record_library_build_provenance(
+            store,
+            logger_tag=f"db build {output}",
+            source_path=Path(input),
+            spectrum_count=added,
+            category=category,
+            storage_backend=effective_backend,
+            processing_config=cfg.processing.model_dump(mode="json"),
+            similarity_config=cfg.similarity.model_dump(mode="json"),
+            processing_fingerprint=processing_fingerprint(cfg.processing),
+            config_digest_sha256=normalized["config_digest_sha256"],
+        )
         store.close()
 
-        if added == 0:
-            raise ValueError(f"No valid spectra were extracted from {input}.")
+        logger.info("Recorded library build #%s in %s.", build_id, output)
 
         console.print(
             f"[bold green]✓ Successfully processed and added {added} spectra to {output}.[/bold green]"
         )
     except Exception as e:
         logger.error(f"Database build failed: {e}", exc_info=True)
+        _print_run_failure("Database build failed", e)
         raise typer.Exit(1)
+
+
+def _print_store_provenance(store: Any) -> None:
+    """Print the provenance / lineage sections of ``db inspect``.
+
+    SQLite-backed stores (``sqlite`` / ``hybrid``) record a store_meta
+    block (schema version, first-open timestamp) and a library-build history
+    (input files, config hash, processing parameters, exact build
+    timestamps, and recorded target-decoy configuration). Pure Zarr stores
+    do not carry this history.
+    """
+    if not hasattr(store, "get_library_builds"):
+        console.print(
+            "[yellow]Build history is recorded for SQLite-backed stores "
+            "(sqlite/hybrid); this backend does not keep library-build "
+            "provenance.[/yellow]"
+        )
+        return
+
+    meta_table = Table(title="Store Metadata", show_header=False)
+    meta_table.add_column("Property", style="cyan", no_wrap=True)
+    meta_table.add_column("Value", style="magenta")
+    backend_info = store.backend_provenance()
+    meta_table.add_row("Backend", str(backend_info.get("backend", "unknown")))
+    try:
+        meta_table.add_row("Schema Version", str(store.get_schema_version()))
+    except Exception:
+        meta_table.add_row("Schema Version", "unknown")
+    created_at = None
+    try:
+        created_at = store.get_store_created_at()
+    except Exception:
+        created_at = None
+    if created_at:
+        meta_table.add_row("Created At (UTC)", created_at)
+    else:
+        meta_table.add_row(
+            "Created At (UTC)",
+            "(pre-provenance database; re-open records it)",
+        )
+    console.print(meta_table)
+
+    builds = store.get_library_builds(limit=25)
+    if not builds:
+        console.print(
+            "[yellow]No recorded library build history for this store. Rebuild "
+            "it with `massflow db build` (or re-run `massflow annotate` on the "
+            "raw library) to record its lineage.[/yellow]"
+        )
+        return
+
+    history_table = Table(title="Library Build History", header_style="bold cyan")
+    for column in (
+        "#",
+        "Built At (UTC)",
+        "Category",
+        "Spectra",
+        "Backend",
+        "Source",
+        "Config Digest (sha256)",
+        "Version",
+    ):
+        justify: Literal["right", "left"] = "right" if column == "Spectra" else "left"
+        if column in ("Source", "Config Digest (sha256)"):
+            # Long values wrap across lines instead of being truncated.
+            history_table.add_column(column, justify=justify, overflow="fold")
+        else:
+            history_table.add_column(column, justify=justify)
+    for build in builds:
+        source = build.get("source_path")
+        if not source:
+            details = build.get("details") or {}
+            merged_sources = (
+                details.get("merged_sources") if isinstance(details, dict) else None
+            )
+            source = (
+                f"(merge of {len(merged_sources)} input database(s))"
+                if isinstance(merged_sources, list)
+                else "(merge)"
+            )
+        history_table.add_row(
+            str(build.get("id", "?")),
+            str(build.get("built_at", "?")),
+            str(build.get("category", "?")),
+            str(build.get("spectrum_count", "?")),
+            str(build.get("storage_backend", "?")),
+            source,
+            str(build.get("config_digest_sha256") or "(not recorded)"),
+            str(build.get("massflow_version") or "(not recorded)"),
+        )
+    console.print(history_table)
+
+    latest = builds[0]
+
+    # Merges additionally list their exact input databases.
+    details = latest.get("details")
+    merged_sources = (
+        details.get("merged_sources") if isinstance(details, dict) else None
+    )
+    if isinstance(merged_sources, list) and merged_sources:
+        merge_table = Table(title="Merge Inputs", header_style="bold cyan")
+        for column in ("Input Database", "Backend", "Spectra Added"):
+            merge_table.add_column(column)
+        for source in merged_sources:
+            if not isinstance(source, dict):
+                continue
+            merge_table.add_row(
+                str(source.get("path", "?")),
+                str(source.get("backend", "?")),
+                str(source.get("spectra_added", "?")),
+            )
+        console.print(merge_table)
+
+    processing_config = latest.get("processing_config")
+    if isinstance(processing_config, dict):
+        params_table = Table(title="Processing Parameters", show_header=False)
+        params_table.add_column("Parameter", style="cyan", no_wrap=True)
+        params_table.add_column("Value", style="magenta")
+        for key in (
+            "min_peaks",
+            "noise_threshold",
+            "filter_by_intensity",
+            "filter_min_peaks",
+            "filter_by_mz",
+            "mz_min",
+            "mz_max",
+            "reduce_to_top_n_peaks",
+            "n_max",
+            "normalize_intensity",
+            "decoy_min_relative_intensity",
+            "decoy_mz_shift_da",
+        ):
+            if key in processing_config:
+                params_table.add_row(key, str(processing_config[key]))
+        console.print(params_table)
+
+    similarity_config = latest.get("similarity_config")
+    if isinstance(similarity_config, dict):
+        tdc_table = Table(title="Target-Decoy Configuration", show_header=False)
+        tdc_table.add_column("Parameter", style="cyan", no_wrap=True)
+        tdc_table.add_column("Value", style="magenta")
+        for key in (
+            "algorithm",
+            "fdr_threshold",
+            "ms1_tolerance",
+            "ms2_tolerance",
+            "min_score",
+            "min_matched_peaks",
+            "enable_routing",
+        ):
+            if key in similarity_config:
+                tdc_table.add_row(key, str(similarity_config[key]))
+        console.print(tdc_table)
 
 
 @db_app.command("inspect")
@@ -361,7 +654,12 @@ def run_db_inspect(
         ..., help="Spectral database file (.db or .zarr directory)."
     ),
 ):
-    """Inspect a local spectral database to view statistics."""
+    """Inspect a local spectral database: contents, health, and lineage.
+
+    In addition to spectrum statistics, SQLite-backed stores report their
+    build history: input files used, config hash, processing parameters,
+    exact build timestamps, and the recorded target-decoy configuration.
+    """
     try:
         from MassFlow.storage import create_spectral_store
 
@@ -385,30 +683,34 @@ def run_db_inspect(
         if total == 0:
             table.add_row("Status", "Empty (0 spectra)")
             console.print(table)
-            return
-
-        mz_min, mz_max = store.get_precursor_mz_range()
-        cat_counts = store.get_category_counts()
-
-        table.add_row("Total Spectra", str(total))
-        table.add_row("Precursor m/z Range", f"{mz_min:.4f} to {mz_max:.4f}")
-
-        console.print(table)
-
-        cat_table = Table(title="Categories")
-        cat_table.add_column("Category", style="cyan")
-        cat_table.add_column("Count", justify="right", style="green")
-
-        if cat_counts:
-            for cat, count in cat_counts.items():
-                cat_table.add_row(cat, str(count))
         else:
-            cat_table.add_row("(None)", "0")
+            mz_min, mz_max = store.get_precursor_mz_range()
+            cat_counts = store.get_category_counts()
 
-        console.print(cat_table)
+            table.add_row("Total Spectra", str(total))
+            table.add_row("Precursor m/z Range", f"{mz_min:.4f} to {mz_max:.4f}")
+
+            console.print(table)
+
+            cat_table = Table(title="Categories")
+            cat_table.add_column("Category", style="cyan")
+            cat_table.add_column("Count", justify="right", style="green")
+
+            if cat_counts:
+                for cat, count in cat_counts.items():
+                    cat_table.add_row(cat, str(count))
+            else:
+                cat_table.add_row("(None)", "0")
+
+            console.print(cat_table)
+
+        # Lineage: store metadata, build history, processing parameters, and
+        # the recorded target-decoy configuration.
+        _print_store_provenance(store)
 
     except Exception as e:
         logger.error(f"Database inspection failed: {e}", exc_info=True)
+        _print_run_failure("Database inspection failed", e)
         raise typer.Exit(1)
 
 
@@ -431,10 +733,16 @@ def run_db_merge(
         from MassFlow.database import SpectralDatabase
         from MassFlow.storage import create_spectral_store
 
+        # Pre-flight: every input must exist and be a MassFlow store BEFORE
+        # the output database is created (a missing input would otherwise be
+        # silently opened/created as an empty SQLite file).
+        _preflight_db_merge_inputs([Path(p) for p in inputs])
+
         logger.info(f"Initializing merged {backend} database at {output}")
         out_store = create_spectral_store(Path(output), backend=backend)
 
         total_added = 0
+        merge_sources: list[dict[str, Any]] = []
         for input_db_path in inputs:
             logger.info(f"Merging from input database: {input_db_path}")
             in_path = Path(input_db_path)
@@ -470,6 +778,13 @@ def run_db_merge(
                     # Fall through to the iterator path below.
                 else:
                     total_added += added
+                    merge_sources.append(
+                        {
+                            "path": str(in_path),
+                            "backend": in_backend,
+                            "spectra_added": added,
+                        }
+                    )
                     if added == 0:
                         logger.warning(
                             "No spectra were merged from %s",
@@ -495,6 +810,13 @@ def run_db_merge(
                 in_store.close()
 
             total_added += added
+            merge_sources.append(
+                {
+                    "path": str(in_path),
+                    "backend": in_backend,
+                    "spectra_added": added,
+                }
+            )
 
             if added == 0:
                 logger.warning("No valid spectra were found in %s", input_db_path)
@@ -502,15 +824,32 @@ def run_db_merge(
                 logger.info("Added %d spectra from %s", added, input_db_path)
 
         if total_added == 0:
+            out_store.close()
             raise ValueError("No valid spectra were merged from the input databases.")
 
-        console.print(
-            f"[bold green]\u2713 Successfully merged {total_added} spectra "
-            f"into {output}.[/bold green]"
+        # Record the merge in the output store's provenance history: the
+        # exact input databases used and per-input spectrum counts.
+        from MassFlow.database import record_library_build_provenance
+
+        build_id = record_library_build_provenance(
+            out_store,
+            logger_tag=f"db merge {output}",
+            source_path=None,
+            spectrum_count=total_added,
+            category="merged",
+            storage_backend=backend,
+            details={"merged_sources": merge_sources},
         )
         out_store.close()
+        logger.info("Recorded merge build #%s in %s.", build_id, output)
+
+        console.print(
+            f"[bold green]✓ Successfully merged {total_added} spectra "
+            f"into {output}.[/bold green]"
+        )
     except Exception as e:
         logger.error(f"Database merge failed: {e}", exc_info=True)
+        _print_run_failure("Database merge failed", e)
         raise typer.Exit(1)
 
 
@@ -938,7 +1277,7 @@ def run_tui(
     Launch the interactive MassFlow terminal console.
 
     EXPERIMENTAL: interactive console requiring the optional 'tui' extra
-    (pip install massflow\[tui]); outside the stable product contract
+    (pip install massflow[tui]); outside the stable product contract
     (docs/CAPABILITY_MATRIX.md).
 
     Find, upload, view, and identify MS/MS data without leaving the terminal:
@@ -946,7 +1285,7 @@ def run_tui(
     target-decoy similarity search tab with mirror plots, and a diagnostics
     tab with plain-English fixes plus the quarantine log.
 
-    Requires the optional TUI extra: pip install massflow\[tui]
+    Requires the optional TUI extra: pip install massflow[tui]
     """
     try:
         from MassFlow.tui.app import MassFlowApp

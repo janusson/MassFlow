@@ -55,6 +55,41 @@ The sidecar report (`.report.yaml`) acts as a hard link between your CSV results
 - The exact parsed configurations (`processing`, `similarity`, `workflow`) that were applied.
 - The normalized configuration representation (`config`) with its SHA-256 digest.
 - The number of query spectra processed and the number of retained results.
+- A `library` lineage block that links the results to the **exact database that was searched** (see below).
+
+#### Library lineage (`library`)
+
+When the reference library is a MassFlow database (built by `massflow db build`
+or prepared from a raw file during `annotate`), the sidecar records where the
+results came from and which build produced that database:
+
+```yaml
+library:
+  configured_library_path: results/master_library.db   # what the config pointed at
+  store:
+    path: results/master_library.db                    # the store actually searched
+    kind: store
+    storage_backend: sqlite
+    spectrum_count: 15420
+    schema_version: 1
+    created_at: 2026-09-06T10:00:00+00:00
+  build:                                               # the library_builds row
+    id: 3
+    built_at: 2026-09-06T10:00:00+00:00
+    source_path: data/libraries/example_library.msp    # input file used to build it
+    category: personal
+    spectrum_count: 15420
+    config_digest_sha256: 5c7725e3…                     # config hash recorded at build
+    processing_fingerprint: 9f4a…
+    massflow_version: 0.1.0
+```
+
+Comparing the sidecar's own `config.config_digest_sha256` (this run) with
+`library.build.config_digest_sha256` (the database build) tells you at a glance
+whether the database was built with the exact configuration this run used. When
+the store has no recorded history (e.g. a pre-provenance database), `build` is
+`null` rather than guessed. The same lineage is queryable per database with
+`massflow db inspect`.
 
 This ensures you can always reproduce how a specific CSV was generated months later, meeting the standards of scientific reproducibility.
 
@@ -108,7 +143,7 @@ The status is recorded in the provenance sidecar, so a degraded or partially fai
 * **`degraded`** — results were produced, but part of the configured pipeline fell back (engine fallback, uncalibrated FDR); the flags explain what changed.
 * **`failed`** — the file's data were not processed. **No results CSV is written for a failed file** (an empty CSV would be mistaken for a successful annotation); instead an explicit `<stem>_failed.report.yaml` records the fatal errors.
 
-Batch runs continue across files: one bad file does not stop the others, but the CLI exits **nonzero** when any file failed, and the per-file summary printed by `massflow annotate` accounts for every input. Unsupported vendor formats (`.raw`, `.d`, `.wiff`, ...) are discovered, attempted, and reported as explicit failures with a conversion hint — they never silently disappear from a batch.
+Batch runs continue across files: one bad file does not stop the others, but the CLI exits **nonzero** when any file failed, and the per-file summary printed by `massflow annotate` accounts for every input. Unsupported vendor formats (`.raw`, `.d`, `.wiff`, ...) are never silently ignored: a vendor raw **library** or a direct single-file/`.d` query input aborts at **pre-flight** (before any store is built, with the conversion hint), while vendor files inside a scanned input directory are announced at run start and reported as explicit per-file failures with a conversion hint — they never silently disappear from a batch. See [the annotation guide](annotation.md) (Pre-flight validation) for the full contract.
 
 ---
 

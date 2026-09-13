@@ -324,6 +324,33 @@ class TestVendorFormats:
         out_dir = pipeline_config.project.output_directory
         assert not list(out_dir.glob("*_results.csv"))
 
+    def test_baf_file_in_directory_fails_explicitly(
+        self, tmp_path, pipeline_config, run_pipeline
+    ):
+        """Bruker .baf files are vendor raw inputs: directory discovery must
+        report them as explicit per-file failures (the discovery set is
+        derived from io.PROPRIETARY_FORMATS) instead of silently ignoring
+        them like an unsupported extension."""
+        from MassFlow.io import UnsupportedVendorFormatError, load_spectra
+
+        inputs = tmp_path / "inputs"
+        inputs.mkdir()
+        (inputs / "vendor.baf").write_bytes(b"\x00\x01\x02bruker")
+        write_mgf(inputs / "good.mgf", [query_spectrum("q1")])
+
+        results = run_pipeline(pipeline_config)
+        by_path = {str(r.input_path.name): r for r in results}
+
+        assert "vendor.baf" in by_path, "discovery must include .baf files"
+        bad = by_path["vendor.baf"]
+        assert bad.status == "failed"
+        assert any("vendor" in e.lower() for e in bad.fatal_errors)
+        # Direct loading rejects it with the canonical error.
+        with pytest.raises(UnsupportedVendorFormatError):
+            list(load_spectra(inputs / "vendor.baf"))
+        # The good file is still processed.
+        assert by_path["good.mgf"].status in ("success", "degraded")
+
 
 # ---------------------------------------------------------------------------
 # 3. Degraded execution is recorded in provenance

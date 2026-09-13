@@ -29,9 +29,9 @@ paths are expected to pass):
 | Processing | `matchms`-based metadata cleaning, RT extraction, intensity/m/z filters, top-N reduction, normalization |
 | Similarity | `cosine`, `modified_cosine` (always available) |
 | Confidence | Per-query target-decoy competition (TDC): entropy-preserving decoy generation, per-query q-values, empirical p-values as diagnostic (see the [FDR statistical contract](user-guide/scoring_logic.md)) |
-| Storage | SQLite libraries (`massflow db build/inspect/merge`); optional hybrid SQLite+Zarr backend; BLOB→Zarr migration scripts |
+| Storage | SQLite libraries (`massflow db build/inspect/merge`) with persisted build lineage (input files, config hash, processing parameters, timestamps); optional hybrid SQLite+Zarr backend; BLOB→Zarr migration scripts |
 | Exports | Per-input CSV and mzTab-M result tables, YAML provenance sidecar with per-file status/spectra counts/degradation flags (`<input_stem>_results.<ext>` + `.report.yaml`), explicit `<stem>_failed.report.yaml` for failed files (never an empty CSV), MSP/MGF spectrum export |
-| Scientific integrity | 5 ppm precursor validation and theoretical isotopic envelopes in the `MassFlow.models` / `MassFlow.cheminformatics` layer; streaming ingestion gate |
+| Scientific integrity | 5 ppm precursor validation and theoretical isotopic envelopes in the `MassFlow.models` / `MassFlow.cheminformatics` layer; **enforced as a processing gate** on spectra with declared structural claims in the classical `annotate`/`db build` paths and in the streaming ingestion gate (**D-8 executed**, 2026-09-06) |
 | Python API | `MassFlow.config`, `io`, `processing`, `similarity`, `database`, `storage`, `zarr_store`, `workflow`, `models`, `cheminformatics`, `protocols`, `ml_client` |
 
 **What is NOT in the v0.1 contract:**
@@ -59,6 +59,7 @@ Status legend: **✅ Stable** (implemented, tested, part of the v0.1 contract) �
 | Capability | Where | Test evidence |
 | --- | --- | --- |
 | `massflow annotate` config-driven pipeline | `cli.py`, `workflow.py` (`FileExecutionResult` per-file failure model) | `test_workflow.py`, `test_cli.py`, `test_end_to_end_mvp.py`, `test_pipeline_integrity.py`, `test_annotation_coverage.py`, `test_failure_model.py` |
+| Pre-flight validation: `annotate`/`db build`/`db merge` fail fast with actionable errors before any library-store build or search (missing files, vendor raw / unsupported inputs, similarity engines whose optional extras are absent; plain-English `fix:` hints at the CLI; optional-extras degradations warned up-front) | `workflow.py` (`preflight_annotation_run`, `optional_extra_warnings`), `cli.py`, `io.py` (`is_vendor_raw`/`is_loadable_spectral_input`/`is_store_input`), `tui/diagnostics.py` | `test_preflight.py`, `test_cli_db.py`, `test_cli.py`, `test_failure_model.py`, `test_tui_diagnostics.py` |
 | `massflow init` / `massflow tutorial` | `cli.py`, `scripts/generate_tutorial_data.py` | `test_cli.py` |
 | YAML config schema + validation with line numbers | `config.py` | `test_config.py`, `test_core_edge_cases.py` |
 | mzML / mzXML / MGF / MSP ingestion; vendor rejection; quarantine log | `io.py` | `test_io.py`, `test_io_validation_layer.py`, `test_validation_scenarios.py` |
@@ -66,9 +67,9 @@ Status legend: **✅ Stable** (implemented, tested, part of the v0.1 contract) �
 | `cosine`, `modified_cosine` scoring | `similarity.py` | `test_mathematical_proof.py`, `test_similarity.py`, `test_ms1_prefilter.py` |
 | MS1 prefilter (Da and ppm modes) | `similarity.py` | `test_ms1_prefilter.py` |
 | Entropy-preserving decoys + per-query target-decoy FDR + diagnostic p-values | `similarity.py` (`generate_decoys`, `calculate_fdr`, `calibrate_query_level_fdr`), `workflow.py` | `test_decoy_generation.py`, `test_fdr.py`, `test_fdr_statistics.py` (contract tests) |
-| SQLite library build / inspect / merge | `database.py`, `cli.py` | `test_database.py`, `test_cli_db.py` |
+| SQLite library build / inspect / merge (incl. lineage: `db inspect` reports build history, processing parameters & target-decoy configuration; annotation sidecars link to the exact build row) | `database.py`, `cli.py`, `library.py`, `workflow.py` | `test_database.py`, `test_cli_db.py`, `test_db_lineage.py` |
 | CSV, mzTab-M, YAML report, MSP/MGF export | `io.py`, `workflow.py` | `test_io.py`, `test_workflow.py`, `test_cli.py` |
-| 5 ppm precursor validation + isotopic envelopes (model layer) | `models.py`, `cheminformatics.py` | `test_precursor_physics.py`, `test_scientific_boundaries.py`, `test_cheminformatics.py`, `test_isotopic_distribution.py`, `test_adduct_validation.py` |
+| 5 ppm precursor validation + isotopic envelopes (model layer and annotate-path gate) | `models.py`, `cheminformatics.py`, `processing.py` (`physical_integrity_reason`, `process_spectra[_batch]` gate), `library.py` (`prepare_library` strict raw-library abort), `workflow.py` | `test_precursor_physics.py`, `test_scientific_boundaries.py`, `test_cheminformatics.py`, `test_isotopic_distribution.py`, `test_adduct_validation.py`, `test_physics_gate.py` |
 
 ### 2.2 Implemented and tested — experimental (🧪)
 
@@ -91,9 +92,14 @@ Status legend: **✅ Stable** (implemented, tested, part of the v0.1 contract) �
 
 | Capability | Reality | Gap |
 | --- | --- | --- |
-| 5 ppm scientific validation in the **annotate** path | Implemented and tested in `models.py`/`cheminformatics.py`; enforced as an ingestion gate in the **streaming** path | Not enforced on library/query spectra inside the classical `annotate` pipeline (spectra flow through `matchms` only). Docs (`docs/index.md`, ARCHITECTURE §"Scientific Data Integrity") overstate pipeline-wide enforcement |
 | `@pytest.mark.core` stable-contract gate | Marker defined in `pyproject.toml` and described in `AGENTS.md` | Only **one** test file (`test_zarr_hybrid.py`) actually applies it; the gate is not exercised as documented |
 | Triage bitmask flags | `database.py` computes and stores `triage_flags` JSON on insert; consumed by `MLRouter` thresholds | Only meaningful with `enable_routing: true` (default false); no standalone user surface |
+
+> **D-8 executed (2026-09-06):** the 5 ppm scientific-validation row that previously
+> lived here was promoted to ✅ §2.1 — the classical `annotate`/`db build` paths now
+> enforce `SpectrumMetadata`/`MolecularStructure` on every spectrum with a declared
+> structural claim (formula/SMILES/InChI). See §4 C-11 and the new
+> `test_physics_gate.py`.
 
 ### 2.4 Documented but missing (📕)
 
@@ -120,7 +126,7 @@ Status legend: **✅ Stable** (implemented, tested, part of the v0.1 contract) �
 The stable contract is covered by these test files (they must keep passing on every
 change; they are the executable form of §1):
 
-- `test_workflow.py`, `test_cli.py`, `test_cli_db.py`, `test_config.py`
+- `test_workflow.py`, `test_cli.py`, `test_cli_db.py`, `test_config.py`, `test_physics_gate.py`, `test_db_lineage.py`
 - `test_io.py`, `test_io_validation_layer.py`, `test_validation_scenarios.py`
 - `test_processing.py`, `test_similarity.py`, `test_mathematical_proof.py`,
   `test_ms1_prefilter.py`, `test_decoy_generation.py`, `test_fdr.py`
@@ -158,7 +164,7 @@ referenced files are updated.
 | C-8 | **Duplicate architecture sources of truth**: byte-identical `ARCHITECTURE.md` at repo root and `docs/ARCHITECTURE.md`; different files point at each | `ARCHITECTURE.md` (root), `docs/ARCHITECTURE.md`, `README.md`, `AGENTS.md`, `.github/copilot-instructions.md`, `mkdocs.yml` | Root copy is an exact byte-identical duplicate (diff: empty) of `docs/ARCHITECTURE.md`; mkdocs serves only `docs/ARCHITECTURE.md` | **✓ resolved (D-2 executed)** — root duplicate deleted; `docs.yml` copy step removed; AGENTS/CONTRIBUTING repointed at `docs/ARCHITECTURE.md`; `docs/ARCHITECTURE.md` is a superset of the deleted copy |
 | C-9 | `zarr` is both a **core dependency and an optional extra**; README instructs `uv sync --extra zarr` | `pyproject.toml` (`zarr>=3.2.1` in `dependencies` **and** `[zarr]` extra), `README.md` §Installation | Zarr is always installed | **✓ resolved (D-6 executed)** — `[zarr]` extra removed from `pyproject.toml`; README + installation docs updated |
 | C-10 | **`core` marker gate documented but unapplied** | `AGENTS.md` §2.5/§6.1, `pyproject.toml` vs test suite | Only `test_zarr_hybrid.py` (1 test) carries `@pytest.mark.core` | **✓ resolved by retirement** — the pytest-config audit removed the marker machinery; the contract gate is the default pytest selection + the explicit `-m scientific` group (see `docs/COMPLEXITY_AUDIT.md` R-3) |
-| C-11 | **5 ppm "built-in strict physical integrity checks"** (Stable) vs enforcement surface | `docs/index.md`, `docs/ARCHITECTURE.md` §Scientific Data Integrity vs `models.py`, `workflow.py`, `streaming/engine.py` | Validators are real and tested, but only enforced as a gate in the **streaming** path; the classical annotate path does not construct `SpectrumMetadata` | **✓ docs fixed** — `docs/index.md` row now states the model-layer scope and the streaming-only gate; enforcement decision D-8 remains open |
+| C-11 | **5 ppm "built-in strict physical integrity checks"** (Stable) vs enforcement surface | `docs/index.md`, `docs/ARCHITECTURE.md` §Scientific Data Integrity vs `models.py`, `workflow.py`, `streaming/engine.py` | Validators are real and tested, but only enforced as a gate in the **streaming** path; the classical annotate path does not construct `SpectrumMetadata` | **✓ resolved (D-8 executed 2026-09-06)** — the classical `annotate`/`db build` paths now run the models through a processing gate (`processing.physical_integrity_reason`) on every spectrum with a declared structural claim (formula/SMILES/InChI): query rejections are counted per file with human-readable reasons, raw reference-library violations abort `annotate` with `PhysicalIntegrityError` (never a silently shrunk FDR pool), `db build` quarantines them, and spectra without structural claims are exempt. Docs (`docs/index.md`, `docs/ARCHITECTURE.md`, `docs/user-guide/validation.md`, `docs/user-guide/data-requirements.md`, `docs/user-guide/annotation.md`) updated to the enforced behavior; tests in `tests/test_physics_gate.py` |
 | C-12 | **Roadmap lists as future work what is already implemented** | `docs/post-v0.1-roadmap.md` (§1 satellite repo, §2 Zarr, §3 gRPC streaming) | All three exist in-tree (`ml_client.py` + `examples/massflow-ml-satellite/`, `zarr_store.py`, `streaming/`) | Roadmap is stale; remaining items are only §4 (generative augmentation, PINNs) |
 | C-13 | `docs/index.md` lists **LSP as current experimental** while the module is removed | `docs/index.md` vs `docs/api/server.md` | `MassFlow.server` (LSP) does not exist | **✓ resolved** — `docs/index.md` row now says "Removed" and points at `docs/api/server.md` |
 | C-14 | Broken version probe pattern | `src/MassFlow/__init__.py` | `try: __version__ = "0.1.0" except PackageNotFoundError` can never raise; `importlib.metadata` imported but unused | **✓ resolved** — probe removed; plain `__version__ = "0.1.0"` |
@@ -203,7 +209,7 @@ describing a substantially different architecture:
 
 | Tier | Contents | Change discipline |
 | --- | --- | --- |
-| **Core (v0.1 contract, §1)** | `annotate`/`init`/`tutorial`/`db *`/`convert` CLI; YAML config; mzML/mzXML/MGF/MSP/SQLite ingestion; `matchms` processing; `cosine`/`modified_cosine`; entropy decoys + FDR + empirical p-values; CSV/mzTab-M + YAML exports; model-layer 5 ppm/isotopic validation; SQLite + optional hybrid Zarr storage | Must not regress; full test suite + coverage gate; extra scrutiny on changes |
+| **Core (v0.1 contract, §1)** | `annotate`/`init`/`tutorial`/`db *`/`convert` CLI; YAML config; mzML/mzXML/MGF/MSP/SQLite ingestion; `matchms` processing; `cosine`/`modified_cosine`; entropy decoys + FDR + empirical p-values; CSV/mzTab-M + YAML exports; 5 ppm/isotopic validation enforced on the classical annotate/db-build processing path (structural claims only) + streaming gate; SQLite + optional hybrid Zarr storage | Must not regress; full test suite + coverage gate; extra scrutiny on changes |
 | **Experimental (§2.2)** | HNSW, cascade, consensus, spec2vec/ms2deepscore, remote ML boundary + satellite, MLRouter, streaming server, TUI, `watch`, Numba prefilter, hybrid/Zarr storage, `convert` | May evolve freely; must not break the core; guards and fallbacks required |
 | **Future research** | Generative spectral augmentation, PINNs (in-repo roadmap); TIIP peptide indexing, O(1) peptide retrieval, BIN/BEST consensus, SIRIUS/MS-GF+/MaRaCluster interop, proteomics peptide search (external spec) | Do not implement as v0.x requirements; requires a new contract first |
 
@@ -220,10 +226,13 @@ describing a substantially different architecture:
 | D-5 | `massflow convert` status | Promote to stable (with `msconvert` prerequisite documented) or keep experimental | Affects §2.2/§4 C-6 |
 | D-6 | Redundant `[zarr]` extra | Remove the extra (zarr is core) or demote zarr to the extra | **✓ executed (complexity-audit pass)** — extra removed; zarr stays a core dependency |
 | D-7 | Research spec custody | Keep the TIIP/BIN/BEST specification external, or add it to the repo under an explicit `research/` (non-product) path | Future agents need a guaranteed-visible "research only" marker |
-| D-8 | 5 ppm enforcement in the annotate path | Enforce `SpectrumMetadata` validation on library spectra during `annotate`, or narrow the docs to match the current streaming-only gate | Scientific-integrity claim vs runtime behavior |
+| D-8 | 5 ppm enforcement in the annotate path | Enforce `SpectrumMetadata` validation on library spectra during `annotate`, or narrow the docs to match the current streaming-only gate | Scientific-integrity claim vs runtime behavior | **✓ executed (2026-09-06)** — enforcement wired through `processing.py` (`physical_integrity_reason` + `process_spectra[_batch]` gate), `library.py` (`prepare_library` strict raw-library abort), `workflow.py` (per-file query rejection visibility); semantics + tests in `tests/test_physics_gate.py`; docs updated (§1, §2.1, §2.3, §3, §4 C-11, §6) |
 
 ---
 
 *Generated by the 2026-08-25 architecture reconciliation audit. No functional
-code was changed during this audit; this document is the only deliverable that
-declares product scope.*
+code was changed during that audit; this document is the only deliverable that
+declares product scope. **D-8 was executed on 2026-09-06** (see §2.1, §2.3
+note, §4 C-11, §6, §7) — the classical annotation paths now enforce the model
+layer's 5 ppm physical-integrity validation; this update is the record of that
+change.*

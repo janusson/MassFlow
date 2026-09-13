@@ -17,6 +17,7 @@ aggregating all chunk results for each experimental file. Only a compact
 """
 
 import hashlib
+import importlib
 import json
 import logging
 import sys
@@ -27,7 +28,7 @@ from typing import Any, Dict, List, Literal, Optional, cast
 
 from matchms import Spectrum
 
-from MassFlow import io, processing
+from MassFlow import io, processing, similarity as similarity_module
 from MassFlow.config import MassFlowConfig, SimilarityConfig
 from MassFlow.library import LibrarySpec, open_library, prepare_library
 from MassFlow.storage import SpectralStore
@@ -98,6 +99,7 @@ class FileExecutionResult:
     query_spectra: List[Spectrum] = field(default_factory=list, repr=False)
     results: List[SearchResult] = field(default_factory=list, repr=False)
     fdr_summary: dict[str, int] | None = field(default=None, repr=False)
+    library_provenance: dict[str, Any] | None = field(default=None, repr=False)
 
 
 _worker_engine: SimilarityEngine | _MLEngineBase | MLEngineProtocol | None = None
@@ -157,6 +159,202 @@ class _CountingIterator:
 
 # Engines outside the stable product contract (docs/CAPABILITY_MATRIX.md).
 EXPERIMENTAL_ENGINES = ("spec2vec", "ms2deepscore", "consensus", "cascade")
+
+
+# ---------------------------------------------------------------------------
+# Pre-flight validation (fail fast before any expensive work)
+# ---------------------------------------------------------------------------
+
+
+def optional_extra_warnings(config: MassFlowConfig) -> list[str]:
+    """Warnings (never errors) for optional extras the run would silently lack.
+
+    Meta-engines degrade gracefully when the ``[ml]`` extra is missing and
+    cascade falls back to exact scoring when ``hnswlib`` (the ``[hnsw]``
+    extra) is absent — both are documented behaviour, but a run must never
+    quietly score differently than the user asked for. Each returned warning
+    carries the plain-English install fix, mirroring the diagnostics layer
+    (``MassFlow.tui.diagnostics.suggest_fix``).
+
+    Parameters
+    ----------
+    config : MassFlowConfig
+        The validated pipeline configuration.
+
+    Returns
+    -------
+    list of str
+        Human-readable warnings; empty when every configured surface has its
+        required extras (or needs none).
+    """
+    warnings: list[str] = []
+    algorithm = config.similarity.algorithm
+    if algorithm in ("consensus", "cascade") and not similarity_module._HAS_ML:
+        warnings.append(
+            f"Algorithm '{algorithm}' is configured without the machine-learning "
+            f"extras: scoring will run with classical sub-engines only. "
+            f"Install the full engines with: pip install massflow[ml]"
+        )
+    if (
+        algorithm == "cascade"
+        and config.similarity.hnsw_enabled
+        and importlib.util.find_spec("hnswlib") is None
+    ):
+        warnings.append(
+            "Cascade is configured with hnsw_enabled: true but the optional "
+            "'hnsw' extra (hnswlib) is not installed: candidate retrieval "
+            "falls back to exact cascade scoring. Install it with: "
+            "pip install massflow[hnsw]"
+        )
+    return warnings
+
+
+def _probe_similarity_surface(config: MassFlowConfig) -> None:
+    """Construct the configured similarity surface once in the parent process.
+
+    Mirrors :func:`_init_worker` (the same factory call, the same config).
+    Pure ML engines (spec2vec, ms2deepscore) raise ``RuntimeError`` at
+    construction when the ``[ml]`` extra is missing; probing here turns that
+    into a clear pre-flight failure instead of a worker crash surfaced later
+    as an opaque ``BrokenProcessPool`` after the library store was already
+    built. Engine construction is lazy with respect to spectra and model
+    weights, so the probe adds no parsing and no measurable throughput cost
+    on the stable path.
+    """
+    get_similarity_engine(config.similarity)
+    if config.similarity.enable_routing:
+        MLRouter(config.similarity)
+
+
+def _discover_query_inputs(input_path: Path) -> list[Path]:
+    """Discover the query inputs of an annotation run (single file or scan).
+
+    This is the single discovery routine shared by the pre-flight checks and
+    the run itself, so a pre-flight verdict can never drift from what the run
+    actually dispatches. Vendor raw files inside a directory are deliberately
+    included: they are dispatched like any other input and rejected
+    explicitly per-file by ``load_spectra`` with
+    ``UnsupportedVendorFormatError`` (a documented failure-model outcome,
+    never a silently ignored file).
+    """
+    if input_path.is_file():
+        return [input_path]
+    supported_exts = {".mzml", ".mzxml", ".mgf", ".msp"} | set(io.PROPRIETARY_FORMATS)
+    inputs: list[Path] = []
+    for entry in input_path.rglob("*"):
+        if entry.is_file() and entry.suffix.lower() in supported_exts:
+            inputs.append(entry)
+        # Handle .d directories (Agilent/Bruker)
+        if entry.is_dir() and entry.suffix.lower() == ".d":
+            inputs.append(entry)
+    return inputs
+
+
+def preflight_annotation_run(config: MassFlowConfig) -> list[str]:
+    """Strict pre-flight sanity checks for an annotation run.
+
+    Runs before any library store is built and before any file is searched,
+    so a misconfigured run fails in milliseconds with a clear error instead
+    of after minutes of preparation. Every check mirrors the exception the
+    corresponding stage would raise later (same class, same message); the
+    only difference is *when* it is raised.
+
+    Checks, in order:
+
+    1. The configured similarity surface can be constructed with the
+       installed optional extras (raises ``RuntimeError`` with an install
+       hint when, e.g., ``spec2vec`` is requested without ``massflow[ml]``).
+    2. The reference library is configured, exists, is not a vendor raw
+       format, and has a format the loader can dispatch.
+    3. The query input path exists; a single-file input must be loadable
+       (vendor raw files abort here), and a directory must contain at least
+       one dispatchable input (vendor files inside it are announced in the
+       returned warnings and fail explicitly per file — batch robustness is
+       preserved).
+
+    Parameters
+    ----------
+    config : MassFlowConfig
+        The validated pipeline configuration.
+
+    Returns
+    -------
+    list of str
+        Human-readable warnings the caller must surface (missing optional
+        extras, vendor raw files queued for explicit per-file failure).
+
+    Raises
+    ------
+    ValueError
+        Library or input path missing/unsupported, or no supported query
+        inputs found.
+    UnsupportedVendorFormatError
+        The reference library or a single-file query input is a vendor raw
+        format.
+    RuntimeError
+        The configured similarity surface requires missing optional extras.
+    """
+    # 1. Similarity surface (engine + optional routing) must be constructible
+    # in this environment before any library work begins.
+    _probe_similarity_surface(config)
+
+    # 2. Reference library: mirror ``prepare_library``'s checks so the exact
+    # same failure is raised here, before any temporary store is created.
+    library_path = config.input.library_path
+    if library_path is None:
+        raise ValueError("Library path not specified in configuration.")
+    library_path = Path(library_path)
+    if not library_path.exists():
+        raise ValueError(f"Library path does not exist: {library_path}")
+    if io.is_vendor_raw(library_path):
+        raise io.UnsupportedVendorFormatError(io.VENDOR_FORMAT_ERROR_MESSAGE)
+    if not io.is_loadable_spectral_input(library_path):
+        raise ValueError(
+            f"Reference library format is not supported by MassFlow: "
+            f"{library_path}. Supported: .msp, .mgf, .mzML, .mzXML files and "
+            f"MassFlow stores (.db, .sqlite, .zarr)."
+        )
+
+    # 3. Query inputs: existence first, then vendor/format gates for direct
+    # file inputs; directories only need at least one dispatchable input.
+    input_path = Path(config.input.input_path)
+    if not input_path.exists():
+        raise ValueError(f"Input path does not exist: {input_path}")
+    if io.is_vendor_raw(input_path):
+        # Direct vendor input (a .raw/.wiff/... file or a .d directory):
+        # nothing else in the run can succeed, so fail before building the
+        # library store.
+        raise io.UnsupportedVendorFormatError(io.VENDOR_FORMAT_ERROR_MESSAGE)
+    if input_path.is_file():
+        if config.input.format is None and not io.is_loadable_spectral_input(
+            input_path
+        ):
+            raise ValueError(
+                f"Input file format is not supported by MassFlow: {input_path}. "
+                f"Supported query formats: .mzML, .mzXML, .mgf, .msp (or "
+                f"MassFlow stores .db/.sqlite/.zarr)."
+            )
+        return optional_extra_warnings(config)
+
+    query_inputs = _discover_query_inputs(input_path)
+    if not query_inputs:
+        raise ValueError(f"No supported spectral files found in {input_path}")
+
+    # Vendor raw files in a directory keep the documented batch semantics
+    # (explicit per-file failures) — but they are announced here instead of
+    # appearing only after the library store has been built.
+    warnings = optional_extra_warnings(config)
+    vendor_entries = [p for p in query_inputs if io.is_vendor_raw(p)]
+    if vendor_entries:
+        names = "".join(f"\n  - {p}" for p in vendor_entries[:5])
+        extra = f" (+{len(vendor_entries) - 5} more)" if len(vendor_entries) > 5 else ""
+        warnings.append(
+            f"{len(vendor_entries)} vendor raw format file(s) found in the "
+            f"input directory; each will fail explicitly (never silently "
+            f"drop). Convert them to an open format first with "
+            f"`massflow convert`:{names}{extra}"
+        )
+    return warnings
 
 
 def experimental_surface_flags(config: MassFlowConfig) -> list[str]:
@@ -370,8 +568,17 @@ def _process_single_file(
             rejection_reporter=rejection_collector,
         )
         validated_queries = _CountingIterator(query_gen)
+        # Rejections from the strict 5 ppm physical-integrity gate in
+        # processing are collected separately so their reasons surface in the
+        # file-level failure message (the drop itself is counted through the
+        # usual processing length-delta accounting below).
+        physics_collector = _RejectionCollector()
         query_spectra = list(
-            processing.process_spectra(validated_queries, config.processing)
+            processing.process_spectra(
+                validated_queries,
+                config.processing,
+                rejection_reporter=physics_collector,
+            )
         )
 
         n_validated = validated_queries.count
@@ -383,11 +590,18 @@ def _process_single_file(
             # The file yielded no analyzable spectra: its data were NOT
             # processed. This is a file-level failure, not a success.
             reasons = "; ".join(rejection_collector.reasons) or "none recorded"
+            physics_note = ""
+            if physics_collector.count:
+                physics_reasons = "; ".join(physics_collector.reasons)
+                physics_note = (
+                    f" ({physics_collector.count} failed the strict 5 ppm "
+                    f"physical-integrity validation: {physics_reasons})"
+                )
             result.status = "failed"
             result.fatal_errors.append(
                 f"No analyzable spectra: {rejection_collector.count} rejected "
                 f"by validation ({reasons}), {n_processing_drops} dropped by "
-                "processing."
+                f"processing{physics_note}."
             )
             logger.error("Failed to process %s: %s", query_file, result.fatal_errors[0])
             return result
@@ -732,6 +946,14 @@ def _write_analysis_report(
             **result.fdr_summary,
         }
 
+    # Library lineage: the exact database store searched, its build-history
+    # row (input file, config hash, processing fingerprint, exact build
+    # timestamp), and the store's schema version. The recorded build digest
+    # can be compared with this run's ``config`` digest to detect stale
+    # libraries.
+    if result.library_provenance is not None:
+        report_payload["library"] = result.library_provenance
+
     # Delegate to IO layer for file writing so tests can patch io.save_analysis_report
     io.save_analysis_report(report_path, report_payload)
 
@@ -1039,6 +1261,62 @@ def _emit_entropy_diagnostic(library_spec: LibrarySpec, config: MassFlowConfig) 
         )
 
 
+def _build_library_provenance(
+    config: MassFlowConfig,
+    library_spec: LibrarySpec,
+    library_size: int,
+) -> dict[str, Any]:
+    """Lineage payload linking results to the exact library store and build.
+
+    Composed once in the parent process after :func:`prepare_library` and
+    attached to every per-file :class:`FileExecutionResult`, so the YAML
+    sidecar can point at the exact database that was searched: the effective
+    store path/backend, its schema version and first-open timestamp, and the
+    recorded ``library_builds`` row (input file, exact build timestamp,
+    config digest, processing fingerprint). When the library is a raw file
+    (direct-API path) or a pre-provenance / Zarr store without history, the
+    missing parts are reported as ``None`` rather than guessed.
+    """
+    payload: dict[str, Any] = {
+        "configured_library_path": (
+            str(config.input.library_path) if config.input.library_path else None
+        ),
+        "store": {
+            "path": str(library_spec.path),
+            "kind": library_spec.kind,
+            "storage_backend": library_spec.storage_backend or "sqlite",
+            "spectrum_count": library_size,
+        },
+        "build": None,
+    }
+    if library_spec.kind != "store":
+        return payload
+
+    backend = open_library(library_spec, config.processing)
+    try:
+        if hasattr(backend, "get_schema_version"):
+            payload["store"]["schema_version"] = backend.get_schema_version()
+        if hasattr(backend, "get_store_created_at"):
+            payload["store"]["created_at"] = backend.get_store_created_at()
+        if hasattr(backend, "get_latest_library_build"):
+            latest = backend.get_latest_library_build()
+            if latest is not None:
+                payload["build"] = {
+                    "id": int(latest["id"]),
+                    "built_at": latest.get("built_at"),
+                    "source_path": latest.get("source_path"),
+                    "category": latest.get("category"),
+                    "spectrum_count": latest.get("spectrum_count"),
+                    "storage_backend": latest.get("storage_backend"),
+                    "config_digest_sha256": latest.get("config_digest_sha256"),
+                    "processing_fingerprint": latest.get("processing_fingerprint"),
+                    "massflow_version": latest.get("massflow_version"),
+                }
+    finally:
+        backend.close()
+    return payload
+
+
 def run_annotation_pipeline(
     config: MassFlowConfig, config_path: Path | str | None = None
 ) -> List[FileExecutionResult]:
@@ -1047,6 +1325,10 @@ def run_annotation_pipeline(
 
     The workflow performs these major stages:
 
+    0. Pre-flight validation: fail fast with clear errors before any
+       expensive work (engine availability with the installed extras,
+       library existence/format, query-input existence) — see
+       :func:`preflight_annotation_run`.
     1. Normalize the reference library into a worker-openable store
        (streaming, bounded memory) and emit the FDR-calibration diagnostics.
     2. Discover query inputs from either a single file or a data directory.
@@ -1078,8 +1360,14 @@ def run_annotation_pipeline(
     Raises
     ------
     ValueError
-        If the reference library path is missing, no valid reference spectra are found,
-        or no supported input files are found.
+        If the reference library path is missing or unsupported, no valid reference spectra are found,
+        the input path is missing, or no supported input files are found.
+    UnsupportedVendorFormatError
+        If the reference library (or a single-file query input) is a vendor
+        raw format; pre-flight, before any library store is built.
+    RuntimeError
+        If the configured similarity engine requires missing optional extras
+        (e.g. ``spec2vec`` without ``massflow[ml]``); pre-flight.
 
     Notes
     -----
@@ -1088,6 +1376,16 @@ def run_annotation_pipeline(
     returned results and in a ``<stem>_failed.report.yaml`` sidecar — never
     as a silently empty success.
     """
+    # 0. Pre-flight: fail fast with clear errors BEFORE any library store is
+    # built or any file is searched. A run whose engine cannot be
+    # constructed, whose library is missing/vendor/unsupported, or whose
+    # inputs do not exist must never spend minutes preparing a store first
+    # (and must never leave partial stores behind). Warnings (missing
+    # optional extras, vendor files queued for explicit per-file failure)
+    # are logged here; the CLI additionally prints them at run start.
+    for warning in preflight_annotation_run(config):
+        logger.warning("PRE-FLIGHT: %s", warning)
+
     # 1. Prepare the reference library as a worker-openable store.
     # The full spectral payload never crosses the process boundary: the parent
     # normalizes the library once (streaming, bounded memory) and workers
@@ -1113,6 +1411,9 @@ def run_annotation_pipeline(
         library_spec.path,
         library_spec.kind,
     )
+    # Lineage payload for the per-file YAML sidecars: links every result to
+    # the exact library store used and its recorded build-history row.
+    library_provenance = _build_library_provenance(config, library_spec, library_size)
 
     # FDR-calibration diagnostic: entropy-preserving decoys must not
     # systematically diverge from targets in spectral entropy. A large
@@ -1133,30 +1434,11 @@ def run_annotation_pipeline(
     if not input_path.exists():
         raise ValueError(f"Input path does not exist: {input_path}")
 
-    if input_path.is_file():
-        input_files.append(input_path)
-    else:
-        # Recursively find all supported spectral files
-        supported_exts = {
-            ".mzml",
-            ".mzxml",
-            ".mgf",
-            ".msp",
-            ".raw",
-            ".d",
-            ".wiff",
-            ".lcd",
-            ".t2d",
-        }
-        for f in input_path.rglob("*"):
-            if f.is_file() and f.suffix.lower() in supported_exts:
-                input_files.append(f)
-            # Handle .d directories (Agilent/Bruker)
-            if f.is_dir() and f.suffix.lower() == ".d":
-                input_files.append(f)
-
-        if not input_files:
-            raise ValueError(f"No supported spectral files found in {input_path}")
+    input_files = _discover_query_inputs(input_path)
+    if not input_files:
+        # Defense in depth: the pre-flight check already validated this, but
+        # files may have changed between the check and the dispatch.
+        raise ValueError(f"No supported spectral files found in {input_path}")
 
     # Run-level provenance: written BEFORE any per-file processing begins so
     # every result file can be traced back to the exact environment,
@@ -1182,6 +1464,7 @@ def run_annotation_pipeline(
         result = _process_single_file(
             qf, config, library_size=library_size, library_spec=library_spec
         )
+        result.library_provenance = library_provenance
         _handle_file_results(result, config, config_path=config_path)
         execution_results.append(result)
     else:
@@ -1211,6 +1494,7 @@ def run_annotation_pipeline(
                         input_path=qf,
                         fatal_errors=[f"worker_crash: {type(exc).__name__}: {exc}"],
                     )
+                result.library_provenance = library_provenance
                 _handle_file_results(result, config, config_path=config_path)
                 execution_results.append(result)
 

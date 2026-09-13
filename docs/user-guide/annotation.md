@@ -24,6 +24,38 @@ When you execute this command, MassFlow orchestrates the following pipeline:
 8.  **FDR Calculation (`similarity.py`):** Decoy spectra are generated from the references, scored, and used to calculate *q*-values. Hits failing the `fdr_threshold` or the `min_score` are discarded.
 9.  **Reporting (`io.py`):** Finally, MassFlow exports a clean result table for *each* experimental file, accompanied by a YAML sidecar file detailing the exact provenance of that run.
 
+### Pre-flight validation (fail fast, before anything expensive)
+
+Before any library store is built and before any file is searched, the
+workflow runs strict pre-flight sanity checks
+(`MassFlow.workflow.preflight_annotation_run`), so a misconfigured run fails
+in milliseconds — with a clear, actionable error — instead of after minutes
+of preparation, and never leaves partial store files behind:
+
+*   **Similarity surface availability:** the configured engine (and ML
+    router, when enabled) is constructed once in the parent process, using
+    the same factory the workers use. A pure ML engine (e.g. `spec2vec`)
+    requested without the `[ml]` extra aborts here with the plain-English
+    install fix — it would otherwise crash every worker after the library
+    store was built, surfacing as an opaque `BrokenProcessPool`.
+*   **Reference library:** must be configured, must exist, and must be a
+    loadable input (open-format `.msp`/`.mgf`/`.mzML`/`.mzXML` file or a
+    MassFlow `.db`/`.sqlite`/`.zarr` store). Vendor raw libraries and
+    unknown formats abort before any temporary store is created.
+*   **Query inputs:** the configured `input_path` must exist. A direct
+    single-file (or `.d` directory) vendor input aborts the run up-front;
+    a directory must contain at least one dispatchable file. Vendor raw
+    files *inside* a directory are announced at run start (with the
+    conversion hint) and then keep the documented batch semantics below.
+
+Warnings (never errors) are emitted for optional extras whose absence
+*degrades* results instead of aborting them — `consensus`/`cascade` without
+`[ml]` (classical sub-engines only) and `cascade` + `hnsw_enabled: true`
+without `[hnsw]` (exact scoring instead of HNSW candidate retrieval) — each
+carrying its `pip install massflow[...]` fix. The CLI prints these before
+the run starts and prints a `fix:` hint line for every pre-flight failure
+(via `MassFlow.tui.diagnostics`), never a raw traceback.
+
 ---
 
 ## Interactive Live Reloading (`watch`)
@@ -45,19 +77,50 @@ uv run massflow watch --config massflow_config.yaml
 
 MassFlow is intentionally conservative at the I/O boundary. The core `annotate` pipeline explicitly supports **only** open spectral formats:
 
-*   `.mzML`
-*   `.mzXML`
-*   `.MGF`
-*   `.MSP`
-*   `.db` / `.sqlite` (MassFlow native databases)
+*   `.mzML` / `.mzXML`
+*   `.MGF` / `.MSP`
+*   `.db` / `.sqlite` / `.zarr` (MassFlow native libraries)
 
-Attempting to pass proprietary vendor formats directly to the annotator will result in an `UnsupportedVendorFormatError`. To solve this, MassFlow provides a wrapper command around [ProteoWizard's `msconvert`](https://proteowizard.sourceforge.io/):
+### Unsupported vendor raw formats
+
+Vendor raw formats are **never** auto-converted and are **never** silently ignored. The following extensions are rejected with an explicit `UnsupportedVendorFormatError` when handed to the loader (`.raw` Thermo, `.d` Agilent/Bruker directories, `.wiff` AB Sciex, `.lcd` Shimadzu, `.t2d` Bruker, `.baf` Bruker):
+
+*   `.raw`
+*   `.d`
+*   `.wiff`
+*   `.lcd`
+*   `.t2d`
+*   `.baf`
+
+How rejection surfaces depends on how the file reaches the pipeline:
+
+*   **Reference library / `db build` input**: a vendor raw *library* (e.g.
+    `library.raw` as `input.library_path`, or `massflow db build --input`
+    on a vendor file) aborts **pre-flight** with the conversion error —
+    before any temporary store or output database is created (previously
+    an empty store file was left behind by the late loader failure).
+*   **Single file input** (`input_path` → one vendor file, or a `.d`
+    directory): the annotate run fails at pre-flight with the conversion
+    error, before the library store is built.
+*   **Directory input**: vendor files inside the scanned directory are
+    announced up-front (pre-flight warning with the conversion hint) and
+    dispatched like any other input; each produces an explicit per-file
+    `failed` result with the conversion hint and a `<stem>_failed.report.yaml`
+    sidecar. The remaining open-format files are still processed (batch
+    robustness), and the CLI exits nonzero. Vendor files are **not**
+    silently skipped during discovery.
+*   The quarantine log is not involved — rejection happens before parsing,
+    because the format itself is unsupported.
+*   `massflow db merge` rejects missing or non-store inputs before the
+    output database is created.
+
+To use vendor data, convert it to an open format first. MassFlow provides a wrapper command around [ProteoWizard's `msconvert`](https://proteowizard.sourceforge.io/):
 
 ```shell
 uv run massflow convert --input data/raw_files/ --output data/mzml_files/
 ```
 
-*Note: You must have ProteoWizard installed on your system and available in your `PATH` for this command to work.*
+*Note: You must have ProteoWizard installed on your system and available in your `PATH` for this command to work. `convert` is an experimental convenience wrapper; the core pipeline itself never performs vendor conversion.*
 
 ---
 

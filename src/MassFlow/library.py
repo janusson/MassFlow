@@ -284,11 +284,20 @@ def open_library(
     return RawFileLibraryStore(spec.path, processing_config)
 
 
-def _processing_fingerprint(processing_config: ProcessingConfig) -> str:
-    """Stable fingerprint of the processing pipeline (cache invalidation)."""
+def processing_fingerprint(processing_config: ProcessingConfig) -> str:
+    """Stable fingerprint of the processing pipeline (cache invalidation).
+
+    SHA-256 over the canonical JSON of the processing configuration. This is
+    the same fingerprint recorded in library-build provenance rows so that
+    ``db inspect`` history can be correlated with the annotated-store cache.
+    """
     return hashlib.sha256(
         processing_config.model_dump_json().encode("utf-8")
     ).hexdigest()
+
+
+# Backward-compatible alias for the pre-provenance private helper name.
+_processing_fingerprint = processing_fingerprint
 
 
 def _store_is_fresh(
@@ -393,14 +402,83 @@ def prepare_library(
             library_path.stat().st_size // (1024 * 1024),
         )
         store = create_spectral_store(store_path, backend=backend_name)
+        # Collect physics-gate rejections during the streaming store build so
+        # the run can abort with the actual count and example reasons.
+        physics_rejections: dict[str, int] = {}
+
+        def _collect_physics_rejection(reason: str) -> None:
+            physics_rejections[reason] = physics_rejections.get(reason, 0) + 1
+
+        build_id: Optional[int] = None
         try:
             raw = io.load_spectra(library_path)
-            processed = processing.process_spectra(raw, config.processing)
+            processed = processing.process_spectra(
+                raw, config.processing, rejection_reporter=_collect_physics_rejection
+            )
             count = store.add_spectra(processed, category="library")
-        finally:
+        except Exception:
             store.close()
+            raise
+        if physics_rejections:
+            # Strict reference-pool guarantee: a library spectrum that
+            # declares a structure whose metadata is malformed or whose
+            # precursor m/z contradicts the declared chemistry by >5 ppm must
+            # never silently shrink the target pool (every query's FDR
+            # calibration would change). Abort before any file is processed
+            # and remove the partial store so it cannot be cached/reused.
+            store.close()
+            if backend_name == "zarr":
+                import shutil
+
+                shutil.rmtree(store_path, ignore_errors=True)
+            else:
+                store_path.unlink(missing_ok=True)
+                if backend_name == "hybrid":
+                    import shutil
+
+                    shutil.rmtree(store_path.with_suffix(".zarr"), ignore_errors=True)
+            meta_path = store_path.with_suffix(store_path.suffix + ".meta.json")
+            meta_path.unlink(missing_ok=True)
+            example_reasons = "; ".join(
+                f"{reason} (x{count})" if count > 1 else reason
+                for reason, count in list(physics_rejections.items())[:3]
+            )
+            raise processing.PhysicalIntegrityError(
+                "Reference library %s contains %d spectrum/spectra that fail "
+                "the strict 5 ppm physical-integrity validation and was not "
+                "stored. Fix or remove the offending entries, or rebuild a "
+                "curated store with `massflow db build`; examples: %s"
+                % (
+                    library_path,
+                    sum(physics_rejections.values()),
+                    example_reasons,
+                ),
+                rejection_reasons=list(physics_rejections),
+            )
         if count == 0:
+            store.close()
             raise ValueError("No valid spectra found in library.")
+        # Record the build in the store's provenance history (SQLite-backed
+        # stores only): the annotate sidecar links every result back to this
+        # row via the config digest. Best-effort — provenance must never
+        # fail a library build.
+        from MassFlow.database import record_library_build_provenance
+
+        normalized = config.normalized_config()
+        build_id = record_library_build_provenance(
+            store,
+            logger_tag=f"annotate library store {store_path}",
+            source_path=library_path,
+            spectrum_count=count,
+            category="library",
+            storage_backend=backend_name,
+            processing_config=config.processing.model_dump(mode="json"),
+            similarity_config=config.similarity.model_dump(mode="json"),
+            processing_fingerprint=fingerprint,
+            config_digest_sha256=normalized["config_digest_sha256"],
+            details={"annotate_prepared_store": True},
+        )
+        store.close()
         source_stat = library_path.stat()
         meta_path = store_path.with_suffix(store_path.suffix + ".meta.json")
         meta_path.write_text(
@@ -414,7 +492,7 @@ def prepare_library(
                 }
             )
         )
-        logger.info("Library store built with %d spectra.", count)
+        logger.info("Library store built with %d spectra (build #%s).", count, build_id)
     else:
         backend = open_library(
             LibrarySpec(path=store_path, kind="store", storage_backend=backend_name),

@@ -48,18 +48,42 @@ Quickly verify the contents and health of a built database without loading the f
 uv run massflow db inspect results/user_library.db
 ```
 
+Every SQLite-backed database records its own **build lineage** at creation time: the input file(s) used (with content SHA-256), the effective config hash (`config_digest_sha256`), the processing parameters (including decoy-generation settings), the similarity / target-decoy configuration, the MassFlow version, and an exact UTC build timestamp. `db inspect` acts as the query surface for that history:
+
 **Example Output:**
 ```text
-==================================================
 DATABASE INSPECTION: results/user_library.db
-==================================================
 Total Spectra: 15420
 Precursor m/z Range: 50.0211 to 1400.9822
 
 Categories:
   - personal: 15420 spectra
-==================================================
+
+Store Metadata
+  Backend          sqlite
+  Schema Version   1
+  Created At (UTC) 2026-09-06T10:00:00+00:00
+
+Library Build History
+  #  Built At (UTC)            Category  Spectra  Backend  Source                  Config Digest (sha256)
+  1  2026-09-06T10:00:00+00:00 personal  15420    sqlite   data/libraries/lib.msp  5c7725e3d5e77f5b…
+
+Processing Parameters
+  min_peaks                   5
+  decoy_min_relative_intensity 0.01
+  decoy_mz_shift_da           1.0
+  ...
+
+Target-Decoy Configuration
+  algorithm    cosine
+  fdr_threshold 0.05
+  ...
 ```
+
+*   `db build` records one history row per build; rebuilding over changed input or configuration appends a new row, so the table reads as a version history.
+*   `db merge` records the exact input databases and per-input spectrum counts (`details.merged_sources`).
+*   Databases created before the provenance schema existed (``user_version 0``) are upgraded in place on their next MassFlow open; their spectra are untouched and their history starts at the first recorded build.
+*   The same history is queryable programmatically via `SpectralDatabase.get_library_builds()` / `get_latest_library_build()` (all JSON fields parsed), and annotation result sidecars link back to these rows (see `docs/user-guide/results.md`).
 
 ### 3. Merge Databases
 Combine multiple specialized databases into a single, master search library.

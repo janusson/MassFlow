@@ -30,10 +30,10 @@ We prioritize stability, predictability, and correct data handling over cutting-
 | `massflow annotate --config ...` | **Stable** | Main documented workflow |
 | YAML configuration | **Stable** | Standardized execution parameters |
 | Open-format ingestion (`mzML`, `mzXML`, `MGF`, `MSP`) | **Stable** | Vendor raw formats rejected with an actionable error; `massflow convert` (experimental wrapper) can convert them externally |
-| SQLite library workflows (`massflow db ...`) | **Stable** | Recommended for reusable local libraries |
+| SQLite library workflows (`massflow db ...`) | **Stable** | Recommended for reusable local libraries. `db inspect` reports build lineage: input files, config hash, processing parameters, target-decoy configuration, and exact build timestamps (records written by `db build`, `db merge`, and annotate library-store builds) |
 | `cosine` and `modified_cosine` | **Stable** | Best-supported classical scoring paths |
 | CSV and mzTab-M export | **Stable** | Main reporting surfaces (w/ YAML provenance reports). FBMN export is **not shipped** |
-| Model-layer scientific validation (5 ppm precursor check, isotopic envelopes) | **Stable (model layer)** | Implemented and tested in `MassFlow.models`/`cheminformatics`; enforced as an ingestion gate in the streaming path. Not enforced as a gate on library/query spectra in the classical `annotate` path |
+| Scientific validation (5 ppm precursor check, isotopic envelopes) | **Stable** | Implemented in `MassFlow.models`/`cheminformatics`; enforced as a processing gate on spectra with declared structural claims in the classical `annotate`/`db build` paths (query rejections counted per file; raw reference-library violations abort `annotate`), plus the streaming ingestion gate. Spectra without structural claims are exempt |
 | `massflow watch --config ...` | *Experimental* | Interactive live-reloading workflow (`[watch]` extra) |
 | `massflow stream-server` | *Experimental* | Real-time gRPC streaming (loopback default, TLS/auth required for remote) |
 | `massflow tui` | *Experimental* | Interactive terminal console (`[tui]` extra) |
