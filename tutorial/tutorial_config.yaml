@@ -3,8 +3,8 @@ project:
   output_directory: "tutorial/results"
 
 input:
-  input_path: "tutorial/tutorial_experimental.mgf"
-  library_path: "tutorial/tutorial_library.msp"
+  input_path: "tutorial_experimental.mgf"
+  library_path: "tutorial_library.msp"
   format: "mgf"
 
 processing:
