@@ -1,0 +1,36 @@
+:root [data-md-color-scheme="slate"] {
+  /* Ayu Dark Backgrounds */
+  --md-default-bg-color: #0F1419;
+  --md-default-fg-color: #BFBDB6;
+  --md-default-fg-color--light: #5C6773;
+  --md-default-fg-color--lighter: #3E4B59;
+  --md-default-fg-color--lightest: #1F2430;
+
+  /* Ayu Dark Accents */
+  --md-primary-fg-color: #FFB454; /* Ayu Orange/Gold */
+  --md-primary-fg-color--light: #F29718;
+  --md-primary-fg-color--dark: #E6B450;
+  --md-primary-bg-color: #0F1419;
+  --md-primary-bg-color--light: #1F2430;
+
+  /* Links and accents */
+  --md-accent-fg-color: #59C2FF; /* Ayu Cyan/Blue */
+  --md-accent-fg-color--transparent: rgba(89, 194, 255, 0.1);
+  --md-accent-bg-color: #0F1419;
+  --md-accent-bg-color--light: #1F2430;
+
+  /* Code blocks (Ayu Dark) */
+  --md-code-fg-color: #BFBDB6;
+  --md-code-bg-color: #14191F;
+
+  /* Specific Syntax Highlighting Overrides for Ayu */
+  --md-code-hl-color: rgba(255, 180, 84, 0.15); /* Highlight line */
+  --md-code-hl-number-color: #FFB454; /* Line numbers */
+
+  --md-code-hl-keyword-color: #FF8F40; /* Keywords (Orange) */
+  --md-code-hl-function-color: #FFD580; /* Functions (Yellow) */
+  --md-code-hl-string-color: #AAD94C; /* Strings (Green) */
+  --md-code-hl-operator-color: #F07178; /* Operators (Red/Pink) */
+  --md-code-hl-comment-color: #ACB6BF; /* Comments (Grey) */
+  --md-code-hl-name-color: #BFBDB6; /* Names (Default) */
+}
