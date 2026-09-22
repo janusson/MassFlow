@@ -41,11 +41,33 @@ MassFlow maintains a high-precision internal registry of monoisotopic offsets fo
 | `[M+Na]+` | Pos | +22.989221 | Sodium |
 | `[M+K]+` | Pos | +38.963158 | Potassium |
 | `[M]+` | Pos | -0.000549 | Radical Cation |
+| `[M+2H]2+` | Pos | +2.014553 | Doubly protonated |
+| `[M+3H]3+` | Pos | +3.021829 | Triply protonated |
+| `[M+2Na-H]+` | Pos | +44.971165 | Disodium salt |
+| `[M+H-H2O]+` | Pos | -17.003288 | Protonation with water loss |
+| `[M+CH3CN+H]+` | Pos | +42.033826 | Acetonitrile adduct |
+| `[M+CH3OH+H]+` | Pos | +33.033491 | Methanol adduct |
 | `[M-H]-` | Neg | -1.007276 | Deprotonated |
+| `[M-2H]2-` | Neg | -2.014553 | Doubly deprotonated |
 | `[M+Cl]-` | Neg | +34.969401 | Chlorine |
+| `[M+Br]-` | Neg | +78.918886 | Bromine |
+| `[M+I]-` | Neg | +126.905022 | Iodine |
 | `[M+HCOO]-` | Neg | +44.998203 | Formate |
 | `[M+CH3COO]-` | Neg | +59.013853 | Acetate |
+| `[M+TFA-H]-` | Neg | +112.985587 | Trifluoroacetate |
+| `[M+HCO3]-` | Neg | +60.993117 | Bicarbonate |
+| `[M+NO3]-` | Neg | +61.988366 | Nitrate |
 | `[M]-` | Neg | +0.000549 | Radical Anion |
+
+#### Notation is normalised, not guessed
+
+Library files spell the same ion in many ways, and a spelling the registry could not resolve used to quarantine an otherwise correct spectrum. Adduct notation is therefore canonicalised before lookup (see `MassFlow.cheminformatics.normalize_adduct`):
+
+* **Brackets and charge position:** `M+H`, `[M+H]1+`, `[M+H]+1`, and `[M+H]+` are equivalent; interior whitespace and unbalanced brackets are tolerated.
+* **Letter case:** `[m+h]+` and `M+NA` resolve to `[M+H]+` and `[M+Na]+`.
+* **Alias chemistry:** formate written as `M+FA-H`/`M+HCOOH-H`, acetate as `M+OAc`/`M+Ac-H`, trifluoroacetate as `M+CF3COO`, acetonitrile as `M+ACN+H`, and `M-H2O+H` all resolve to their canonical keys.
+
+Normalisation fails **closed**: notation that declares a charge contradicting the chemistry (e.g. `[M+H]2+`), a charge-less ambiguous body (`M`), or chemistry outside the registry (e.g. `[M+Weird]+`) still resolves to nothing and is still rejected by the gate. Crucially, normalisation cannot manufacture a false positive — the resolved adduct must still clear the **5 ppm** precursor tolerance.
 
 ---
 

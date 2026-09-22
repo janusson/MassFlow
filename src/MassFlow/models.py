@@ -31,6 +31,7 @@ from MassFlow.cheminformatics import (
     _formula_to_monoisotopic_mass,
     _smiles_to_formula,
     compute_adduct_offset,
+    normalize_adduct,
 )
 
 logger = logging.getLogger(__name__)
@@ -193,6 +194,15 @@ class SpectrumMetadata(BaseModel):
             elif self.ion_mode == "negative":
                 self.adduct = "[M-H]-"
 
+        # Canonicalise the notation (e.g. "M+H", "[M+H]1+") so that every
+        # downstream consumer -- physics gate, DB columns, triage, exports --
+        # agrees on one spelling. Unrecognised labels are preserved verbatim
+        # and fail the mass check below.
+        if self.adduct:
+            canonical_adduct = normalize_adduct(self.adduct)
+            if canonical_adduct is not None:
+                self.adduct = canonical_adduct
+
         # Cascade failure from molecule layer
         if self.molecule and not self.molecule.is_physically_valid:
             self.__dict__["is_physically_valid"] = False
@@ -203,7 +213,9 @@ class SpectrumMetadata(BaseModel):
         ):
             return self
 
-        # Graceful fallback: Bypass exact mass validation for non-standard adducts
+        # Fail closed for adducts outside the registry: without a known
+        # chemistry the theoretical m/z cannot be derived, so the declared
+        # structure cannot be confirmed.
         offset = compute_adduct_offset(self.adduct)
         if offset is None:
             self.__dict__["is_physically_valid"] = False

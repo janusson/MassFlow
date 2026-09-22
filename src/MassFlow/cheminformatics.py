@@ -17,6 +17,7 @@ When RDKit is unavailable:
 
 import logging
 import math
+import re
 from collections import defaultdict
 from functools import lru_cache
 from typing import Optional
@@ -57,22 +58,202 @@ ELECTRON_MASS = 0.0005485799
 # Composition arithmetic:
 #     offset = pmass.calculate_mass(formula=atoms_formula) - charge × ELECTRON_MASS
 # and the observed m/z is (neutral_mass + offset) / abs(charge).
+#
+# Keep this table in canonical ``[M+term]charge`` notation: it is the single
+# source of truth for adduct chemistry, and :func:`normalize_adduct` maps the
+# notational variants seen in real ``.msp``/``.mgf`` files onto these keys.
 _ADDUCT_SPECS: dict[str, tuple[str, int]] = {
-    # Positive Ion Mode
+    # --- Positive ion mode ---
     "[M+H]+": ("H", 1),
     "[M+NH4]+": ("NH4", 1),
     "[M+Na]+": ("Na", 1),
     "[M+K]+": ("K", 1),
     "[M]+": ("", 1),
     "[M+2H]2+": ("H2", 2),  # doubly protonated, m/z = (M + 2 protons) / 2
-    # Negative Ion Mode
+    "[M+3H]3+": ("H3", 3),  # triply protonated
+    "[M+2Na-H]+": ("Na2H-1", 1),  # disodium salt, one acidic proton replaced
+    "[M+H-H2O]+": ("H-1O-1", 1),  # protonation with neutral water loss
+    "[M+CH3CN+H]+": ("C2H4N", 1),  # acetonitrile solvent adduct
+    "[M+CH3OH+H]+": ("CH5O", 1),  # methanol solvent adduct
+    # --- Negative ion mode ---
     "[M-H]-": ("H-1", -1),
+    "[M-2H]2-": ("H-2", -2),  # doubly deprotonated
     "[M+Cl]-": ("Cl", -1),
-    "[M+HCOO]-": ("CHO2", -1),
-    "[M+CH3COO]-": ("C2H3O2", -1),
-    "[M+FA-H]-": ("CHO2", -1),  # Formate (common LC-MS alias)
+    "[M+Br]-": ("Br", -1),
+    "[M+I]-": ("I", -1),
+    "[M+HCOO]-": ("CHO2", -1),  # formate
+    "[M+CH3COO]-": ("C2H3O2", -1),  # acetate
+    "[M+TFA-H]-": ("C2F3O2", -1),  # trifluoroacetate
+    "[M+HCO3]-": ("CHO3", -1),  # bicarbonate
+    "[M+NO3]-": ("NO3", -1),  # nitrate
     "[M]-": ("", -1),
 }
+
+# Deprecated spellings retained so previously-stored libraries keep resolving.
+# ``normalize_adduct`` rewrites them to the canonical keys above.
+_ADDUCT_LEGACY_KEYS: dict[str, str] = {
+    "[M+FA-H]-": "[M+HCOO]-",  # formate written as "acid minus H"
+}
+
+# Notational variants seen in real-world library metadata, keyed by the adduct
+# *body* (the text inside the brackets, without the charge suffix). This is
+# deliberately a small, explicit table rather than a free-form parser: element
+# symbols are case-sensitive in pyteomics (``Na`` is sodium, ``NA`` is not), so
+# guessing at arbitrary strings would silently produce wrong masses.
+_ADDUCT_BODY_ALIASES: dict[str, str] = {
+    # Formate (CHO2-), written as the neutral acid or the anion
+    "M+HCOOH-H": "M+HCOO",
+    "M+FA-H": "M+HCOO",
+    # Acetate (C2H3O2-)
+    "M+Ac-H": "M+CH3COO",
+    "M+CH3COOH-H": "M+CH3COO",
+    "M+OAc": "M+CH3COO",
+    # Trifluoroacetate (C2F3O2-)
+    "M+CF3COO": "M+TFA-H",
+    # Acetonitrile and methanol solvent adducts
+    "M+ACN+H": "M+CH3CN+H",
+    "M+MeOH+H": "M+CH3OH+H",
+    # Water loss, either written order
+    "M-H2O+H": "M+H-H2O",
+}
+
+# Matches canonical, bracketed, bracketless, and re-ordered-charge notation.
+# The placeholder is accepted in either case so that ``[m+h]+`` exports resolve;
+# the body is later matched case-insensitively against the registry.
+#     [M+H]+   [M+2H]2+   [M+H]+1   [M+H]1+   M+H   M-H   [M]+
+_ADDUCT_NOTATION_RE = re.compile(
+    r"^\[?(?P<body>[Mm](?:[+-][A-Za-z0-9]+)*)\]?(?P<charge>\d*[+-]\d*)?$"
+)
+
+
+def _parse_adduct_notation(adduct: str) -> tuple[str, int | None] | None:
+    """Split adduct notation into its body and declared charge.
+
+    Parameters
+    ----------
+    adduct : str
+        Adduct text already stripped of whitespace.
+
+    Returns
+    -------
+    tuple of (str, int or None) or None
+        The body (e.g. ``"M+2H"``) and the charge declared by the notation
+        suffix (``+2`` for ``"[M+2H]2+"``), or ``None`` when the text does not
+        look like an adduct at all. The charge is ``None`` for charge-less
+        notation such as ``"M+H"``.
+    """
+    match = _ADDUCT_NOTATION_RE.match(adduct)
+    if match is None:
+        return None
+    body = match.group("body")
+    token = match.group("charge")
+    if token is None:
+        return body, None
+    sign = 1 if "+" in token else -1
+    digits = token.replace("+", "").replace("-", "")
+    return body, sign * (int(digits) if digits else 1)
+
+
+def _build_body_index() -> dict[str, str]:
+    """Index adduct bodies (case-folded) onto canonical registry keys.
+
+    Body text is matched case-insensitively because library exports vary
+    (``[m+h]+``, ``M+NA``). This is safe: the resolved key still has to satisfy
+    the strict 5 ppm precursor gate, so permissive matching can only recover
+    formatting differences, never invent chemistry.
+
+    A folded body that maps to more than one key is dropped, so ambiguous
+    input fails closed. ``"M"`` is the only such case today (``[M]+`` and
+    ``[M]-`` share a body), which keeps charge-less ``"M"`` from silently
+    guessing an ionisation mode.
+    """
+    index: dict[str, str] = {}
+    ambiguous: set[str] = set()
+    for key in _ADDUCT_SPECS:
+        parsed = _parse_adduct_notation(key)
+        if parsed is None:  # pragma: no cover -- registry keys are all canonical
+            continue
+        body, _charge = parsed
+        folded = body.lower()
+        if folded in index:
+            ambiguous.add(folded)
+        else:
+            index[folded] = key
+    for folded in ambiguous:
+        index.pop(folded, None)
+    return index
+
+
+_ADDUCT_BODY_INDEX: dict[str, str] = _build_body_index()
+
+# Aliases are matched with the same case-insensitive rule as the registry.
+_ADDUCT_BODY_ALIASES_FOLDED: dict[str, str] = {
+    body.lower(): target.lower() for body, target in _ADDUCT_BODY_ALIASES.items()
+}
+
+
+@lru_cache(maxsize=512)
+def normalize_adduct(adduct: Optional[str]) -> Optional[str]:
+    """Canonicalise real-world adduct notation to a registry key.
+
+    Library files in the wild write the same ion in many ways -- ``[M+H]+``,
+    ``M+H``, ``[M+H]1+``, ``[m+h]+``, ``[M+FA-H]-``. The strict physics gate
+    (:mod:`MassFlow.models`) rejects any adduct it cannot resolve, so an
+    unrecognised spelling quarantines an otherwise correct spectrum. This
+    function maps those spellings onto the canonical :data:`_ADDUCT_SPECS` keys.
+
+    Normalisation is conservative and fails closed:
+
+    * Whitespace and letter case are folded (``"[m+h]+"`` / ``"M+NA"``), and a
+      charge suffix is accepted in either position (``"[M+H]+1"``).
+    * A notation whose declared charge contradicts the chemistry (e.g.
+      ``"[M+H]2+"``) resolves to ``None`` rather than being guessed at.
+    * Text that does not describe a known adduct -- including chemistry the
+      registry does not cover -- resolves to ``None`` and is therefore still
+      rejected by the physics gate.
+
+    Parameters
+    ----------
+    adduct : str or None
+        Adduct string exactly as it appeared in the source metadata.
+
+    Returns
+    -------
+    str or None
+        The canonical registry key (e.g. ``"[M+H]+"``), or ``None`` when the
+        notation is empty, malformed, or not backed by a known chemistry.
+    """
+    if adduct is None:
+        return None
+    text = str(adduct).strip()
+    if not text:
+        return None
+    if text in _ADDUCT_SPECS:
+        return text
+    if text in _ADDUCT_LEGACY_KEYS:
+        return _ADDUCT_LEGACY_KEYS[text]
+
+    compact = re.sub(r"\s+", "", text)
+    if compact in _ADDUCT_SPECS:
+        return compact
+    if compact in _ADDUCT_LEGACY_KEYS:
+        return _ADDUCT_LEGACY_KEYS[compact]
+
+    parsed = _parse_adduct_notation(compact)
+    if parsed is None:
+        return None
+    body, declared_charge = parsed
+    folded_body = body.lower()
+    canonical = _ADDUCT_BODY_INDEX.get(
+        _ADDUCT_BODY_ALIASES_FOLDED.get(folded_body, folded_body)
+    )
+    if canonical is None:
+        return None
+    if declared_charge is not None and declared_charge != _ADDUCT_SPECS[canonical][1]:
+        # The notation names a real ion but declares a different charge; refuse
+        # to guess which half is wrong.
+        return None
+    return canonical
 
 
 # =============================================================================
@@ -89,6 +270,10 @@ def compute_adduct_offset(adduct: str) -> float | None:
     the specified adduct ion: the mass of added/removed atoms minus the electron
     mass correction for the ion's charge.
 
+    Adduct notation is canonicalised first (see :func:`normalize_adduct`), so
+    library spellings such as ``"M+H"`` or ``"[M+H]1+"`` resolve to the same
+    offset as ``"[M+H]+"``.
+
     Parameters
     ----------
     adduct : str
@@ -99,10 +284,10 @@ def compute_adduct_offset(adduct: str) -> float | None:
     float or None
         The mass offset in Da, or None if the adduct is not recognized.
     """
-    spec = _ADDUCT_SPECS.get(adduct)
-    if spec is None:
+    canonical = normalize_adduct(adduct)
+    if canonical is None:
         return None
-    atoms_formula, charge = spec
+    atoms_formula, charge = _ADDUCT_SPECS[canonical]
     if atoms_formula:
         comp = pmass.Composition(formula=atoms_formula)
         atoms_mass = pmass.calculate_mass(composition=comp)
@@ -650,14 +835,16 @@ def calculate_theoretical_mass(
     neutral_mass = pmass.calculate_mass(formula=neutral_formula)
 
     # ── Compute adduct offset ──────────────────────────────────────────
-    offset = compute_adduct_offset(adduct)
-    if offset is None:
+    canonical = normalize_adduct(adduct)
+    if canonical is None:
         raise ValueError(
             f"Adduct '{adduct}' is not supported. "
             f"Supported adducts: {list(_ADDUCT_SPECS.keys())}"
         )
 
-    _atoms_formula, spec_charge = _ADDUCT_SPECS[adduct]
+    offset = compute_adduct_offset(canonical)
+    assert offset is not None  # canonical keys are always in the registry
+    _atoms_formula, spec_charge = _ADDUCT_SPECS[canonical]
     return (neutral_mass + offset) / abs(spec_charge)
 
 

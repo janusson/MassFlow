@@ -30,7 +30,9 @@ While not strictly required for basic ingestion, the following fields unlock adv
 ### 1. `adduct` and `ionmode`
 MassFlow rigorously validates the relationship between `precursor_mz`, `charge`, exact mass, and the ionization adduct.
 
-*   **`adduct`:** Must be a standard notation string matching MassFlow's internal registry (e.g., `[M+H]+`, `[M-H]-`, `[M+Na]+`). Non-standard names (e.g., "sodium adduct") will cause strict validation to fail.
+*   **`adduct`:** Must be an ionization adduct whose chemistry MassFlow recognises. The registry covers the common LC-MS adducts (`[M+H]+`, `[M-H]-`, `[M+Na]+`, `[M+NH4]+`, `[M+K]+`, `[M+Cl]-`, `[M+HCOO]-`, `[M+CH3COO]-`, multiply-charged and solvent/water-loss variants — see `docs/user-guide/validation.md` for the full table and offsets).
+    *   **Notation is canonicalised, so library spellings are accepted:** `M+H`, `[M+H]1+`, `[M+H]+1`, `[m+h]+`, interior whitespace, and unbalanced brackets all resolve to `[M+H]+`; alias chemistry such as `M+FA-H` / `M+HCOOH-H` (formate), `M+OAc` / `M+Ac-H` (acetate), `M+ACN+H`, and `M-H2O+H` resolves too. The stored value is rewritten to the canonical spelling.
+    *   Prose descriptions (e.g. "sodium adduct") and adducts outside the registry cannot be resolved, so strict validation fails for those spectra; normalisation never guesses, and a resolved adduct must still clear the 5 ppm tolerance.
 *   **`ionmode`:** Must be exactly `"positive"`, `"negative"`, or `"neutral"`.
 
 **Imputation Behavior:**
