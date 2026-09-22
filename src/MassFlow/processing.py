@@ -34,6 +34,7 @@ from matchms.filtering import (
     select_by_mz,
 )
 
+from MassFlow.cheminformatics import normalize_adduct
 from MassFlow.config import ProcessingConfig
 
 # Neutral monoisotopic mass of water (H2O), computed once at import time from
@@ -390,6 +391,13 @@ def metadata_processing(
         s = derive_adduct_from_name(s)
         if s is None:
             return None
+
+    # Canonicalise adduct notation (e.g. "M+H", "[M+H]1+") so the stored
+    # metadata, the physics gate below, and the search engines all see the
+    # same spelling. Unknown labels are left untouched and fail the gate.
+    canonical_adduct = normalize_adduct(_clean_optional_str(s.get("adduct")))
+    if canonical_adduct is not None:
+        s.set("adduct", canonical_adduct)
 
     if config is None or getattr(config, "derive_formula_from_name", True):
         s = derive_formula_from_name(s)

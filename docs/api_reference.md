@@ -15,6 +15,8 @@ Numba-accelerated peak/neutral-loss prefilter used by `SimilarityEngine` to skip
 - `get_isotopic_distribution(smiles: str, threshold: float) -> list[tuple[float, float]]`
 - `calculate_isotopic_envelope(smiles: str, max_isopeaks: int) -> list[tuple[float, float]]`
 - `calculate_theoretical_mass(smiles: str, adduct: str) -> Optional[float]`
+- `compute_adduct_offset(adduct: str) -> Optional[float]` — monoisotopic adduct offset; notation is canonicalised first
+- `normalize_adduct(adduct: str) -> Optional[str]` — canonicalises library notation (`M+H`, `[M+H]1+`, `[m+h]+`, alias chemistry) onto the registry keys; returns `None` when the notation cannot be resolved
 
 ## `MassFlow.cli`
 
