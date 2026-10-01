@@ -256,6 +256,41 @@ def normalize_adduct(adduct: Optional[str]) -> Optional[str]:
     return canonical
 
 
+def adduct_charge(adduct: Optional[str]) -> Optional[int]:
+    """Return the signed charge of a resolvable adduct.
+
+    Canonicalises *adduct* first (see :func:`normalize_adduct`) and reports the
+    registry charge of the resolved key. Consumers that need the ionisation
+    mode must read it from here rather than from the ``+``/``-`` characters in
+    the string: ``[M+HCOO]-`` is negative despite containing a ``+``, and
+    ``[M+H-H2O]+`` is positive despite containing a ``-``.
+
+    Parameters
+    ----------
+    adduct : str or None
+        Adduct string as it appeared in the source metadata.
+
+    Returns
+    -------
+    int or None
+        The signed charge of the resolved adduct (``+1``, ``-1``, ``+2``, ...),
+        or ``None`` when the notation cannot be resolved to a registry entry.
+
+    Examples
+    --------
+    >>> adduct_charge("[M+H]+")
+    1
+    >>> adduct_charge("[M+HCOO]-")
+    -1
+    >>> adduct_charge("[M+Weird]+") is None
+    True
+    """
+    canonical = normalize_adduct(adduct)
+    if canonical is None:
+        return None
+    return _ADDUCT_SPECS[canonical][1]
+
+
 # =============================================================================
 # Public API: adduct offset (pure pyteomics, no RDKit dependency)
 # =============================================================================

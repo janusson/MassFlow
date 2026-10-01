@@ -17,6 +17,7 @@ Numba-accelerated peak/neutral-loss prefilter used by `SimilarityEngine` to skip
 - `calculate_theoretical_mass(smiles: str, adduct: str) -> Optional[float]`
 - `compute_adduct_offset(adduct: str) -> Optional[float]` — monoisotopic adduct offset; notation is canonicalised first
 - `normalize_adduct(adduct: str) -> Optional[str]` — canonicalises library notation (`M+H`, `[M+H]1+`, `[m+h]+`, alias chemistry) onto the registry keys; returns `None` when the notation cannot be resolved
+- `adduct_charge(adduct: str) -> Optional[int]` — signed charge of the resolved adduct (`+1`, `-1`, `+2`, ...); returns `None` when the notation cannot be resolved. Use this for ionisation mode, never the `+`/`-` characters in the string
 
 ## `MassFlow.cli`
 
