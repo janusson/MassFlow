@@ -43,6 +43,7 @@ except ImportError:
     from matchms.similarity import CosineGreedy
     from matchms.similarity import ModifiedCosineGreedy as ModifiedCosine
 
+from MassFlow.cheminformatics import adduct_charge
 from MassFlow.config import SimilarityConfig
 from MassFlow.models import TriageProfile
 from MassFlow.protocols import MLEngineProtocol
@@ -152,6 +153,47 @@ def yield_fixed_chunks(
         yield current_chunk
 
 
+def _merge_decoy_diagnostics(per_chunk: list[dict[str, Any]]) -> dict[str, Any]:
+    """Aggregate per-chunk decoy diagnostics into one search-level summary.
+
+    A chunked (streamed) library search is ONE logical search: its decoy
+    statistics must describe every chunk, not just the last one. Counts are
+    summed, the best score is the maximum over finite values, and the null is
+    only empty when no chunk produced a decoy hit.
+    """
+    merged: dict[str, Any] = {
+        "n_decoy_pairs_scored": 0,
+        "n_decoy_scores_above_min_score": 0,
+        "n_decoy_scores_above_gates": 0,
+        "n_decoy_hits": 0,
+        "best_decoy_score": float("nan"),
+        "decoy_null_empty": True,
+    }
+    best_score = float("nan")
+    for chunk in per_chunk:
+        if not chunk:
+            continue
+        for key in (
+            "n_decoy_pairs_scored",
+            "n_decoy_scores_above_min_score",
+            "n_decoy_scores_above_gates",
+            "n_decoy_hits",
+        ):
+            value = chunk.get(key)
+            if isinstance(value, int):
+                merged[key] += value
+        score = chunk.get("best_decoy_score")
+        if isinstance(score, float) and np.isfinite(score):
+            best_score = (
+                score if not np.isfinite(best_score) else max(best_score, score)
+            )
+        merged["decoy_null_empty"] = bool(
+            merged["decoy_null_empty"] and chunk.get("decoy_null_empty", True)
+        )
+    merged["best_decoy_score"] = best_score
+    return merged
+
+
 def _handle_lazy_reference_spectra(func):
     """Decorator to allow search engines to lazily process generator inputs in chunks."""
 
@@ -168,6 +210,8 @@ def _handle_lazy_reference_spectra(func):
         if not isinstance(reference_spectra, (list, tuple)):
             all_results = []
             processed_count = 0
+            chunk_diagnostics: list[dict[str, Any]] = []
+            chunk_flags: list[str] = []
 
             # When chunking, pre-computed ref_precursor_mzs / ref_is_decoy
             # arrays are aligned with the *full* library, not individual chunks.
@@ -198,6 +242,22 @@ def _handle_lazy_reference_spectra(func):
                         **chunk_kwargs,
                     )
                 )
+                if include_decoys:
+                    chunk_diagnostics.append(
+                        dict(getattr(self, "decoy_diagnostics", {}) or {})
+                    )
+                chunk_flags.extend(getattr(self, "degraded_mode_flags", []) or [])
+
+            # Re-publish the per-chunk records as one search-level record so the
+            # caller sees the whole streamed search, not the last chunk only.
+            if chunk_diagnostics and hasattr(self, "_decoy_diagnostics"):
+                self._decoy_diagnostics = _merge_decoy_diagnostics(chunk_diagnostics)
+            if chunk_flags and hasattr(self, "_degraded_flags"):
+                merged_flags: list[str] = []
+                for flag in chunk_flags:
+                    if flag not in merged_flags:
+                        merged_flags.append(flag)
+                self._degraded_flags = merged_flags
 
             if top_n is not None:
                 grouped = defaultdict(list)
@@ -253,22 +313,43 @@ def _is_missing(val):
         return True
 
 
+def _adduct_ion_mode_sign(adduct: str | None) -> int | None:
+    """Return +1 or -1 for the ionisation mode implied by *adduct* notation.
+
+    The resolved registry charge is authoritative, so ``[M+HCOO]-`` (negative,
+    despite the ``+``) and ``[M+H-H2O]+`` (positive, despite the ``-``) are
+    classified by chemistry rather than by the sign characters they contain.
+    Notation the registry cannot resolve falls back to its trailing charge
+    token; ``None`` means the mode could not be determined at all.
+    """
+    if adduct is None:
+        return None
+    charge = adduct_charge(adduct)
+    if charge is not None:
+        return 1 if charge > 0 else -1
+    text = str(adduct).strip()
+    if text.endswith("+"):
+        return 1
+    if text.endswith("-"):
+        return -1
+    return None
+
+
 def _adduct_modes_compatible(ref_adduct: str | None, query_adduct: str | None) -> bool:
     """Return False if adducts belong to opposite ionisation modes.
 
     Positive-mode adducts (e.g. ``[M+H]+``) and negative-mode adducts
-    (e.g. ``[M-H]-``) are physically incompatible. If either adduct is
-    ``None`` the pair is allowed through (no opinion).
+    (e.g. ``[M-H]-``) are physically incompatible. The mode is read from the
+    resolved adduct chemistry, not from the mere presence of a ``+`` or ``-``
+    character: ``[M+HCOO]-`` and ``[M+H-H2O]+`` are unambiguously negative and
+    positive respectively even though each contains both characters. If either
+    adduct has no determinable mode the pair is allowed through (no opinion).
     """
-    if ref_adduct is None or query_adduct is None:
+    ref_sign = _adduct_ion_mode_sign(ref_adduct)
+    query_sign = _adduct_ion_mode_sign(query_adduct)
+    if ref_sign is None or query_sign is None:
         return True
-    ref_pos = "+" in ref_adduct
-    ref_neg = "-" in ref_adduct
-    qry_pos = "+" in query_adduct
-    qry_neg = "-" in query_adduct
-    if (ref_pos and qry_neg) or (ref_neg and qry_pos):
-        return False
-    return True
+    return ref_sign == query_sign
 
 
 def _ms1_prefilter(
@@ -583,11 +664,31 @@ def generate_decoys(
     2. **Preserves the spectral entropy** — the information content computed
        with the spectral-entropy weighting (``I**0.5``) after a strict
        baseline filter (peaks below ``min_relative_intensity`` × the base
-       peak are removed) — exactly, up to floating-point rounding.
+       peak are removed) — exactly, up to floating-point rounding. The decoy
+       also keeps its source's **complete peak list** (count and m/z density):
+       the baseline filter only decides which intensities are permuted, never
+       which peaks survive. A decoy must be as matchable as the library
+       spectrum it stands in for.
     3. **Randomizes the fragmentation pathways**: intensities are reassigned
-       across peaks (random permutation of the filtered intensity profile)
-       and fragment positions are jittered by ``±mz_shift_da``, so decoys
-       share no fragment positions with their source at scoring tolerance.
+       across the baseline-filtered peaks (random permutation of the filtered
+       intensity profile) and fragment positions are jittered by
+       ``±mz_shift_da``, so decoys share no fragment positions with their
+       source at scoring tolerance.
+
+    ``mz_shift_da`` scale matters and is the reason decoys rarely reach
+    production score gates: peak matching is positional within the configured
+    MS2 tolerance (0.02 Da by default), so a displacement of at least one
+    scoring tolerance is required for the decoy to *not* be a near-copy of its
+    source (a near-copy would let the true match's own decoy compete with the
+    true match and inflate the FDR). The flip side is that a displaced decoy
+    cannot share fragments with a query either, so decoy hits are scarce —
+    and at production thresholds (``min_score`` 0.6–0.7, ``min_matched_peaks``
+    3) they are typically absent entirely, which the engine reports as the
+    ``decoy_null_empty`` diagnostic and the workflow as ``fdr_uncalibrated``
+    (q-values are then the conservative ``1/N`` rank bound, not an
+    FDR estimate). Decoys are still fully scored and they do enter
+    target-decoy competition whenever a decoy hit passes the configured
+    gates.
 
     Because the filtered intensity profile is permuted (not resampled), the
     weighted intensity distribution — and therefore the spectral entropy —
@@ -678,10 +779,15 @@ def generate_decoys(
             )
             continue
 
-        # Strict baseline filtering BEFORE entropy computation and decoy
-        # construction: peaks below ``min_relative_intensity`` × the base
-        # peak are chemical noise and are excluded so they cannot skew the
-        # spectral entropy estimate or leak into decoys.
+        # Strict baseline filtering BEFORE the entropy computation: peaks
+        # below ``min_relative_intensity`` × the base peak are chemical noise
+        # and must not skew the spectral entropy estimate. The *filter is only
+        # used for the entropy*: the decoy keeps the source's complete peak
+        # list, because the peak set (count and m/z density) is what decides
+        # whether a spectrum can be matched at scoring tolerance. Deleting
+        # noise peaks from the decoy would make every decoy systematically
+        # less matchable than the library spectra it stands in for — a
+        # target/decoy asymmetry that biases the FDR estimate.
         base_peak = float(np.max(intensity_array))
         if base_peak > 0.0:
             keep_mask = intensity_array >= min_relative_intensity * base_peak
@@ -692,30 +798,34 @@ def generate_decoys(
             # than generating a degenerate single-peak decoy.
             keep_mask = np.ones(n_peaks, dtype=bool)
 
-        filtered_mz = mz_array[keep_mask]
         filtered_intensities = intensity_array[keep_mask]
         n_filtered = filtered_intensities.size
 
         # Randomize the fragmentation pathways. A permutation of the filtered
         # intensity profile preserves the normalized intensity distribution
-        # (and therefore the entropy) exactly.
+        # (and therefore the entropy) exactly. Baseline-noise peaks keep
+        # their own (sub-floor) intensities, so the decoy's measured entropy
+        # — computed after the same baseline filter — is still exactly the
+        # source's: the base peak and the filtered profile are preserved as a
+        # multiset, so the same peaks fall below the floor.
+        decoy_intensities = intensity_array.copy()
         if np.unique(filtered_intensities).size < 2:
             # Permuting identical values is a no-op: taper instead so the
             # decoy is never identical to its source.
             taper = rng.uniform(0.5, 1.0, size=n_filtered)
             rng.shuffle(taper)
-            decoy_intensities = filtered_intensities * taper
+            decoy_intensities[keep_mask] = filtered_intensities * taper
         else:
             permutation = rng.permutation(n_filtered)
             if np.array_equal(permutation, np.arange(n_filtered)):
                 permutation = np.roll(permutation, 1)
-            decoy_intensities = filtered_intensities[permutation]
+            decoy_intensities[keep_mask] = filtered_intensities[permutation]
 
         # Jitter fragment positions so decoys share no fragment positions
         # with their source at scoring tolerance; keep positions positive and
         # ascending (MassFlow spectra are always m/z-sorted).
-        position_jitter = rng.uniform(-mz_shift_da, mz_shift_da, size=n_filtered)
-        decoy_mz = np.maximum(filtered_mz + position_jitter, 0.01)
+        position_jitter = rng.uniform(-mz_shift_da, mz_shift_da, size=n_peaks)
+        decoy_mz = np.maximum(mz_array + position_jitter, 0.01)
         sort_order = np.argsort(decoy_mz)
 
         decoys.append(
@@ -1016,6 +1126,7 @@ class SimilarityEngine:
         """
         self.config = config
 
+        self.similarity_function: Any
         if self.config.algorithm == "cosine":
             self.similarity_function = CosineGreedy(tolerance=self.config.ms2_tolerance)
         elif self.config.algorithm == "modified_cosine":
@@ -1024,6 +1135,45 @@ class SimilarityEngine:
             )
         else:
             raise ValueError(f"Unsupported algorithm: {self.config.algorithm}")
+
+        # Per-search degradation record, reset at the start of every search and
+        # read by the workflow (which transports it into the per-file sidecar
+        # and the run provenance). Mirrors the ``degraded_mode_flags`` contract
+        # of the meta-engines (consensus/cascade/router).
+        self._degraded_flags: list[str] = []
+        # Decoy-side diagnostics of the most recent search: how many decoy
+        # pairs were scored, how good the best decoy hit was, and whether any
+        # decoy hit reached the configured gates. This is what distinguishes
+        # "decoys were scored and none qualified" (an empty decoy null: the
+        # q-values are the 1/N rank bound) from "decoys were never scored"
+        # (a plumbing failure).
+        self._decoy_diagnostics: dict[str, Any] = {}
+
+    @property
+    def degraded_mode_flags(self) -> list[str]:
+        """Degradation markers recorded by the most recent ``search()`` call.
+
+        Values: ``decoy_null_empty`` when decoys were generated and scored but
+        not one decoy hit reached the configured score/matched-peak gates.
+        """
+        return list(self._degraded_flags)
+
+    @property
+    def decoy_diagnostics(self) -> dict[str, Any]:
+        """Decoy-side search statistics of the most recent ``search()`` call.
+
+        Returns
+        -------
+        dict
+            ``n_decoy_pairs_scored`` (reference-query pairs on the decoy side),
+            ``best_decoy_score`` (highest decoy score of any pair, before the
+            gates), ``n_decoy_scores_above_min_score`` (decoy pairs whose score
+            alone would pass the score gate), ``n_decoy_hits`` (decoy hits that
+            passed all gates and entered target-decoy competition) and
+            ``decoy_null_empty``. Empty when the last search ran with
+            ``include_decoys=False``.
+        """
+        return dict(self._decoy_diagnostics)
 
     @_handle_lazy_reference_spectra
     def search(
@@ -1091,10 +1241,35 @@ class SimilarityEngine:
         if not query_spectra or not reference_spectra:
             return []
 
+        # Per-search degradation record and decoy diagnostics: always reset so
+        # a clean search never carries stale markers from an earlier call.
+        self._degraded_flags = []
+        self._decoy_diagnostics = {}
+
         cutoff = min_score if min_score is not None else self.config.min_score
 
         if include_decoys:
             ref_list = list(reference_spectra)
+            effective_decoy_shift = (
+                decoy_mz_shift_da
+                if decoy_mz_shift_da is not None
+                else _DEFAULT_DECOY_MZ_SHIFT_DA
+            )
+            if effective_decoy_shift < self.config.ms2_tolerance:
+                # A decoy that stays inside the scoring tolerance of its source
+                # is a near-copy: the true match's own decoy then competes with
+                # the true match and inflates the decoy null (over-conservative
+                # q-values, true positives rejected). The displacement must
+                # exceed the peak-matching tolerance.
+                logger.warning(
+                    "decoy_mz_shift_da=%.4g Da is below the MS2 scoring "
+                    "tolerance (%.4g Da): decoys then coincide with their "
+                    "source at scoring tolerance, which inflates the decoy "
+                    "null and makes q-values over-conservative. Use a "
+                    "displacement above the MS2 tolerance.",
+                    effective_decoy_shift,
+                    self.config.ms2_tolerance,
+                )
             decoy_spectra = generate_decoys(
                 ref_list,
                 min_relative_intensity=(
@@ -1102,11 +1277,7 @@ class SimilarityEngine:
                     if decoy_min_relative_intensity is not None
                     else _DEFAULT_DECOY_MIN_RELATIVE_INTENSITY
                 ),
-                mz_shift_da=(
-                    decoy_mz_shift_da
-                    if decoy_mz_shift_da is not None
-                    else _DEFAULT_DECOY_MZ_SHIFT_DA
-                ),
+                mz_shift_da=effective_decoy_shift,
             )
             all_references = ref_list + decoy_spectra
             n_targets = len(ref_list)
@@ -1370,7 +1541,76 @@ class SimilarityEngine:
                     }
                 )
 
+        if include_decoys:
+            self._record_decoy_diagnostics(
+                numeric_scores=numeric_scores,
+                matches_count=matches_count,
+                n_targets=n_targets,
+                cutoff=cutoff,
+                results=results,
+            )
+
         return results
+
+    def _record_decoy_diagnostics(
+        self,
+        numeric_scores: np.ndarray,
+        matches_count: np.ndarray,
+        n_targets: int,
+        cutoff: float,
+        results: List[SearchResult],
+    ) -> None:
+        """Record how far the decoy side of the last search got.
+
+        The decoy side is scored exactly like the target side and then passes
+        through the same score / matched-peak / adduct / RT gates. When none of
+        those gates is reached, the target-decoy competition has an empty null:
+        q-values fall back to the documented ``1/N`` rank bound and the run is
+        reported as degraded (``decoy_null_empty`` here, ``fdr_uncalibrated``
+        in the workflow). Recording *why* — decoys scored but below the gates,
+        versus decoys never scored — is what makes the zero-decoy-hit report
+        diagnosable instead of mysterious.
+        """
+        n_decoy_refs = numeric_scores.shape[0] - n_targets
+        if n_decoy_refs <= 0:
+            return
+
+        decoy_scores = numeric_scores[n_targets:].astype(np.float64)
+        decoy_matches = matches_count[n_targets:]
+        above_score = decoy_scores >= cutoff
+        if self.config.min_matched_peaks > 0:
+            qualified = above_score & (decoy_matches >= self.config.min_matched_peaks)
+        else:
+            qualified = above_score
+
+        n_decoy_hits = sum(1 for r in results if r.get("is_decoy", False))
+        diagnostics: dict[str, Any] = {
+            "n_decoy_pairs_scored": int(decoy_scores.size),
+            "n_decoy_scores_above_min_score": int(np.count_nonzero(above_score)),
+            "n_decoy_hits": n_decoy_hits,
+            "decoy_null_empty": n_decoy_hits == 0,
+        }
+        if decoy_scores.size:
+            best_flat = int(np.argmax(decoy_scores))
+            diagnostics["best_decoy_score"] = float(decoy_scores.reshape(-1)[best_flat])
+            diagnostics["n_decoy_scores_above_gates"] = int(np.count_nonzero(qualified))
+        else:
+            diagnostics["best_decoy_score"] = float("nan")
+            diagnostics["n_decoy_scores_above_gates"] = 0
+        self._decoy_diagnostics = diagnostics
+
+        if diagnostics["decoy_null_empty"]:
+            self._degraded_flags.append("decoy_null_empty")
+            logger.warning(
+                "Empty decoy null: %d decoy pairs scored, best decoy score "
+                "%.4f (score gate %.4f, matched-peak gate %d), no decoy hit "
+                "entered target-decoy competition. q-values are the "
+                "conservative 1/N rank bound, not an FDR estimate.",
+                diagnostics["n_decoy_pairs_scored"],
+                diagnostics["best_decoy_score"],
+                cutoff,
+                self.config.min_matched_peaks,
+            )
 
     def batch_score(
         self,

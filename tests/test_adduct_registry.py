@@ -27,6 +27,7 @@ from matchms import Spectrum
 from MassFlow import processing
 from MassFlow.cheminformatics import (
     _ADDUCT_SPECS,
+    adduct_charge,
     calculate_theoretical_mass,
     compute_adduct_offset,
     normalize_adduct,
@@ -240,6 +241,60 @@ class TestRegistryCoverage:
         ]
         unresolved = [a for a in common if normalize_adduct(a) is None]
         assert unresolved == []
+
+
+# ---------------------------------------------------------------------------
+# adduct_charge: the signed charge consumers must use for ionisation mode
+# ---------------------------------------------------------------------------
+
+
+class TestAdductCharge:
+    """The resolved charge is the single source of truth for ionisation mode."""
+
+    @pytest.mark.parametrize(
+        ("raw", "expected"),
+        [
+            ("[M+H]+", 1),
+            ("[M+Na]+", 1),
+            ("[M+2H]2+", 2),
+            ("[M+3H]3+", 3),
+            ("[M+H-H2O]+", 1),
+            ("[M+2Na-H]+", 1),
+            ("[M+CH3CN+H]+", 1),
+            ("[M]+", 1),
+            ("[M-H]-", -1),
+            ("[M-2H]2-", -2),
+            ("[M+HCOO]-", -1),
+            ("[M+TFA-H]-", -1),
+            ("[M]-", -1),
+            # Notation variants must resolve to the same charge.
+            ("M+H", 1),
+            ("M+FA-H", -1),
+            ("[M+H]1+", 1),
+            ("[m+h]+", 1),
+        ],
+    )
+    def test_charge_matches_registry(self, raw, expected):
+        assert adduct_charge(raw) == expected
+
+    def test_charge_agrees_with_registry_charge_for_every_entry(self):
+        for key in _ADDUCT_SPECS:
+            assert adduct_charge(key) == _ADDUCT_SPECS[key][1]
+
+    def test_unresolvable_notation_has_no_charge(self):
+        assert adduct_charge("[M+Weird]+") is None
+        assert adduct_charge("M") is None
+        assert adduct_charge(None) is None
+        assert adduct_charge("") is None
+
+    def test_dual_sign_negative_adduct_is_negative(self):
+        """``[M+HCOO]-`` contains a ``+`` but is unambiguously negative."""
+        formate_charge = adduct_charge("[M+HCOO]-")
+        water_loss_charge = adduct_charge("[M+H-H2O]+")
+        assert formate_charge is not None
+        assert water_loss_charge is not None
+        assert formate_charge < 0
+        assert water_loss_charge > 0
 
 
 # ---------------------------------------------------------------------------

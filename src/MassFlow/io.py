@@ -301,15 +301,44 @@ def load_spectra(
     yield from _validate_spectra_iterator(loader, path, rejection_reporter)
 
 
+def _optional_float(value: Any) -> Optional[float]:
+    """Best-effort scalar float conversion for metadata export values.
+
+    Real mzML loaders (pyteomics) can emit list-valued metadata such as
+    ``retention_time: [0.017]`` or ``retention_time: []``, and matchms may
+    leave them untouched. Export requires a scalar (or None), so a container is
+    unwrapped to its first element, empty containers and non-numeric values
+    become None. A malformed metadata field must never abort an export after a
+    successful search.
+    """
+    if isinstance(value, (list, tuple)):
+        if len(value) == 0:
+            return None
+        value = value[0]
+    if value is None or (isinstance(value, str) and value.strip() == ""):
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def _build_results_dataframe(
     results: list[dict[str, Any]],
     query_spectra: Optional[Iterable[Spectrum]] = None,
+    uncalibrated: bool = False,
 ) -> Optional[pl.DataFrame]:
     """
     Construct a results DataFrame from match results and optional query spectra.
 
     This is an internal helper shared by the various export functions to ensure
     consistent data shaping, merging, and status labeling.
+
+    ``uncalibrated`` marks rows produced by a run whose decoy null was empty:
+    the q-values are then the conservative ``1/N`` rank bound, not a
+    target-decoy FDR estimate, so no row may read as confident. Rows of such a
+    run carry ``Annotation_Status = "Uncalibrated"`` (queries without any hit
+    keep ``"Unknown"``).
     """
     # Sanitize result dicts before they enter Polars:
     # * numpy bool/int/float scalars trigger DeprecationWarnings (and future
@@ -334,10 +363,8 @@ def _build_results_dataframe(
         q_ids, q_mzs, q_rts = [], [], []
         for q in query_spectra:
             q_ids.append(str(q.get("id")))
-            q_mz = q.get("precursor_mz")
-            q_rt = q.get("retention_time")
-            q_mzs.append(float(q_mz) if q_mz is not None else None)
-            q_rts.append(float(q_rt) if q_rt is not None else None)
+            q_mzs.append(_optional_float(q.get("precursor_mz")))
+            q_rts.append(_optional_float(q.get("retention_time")))
 
         base_df = pl.DataFrame(
             {
@@ -369,16 +396,21 @@ def _build_results_dataframe(
             return None
         df = pl.DataFrame(clean_results)
 
-    # Add Annotation_Status
+    # Add Annotation_Status. A run without decoy evidence cannot support an
+    # FDR claim, so its hits are labeled "Uncalibrated" instead of
+    # "Matched"/"Putative" (queries without a hit stay "Unknown").
     if "score" in df.columns:
-        df = df.with_columns(
+        status = (
             pl.when(pl.col("score").is_null())
             .then(pl.lit("Unknown"))
+            .when(pl.lit(uncalibrated))
+            .then(pl.lit("Uncalibrated"))
             .when(pl.col("score") >= 0.9)
             .then(pl.lit("Matched"))
             .otherwise(pl.lit("Putative"))
             .alias("Annotation_Status")
         )
+        df = df.with_columns(status)
     else:
         df = df.with_columns(pl.lit("Unknown").alias("Annotation_Status"))
 
@@ -389,6 +421,7 @@ def save_match_results(
     results: list[dict[str, Any]],
     output_path: Path,
     query_spectra: Optional[Iterable[Spectrum]] = None,
+    uncalibrated: bool = False,
 ) -> None:
     """
     Save annotation results to a CSV report.
@@ -397,7 +430,11 @@ def save_match_results(
     spectrum, including unmatched queries. Match rows are left-joined onto that
     base table using ``query_id``. An ``Annotation_Status`` column is added with
     the values ``Matched`` for scores of at least 0.9, ``Putative`` for lower
-    non-null scores, and ``Unknown`` when no score is available.
+    non-null scores, and ``Unknown`` when no score is available. When
+    ``uncalibrated`` is True (the run had no decoy evidence, so q-values are the
+    ``1/N`` rank bound rather than an FDR estimate), every matched row is
+    labeled ``Uncalibrated`` instead — the table must never read as
+    FDR-controlled when it is not.
 
     Parameters
     ----------
@@ -410,6 +447,9 @@ def save_match_results(
     query_spectra : Optional[Iterable[Spectrum]]
         Full set of experimental query spectra. When provided, unmatched queries
         are still represented in the CSV output.
+    uncalibrated : bool
+        True when the run's decoy null was empty and the q-values are the
+        conservative ``1/N`` rank bound (no FDR claim is supported).
 
     Returns
     -------
@@ -426,7 +466,7 @@ def save_match_results(
     If both ``results`` is empty and ``query_spectra`` is ``None``, the
     function logs a warning and returns without writing a file.
     """
-    df = _build_results_dataframe(results, query_spectra)
+    df = _build_results_dataframe(results, query_spectra, uncalibrated=uncalibrated)
     if df is None:
         logger.warning("No results to save and no query_spectra provided.")
         return
@@ -532,6 +572,7 @@ def save_match_results_to_mztab(
     results: list[dict[str, Any]],
     output_path: Path,
     query_spectra: Optional[Iterable[Spectrum]] = None,
+    uncalibrated: bool = False,
 ) -> None:
     """
     Save annotation results in a minimal mzTab-M format.
@@ -548,8 +589,12 @@ def save_match_results_to_mztab(
         The destination file path for the mzTab-M output.
     query_spectra : Optional[Iterable[Spectrum]]
         Full set of experimental query spectra.
+    uncalibrated : bool
+        True when the run's decoy null was empty and the q-values are the
+        conservative ``1/N`` rank bound (no FDR claim is supported); matched
+        rows are then labeled ``Uncalibrated``.
     """
-    df = _build_results_dataframe(results, query_spectra)
+    df = _build_results_dataframe(results, query_spectra, uncalibrated=uncalibrated)
     if df is None:
         logger.warning("No results to save and no query_spectra provided.")
         return

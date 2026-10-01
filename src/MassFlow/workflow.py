@@ -20,6 +20,7 @@ import hashlib
 import importlib.util
 import json
 import logging
+import math
 import multiprocessing
 import sys
 from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -445,6 +446,50 @@ def _emit_small_library_warning(lib_size: int, fdr_threshold: float) -> None:
         logger.warning(msg)
 
 
+def _describe_empty_decoy_null(decoy_diagnostics: dict[str, Any]) -> str:
+    """Explain an empty decoy null from the engine's decoy statistics.
+
+    Distinguishes the two very different causes of ``n_decoy_competitions ==
+    0``: decoys that were never generated or scored (a configuration/plumbing
+    problem — nothing to report here) versus decoys that *were* scored but
+    whose best hit stayed below the configured score/matched-peak gates. The
+    latter is the expected outcome of decoys that share no fragment positions
+    with real fragments at scoring tolerance, so production thresholds are out
+    of reach for them; the accepted target hits are genuine matches and the run
+    supports no false-positive estimate.
+
+    Parameters
+    ----------
+    decoy_diagnostics : dict
+        Decoy-side search statistics (see
+        :attr:`MassFlow.similarity.SimilarityEngine.decoy_diagnostics`).
+        Empty when the active engine does not report them.
+
+    Returns
+    -------
+    str
+        A sentence appended to the uncalibrated-FDR warning.
+    """
+    n_pairs = decoy_diagnostics.get("n_decoy_pairs_scored")
+    best_score = decoy_diagnostics.get("best_decoy_score")
+    if not isinstance(n_pairs, int) or not isinstance(best_score, float):
+        return (
+            "The configured engine does not report decoy-side search "
+            "statistics; decoys are generated and scored through its internal "
+            "pipeline."
+        )
+    if not math.isfinite(best_score):
+        return (
+            f"Decoys were generated but {n_pairs} decoy pairs produced no finite score."
+        )
+    return (
+        f"Decoys were generated and scored ({n_pairs} decoy pairs); the "
+        f"best decoy score was {best_score:.4f}, below the configured gates "
+        "— no decoy-based false-positive estimate is possible at this "
+        "configuration."
+    )
+
+
 def _init_worker(
     config: MassFlowConfig,
     library_spec: LibrarySpec | None,
@@ -688,6 +733,7 @@ def _process_single_file(
             result.degraded_mode_flags.extend(
                 getattr(router, "degraded_mode_flags", [])
             )
+            active_engine: Any = router
         else:
             counted_ref_iterator = _CountingIterator(backend.iter_spectra())
             engine = (
@@ -695,6 +741,7 @@ def _process_single_file(
                 if _worker_engine is not None
                 else get_similarity_engine(config.similarity)
             )
+            active_engine = engine
             try:
                 all_results = engine.search(
                     standard_queries,
@@ -727,9 +774,18 @@ def _process_single_file(
                     decoy_min_relative_intensity=decoy_min_relative_intensity,
                     decoy_mz_shift_da=decoy_mz_shift_da,
                 )
+                active_engine = fallback_engine
             result.degraded_mode_flags.extend(
-                getattr(engine, "degraded_mode_flags", [])
+                getattr(active_engine, "degraded_mode_flags", [])
             )
+
+        # Decoy-side search statistics of the engine that actually produced the
+        # results: how many decoy pairs were scored and how good the best decoy
+        # hit was. Used to explain an empty decoy null below ("scored but below
+        # the gates" vs "never scored").
+        decoy_diagnostics: dict[str, Any] = dict(
+            getattr(active_engine, "decoy_diagnostics", {}) or {}
+        )
 
         # Per-query target-decoy competition (TDC): the competition unit is the
         # query spectrum. Each query contributes its best target hit and its
@@ -780,11 +836,21 @@ def _process_single_file(
 
         if fdr_summary["n_decoy_competitions"] == 0:
             # No decoy evidence at all: q-values are the uncalibrated 1/N
-            # bound, not a target-decoy estimate. This must be explicit.
+            # bound, not a target-decoy estimate. This must be explicit — and
+            # so must the reason, because the two possible reasons have very
+            # different fixes: decoys were never scored (configuration or
+            # plumbing problem) versus decoys were scored but no decoy hit
+            # reached the configured score/matched-peak gates (the decoy
+            # spectra share no fragment positions with real fragments at
+            # scoring tolerance, so production gates are out of reach for
+            # them; the accepted target hits are genuine matches and no
+            # false-positive rate can be estimated from this run).
             result.degraded_mode_flags.append("fdr_uncalibrated")
+            detail = _describe_empty_decoy_null(decoy_diagnostics)
             result.warnings.append(
                 "No decoy hits survived scoring; q-values are uncalibrated "
-                "(1/N rank bound). FDR claims are not supported for this file."
+                "(1/N rank bound). FDR claims are not supported for this "
+                f"file. {detail}"
             )
 
         fdr_threshold = getattr(config.similarity, "fdr_threshold", 0.01)
@@ -888,14 +954,25 @@ def _handle_file_results(
         counter += 1
 
     results_dict = cast(List[Dict[str, Any]], result.results)
+    # A run whose decoy null was empty supports no FDR claim: its q-values are
+    # the conservative 1/N rank bound. The rows are exported (the score filter
+    # is real evidence) but labeled uncalibrated so the table can never be read
+    # as FDR-controlled.
+    uncalibrated = "fdr_uncalibrated" in result.degraded_mode_flags
     # Route to the correct exporter based on config.export.format
     if export_format == "mztab":
         io.save_match_results_to_mztab(
-            results_dict, out_file, query_spectra=result.query_spectra
+            results_dict,
+            out_file,
+            query_spectra=result.query_spectra,
+            uncalibrated=uncalibrated,
         )
     else:
         io.save_match_results(
-            results_dict, out_file, query_spectra=result.query_spectra
+            results_dict,
+            out_file,
+            query_spectra=result.query_spectra,
+            uncalibrated=uncalibrated,
         )
 
     result.output_path = out_file

@@ -138,6 +138,37 @@ def test_save_match_results(tmp_path):
         assert "q1,r1,0.95" in content
 
 
+def test_save_match_results_normalizes_list_valued_query_metadata(tmp_path):
+    """Real mzML loaders emit list-valued retention times (e.g. ``[0.017]``
+    or ``[]``); export must normalize them instead of crashing.
+
+    Regression: a real experimental mzML threw
+    ``TypeError: float() argument must be a string or a real number, not
+    'list'`` at export time after a successful search.
+    """
+    queries = [
+        Spectrum(
+            mz=np.array([100.0], dtype="float"),
+            intensities=np.array([1.0], dtype="float"),
+            metadata={"id": "q1", "precursor_mz": 180.0, "retention_time": [12.5]},
+        ),
+        Spectrum(
+            mz=np.array([100.0], dtype="float"),
+            intensities=np.array([1.0], dtype="float"),
+            metadata={"id": "q2", "precursor_mz": 200.0, "retention_time": []},
+        ),
+    ]
+    results = [{"query_id": "q1", "reference_id": "r1", "score": 0.95}]
+    out_path = tmp_path / "list_rt_results.csv"
+
+    io.save_match_results(results, out_path, query_spectra=queries)
+
+    with open(out_path, newline="") as f:
+        by_id = {row["query_id"]: row for row in csv.DictReader(f)}
+    assert by_id["q1"]["query_retention_time"] == "12.5"
+    assert by_id["q2"]["query_retention_time"] == ""
+
+
 def test_save_match_results_serializes_nested_score_breakdown(tmp_path):
     """Consensus/router results carry a dict ``score_breakdown``; Polars
     cannot write nested data to CSV, so it must be serialized to compact

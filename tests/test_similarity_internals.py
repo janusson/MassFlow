@@ -6,6 +6,7 @@ Comprehensive coverage tests for MassFlow similarity.py:
 - calculate_mass_error_ppm
 - _is_missing
 - _adduct_modes_compatible
+- _adduct_ion_mode_sign
 - generate_decoys (edge cases)
 - calculate_empirical_p_values (edge cases)
 - SimilarityEngine (error handling, edge cases, ref_precursor_mzs, ref_is_decoy)
@@ -125,6 +126,61 @@ def test_adduct_modes_compatible_positive_vs_negative():
 
 def test_adduct_modes_compatible_negative_vs_positive():
     assert similarity._adduct_modes_compatible("[M-H]-", "[M+H]+") is False
+
+
+@pytest.mark.parametrize(
+    ("ref_adduct", "query_adduct"),
+    [
+        # Each string contains both a "+" and a "-" yet describes one ion mode.
+        ("[M+H-H2O]+", "[M+H]+"),
+        ("[M+2H]2+", "[M+H-H2O]+"),
+        ("[M+2Na-H]+", "[M+Na]+"),
+        ("[M+HCOO]-", "[M+Cl]-"),
+        ("[M+HCOO]-", "[M-H]-"),
+        ("[M+TFA-H]-", "[M+Br]-"),
+        ("[M+NO3]-", "[M+I]-"),
+        ("[M+HCO3]-", "[M-2H]2-"),
+    ],
+)
+def test_adduct_modes_compatible_same_mode_despite_inner_sign(ref_adduct, query_adduct):
+    """Regression: the mode comes from the chemistry, not from the characters.
+
+    Reading the mode from the mere presence of a sign character made
+    ``[M+HCOO]-`` vs ``[M-H]-`` (both negative) and ``[M+H-H2O]+`` vs
+    ``[M+H]+`` (both positive) look like opposite-mode pairs, so the gate in
+    ``SimilarityEngine.search`` silently discarded same-mode candidates.
+    """
+    assert similarity._adduct_modes_compatible(ref_adduct, query_adduct) is True
+
+
+@pytest.mark.parametrize(
+    ("ref_adduct", "query_adduct"),
+    [
+        ("[M+HCOO]-", "[M+H]+"),
+        ("[M+H-H2O]+", "[M-H]-"),
+        ("[M+Br]-", "[M+NH4]+"),
+        ("[M+NO3]-", "[M+3H]3+"),
+    ],
+)
+def test_adduct_modes_compatible_opposite_mode_despite_inner_sign(
+    ref_adduct, query_adduct
+):
+    assert similarity._adduct_modes_compatible(ref_adduct, query_adduct) is False
+
+
+def test_adduct_modes_compatible_resolves_notation_variants():
+    """Alias notation must be classified by the chemistry it resolves to."""
+    assert similarity._adduct_modes_compatible("M+H", "[M+Na]+") is True
+    assert similarity._adduct_modes_compatible("M+FA-H", "[M-H]-") is True
+    assert similarity._adduct_modes_compatible("M+FA-H", "[M+H]+") is False
+
+
+def test_adduct_ion_mode_sign_unresolvable_notation_uses_trailing_token():
+    """Unresolvable notation must not silently mean "incompatible"."""
+    assert similarity._adduct_ion_mode_sign(None) is None
+    assert similarity._adduct_ion_mode_sign("[M+Weird]+") == 1
+    assert similarity._adduct_ion_mode_sign("[M+Weird]-") == -1
+    assert similarity._adduct_ion_mode_sign("sodium adduct") is None
 
 
 # ==============================================================================

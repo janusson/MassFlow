@@ -32,7 +32,16 @@ only — see `docs/CAPABILITY_MATRIX.md` §2.4.)
 
 ### The Result Table
 
-The CSV contains the actual annotation hits, including the computed `score`, `matched_peaks`, and an automated `Annotation_Status` tag (e.g., `Matched`, `Putative`, or `Unknown`).
+The CSV contains the actual annotation hits, including the computed `score`, `matched_peaks`, and an automated `Annotation_Status` tag (`Matched`, `Putative`, `Uncalibrated`, or `Unknown`).
+
+`Annotation_Status` values:
+
+| Status | Meaning |
+| :--- | :--- |
+| `Matched` | Score ≥ 0.9 and the run was FDR-calibrated (its queries competed against decoys). |
+| `Putative` | Score < 0.9 and the run was FDR-calibrated. |
+| `Uncalibrated` | The run produced **no decoy competition at all**, so its `q_value` column is the conservative `1/N` rank bound rather than a target-decoy FDR estimate; the file is also flagged `fdr_uncalibrated` + `decoy_null_empty` and carries a warning with the measured best decoy score. The scored hits are still exported — they remain score-filtered candidates — but no row may be read as FDR-controlled. See [Scoring & FDR](scoring_logic.md#5-when-is-fdr-used-what-happens-for-small-libraries). |
+| `Unknown` | No hit for this query (base row). |
 
 **Example: `experiment_results.csv`**
 
@@ -135,7 +144,7 @@ Every experimental input file produces exactly one structured execution outcome 
 | `output_path` | Written results file (`None` for failed files) |
 | `warnings` | Non-fatal caveats (e.g. small-library FDR) |
 | `fatal_errors` | Non-empty iff the file failed |
-| `degraded_mode_flags` | Machine-readable degradation markers (`engine_fallback:<algo>`, `consensus_*`, `cascade_*`, `routing_*`, `fdr_uncalibrated`) |
+| `degraded_mode_flags` | Machine-readable degradation markers (`engine_fallback:<algo>`, `consensus_*`, `cascade_*`, `routing_*`, `decoy_null_empty`, `fdr_uncalibrated`) |
 
 The status is recorded in the provenance sidecar, so a degraded or partially failed run is never indistinguishable from a clean one:
 
