@@ -165,6 +165,8 @@ data/
 *.db
 *.raw
 *.d/
+*.tif
+*.tiff
 results/
 # Tutorial fixtures must be committed so the CI smoke test can run
 !tutorial/tutorial_experimental.mgf
@@ -185,3 +187,7 @@ console_log.txt
 notes/
 .benchmarks/
 tutorial/
+
+# Editor
+.zed/
+.claude/settings.local.json

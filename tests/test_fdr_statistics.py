@@ -38,6 +38,7 @@ from MassFlow.similarity import (
     calculate_empirical_p_values,
     calculate_fdr,
     generate_decoys,
+    spectral_entropy,
 )
 from MassFlow.workflow import _process_single_file
 
@@ -847,15 +848,31 @@ class TestDecoyConfigThreading:
                 ):
                     result = _process_single_file(Path("query.mgf"), config)
 
-        # The engine-generated decoy must have been filtered at the
-        # configured 10%-of-base-peak floor: the 0.5-intensity peak is
-        # excluded, so the decoy has 2 peaks, not 3.
+        # The engine-generated decoy must have been built with the configured
+        # decoy parameters, and it keeps the source's complete peak list.
         decoys = generate_decoys(
             [ref],
             min_relative_intensity=0.1,
             mz_shift_da=4.0,
         )
-        assert decoys[0].peaks.mz.size == 2
+        decoy = decoys[0]
+        assert decoy.peaks.mz.size == 3
+        # 10%-of-base-peak floor threaded through: the 0.5-intensity peak is
+        # excluded from the entropy computation (but kept as a peak).
+        assert float(decoy.get("spectral_entropy")) == pytest.approx(
+            spectral_entropy(np.asarray(ref.peaks.intensities, dtype=np.float64), 0.1)
+        )
+        assert float(decoy.get("spectral_entropy")) != pytest.approx(
+            spectral_entropy(np.asarray(ref.peaks.intensities, dtype=np.float64), 0.01)
+        )
+        # 4.0 Da jitter threaded through: at least one fragment moved further
+        # than the 1.0 Da module default would allow.
+        deltas = np.abs(
+            np.asarray(decoy.peaks.mz, dtype=np.float64)
+            - np.asarray(ref.peaks.mz, dtype=np.float64)
+        )
+        assert deltas.max() <= 4.0 + 1e-9
+        assert deltas.max() > 1.0
         # The workflow passed the config values through: a decoy hit entered
         # the competition (it is never exported, but it calibrates the
         # query). Single query -> q=1.0, p = (1 + 0)/(1 + 1) = 0.5.

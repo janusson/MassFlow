@@ -861,6 +861,11 @@ def main() -> None:
                 }
 
             # ---- Verify pipeline output against the reference ----
+            # A run whose decoy null is empty supports no FDR claim: its rows
+            # are labeled "Uncalibrated" (the q-values are the 1/N rank
+            # bound, not an FDR estimate). The status contract therefore
+            # depends on the calibration state, not on the score alone.
+            uncalibrated = result.fdr_summary.get("n_decoy_competitions", 0) == 0
             for q_id, truth in per_query_truth.items():
                 expected_rows = expected_export.get(q_id, [])
                 actual_rows = exported.get(q_id, [])
@@ -913,9 +918,12 @@ def main() -> None:
                         )
                     # Annotation status of the best row.
                     best_row = actual_rows[0]
-                    expected_status = (
-                        "Matched" if best_row["score"] >= 0.9 else "Putative"
-                    )
+                    if uncalibrated:
+                        expected_status = "Uncalibrated"
+                    else:
+                        expected_status = (
+                            "Matched" if best_row["score"] >= 0.9 else "Putative"
+                        )
                     assert best_row["annotation_status"] == expected_status, (
                         f"[{label}] {q_id}: status {best_row['annotation_status']} "
                         f"!= {expected_status}"

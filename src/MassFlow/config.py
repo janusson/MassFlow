@@ -347,9 +347,11 @@ class ProcessingConfig(MassFlowBaseModel):
             "Baseline noise floor for entropy-based decoy generation, as a "
             "fraction of the base peak (the most intense fragment): peaks "
             "below this threshold are excluded before the sqrt-weighted "
-            "spectral entropy is computed and before decoys are constructed. "
-            "Strict noise thresholding prevents chemical noise from "
-            "inflating entropy estimates and biasing FDR calibration."
+            "spectral entropy is computed. Strict noise thresholding prevents "
+            "chemical noise from inflating entropy estimates and biasing FDR "
+            "calibration. The filter selects which intensities are permuted; "
+            "the decoy keeps its source's complete peak list, so it stays as "
+            "matchable as the library spectrum it stands in for."
         ),
     )
     decoy_mz_shift_da: float = Field(
@@ -359,7 +361,16 @@ class ProcessingConfig(MassFlowBaseModel):
             "Uniform per-peak m/z jitter (Da) applied to decoy fragment "
             "positions, randomizing fragmentation pathways so decoys share "
             "no fragment positions with their source spectra at scoring "
-            "tolerance."
+            "tolerance. The displacement must EXCEED similarity.ms2_tolerance "
+            "(0.02 Da by default): a smaller displacement makes each decoy a "
+            "near-copy of its source, so the true match's own decoy competes "
+            "with the true match and the decoy null is inflated "
+            "(over-conservative q-values). Because peak matching is "
+            "positional, a displaced decoy also cannot match real fragments, "
+            "so at production score/matched-peak gates no decoy hit usually "
+            "qualifies: the engine reports 'decoy_null_empty' and the "
+            "workflow flags 'fdr_uncalibrated' (q-values are then the "
+            "conservative 1/N rank bound, not an FDR estimate)."
         ),
     )
 
