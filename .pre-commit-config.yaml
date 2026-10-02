@@ -1,5 +1,12 @@
 # See https://pre-commit.com for more information
 # See https://pre-commit.com/hooks.html for more hooks
+#
+# NOTE: Type checking is intentionally NOT a pre-commit hook. The `mirrors-mypy`
+# hook checks only the staged files, inside an isolated environment whose
+# third-party types differ from the project's — a weaker, potentially divergent
+# check. Type checking runs over the whole repository instead:
+#   make typecheck | make static | make ci   (see CONTRIBUTING.md § Type checking)
+# and in CI (`uv run mypy .`).
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.6.0
@@ -15,9 +22,3 @@ repos:
       - id: ruff
         args: [--fix]
       - id: ruff-format
-  - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.10.1
-    hooks:
-      - id: mypy
-        args: [--install-types, --non-interactive, --ignore-missing-imports]
-        additional_dependencies: ["pydantic>=2.0"]
