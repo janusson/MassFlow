@@ -13,7 +13,7 @@ The current SQLite-based storage is highly reliable but faces performance bottle
 *   Transition spectral array storage from SQLite BLOBs to chunked, cloud-native formats like **Zarr** or **N5**.
 *   This will enable highly parallelized, distributed similarity searches directly against cloud storage without requiring full library downloads.
 
-## 3. Real-Time Instrumentation & Networking
+## 3. Real-Time Instrumentation & Streaming
 MassFlow is currently designed as a post-acquisition data analysis tool.
 *   Deploy **gRPC-based streaming APIs**.
 *   This will allow mass spectrometers to stream spectra directly to MassFlow during acquisition, enabling real-time structural annotation and instrument feedback (e.g., dynamic exclusion or targeted acquisition triggers).
