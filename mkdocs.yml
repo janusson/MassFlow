@@ -106,7 +106,11 @@ nav:
           - Data Requirements: user-guide/data-requirements.md
           - Scoring Logic: user-guide/scoring_logic.md
           - Multiprocessing & Memory Model: multiprocessing.md
+      - Experimental:
+          - Spectral Networking: user-guide/network.md
   - Architecture: ARCHITECTURE.md
+  - Graph Data Model (Network-Aware): network-data-model.md
+  - Network-Aware Annotation (Design Spec, post-1.0): network-aware-annotation-spec.md
   - Product Contract & Capability Matrix: CAPABILITY_MATRIX.md
   - Complexity Audit & Subsystem Classification: COMPLEXITY_AUDIT.md
   - API Reference:
@@ -125,6 +129,7 @@ nav:
       - Streaming Queue: api/queue.md
       - Workflow: api/workflow.md
       - Models: api/models.md
+      - Network (Graph Data Model): api/network.md
       - Cheminformatics: api/cheminformatics.md
       - Consensus: api/consensus.md
       - Server: api/server.md

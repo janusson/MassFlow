@@ -38,7 +38,8 @@ We prioritize stability, predictability, and correct data handling over cutting-
 | `massflow stream-server` | *Experimental* | Real-time gRPC streaming (loopback default, TLS/auth required for remote) |
 | `massflow tui` | *Experimental* | Interactive terminal console (`[tui]` extra) |
 | Advanced Engines (`spec2vec`, `ms2deepscore`, `consensus`, `cascade`) | *Experimental* | Higher setup and complex scientific validation; outside the stable support promise |
-| GraphML networking & Visualization | *Planned* | Documented in places, **not implemented** — do not rely on it |
+| `massflow network build/analyse/export` | *Experimental* | Post-1.0 Network-Aware MS Annotation (spectral, feature-identity, ion-identity and chemical networking; molecular families; a local read-only MSMCP interface). Disabled by default (`network.enabled: true`); outside the stable support promise. See `docs/network-aware-annotation-spec.md` |
+| GraphML / Cytoscape / FBMN export & Visualization | *Planned* | Documented in places, **not implemented** — do not rely on it |
 | Language Server (LSP) | Removed | The standalone LSP module is not part of the codebase; `docs/api/server.md` documents the removal |
 
 ---

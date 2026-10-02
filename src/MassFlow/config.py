@@ -892,6 +892,140 @@ class ExportConfig(MassFlowBaseModel):
     )
 
 
+class NetworkConfig(MassFlowBaseModel):
+    """
+    Optional (post-1.0) Network-Aware MS Annotation settings.
+
+    **Disabled by default.** This section configures Stage 1 spectral network
+    construction and is consumed by the experimental ``massflow network``
+    command. It is outside the stable v0.1 product contract; see
+    ``docs/network-aware-annotation-spec.md``.
+
+    Attributes
+    ----------
+    enabled : bool
+        Master switch; ``False`` (default) means networking refuses to run.
+    algorithm : {"cosine", "modified_cosine"}
+        Classical similarity used for spectral edges.
+    ms1_tolerance : float
+        Precursor window (Da) used for candidate generation.
+    ms2_tolerance : float
+        Fragment matching tolerance (Da).
+    min_score : float
+        Minimum edge similarity score (0.0–1.0).
+    min_matched_peaks : int
+        Minimum matched fragment peaks for an edge.
+    rt_tolerance : float or None
+        Optional retention-time window (seconds) restricting candidate pairs.
+    top_k_per_node : int or None
+        Maximum incident edges kept per node (``None`` = unlimited).
+    build_features : bool
+        Group spectra into LC-MS features (Stage 2). Enabled by default within
+        an enabled network.
+    feature_precursor_tolerance : float
+        Precursor m/z window (Da) for feature identity.
+    feature_rt_tolerance : float or None
+        Retention-time window (seconds) for feature identity; ``None`` groups by
+        precursor m/z only.
+    build_ion_identity : bool
+        Discover adduct (same-molecule) relationships between features
+        (Stage 3). Enabled by default within an enabled network.
+    ion_identity_ppm_tolerance : float
+        Neutral-mass agreement (ppm) required to link two adducts as the same
+        molecule. Distinct from the mandated 5 ppm precursor *validation* gate.
+    build_chemical : bool
+        Hypothesize neutral-loss relationships between features (Stage 4).
+        Enabled by default within an enabled network.
+    chemical_ppm_tolerance : float
+        Fragment-mass agreement (ppm) for a neutral-loss hypothesis.
+    build_context : bool
+        Derive L5 network context and network-inferred annotations from direct,
+        calibrated seed annotations (Stage 5). Enabled by default.
+    context_seed_q_threshold : float
+        Maximum q-value for a direct annotation to seed family context.
+    build_families : bool
+        Derive deterministic molecular-family records (Stage 6). Enabled by
+        default.
+    """
+
+    enabled: bool = Field(
+        default=False,
+        description="Enable networking (disabled by default).",
+    )
+    algorithm: Literal["cosine", "modified_cosine"] = Field(
+        default="modified_cosine",
+        description="Classical similarity used for spectral edges.",
+    )
+    ms1_tolerance: float = Field(
+        default=0.02, gt=0.0, description="Precursor window in Da for candidacy."
+    )
+    ms2_tolerance: float = Field(
+        default=0.02, gt=0.0, description="Fragment matching tolerance in Da."
+    )
+    min_score: float = Field(
+        default=0.7, ge=0.0, le=1.0, description="Minimum edge similarity score."
+    )
+    min_matched_peaks: int = Field(
+        default=6, ge=0, description="Minimum matched fragment peaks for an edge."
+    )
+    rt_tolerance: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        description="Optional retention-time window (seconds) for candidacy.",
+    )
+    top_k_per_node: Optional[int] = Field(
+        default=10,
+        gt=0,
+        description="Maximum incident edges per node (None = unlimited).",
+    )
+    build_features: bool = Field(
+        default=True,
+        description="Group spectra into LC-MS features (Stage 2).",
+    )
+    feature_precursor_tolerance: float = Field(
+        default=0.01,
+        gt=0.0,
+        description="Precursor m/z window (Da) for feature identity.",
+    )
+    feature_rt_tolerance: Optional[float] = Field(
+        default=30.0,
+        ge=0.0,
+        description="Retention-time window (seconds) for feature identity.",
+    )
+    build_ion_identity: bool = Field(
+        default=True,
+        description="Discover adduct (same-molecule) relationships (Stage 3).",
+    )
+    ion_identity_ppm_tolerance: float = Field(
+        default=5.0,
+        gt=0.0,
+        description="Neutral-mass agreement (ppm) for adduct identity links.",
+    )
+    build_chemical: bool = Field(
+        default=True,
+        description="Hypothesize neutral-loss relationships (Stage 4).",
+    )
+    chemical_ppm_tolerance: float = Field(
+        default=5.0,
+        gt=0.0,
+        description="Fragment-mass agreement (ppm) for neutral-loss hypotheses.",
+    )
+    build_context: bool = Field(
+        default=True,
+        description="Derive L5 network context / inferences (Stage 5).",
+    )
+    context_seed_q_threshold: float = Field(
+        default=0.01,
+        ge=0.0,
+        le=1.0,
+        description="Maximum q-value for a direct annotation to seed context.",
+    )
+    build_families: bool = Field(
+        default=True,
+        description="Derive deterministic molecular-family records (Stage 6).",
+    )
+
+
 class MassFlowConfig(MassFlowBaseModel):
     """
     Root configuration object loaded from MassFlow YAML files.
@@ -906,6 +1040,13 @@ class MassFlowConfig(MassFlowBaseModel):
     similarity: SimilarityConfig = Field(default_factory=SimilarityConfig)
     workflow: WorkflowConfig = Field(default_factory=WorkflowConfig)
     export: ExportConfig = Field(default_factory=ExportConfig)
+    network: NetworkConfig = Field(
+        default_factory=NetworkConfig,
+        description=(
+            "Optional (post-1.0, disabled by default) Network-Aware MS "
+            "Annotation settings. See docs/network-aware-annotation-spec.md."
+        ),
+    )
     modifications: dict[str, dict] = Field(
         default_factory=dict,
         description=(

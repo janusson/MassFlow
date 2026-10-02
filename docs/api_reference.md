@@ -288,6 +288,25 @@ Worker-owned backend model: the parent builds the library once, workers open it 
   - `metadata: SpectrumMetadata`
   - `peaks: SpectralPeaks`
 
+## `MassFlow.network`
+
+Graph-compatible data layer plus experimental Stage 1 (spectral) networking.
+See [Network-Aware MS Annotation — Graph Data Model](network-data-model.md) and
+the [frozen design specification](network-aware-annotation-spec.md).
+
+- **Stable identifiers:** `spectrum_node_id`, `library_node_id`, `feature_node_id`, `relationship_id` (deterministic, `SHA-256`-based; the `NodeId`/`RelationshipId` brands and the `NodeIdField`/`RelationshipIdField` validators).
+- **Nodes & features:** `GraphNode`, `Feature`.
+- **Layered evidence:** `AnnotationEvidence` (L1 direct identification evidence), `FdrAssessment` (L2 query-scoped confidence — the only FDR carrier), `NeutralLoss`; and **L5** `NetworkContext` / `AnnotationInference` (descriptive family context and network-inferred annotations — never confidence).
+- **Relationships (discriminated union `Relationship`):** `SpectralRelationship` (L3), `ChemicalRelationship` and `IonIdentityRelationship` (L4), plus the shared `RelationshipBase`.
+- **Provenance:** `RelationshipProvenance`, `GraphProvenance`.
+- **Container & serialization:** `MolecularGraph` (data-only; `to_dict`/`from_dict`, `to_json`/`from_json`, `to_relationship_jsonl`, `query_fdr`). File I/O lives in `MassFlow.io.save_molecular_graph` / `load_molecular_graph`.
+- **Stage 1 spectral networking (P1, experimental):** `MassFlow.network.candidates.generate_candidate_pairs`, `MassFlow.network.spectral.build_spectral_relationships`, `MassFlow.network.build.build_spectral_graph`; configured by `MassFlow.config.NetworkConfig` (the `network:` YAML section, disabled by default) and exposed via `massflow network build`.
+- **Stage 2 feature identity (P2, experimental):** `MassFlow.network.features.build_features` — ion-channel partition plus precursor m/z / retention-time single-linkage grouping with a highest-TIC representative; integrated into `build_spectral_graph` (membership stamped on `GraphNode.feature_id`).
+- **Stage 3 ion identity (P3, experimental):** `MassFlow.network.ion_identity.build_ion_identity_relationships` — adduct (same-molecule) links between features via neutral-mass agreement; unregistered adducts and cross-mode pairs fail closed.
+- **Stage 4 chemical relationships (P4, experimental):** `MassFlow.network.chemical.build_chemical_relationships` — neutral-loss **hypotheses** (`interpretation_status="hypothesis"`) matched against a curated `NEUTRAL_LOSSES` table; never structural claims.
+- **Stage 5 contextualization (P5, experimental):** `MassFlow.network.context.contextualize` / `apply_context` — L5 `NetworkContext` and `AnnotationInference` from direct, calibrated seeds, with structural anti-circularity; `MassFlow.network.families.connected_components` provides the deterministic component primitive.
+- **Stage 6 families + MSMCP (P6, experimental):** `MassFlow.network.families.detect_families` (`MolecularFamily` records, content-addressed ids), `MolecularGraph.to_family_jsonl()` / `MassFlow.io.save_families_jsonl`, and the offline read-only `MassFlow.network.msmcp.LocalGraphSource` (`list_resources`/`read`); CLI `massflow network analyse` / `export`.
+
 ## `MassFlow.processing`
 
 - `compute_spectral_metrics(mz_array: np.ndarray, precursor_mz: float) -> Tuple[np.ndarray, np.ndarray]`

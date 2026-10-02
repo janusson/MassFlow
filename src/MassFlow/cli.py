@@ -35,6 +35,11 @@ app = typer.Typer(
 db_app = typer.Typer(help="Manage local SQLite spectral libraries.")
 app.add_typer(db_app, name="db")
 
+network_app = typer.Typer(
+    help="EXPERIMENTAL: build and analyse MS spectral networks (post-1.0)."
+)
+app.add_typer(network_app, name="network")
+
 logger = logging.getLogger(__name__)
 console = Console()
 
@@ -1306,6 +1311,227 @@ def run_tui(
         initial_library=initial_library,
         workspace=workspace_path,
     ).run()
+
+
+@network_app.command("build")
+def run_network_build(
+    config: str = typer.Option(
+        ..., "--config", help="Path to configuration YAML file."
+    ),
+    output: Optional[str] = typer.Option(
+        None,
+        "--output",
+        help="Output JSON path (default: <input_stem>_network.json).",
+    ),
+):
+    """
+    Build a spectral molecular network from the configured experimental input.
+
+    EXPERIMENTAL (post-1.0). Requires ``network.enabled: true`` in the YAML.
+    Builds Stage 1 (spectral) edges only; outside the stable product contract
+    (docs/CAPABILITY_MATRIX.md).
+    """
+    from MassFlow import io, processing
+    from MassFlow.config import MassFlowConfig
+
+    console.print(
+        "[bold yellow]⚠ EXPERIMENTAL:[/bold yellow] spectral networking is "
+        "outside the stable MassFlow product contract."
+    )
+
+    try:
+        cfg = MassFlowConfig.from_yaml(config)
+        if not cfg.network.enabled:
+            raise ValueError(
+                "Networking is disabled. Add the following to the YAML "
+                "configuration to enable it:\n  network:\n    enabled: true"
+            )
+
+        input_path = Path(cfg.input.input_path)
+        if input_path.is_dir():
+            raise ValueError(
+                "massflow network build currently accepts a single spectral "
+                "file as input.input_path; directory input is not yet supported."
+            )
+        if not input_path.exists():
+            raise FileNotFoundError(f"Input path does not exist: {input_path}")
+
+        spectra = list(
+            processing.process_spectra(
+                io.load_spectra(input_path, file_format=cfg.input.format),
+                cfg.processing,
+            )
+        )
+        if not spectra:
+            raise ValueError(
+                f"No analyzable spectra in {input_path}; nothing to network."
+            )
+
+        from MassFlow.network.build import build_spectral_graph
+
+        digest = cfg.normalized_config()["config_digest_sha256"]
+        graph = build_spectral_graph(spectra, cfg.network, config_digest_sha256=digest)
+
+        output_path = (
+            Path(output)
+            if output
+            else cfg.project.output_directory / f"{input_path.stem}_network.json"
+        )
+        io.save_molecular_graph(graph, output_path)
+    except Exception as e:
+        logger.error(f"Network build failed: {e}")
+        _print_run_failure("Network build failed", e)
+        raise typer.Exit(1)
+
+    console.print(
+        f"[bold green]✓ Network built:[/bold green] {len(graph.nodes)} node(s), "
+        f"{len(graph.relationships)} edge(s) → {output_path}"
+    )
+
+
+@network_app.command("analyse")
+def run_network_analyse(
+    input: str = typer.Option(
+        ..., "--input", help="Network graph JSON produced by 'massflow network build'."
+    ),
+    config: Optional[str] = typer.Option(
+        None,
+        "--config",
+        help=(
+            "Optional config YAML. When given, the annotation pipeline is run to "
+            "seed family context (network-inferred annotations)."
+        ),
+    ),
+    output: Optional[str] = typer.Option(
+        None,
+        "--output",
+        help="Output graph JSON (default: <input_stem>_families.json).",
+    ),
+):
+    """
+    Compute molecular families for a network graph, optionally seeding context.
+
+    EXPERIMENTAL (post-1.0). Reads a graph produced by ``massflow network build``
+    and derives deterministic connected-component family records. When
+    ``--config`` is given, the annotation pipeline is run on the same
+    experimental input and its confident library hits seed L5 family context and
+    network-inferred annotations (which never alter q-values/FDR). Outside the
+    stable product contract (docs/CAPABILITY_MATRIX.md).
+    """
+    from MassFlow import io
+    from MassFlow.network.families import detect_families
+    from MassFlow.network.models import MolecularGraph
+
+    console.print(
+        "[bold yellow]⚠ EXPERIMENTAL:[/bold yellow] molecular-family analysis is "
+        "outside the stable MassFlow product contract."
+    )
+
+    try:
+        input_path = Path(input)
+        if not input_path.exists():
+            raise FileNotFoundError(f"Network graph does not exist: {input_path}")
+
+        graph = io.load_molecular_graph(input_path)
+
+        if config is not None:
+            from MassFlow.config import MassFlowConfig
+            from MassFlow.network.context import (
+                apply_context,
+                contextualize,
+                seeds_from_results,
+            )
+            from MassFlow.workflow import run_annotation_pipeline
+
+            cfg = MassFlowConfig.from_yaml(config)
+            if not cfg.network.enabled:
+                raise ValueError(
+                    "Networking is disabled. Add the following to the YAML "
+                    "configuration to enable it:\n  network:\n    enabled: true"
+                )
+            results = run_annotation_pipeline(cfg, config_path=config)
+            seeds = seeds_from_results(results)
+            contextualization = contextualize(
+                graph,
+                seeds,
+                cfg.network,
+                config_digest_sha256=cfg.normalized_config()["config_digest_sha256"],
+            )
+            graph = apply_context(
+                graph, contextualization.contexts, contextualization.inferences
+            )
+
+        families = detect_families(graph)
+        analysed = MolecularGraph(
+            schema_version=graph.schema_version,
+            nodes=graph.nodes,
+            features=graph.features,
+            relationships=graph.relationships,
+            fdr_assessments=graph.fdr_assessments,
+            network_contexts=graph.network_contexts,
+            inferences=graph.inferences,
+            families=families,
+            provenance=graph.provenance,
+        )
+        output_path = (
+            Path(output)
+            if output
+            else input_path.with_name(f"{input_path.stem}_families.json")
+        )
+        io.save_molecular_graph(analysed, output_path)
+    except Exception as e:
+        logger.error(f"Network analysis failed: {e}")
+        _print_run_failure("Network analysis failed", e)
+        raise typer.Exit(1)
+
+    labelled = sum(1 for family in analysed.families if family.label)
+    console.print(
+        f"[bold green]✓ Analysed:[/bold green] {len(analysed.families)} family(ies), "
+        f"{labelled} labelled, {len(analysed.inferences)} inference(s) → {output_path}"
+    )
+
+
+@network_app.command("export")
+def run_network_export(
+    input: str = typer.Option(..., "--input", help="Analysed network graph JSON."),
+    output: Optional[str] = typer.Option(
+        None,
+        "--output",
+        help="Families JSONL path (default: <input_stem>_families.jsonl).",
+    ),
+):
+    """
+    Export molecular families as machine-readable newline-delimited JSON.
+
+    EXPERIMENTAL (post-1.0). Outside the stable product contract
+    (docs/CAPABILITY_MATRIX.md).
+    """
+    from MassFlow import io
+
+    console.print(
+        "[bold yellow]⚠ EXPERIMENTAL:[/bold yellow] family export is outside the "
+        "stable MassFlow product contract."
+    )
+
+    try:
+        input_path = Path(input)
+        if not input_path.exists():
+            raise FileNotFoundError(f"Network graph does not exist: {input_path}")
+
+        graph = io.load_molecular_graph(input_path)
+        output_path = (
+            Path(output) if output else input_path.with_name(f"{input_path.stem}.jsonl")
+        )
+        io.save_families_jsonl(graph, output_path)
+    except Exception as e:
+        logger.error(f"Network export failed: {e}")
+        _print_run_failure("Network export failed", e)
+        raise typer.Exit(1)
+
+    console.print(
+        f"[bold green]✓ Exported[/bold green] {len(graph.families)} family(ies) "
+        f"→ {output_path}"
+    )
 
 
 def main():
