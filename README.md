@@ -59,6 +59,7 @@ Every result is linked back to its source. The generated provenance sidecars rec
 ### Interactive Console (TUI)
 Prefer a visual interface over the command line? Launch the MassFlow TUI to explore your data interactively:
 \`\`\`shell
+# Install the TUI extra (or use --all-extras for everything)
 uv sync --extra tui
 uv run massflow tui
 \`\`\`
@@ -94,10 +95,11 @@ MassFlow is designed for high-performance "on-site" use.
 MassFlow requires **Python 3.13+**.
 
 \`\`\`shell
-# Basic installation (via setup.sh or manually)
+# The recommended path is to run `setup.sh`, which automates environment pinning and dependency sync. You can also perform these steps manually:
 uv python pin 3.13 && uv sync
 
 # Optional extras
+# Install the TUI extra (or use --all-extras for everything)
 uv sync --extra tui    # Interactive console
 uv sync --extra ml     # ML scoring engines
 uv sync --extra hnsw   # Sub-linear search acceleration

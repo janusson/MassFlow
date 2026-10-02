@@ -61,7 +61,7 @@
           "rt_tolerance": null
         }
       },
-      "csv_sha256": "0cd7c6eedf9cb0f4aefc3eba15e4f9472f2ec3fdde6ee9eb3868d98716f09c94",
+      "csv_sha256": "25d737b33614fefe78c4237a79a9c1be8f1e11e4194f5b34ec3848f93b14be11",
       "status": "degraded",
       "spectra_loaded": 6,
       "spectra_rejected": 1,
@@ -75,9 +75,10 @@
       },
       "warnings": [
         "Small reference library (7 spectra): target-decoy FDR is statistically weak below ~2000 entries; q-values are conservative.",
-        "No decoy hits survived scoring; q-values are uncalibrated (1/N rank bound). FDR claims are not supported for this file."
+        "No decoy hits survived scoring; q-values are uncalibrated (1/N rank bound). FDR claims are not supported for this file. Decoys were generated and scored (42 decoy pairs); the best decoy score was 0.0000, below the configured gates \u2014 no decoy-based false-positive estimate is possible at this configuration."
       ],
       "degraded_mode_flags": [
+        "decoy_null_empty",
         "fdr_uncalibrated"
       ],
       "queries": {
@@ -126,7 +127,7 @@
             "matched_peaks": 4,
             "q_value": 0.2,
             "p_value": 1.0,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           },
           {
@@ -135,7 +136,7 @@
             "matched_peaks": 4,
             "q_value": 0.2,
             "p_value": 1.0,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           },
           {
@@ -144,7 +145,7 @@
             "matched_peaks": 4,
             "q_value": 0.2,
             "p_value": 1.0,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           },
           {
@@ -153,7 +154,7 @@
             "matched_peaks": 2,
             "q_value": 0.2,
             "p_value": 1.0,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           }
         ],
@@ -164,7 +165,7 @@
             "matched_peaks": 3,
             "q_value": 0.2,
             "p_value": 1.0,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           },
           {
@@ -173,7 +174,7 @@
             "matched_peaks": 3,
             "q_value": 0.2,
             "p_value": 1.0,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           },
           {
@@ -182,7 +183,7 @@
             "matched_peaks": 3,
             "q_value": 0.2,
             "p_value": 1.0,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           },
           {
@@ -191,7 +192,7 @@
             "matched_peaks": 2,
             "q_value": 0.2,
             "p_value": 1.0,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           }
         ],
@@ -202,7 +203,7 @@
             "matched_peaks": 2,
             "q_value": 0.2,
             "p_value": 1.0,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           },
           {
@@ -211,7 +212,7 @@
             "matched_peaks": 2,
             "q_value": 0.2,
             "p_value": 1.0,
-            "annotation_status": "Putative",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           },
           {
@@ -220,7 +221,7 @@
             "matched_peaks": 2,
             "q_value": 0.2,
             "p_value": 1.0,
-            "annotation_status": "Putative",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           },
           {
@@ -229,7 +230,7 @@
             "matched_peaks": 2,
             "q_value": 0.2,
             "p_value": 1.0,
-            "annotation_status": "Putative",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           }
         ],
@@ -240,7 +241,7 @@
             "matched_peaks": 4,
             "q_value": 0.2,
             "p_value": 1.0,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           },
           {
@@ -249,7 +250,7 @@
             "matched_peaks": 4,
             "q_value": 0.2,
             "p_value": 1.0,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           },
           {
@@ -258,7 +259,7 @@
             "matched_peaks": 4,
             "q_value": 0.2,
             "p_value": 1.0,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           },
           {
@@ -267,7 +268,7 @@
             "matched_peaks": 2,
             "q_value": 0.2,
             "p_value": 1.0,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           }
         ],
@@ -278,7 +279,7 @@
             "matched_peaks": 2,
             "q_value": 0.2,
             "p_value": 1.0,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           },
           {
@@ -287,7 +288,7 @@
             "matched_peaks": 2,
             "q_value": 0.2,
             "p_value": 1.0,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           },
           {
@@ -296,7 +297,7 @@
             "matched_peaks": 2,
             "q_value": 0.2,
             "p_value": 1.0,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           },
           {
@@ -305,7 +306,7 @@
             "matched_peaks": 2,
             "q_value": 0.2,
             "p_value": 1.0,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           }
         ]
@@ -326,7 +327,7 @@
           "rt_tolerance": null
         }
       },
-      "csv_sha256": "dd55ae61b8da437bfc158cef63b69bf891ad417053068ec9522d14ee4017a3b0",
+      "csv_sha256": "6403228395d7e086ad5f6d6473c17aab1c8b791d5824b43818c9ec3ac8790dfc",
       "status": "degraded",
       "spectra_loaded": 6,
       "spectra_rejected": 1,
@@ -340,9 +341,10 @@
       },
       "warnings": [
         "Small reference library (7 spectra): target-decoy FDR is statistically weak below ~2000 entries; q-values are conservative.",
-        "No decoy hits survived scoring; q-values are uncalibrated (1/N rank bound). FDR claims are not supported for this file."
+        "No decoy hits survived scoring; q-values are uncalibrated (1/N rank bound). FDR claims are not supported for this file. Decoys were generated and scored (42 decoy pairs); the best decoy score was 0.0000, below the configured gates \u2014 no decoy-based false-positive estimate is possible at this configuration."
       ],
       "degraded_mode_flags": [
+        "decoy_null_empty",
         "fdr_uncalibrated"
       ],
       "queries": {
@@ -391,7 +393,7 @@
             "matched_peaks": 4,
             "q_value": 0.16666666666666666,
             "p_value": 1.0,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           },
           {
@@ -400,7 +402,7 @@
             "matched_peaks": 4,
             "q_value": 0.16666666666666666,
             "p_value": 1.0,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           },
           {
@@ -409,7 +411,7 @@
             "matched_peaks": 4,
             "q_value": 0.16666666666666666,
             "p_value": 1.0,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           },
           {
@@ -418,7 +420,7 @@
             "matched_peaks": 4,
             "q_value": 0.16666666666666666,
             "p_value": 1.0,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           },
           {
@@ -427,7 +429,7 @@
             "matched_peaks": 2,
             "q_value": 0.16666666666666666,
             "p_value": 1.0,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           }
         ],
@@ -438,7 +440,7 @@
             "matched_peaks": 3,
             "q_value": 0.16666666666666666,
             "p_value": 1.0,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           },
           {
@@ -447,7 +449,7 @@
             "matched_peaks": 3,
             "q_value": 0.16666666666666666,
             "p_value": 1.0,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           },
           {
@@ -456,7 +458,7 @@
             "matched_peaks": 3,
             "q_value": 0.16666666666666666,
             "p_value": 1.0,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           },
           {
@@ -465,7 +467,7 @@
             "matched_peaks": 3,
             "q_value": 0.16666666666666666,
             "p_value": 1.0,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           },
           {
@@ -474,7 +476,7 @@
             "matched_peaks": 2,
             "q_value": 0.16666666666666666,
             "p_value": 1.0,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           }
         ],
@@ -485,7 +487,7 @@
             "matched_peaks": 4,
             "q_value": 0.16666666666666666,
             "p_value": 1.0,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           },
           {
@@ -494,7 +496,7 @@
             "matched_peaks": 4,
             "q_value": 0.16666666666666666,
             "p_value": 1.0,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           },
           {
@@ -503,7 +505,7 @@
             "matched_peaks": 4,
             "q_value": 0.16666666666666666,
             "p_value": 1.0,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           },
           {
@@ -512,7 +514,7 @@
             "matched_peaks": 2,
             "q_value": 0.16666666666666666,
             "p_value": 1.0,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           }
         ],
@@ -523,7 +525,7 @@
             "matched_peaks": 2,
             "q_value": 0.16666666666666666,
             "p_value": 1.0,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           },
           {
@@ -532,7 +534,7 @@
             "matched_peaks": 2,
             "q_value": 0.16666666666666666,
             "p_value": 1.0,
-            "annotation_status": "Putative",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           },
           {
@@ -541,7 +543,7 @@
             "matched_peaks": 2,
             "q_value": 0.16666666666666666,
             "p_value": 1.0,
-            "annotation_status": "Putative",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           },
           {
@@ -550,7 +552,7 @@
             "matched_peaks": 2,
             "q_value": 0.16666666666666666,
             "p_value": 1.0,
-            "annotation_status": "Putative",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           },
           {
@@ -559,7 +561,7 @@
             "matched_peaks": 2,
             "q_value": 0.16666666666666666,
             "p_value": 1.0,
-            "annotation_status": "Putative",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           }
         ],
@@ -570,7 +572,7 @@
             "matched_peaks": 4,
             "q_value": 0.16666666666666666,
             "p_value": 1.0,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           },
           {
@@ -579,7 +581,7 @@
             "matched_peaks": 4,
             "q_value": 0.16666666666666666,
             "p_value": 1.0,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           },
           {
@@ -588,7 +590,7 @@
             "matched_peaks": 4,
             "q_value": 0.16666666666666666,
             "p_value": 1.0,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           },
           {
@@ -597,7 +599,7 @@
             "matched_peaks": 4,
             "q_value": 0.16666666666666666,
             "p_value": 1.0,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           },
           {
@@ -606,7 +608,7 @@
             "matched_peaks": 2,
             "q_value": 0.16666666666666666,
             "p_value": 1.0,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           }
         ],
@@ -617,7 +619,7 @@
             "matched_peaks": 2,
             "q_value": 0.16666666666666666,
             "p_value": 1.0,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           },
           {
@@ -626,7 +628,7 @@
             "matched_peaks": 2,
             "q_value": 0.16666666666666666,
             "p_value": 1.0,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           },
           {
@@ -635,7 +637,7 @@
             "matched_peaks": 2,
             "q_value": 0.16666666666666666,
             "p_value": 1.0,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           },
           {
@@ -644,7 +646,7 @@
             "matched_peaks": 2,
             "q_value": 0.16666666666666666,
             "p_value": 1.0,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           },
           {
@@ -653,7 +655,7 @@
             "matched_peaks": 2,
             "q_value": 0.16666666666666666,
             "p_value": 1.0,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           }
         ]
@@ -1084,7 +1086,7 @@
           "cascade_upper_bound": 0.3
         }
       },
-      "csv_sha256": "dd55ae61b8da437bfc158cef63b69bf891ad417053068ec9522d14ee4017a3b0",
+      "csv_sha256": "6403228395d7e086ad5f6d6473c17aab1c8b791d5824b43818c9ec3ac8790dfc",
       "status": "degraded",
       "spectra_loaded": 6,
       "spectra_rejected": 1,
@@ -1098,7 +1100,7 @@
       },
       "warnings": [
         "Small reference library (7 spectra): target-decoy FDR is statistically weak below ~2000 entries; q-values are conservative.",
-        "No decoy hits survived scoring; q-values are uncalibrated (1/N rank bound). FDR claims are not supported for this file."
+        "No decoy hits survived scoring; q-values are uncalibrated (1/N rank bound). FDR claims are not supported for this file. The configured engine does not report decoy-side search statistics; decoys are generated and scored through its internal pipeline."
       ],
       "degraded_mode_flags": [
         "fdr_uncalibrated"
@@ -1149,7 +1151,7 @@
             "matched_peaks": 4,
             "q_value": 0.16666666666666666,
             "p_value": 1.0,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           },
           {
@@ -1158,7 +1160,7 @@
             "matched_peaks": 4,
             "q_value": 0.16666666666666666,
             "p_value": 1.0,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           },
           {
@@ -1167,7 +1169,7 @@
             "matched_peaks": 4,
             "q_value": 0.16666666666666666,
             "p_value": 1.0,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           },
           {
@@ -1176,7 +1178,7 @@
             "matched_peaks": 4,
             "q_value": 0.16666666666666666,
             "p_value": 1.0,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           },
           {
@@ -1185,7 +1187,7 @@
             "matched_peaks": 2,
             "q_value": 0.16666666666666666,
             "p_value": 1.0,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           }
         ],
@@ -1196,7 +1198,7 @@
             "matched_peaks": 3,
             "q_value": 0.16666666666666666,
             "p_value": 1.0,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           },
           {
@@ -1205,7 +1207,7 @@
             "matched_peaks": 3,
             "q_value": 0.16666666666666666,
             "p_value": 1.0,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           },
           {
@@ -1214,7 +1216,7 @@
             "matched_peaks": 3,
             "q_value": 0.16666666666666666,
             "p_value": 1.0,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           },
           {
@@ -1223,7 +1225,7 @@
             "matched_peaks": 3,
             "q_value": 0.16666666666666666,
             "p_value": 1.0,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           },
           {
@@ -1232,7 +1234,7 @@
             "matched_peaks": 2,
             "q_value": 0.16666666666666666,
             "p_value": 1.0,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           }
         ],
@@ -1243,7 +1245,7 @@
             "matched_peaks": 4,
             "q_value": 0.16666666666666666,
             "p_value": 1.0,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           },
           {
@@ -1252,7 +1254,7 @@
             "matched_peaks": 4,
             "q_value": 0.16666666666666666,
             "p_value": 1.0,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           },
           {
@@ -1261,7 +1263,7 @@
             "matched_peaks": 4,
             "q_value": 0.16666666666666666,
             "p_value": 1.0,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           },
           {
@@ -1270,7 +1272,7 @@
             "matched_peaks": 2,
             "q_value": 0.16666666666666666,
             "p_value": 1.0,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           }
         ],
@@ -1281,7 +1283,7 @@
             "matched_peaks": 2,
             "q_value": 0.16666666666666666,
             "p_value": 1.0,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           },
           {
@@ -1290,7 +1292,7 @@
             "matched_peaks": 2,
             "q_value": 0.16666666666666666,
             "p_value": 1.0,
-            "annotation_status": "Putative",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           },
           {
@@ -1299,7 +1301,7 @@
             "matched_peaks": 2,
             "q_value": 0.16666666666666666,
             "p_value": 1.0,
-            "annotation_status": "Putative",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           },
           {
@@ -1308,7 +1310,7 @@
             "matched_peaks": 2,
             "q_value": 0.16666666666666666,
             "p_value": 1.0,
-            "annotation_status": "Putative",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           },
           {
@@ -1317,7 +1319,7 @@
             "matched_peaks": 2,
             "q_value": 0.16666666666666666,
             "p_value": 1.0,
-            "annotation_status": "Putative",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           }
         ],
@@ -1328,7 +1330,7 @@
             "matched_peaks": 4,
             "q_value": 0.16666666666666666,
             "p_value": 1.0,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           },
           {
@@ -1337,7 +1339,7 @@
             "matched_peaks": 4,
             "q_value": 0.16666666666666666,
             "p_value": 1.0,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           },
           {
@@ -1346,7 +1348,7 @@
             "matched_peaks": 4,
             "q_value": 0.16666666666666666,
             "p_value": 1.0,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           },
           {
@@ -1355,7 +1357,7 @@
             "matched_peaks": 4,
             "q_value": 0.16666666666666666,
             "p_value": 1.0,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           },
           {
@@ -1364,7 +1366,7 @@
             "matched_peaks": 2,
             "q_value": 0.16666666666666666,
             "p_value": 1.0,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           }
         ],
@@ -1375,7 +1377,7 @@
             "matched_peaks": 2,
             "q_value": 0.16666666666666666,
             "p_value": 1.0,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           },
           {
@@ -1384,7 +1386,7 @@
             "matched_peaks": 2,
             "q_value": 0.16666666666666666,
             "p_value": 1.0,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           },
           {
@@ -1393,7 +1395,7 @@
             "matched_peaks": 2,
             "q_value": 0.16666666666666666,
             "p_value": 1.0,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           },
           {
@@ -1402,7 +1404,7 @@
             "matched_peaks": 2,
             "q_value": 0.16666666666666666,
             "p_value": 1.0,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           },
           {
@@ -1411,7 +1413,7 @@
             "matched_peaks": 2,
             "q_value": 0.16666666666666666,
             "p_value": 1.0,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           }
         ]
@@ -1432,7 +1434,7 @@
           "rt_tolerance": 1.0
         }
       },
-      "csv_sha256": "54e5d682fca52305c829ae1b269eb0811066eef1ff717cc3c15c136fff0b2cbd",
+      "csv_sha256": "9070ad9d155e3ccfadabc3dfd8013e87fe11cd6e2971d41039d618d7b295fbc5",
       "status": "degraded",
       "spectra_loaded": 6,
       "spectra_rejected": 1,
@@ -1446,9 +1448,10 @@
       },
       "warnings": [
         "Small reference library (7 spectra): target-decoy FDR is statistically weak below ~2000 entries; q-values are conservative.",
-        "No decoy hits survived scoring; q-values are uncalibrated (1/N rank bound). FDR claims are not supported for this file."
+        "No decoy hits survived scoring; q-values are uncalibrated (1/N rank bound). FDR claims are not supported for this file. Decoys were generated and scored (42 decoy pairs); the best decoy score was 0.0000, below the configured gates \u2014 no decoy-based false-positive estimate is possible at this configuration."
       ],
       "degraded_mode_flags": [
+        "decoy_null_empty",
         "fdr_uncalibrated"
       ],
       "queries": {
@@ -1497,7 +1500,7 @@
             "matched_peaks": 4,
             "q_value": 0.2,
             "p_value": 1.0,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           },
           {
@@ -1506,7 +1509,7 @@
             "matched_peaks": 4,
             "q_value": 0.2,
             "p_value": 1.0,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           },
           {
@@ -1515,7 +1518,7 @@
             "matched_peaks": 2,
             "q_value": 0.2,
             "p_value": 1.0,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           }
         ],
@@ -1526,7 +1529,7 @@
             "matched_peaks": 3,
             "q_value": 0.2,
             "p_value": 1.0,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           },
           {
@@ -1535,7 +1538,7 @@
             "matched_peaks": 3,
             "q_value": 0.2,
             "p_value": 1.0,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           },
           {
@@ -1544,7 +1547,7 @@
             "matched_peaks": 2,
             "q_value": 0.2,
             "p_value": 1.0,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           }
         ],
@@ -1555,7 +1558,7 @@
             "matched_peaks": 2,
             "q_value": 0.2,
             "p_value": 1.0,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           },
           {
@@ -1564,7 +1567,7 @@
             "matched_peaks": 2,
             "q_value": 0.2,
             "p_value": 1.0,
-            "annotation_status": "Putative",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           },
           {
@@ -1573,7 +1576,7 @@
             "matched_peaks": 2,
             "q_value": 0.2,
             "p_value": 1.0,
-            "annotation_status": "Putative",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           }
         ],
@@ -1584,7 +1587,7 @@
             "matched_peaks": 4,
             "q_value": 0.2,
             "p_value": 1.0,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           },
           {
@@ -1593,7 +1596,7 @@
             "matched_peaks": 4,
             "q_value": 0.2,
             "p_value": 1.0,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           },
           {
@@ -1602,7 +1605,7 @@
             "matched_peaks": 2,
             "q_value": 0.2,
             "p_value": 1.0,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           }
         ],
@@ -1613,7 +1616,7 @@
             "matched_peaks": 2,
             "q_value": 0.2,
             "p_value": 1.0,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           },
           {
@@ -1622,7 +1625,7 @@
             "matched_peaks": 2,
             "q_value": 0.2,
             "p_value": 1.0,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           },
           {
@@ -1631,7 +1634,7 @@
             "matched_peaks": 2,
             "q_value": 0.2,
             "p_value": 1.0,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           },
           {
@@ -1640,14 +1643,14 @@
             "matched_peaks": 2,
             "q_value": 0.2,
             "p_value": 1.0,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": ""
           }
         ]
       }
     },
     "cosine_zarr": {
-      "csv_sha256": "0cd7c6eedf9cb0f4aefc3eba15e4f9472f2ec3fdde6ee9eb3868d98716f09c94",
+      "csv_sha256": "25d737b33614fefe78c4237a79a9c1be8f1e11e4194f5b34ec3848f93b14be11",
       "equivalent_to": "cosine"
     }
   }

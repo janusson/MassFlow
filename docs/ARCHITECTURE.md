@@ -172,7 +172,7 @@ graph LR
 MassFlow enforces strict physical boundaries at the point of ingestion, ensuring that automated annotation pipelines do not propagate chemically impossible results.
 
 ### Precursor Validation (5 ppm Tolerance)
-Within the `SpectrumMetadata` contract (defined in `MassFlow.models`), an experimental `precursor_mz` is rigorously cross-referenced against the molecule's theoretical exact mass, charge state, and ionization adduct. The theoretical m/z is computed from the exact mass plus the adduct offset — via `MassFlow.cheminformatics.compute_adduct_offset` and its `_ADDUCT_SPECS` registry — divided by the absolute charge. If the experimental precursor m/z deviates from this theoretical value by more than **5.0 ppm**, the record is flagged `is_physically_valid = False` so downstream processing treats it as chemically implausible. The same gate covers malformed structural metadata: unparseable SMILES/InChI claims, formula/exact-mass conflicts beyond 5 ppm, and non-registry adducts in an otherwise complete context.
+Within the `SpectrumMetadata` contract (defined in `MassFlow.models`), an experimental `precursor_mz` is rigorously cross-referenced against the molecule's theoretical exact mass, charge state, and ionization adduct. The theoretical m/z is computed from the exact mass plus the adduct offset — via `MassFlow.cheminformatics.compute_adduct_offset` and its `_ADDUCT_SPECS` registry — divided by the absolute charge. If the experimental precursor m/z deviates from this theoretical value by more than **5.0 ppm**, the record is flagged `is_physically_valid = False` so downstream processing treats it as chemically implausible. The same gate covers malformed structural metadata: unparseable SMILES/InChI claims, formula/exact-mass conflicts beyond 5 ppm, and non-registry adducts in an otherwise complete context. Adduct strings are canonicalised to the `_ADDUCT_SPECS` keys by `MassFlow.cheminformatics.normalize_adduct` before lookup, so the many ways a library may spell an ion (`M+H`, `[M+H]1+`, `[m+h]+`, `M+FA-H`) resolve to the same chemistry; notation that cannot be resolved still fails closed.
 
 **Enforcement surface** — the verdicts are consumed by three gates:
 
@@ -183,9 +183,10 @@ Within the `SpectrumMetadata` contract (defined in `MassFlow.models`), an experi
 2. **Streaming ingestion gate** (`MassFlow.streaming.engine.validate_streaming_spectrum`, experimental `stream-server`) rejects packets failing the Pydantic field constraints before scoring.
 3. **Model layer** — direct construction of `SpectrumMetadata`/`MolecularStructure` always computes the verdict.
 
-**Supported Adducts:**
-- **Positive Mode:** `[M+H]+`, `[M+NH4]+`, `[M+Na]+`, `[M+K]+`, `[M]+`, `[M+2H]2+`
-- **Negative Mode:** `[M-H]-`, `[M+Cl]-`, `[M+HCOO]-`, `[M+CH3COO]-`, `[M+FA-H]-` (Formate), `[M]-`
+**Supported Adducts** (22 entries in the `_ADDUCT_SPECS` registry; `docs/user-guide/validation.md` holds the authoritative offset table and the notation rules):
+- **Positive Mode:** `[M+H]+`, `[M+NH4]+`, `[M+Na]+`, `[M+K]+`, `[M]+`, `[M+2H]2+`, `[M+3H]3+`, `[M+2Na-H]+`, `[M+H-H2O]+`, `[M+CH3CN+H]+`, `[M+CH3OH+H]+`
+- **Negative Mode:** `[M-H]-`, `[M-2H]2-`, `[M+Cl]-`, `[M+Br]-`, `[M+I]-`, `[M+HCOO]-`, `[M+CH3COO]-`, `[M+TFA-H]-`, `[M+HCO3]-`, `[M+NO3]-`, `[M]-`
+- **Notation and ionisation mode are read from the chemistry, not the string:** `MassFlow.cheminformatics.normalize_adduct` canonicalises library spellings (`M+H`, `[M+H]1+`, `[m+h]+`, `M+OAc`, legacy `[M+FA-H]-`) onto these keys before lookup, and `MassFlow.cheminformatics.adduct_charge` reports the resolved signed charge, so e.g. `[M+HCOO]-` is negative despite the `+`. Notation that cannot be resolved still fails closed.
 
 ### Theoretical Isotopic Envelopes
 For advanced structural verification, the `MolecularStructure` model automatically calculates and caches the theoretical isotopic envelope (M, M+1, M+2, etc.) for any parsed SMILES string. By generating abundance-weighted centroid masses normalized to the base peak, the pipeline establishes a ground-truth MS1 signature for every reference candidate. This allows the `ConsensusEngine` and orthogonal ML models to evaluate candidate credibility by checking experimental MS1 isotopic patterns, providing a powerful orthogonal tie-breaking mechanism when MS2 fragmentation scores are ambiguous.
@@ -266,13 +267,22 @@ The CLI loads the config and calls `run_annotation_pipeline()`.
 
 7. **FDR calculation**
    - Entropy-based decoys are generated from the reference spectra:
-     each decoy preserves the precursor m/z and the Shannon entropy of its
-     source's noise-filtered fragment intensities while randomizing the
-     fragmentation pathways, avoiding the null-distribution bias of naive
-     fragment shuffling.
-   - Target and decoy scores are combined to estimate q-values.
+     each decoy preserves the precursor m/z, its source's complete peak list,
+     and the Shannon entropy of its source's noise-filtered fragment
+     intensities while randomizing the fragmentation pathways, avoiding the
+     null-distribution bias of naive fragment shuffling.
+   - Target and decoy scores are combined to estimate q-values. Decoys are
+     scored and gated exactly like targets; because the position randomization
+     keeps a decoy from coinciding with its source at scoring tolerance, decoy
+     hits are rare at production score/matched-peak gates, and an empty decoy
+     null (no decoy competition) is reported explicitly: the engine exposes
+     `decoy_diagnostics` + the `decoy_null_empty` flag, the workflow flags
+     `fdr_uncalibrated` (q-values are then the conservative `1/N` rank bound)
+     and the exported rows are labeled `Uncalibrated`.
    - The workflow logs a target-decoy entropy-divergence diagnostic to
-     flag biased FDR calibration.
+     flag biased FDR calibration. See
+     [scoring_logic.md](user-guide/scoring_logic.md) §5.1 for the empty-null
+     contract.
    - Final results are filtered by:
      - score thresholds
      - matched-peak thresholds where applicable
