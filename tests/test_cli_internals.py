@@ -7,6 +7,7 @@ Comprehensive coverage tests for MassFlow CLI commands:
 - version callback
 """
 
+import sys
 from pathlib import Path
 from unittest.mock import patch
 
@@ -266,8 +267,16 @@ def test_cli_db_no_args_shows_help():
 # ==============================================================================
 
 
-def test_cli_watch_missing_watchfiles(tmp_path):
-    """watch command fails gracefully when watchfiles is not available."""
+def test_cli_watch_missing_watchfiles(tmp_path, monkeypatch):
+    """watch command fails gracefully when watchfiles is not available.
+
+    ``watchfiles`` is an optional extra, but the release CI installs
+    ``--all-extras``, so its absence must be simulated explicitly. Invoking the
+    real command while ``watchfiles`` is importable enters
+    ``watchfiles.watch(...)`` — a blocking loop that never returns — which
+    previously hung the entire CI job until the 6-hour default job timeout.
+    """
+    monkeypatch.setitem(sys.modules, "watchfiles", None)
     config_path = tmp_path / "config.yaml"
     config_path.write_text(f"""
 project:
@@ -277,8 +286,8 @@ input:
 """)
 
     result = runner.invoke(app, ["watch", "--config", str(config_path)])
-    # May fail due to missing watchfiles or due to import error
-    assert result.exit_code in (0, 1)
+    assert result.exit_code == 1
+    assert "watchfiles" in result.output
 
 
 # ==============================================================================
