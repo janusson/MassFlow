@@ -94,7 +94,16 @@ Key properties, all verified by measurement:
 - **Linux / fork:** the old initializer payload was inherited copy-on-write,
   so spawn cost looked free — but scoring touched the arrays, materializing
   per-worker copies in steady state. The new design does not rely on COW at
-  all: workers read the store, so fork and spawn behave identically.
+  all: workers read the store themselves, so the library access path is
+  identical under either method.
+- **Why the pool pins `spawn` anyway:** `fork` and `spawn` are *not*
+  interchangeable in practice. Forking a multi-threaded parent copies the other
+  threads' lock state into the child while dropping the threads themselves, so a
+  worker that needs a lock held at fork time can deadlock — and both the
+  streaming server (a live asyncio loop) and a pytest process (threads left by
+  earlier tests) are multi-threaded. `MassFlow.workflow` therefore builds its
+  `ProcessPoolExecutor` with an explicit `spawn` context
+  (`_WORKER_MP_CONTEXT`) on every platform.
 - **macOS / Windows / spawn:** the old design pickled the full library per
   worker at startup (the measured 4–7 s/worker and the linear wall-time
   growth). The new design pickles only the spec (~185 B), so startup is

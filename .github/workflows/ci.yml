@@ -19,6 +19,7 @@ permissions:
 jobs:
   lockfile-and-lint:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - name: Install uv
@@ -36,6 +37,7 @@ jobs:
 
   smoke:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python 3.13
@@ -57,6 +59,10 @@ jobs:
         os: [ubuntu-latest, macos-latest]
         python-version: ["3.13"]
     runs-on: ${{ matrix.os }}
+    # A hung test previously burned GitHub's 360-minute default job timeout.
+    # Fail fast instead, and dump thread stacks (faulthandler) so the culprit
+    # is visible in the log rather than the job simply timing out.
+    timeout-minutes: 45
 
     steps:
       - uses: actions/checkout@v4
@@ -74,7 +80,11 @@ jobs:
 
       - name: Release suite — unit + core integration tests (with coverage)
         # The default selection: everything except benchmark/slow/optional.
-        run: uv run pytest --cov=src/MassFlow --cov-report=xml --cov-fail-under=80 -v
+        # faulthandler dumps all thread stacks if a single test stalls, so a
+        # hang is diagnosable from the log instead of silently timing out.
+        env:
+          PYTHONFAULTHANDLER: "1"
+        run: uv run pytest --cov=src/MassFlow --cov-report=xml --cov-fail-under=80 -o faulthandler_timeout=600 -v
 
       - name: Scientific-validation tests (explicit group)
         run: uv run pytest -m scientific -v
