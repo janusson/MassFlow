@@ -1,0 +1,5 @@
+query_id,query_precursor_mz,query_retention_time,reference_id,reference_name,reference_precursor_mz,score,matched_peaks,smiles,inchikey,is_decoy,q_value,p_value,annotation_tier,structural_similarity,mass_error_ppm,score_breakdown,Annotation_Status
+queries_2_query_0,208.0,,None,ref_008,208.0,0.6009772023489972,8,,,false,0.25,0.25,,,,,Putative
+queries_2_query_1,209.0,,None,ref_009,209.0,0.9775809185299786,10,,,false,0.25,0.25,,,,,Matched
+queries_2_query_2,210.0,,None,ref_010,210.0,0.4496605340091117,10,,,false,0.25,0.25,,,,,Putative
+queries_2_query_3,211.0,,None,ref_011,211.0,0.9874046864686705,7,,,false,0.25,0.25,,,,,Matched

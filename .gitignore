@@ -169,8 +169,15 @@ results/
 # Tutorial fixtures must be committed so the CI smoke test can run
 !tutorial/tutorial_experimental.mgf
 !tutorial/tutorial_library.msp
-# Scientific validation fixtures must be committed for the ground-truth anchor test
-!tests/scientific_validation/*.mgf
+# Scientific validation fixtures must be committed for the ground-truth anchor test.
+# The generator (tests/scientific_validation/generate_ground_truth.py) is
+# deterministic: regenerating rewrites these .msp files byte-for-byte.
+!tests/scientific_validation/*.msp
+# Captured golden-processor fixtures are the byte-for-byte determinism anchor for
+# tests/test_library.py::TestGoldenDeterminism. "data/" above ignores this whole
+# tree, so re-include the directory and its contents explicitly.
+!tests/data/
+!tests/data/golden_multiprocessing/**
 
 # Notes
 notes.md

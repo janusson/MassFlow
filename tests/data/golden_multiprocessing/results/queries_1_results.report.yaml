@@ -1,0 +1,91 @@
+report_created_at: '2026-08-25T18:00:37.159750+00:00'
+query_file: tests/data/golden_multiprocessing/queries_1.mgf
+results_csv: tests/data/golden_multiprocessing/results/queries_1_1_results.csv
+library_path: tests/data/golden_multiprocessing/golden_library.msp
+status: success
+spectra_loaded: 4
+spectra_rejected: 0
+hits_produced: 4
+warnings:
+- 'Small reference library (40 spectra): target-decoy FDR is statistically weak below
+  ~2000 entries; q-values are conservative.'
+fatal_errors: []
+degraded_mode_flags: []
+num_queries: 4
+num_matches: 4
+processing:
+  min_peaks: 1
+  min_intensity: 0.0
+  normalize_intensity: true
+  clean_metadata: true
+  add_retention_time: true
+  repair_inchi_inchikey_smiles: true
+  derive_adduct_from_name: true
+  derive_formula_from_name: true
+  clean_compound_name: true
+  derive_ionmode: true
+  make_charge_int: true
+  filter_by_intensity: false
+  filter_min_peaks: false
+  filter_by_mz: false
+  reduce_to_top_n_peaks: false
+  mz_min: 0.0
+  mz_max: 1000.0
+  n_max: null
+  noise_threshold: 1000.0
+  decoy_min_relative_intensity: 0.01
+  decoy_mz_shift_da: 1.0
+  instrument: null
+  mode: ''
+  solvents: []
+  precursor_mz: 0.0
+  retention_time: 0.0
+similarity:
+  algorithm: cosine
+  ms1_tolerance: 100.0
+  resolution_ppm: null
+  ms2_tolerance: 0.5
+  min_score: 0.0
+  analog_search: false
+  min_matched_peaks: 3
+  fdr_threshold: 1.0
+  rt_tolerance: null
+  consensus_weights:
+    cosine: 0.5
+    modified_cosine: 0.5
+  consensus_min_engines: 1
+  cascade_lower_bound: 0.3
+  cascade_upper_bound: 0.7
+  cascade_stages:
+  - cosine
+  - modified_cosine
+  enable_numba_prefilter: true
+  hnsw_enabled: false
+  hnsw_m: 32
+  hnsw_ef_construction: 400
+  hnsw_ef_search: 200
+  hnsw_candidates_per_query: 200
+  hnsw_bin_width: 1.0
+  hnsw_mz_min: 0.0
+  hnsw_mz_max: 2000.0
+  hnsw_random_seed: 42
+  enable_routing: false
+  routing_easy_engine: modified_cosine
+  routing_hard_engine: consensus
+  routing_fallback_engine: modified_cosine
+  routing_precursor_purity_threshold: 0.8
+  routing_snr_threshold: 3.0
+  routing_chimeric_action: hard
+  routing_min_difficulty_flags: 1
+  routing_ml_timeout_seconds: 300.0
+  ml_endpoints: {}
+  ml_request_timeout_seconds: 10.0
+  ml_circuit_breaker_threshold: 3
+  ml_circuit_breaker_cooldown_seconds: 60.0
+workflow: {}
+fdr:
+  model: per_query_target_decoy
+  n_competing_queries: 4
+  n_target_competitions: 4
+  n_decoy_competitions: 4
+  library_size: 40
