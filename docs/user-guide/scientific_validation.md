@@ -53,10 +53,14 @@ Zarr-backend equivalence run):
 * every exported row (reference, score, matched peaks, q, p, annotation
   status, score breakdown);
 * the FDR summary (competition counts, true library size), warnings, degraded
-  flags, and the SHA-256 of the result CSV.
+  flags, and the SHA-256 of the result CSV (recorded for provenance).
 
-The suite re-runs the pipeline and asserts the recorded bytes and rows are
-reproduced exactly.
+The suite re-runs the pipeline and asserts the recorded rows are reproduced:
+column order, row counts, categorical fields, matched peak counts, and
+annotation statuses exactly; numeric fields (scores, q/p values) within a tight
+tolerance. The comparison is by value rather than CSV digest because scores are
+exported at full float64 precision, so identical results can serialize to
+different bytes across platforms.
 
 ## Regeneration policy
 
@@ -80,7 +84,8 @@ reviewed as such.
   contract (degenerate inputs, ties, duplicates, execution-mode equivalence).
 * `tests/test_similarity.py`, `tests/test_mathematical_proof.py` — unit-level
   scoring correctness.
-* `tests/test_library.py::TestGoldenDeterminism` — byte-determinism of the
-  worker-path outputs against the pre-refactor in-memory design.
+* `tests/test_library.py::TestGoldenDeterminism` — row-for-row determinism of
+  the worker-path outputs against the pre-refactor in-memory design (numeric
+  fields within round-off tolerance; see `docs/multiprocessing.md`).
 * The suite here is the *integration* layer: real engines, real files, real
   store round-trips, real exports — the whole pipeline against known answers.

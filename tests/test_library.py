@@ -10,10 +10,13 @@ Covers the memory-model contract:
   changes;
 * the compact LibrarySpec is the only object that crosses the process
   boundary;
-* deterministic results are byte-identical to the pre-refactor golden outputs
-  captured from the previous in-memory design (tests/data/golden_multiprocessing).
+* results reproduce the pre-refactor golden outputs captured from the previous
+  in-memory design (tests/data/golden_multiprocessing), compared row-for-row
+  with a tight float tolerance (byte equality is not portable across platforms).
 """
 
+import csv
+import math
 from pathlib import Path
 
 import numpy as np
@@ -35,6 +38,60 @@ from MassFlow.library import (
 )
 
 GOLDEN_DIR = Path(__file__).parent / "data" / "golden_multiprocessing"
+
+
+def _as_float(value: str | None) -> float | None:
+    """Return *value* as a float, or ``None`` when it is not numeric."""
+    if value is None or value == "":
+        return None
+    try:
+        return float(value)
+    except ValueError:
+        return None
+
+
+def assert_csv_rows_equivalent(actual_path: Path, expected_path: Path) -> None:
+    """Compare two result CSVs row-for-row, tolerating float round-off.
+
+    Byte-for-byte equality is not portable: scores are exported at full float64
+    precision, and the low-order bits differ between platforms (macOS
+    Accelerate vs Linux OpenBLAS, FMA contraction, ...), so identical
+    scientific results can serialize to different bytes. Categorical and integer
+    columns are compared exactly; numeric columns are compared with a tight
+    tolerance (still orders of magnitude below any real scoring change).
+    """
+    with open(actual_path, newline="") as handle:
+        actual_reader = csv.DictReader(handle)
+        actual_fieldnames = actual_reader.fieldnames
+        actual_rows = list(actual_reader)
+    with open(expected_path, newline="") as handle:
+        expected_reader = csv.DictReader(handle)
+        expected_fieldnames = expected_reader.fieldnames
+        expected_rows = list(expected_reader)
+
+    assert actual_fieldnames == expected_fieldnames, (
+        f"Result CSV columns changed: {actual_fieldnames} != {expected_fieldnames}"
+    )
+    assert len(actual_rows) == len(expected_rows), (
+        f"{len(actual_rows)} rows exported, {len(expected_rows)} expected"
+    )
+
+    for index, (actual, expected) in enumerate(zip(actual_rows, expected_rows)):
+        for column, expected_value in expected.items():
+            actual_value = actual[column]
+            actual_number = _as_float(actual_value)
+            expected_number = _as_float(expected_value)
+            if actual_number is None or expected_number is None:
+                assert actual_value == expected_value, (
+                    f"row {index} column {column!r}: {actual_value!r} != "
+                    f"{expected_value!r}"
+                )
+                continue
+            if math.isnan(actual_number) and math.isnan(expected_number):
+                continue
+            assert actual_number == pytest.approx(
+                expected_number, rel=1e-9, abs=1e-12
+            ), f"row {index} column {column!r}: {actual_value!r} != {expected_value!r}"
 
 
 def make_spectrum(spec_id: str, precursor_mz: float = 100.0) -> Spectrum:
@@ -221,21 +278,19 @@ class TestBackendFidelity:
 
 
 class TestGoldenDeterminism:
-    """Byte-for-byte determinism against outputs captured from the PRE-REFACTOR
-    in-memory design (tests/data/golden_multiprocessing)."""
+    """Determinism against outputs captured from the PRE-REFACTOR in-memory
+    design (tests/data/golden_multiprocessing).
 
-    GOLDEN_CHECKSUMS = {
-        "queries_0_results.csv": "92fd290f36661f98c23eab7a70989bdf10ed8e8380dcaae5fd4761242e8028b7",
-        "queries_1_results.csv": "2c31216dd5d7468c26aadd710d501448f699f8b9f55bac3eb74ddc83f18465b8",
-        "queries_2_results.csv": "240cba7ea499decfcb0fed45180a73ed0f515d0a7c7695754bf56d9cfacb532b",
-    }
+    The comparison is row-for-row with a tight float tolerance rather than byte
+    equality: scores are exported at full float64 precision, so identical
+    scientific results can serialize differently across platforms. Column order,
+    row count, categorical and integer fields are compared exactly.
+    """
 
     @pytest.mark.parametrize("query_index", [0, 1, 2])
     def test_worker_path_matches_pre_refactor_golden(self, tmp_path, query_index):
-        """The new backend architecture must reproduce the pre-refactor CSV
-        byte-for-byte (hashes captured before the refactor)."""
-        import hashlib
-
+        """The new backend architecture must reproduce the pre-refactor golden
+        results (row-for-row; numeric columns within round-off tolerance)."""
         from MassFlow.workflow import run_annotation_pipeline
 
         config = MassFlowConfig(
@@ -260,9 +315,5 @@ class TestGoldenDeterminism:
         assert results[0].status == "success"
 
         out_file = tmp_path / "results" / f"queries_{query_index}_results.csv"
-        digest = hashlib.sha256(out_file.read_bytes()).hexdigest()
-        expected = self.GOLDEN_CHECKSUMS[f"queries_{query_index}_results.csv"]
-        assert digest == expected, (
-            "Worker-path output diverged from the pre-refactor golden output. "
-            "The backend refactor must not change scientific results."
-        )
+        golden_file = GOLDEN_DIR / "results" / f"queries_{query_index}_results.csv"
+        assert_csv_rows_equivalent(out_file, golden_file)

@@ -94,7 +94,16 @@ Key properties, all verified by measurement:
 - **Linux / fork:** the old initializer payload was inherited copy-on-write,
   so spawn cost looked free — but scoring touched the arrays, materializing
   per-worker copies in steady state. The new design does not rely on COW at
-  all: workers read the store, so fork and spawn behave identically.
+  all: workers read the store themselves, so the library access path is
+  identical under either method.
+- **Why the pool pins `spawn` anyway:** `fork` and `spawn` are *not*
+  interchangeable in practice. Forking a multi-threaded parent copies the other
+  threads' lock state into the child while dropping the threads themselves, so a
+  worker that needs a lock held at fork time can deadlock — and both the
+  streaming server (a live asyncio loop) and a pytest process (threads left by
+  earlier tests) are multi-threaded. `MassFlow.workflow` therefore builds its
+  `ProcessPoolExecutor` with an explicit `spawn` context
+  (`_WORKER_MP_CONTEXT`) on every platform.
 - **macOS / Windows / spawn:** the old design pickled the full library per
   worker at startup (the measured 4–7 s/worker and the linear wall-time
   growth). The new design pickles only the spec (~185 B), so startup is
@@ -103,11 +112,14 @@ Key properties, all verified by measurement:
 ## Determinism
 
 Golden CSVs captured from the pre-refactor code live in
-`tests/data/golden_multiprocessing/` (`queries_{0,1,2}_results.csv`) with
-SHA-256 hashes asserted in `tests/test_library.py::TestGoldenDeterminism`.
-The store round-trips spectra byte-for-byte (float64 arrays + metadata JSON)
-and decoy generation is chunk-invariant, so the refactor produces
-byte-identical results.
+`tests/data/golden_multiprocessing/` (`queries_{0,1,2}_results.csv`) and are
+compared row-for-row in `tests/test_library.py::TestGoldenDeterminism`. The
+comparison tolerates float round-off — scores are exported at full float64
+precision, so the low-order bits (and therefore the raw bytes) differ between
+platforms — while still pinning column order, row counts, categorical fields,
+and the numerics to ~1e-9. The store round-trips spectra byte-for-byte (float64
+arrays + metadata JSON) and decoy generation is chunk-invariant, so the refactor
+reproduces the same scientific results on every platform.
 
 ## Reproducing the measurements
 

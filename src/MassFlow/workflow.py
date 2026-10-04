@@ -17,9 +17,10 @@ aggregating all chunk results for each experimental file. Only a compact
 """
 
 import hashlib
-import importlib
+import importlib.util
 import json
 import logging
+import multiprocessing
 import sys
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass, field
@@ -43,6 +44,16 @@ from MassFlow.similarity import (
 from MassFlow.protocols import MLEngineProtocol
 
 logger = logging.getLogger(__name__)
+
+# The worker pool must never ``fork``. Forking a multi-threaded process copies the
+# other threads' lock state into the child while dropping the threads themselves,
+# so a child that needs a lock held at fork time deadlocks forever. That is
+# reachable in practice: under pytest the process accumulates threads (an asyncio
+# event loop, thread-pool workers) from earlier tests, and the streaming server
+# carries a live event loop by design. Linux defaults to ``fork`` (which hung CI
+# for hours); macOS already defaults to ``spawn``. Pin ``spawn`` explicitly so
+# every platform matches the benchmarked configuration.
+_WORKER_MP_CONTEXT = multiprocessing.get_context("spawn")
 
 
 @dataclass
@@ -1469,6 +1480,7 @@ def run_annotation_pipeline(
         execution_results.append(result)
     else:
         with ProcessPoolExecutor(
+            mp_context=_WORKER_MP_CONTEXT,
             initializer=_init_worker,
             initargs=(config, library_spec),
         ) as executor:

@@ -24,6 +24,19 @@ def reset_worker_engine(monkeypatch):
     monkeypatch.setattr("MassFlow.workflow._worker_engine", None)
 
 
+def test_worker_pool_uses_spawn_start_method():
+    """The annotation worker pool must not ``fork``.
+
+    Forking a multi-threaded process (pytest accumulates threads across tests;
+    the streaming server carries a live asyncio loop) deadlocks on Linux, which
+    hung CI for hours. ``run_annotation_pipeline`` must therefore build its
+    ``ProcessPoolExecutor`` with an explicit ``spawn`` context.
+    """
+    from MassFlow import workflow
+
+    assert workflow._WORKER_MP_CONTEXT.get_start_method() == "spawn"
+
+
 def make_spectrum(spec_id: str, precursor_mz: float = 100.0) -> Spectrum:
     return Spectrum(
         mz=np.array([precursor_mz], dtype="float"),
