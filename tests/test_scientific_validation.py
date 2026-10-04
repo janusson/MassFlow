@@ -445,9 +445,15 @@ class TestKnownAnswerScores:
 
 
 class TestGoldenPipelineRuns:
-    """The current pipeline must reproduce the recorded ground truth
-    byte-for-byte (CSV digest) and row-for-row (candidates, scores, matched
-    peak counts, q/p values, annotation statuses)."""
+    """The current pipeline must reproduce the recorded ground truth row-for-row
+    (candidates, scores, matched peak counts, q/p values, annotation statuses).
+
+    Scientific outputs are compared by value with a tight tolerance rather than
+    by CSV digest: scores are exported at full float64 precision, so identical
+    results can serialize to different bytes across platforms (different
+    BLAS/CPU round the low-order bits). ``csv_sha256`` stays in the manifest for
+    provenance.
+    """
 
     @pytest.mark.parametrize(
         "label,algorithm",
@@ -463,13 +469,8 @@ class TestGoldenPipelineRuns:
         self, tmp_path, label: str, algorithm: str
     ) -> None:
         settings = MANIFEST["runs"][label]["settings"]
-        result, rows, csv_path = run_fixture_pipeline(tmp_path, algorithm, settings)
+        result, rows, _ = run_fixture_pipeline(tmp_path, algorithm, settings)
 
-        assert csv_sha256(csv_path) == MANIFEST["runs"][label]["csv_sha256"], (
-            f"[{label}] CSV diverged from the recorded ground truth. A scoring, "
-            "FDR, ranking, or export change must be a deliberate scientific "
-            "decision (regenerate fixtures via generate_ground_truth.py)."
-        )
         assert result.status == MANIFEST["runs"][label]["status"]
         assert result.spectra_loaded == MANIFEST["runs"][label]["spectra_loaded"]
         assert result.spectra_rejected == MANIFEST["runs"][label]["spectra_rejected"]
@@ -508,14 +509,26 @@ class TestGoldenPipelineRuns:
         self,
         tmp_path,
     ) -> None:
-        """storage_backend=zarr must not change a single byte of the results."""
-        config = fixture_config("cosine", tmp_path)
-        config.input.storage_backend = "zarr"
-        results = run_annotation_pipeline(config)
-        csv_path = tmp_path / f"{EXPERIMENT_FILE.stem}_results.csv"
-        assert csv_sha256(csv_path) == MANIFEST["runs"]["cosine"]["csv_sha256"]
-        assert csv_sha256(csv_path) == MANIFEST["runs"]["cosine_zarr"]["csv_sha256"]
-        assert results[0].hits_produced == MANIFEST["runs"]["cosine"]["hits_produced"]
+        """storage_backend=zarr must not change a single byte of the results.
+
+        Both backends are run here, in one process on one platform, so the
+        byte-for-byte comparison is portable -- unlike comparing to a digest
+        recorded on another platform.
+        """
+        sqlite_result, _, sqlite_csv = run_fixture_pipeline(
+            tmp_path / "sqlite", "cosine"
+        )
+
+        zarr_config = fixture_config("cosine", tmp_path / "zarr")
+        zarr_config.input.storage_backend = "zarr"
+        zarr_result = run_annotation_pipeline(zarr_config)
+        zarr_csv = tmp_path / "zarr" / f"{EXPERIMENT_FILE.stem}_results.csv"
+
+        assert zarr_csv.read_bytes() == sqlite_csv.read_bytes()
+        assert zarr_result[0].hits_produced == sqlite_result.hits_produced
+        assert (
+            sqlite_result.hits_produced == MANIFEST["runs"]["cosine"]["hits_produced"]
+        )
 
     def test_runs_are_deterministic(self, tmp_path) -> None:
         """Two identical runs produce byte-identical CSVs and identical

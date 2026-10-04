@@ -112,11 +112,14 @@ Key properties, all verified by measurement:
 ## Determinism
 
 Golden CSVs captured from the pre-refactor code live in
-`tests/data/golden_multiprocessing/` (`queries_{0,1,2}_results.csv`) with
-SHA-256 hashes asserted in `tests/test_library.py::TestGoldenDeterminism`.
-The store round-trips spectra byte-for-byte (float64 arrays + metadata JSON)
-and decoy generation is chunk-invariant, so the refactor produces
-byte-identical results.
+`tests/data/golden_multiprocessing/` (`queries_{0,1,2}_results.csv`) and are
+compared row-for-row in `tests/test_library.py::TestGoldenDeterminism`. The
+comparison tolerates float round-off — scores are exported at full float64
+precision, so the low-order bits (and therefore the raw bytes) differ between
+platforms — while still pinning column order, row counts, categorical fields,
+and the numerics to ~1e-9. The store round-trips spectra byte-for-byte (float64
+arrays + metadata JSON) and decoy generation is chunk-invariant, so the refactor
+reproduces the same scientific results on every platform.
 
 ## Reproducing the measurements
 
