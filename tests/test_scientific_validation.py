@@ -525,7 +525,18 @@ class TestGoldenPipelineRuns:
                 )
                 assert actual["Annotation_Status"] == expected["annotation_status"]
                 if expected["score_breakdown"]:
-                    assert actual["score_breakdown"] == expected["score_breakdown"]
+                    # score_breakdown is a JSON object of per-engine float scores;
+                    # compare numerically (raw string equality is not portable
+                    # across platforms).
+                    actual_breakdown = json.loads(actual["score_breakdown"])
+                    expected_breakdown = json.loads(expected["score_breakdown"])
+                    assert set(actual_breakdown) == set(expected_breakdown), (
+                        f"[{label}] {query_id}: score_breakdown engines differ"
+                    )
+                    for engine, expected_score in expected_breakdown.items():
+                        assert actual_breakdown[engine] == pytest.approx(
+                            expected_score, rel=1e-9, abs=1e-12
+                        ), f"[{label}] {query_id}: {engine} score_breakdown"
 
     def test_sqlite_and_zarr_backends_are_scientifically_equivalent(
         self,
