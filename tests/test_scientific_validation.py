@@ -134,6 +134,17 @@ def rows_for(rows: list[dict[str, str]], query_id: str) -> list[dict[str, str]]:
     return [r for r in rows if r["query_id"] == query_id and r.get("reference_name")]
 
 
+def _export_sort_key(row: dict[str, Any]) -> tuple[float, str]:
+    """Canonical order for exported rows: score descending, then reference name.
+
+    Within a score tie the export order is not part of the scientific contract,
+    and floating-point round-off can reorder exact ties across platforms, so
+    rows are compared as a set ordered by this key (score rounded to the
+    comparison tolerance) rather than positionally.
+    """
+    return (-round(float(row["score"]), 9), str(row["reference_name"]))
+
+
 def csv_sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
@@ -489,7 +500,18 @@ class TestGoldenPipelineRuns:
                 f"[{label}] {query_id}: {len(actual_rows)} rows exported, "
                 f"{len(recorded_rows)} recorded"
             )
-            for actual, expected in zip(actual_rows, recorded_rows):
+            # The ranking contract: rows are exported in descending score
+            # order. Exact ties may be ordered differently across platforms
+            # (float round-off), so the row *set* is compared via the canonical
+            # (score, reference) order rather than positionally.
+            scores = [float(row["score"]) for row in actual_rows]
+            assert scores == sorted(scores, reverse=True), (
+                f"[{label}] {query_id}: rows not ranked by descending score"
+            )
+            for actual, expected in zip(
+                sorted(actual_rows, key=_export_sort_key),
+                sorted(recorded_rows, key=_export_sort_key),
+            ):
                 assert actual["reference_name"] == expected["reference_name"]
                 assert float(actual["score"]) == pytest.approx(
                     expected["score"], abs=1e-12
