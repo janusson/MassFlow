@@ -11,8 +11,9 @@ non-circular contextualization, `context`; offline read-only interface, `msmcp`;
 spectral edges, `spectral`; graph construction, `build`; exposed via
 `massflow network build` / `analyse` / `export`, disabled by default).
 
-Community detection, a networked MCP server, `RepositoryGraphSource`, FBMN,
-GraphML, and visualization are **not** implemented. See
+Community detection, a networked MCP server, and `RepositoryGraphSource` are
+**deferred** (post-1.0). FBMN, GraphML, and visualization are **declared
+non-goals** — not implemented and not planned. See
 [Network-Aware MS Annotation — Graph Data Model](../network-data-model.md) for
 the architecture, invariants, and the core-vs-deferred split.
 

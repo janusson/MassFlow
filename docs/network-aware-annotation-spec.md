@@ -473,7 +473,7 @@ benchmark.
 | N-5 | Graph persistence | JSON-only vs SQLite (new tables in `database.py`) | query performance vs schema surface |
 | N-6 | MSMCP transport/versioning | in-process + local CLI vs networked server | adoptability vs dependency |
 | N-7 | Repository federation | design `GraphSource` now, implement later | future-proofing cost |
-| N-8 | Doc reconciliation | fix stale FBMN/GraphML claims in `AGENTS.md` §5.4/§6.1 and roadmap §3 | consistency with `CAPABILITY_MATRIX.md` |
+| N-8 | Doc reconciliation | ✓ resolved (2026-10-05): stale FBMN/GraphML "planned" claims removed repo-wide and D-3 de-documented as non-goals | consistency with `CAPABILITY_MATRIX.md` |
 
 ---
 

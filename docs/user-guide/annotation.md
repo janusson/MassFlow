@@ -124,11 +124,13 @@ uv run massflow convert --input data/raw_files/ --output data/mzml_files/
 
 ---
 
-## Network Visualization (not shipped)
+## Network Visualization (non-goal)
 
-!!! warning "Not implemented"
-    Molecular networking / GraphML export and the `massflow visualize`
-    command are **planned, not implemented** in the current release. The
-    configuration key and this workflow do not exist yet — do not rely on
-    them. See [docs/index.md](../index.md) (Stable vs. Experimental) and
-    `docs/CAPABILITY_MATRIX.md` for the authoritative capability list.
+!!! warning "Not implemented — declared non-goal"
+    GraphML/Cytoscape export and the `massflow visualize` command are
+    **non-goals** (D-3 resolved 2026-10-05): they do not exist and are not
+    planned. Molecular *networking* itself ships experimentally as
+    `massflow network build/analyse/export` (JSON/JSONL `MolecularGraph`), not
+    as GraphML. See [docs/index.md](../index.md) (Stable vs. Experimental), the
+    [Network guide](network.md), and `docs/CAPABILITY_MATRIX.md` for the
+    authoritative capability list.

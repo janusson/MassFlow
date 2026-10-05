@@ -179,7 +179,7 @@ The 5-ppm tolerance is **physically mandated** and **not configurable**:
 
 - **Supported direct inputs**: mzML, mzXML, MGF, MSP, SQLite (`.db`, `.sqlite`).
 - **Explicitly rejected**: vendor raw formats (`.raw`, `.d`, `.wiff`, `.lcd`, `.t2d`, `.baf`). Do not add internal conversion logic.
-- **Stable outputs**: CSV and mzTab-M. FBMN (`consensus_spectra.mgf`), GraphML, Cytoscape, and `massflow visualize` are **not implemented** — documented as future work only; see `docs/CAPABILITY_MATRIX.md` §2.4.
+- **Stable outputs**: CSV and mzTab-M. FBMN (`consensus_spectra.mgf`), GraphML, Cytoscape, and `massflow visualize` are **declared non-goals** — not implemented and not planned; see `docs/CAPABILITY_MATRIX.md` §2.4 and §7 (D-3).
 
 ---
 
