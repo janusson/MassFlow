@@ -1,6 +1,6 @@
 # Network-Aware MS Annotation — Frozen Design Specification
 
-> **STATUS: FROZEN DESIGN SPECIFICATION (Spec 1.6, 2026-10-01).**
+> **STATUS: FROZEN DESIGN SPECIFICATION (Spec 1.7, 2026-10-05).**
 >
 > **Amendments (record-keeping only; no design change).**
 >
@@ -30,6 +30,13 @@
 >   read-only `MassFlow.network.msmcp.LocalGraphSource`, and
 >   `massflow network analyse/export`. Community detection and a networked MCP
 >   server remain deferred (ML / optional-extra territory).
+> * **1.7 (2026-10-05):** Spec/code/doc reconciliation (no design change — the
+>   implementation already behaved this way): Stage 4 now states normatively that
+>   an uninterpretable Δmass emits **no edge** (the `"unassigned"` literal stays
+>   reserved in the schema but is never produced by the builder), matching
+>   `MassFlow.network.chemical` and `docs/network-data-model.md`; and the stale
+>   "seeds wired in a future phase" notes are corrected —
+>   `MassFlow.network.context.seeds_from_results` (P6.1) performs that projection.
 >
 > All plan phases P1–P6 are now implemented; community detection, SQLite graph
 > persistence, GraphML/Cytoscape/FBMN, and visualization remain deferred.
@@ -38,8 +45,8 @@
 > [`docs/CAPABILITY_MATRIX.md`](CAPABILITY_MATRIX.md), **the capability matrix
 > governs** until it is amended.
 >
-> **Change control.** Frozen 2026-10-01; amended to Spec 1.6 (2026-10-01).
-> Amendments require a numbered revision (Spec 1.7, 1.8, …) plus a changelog
+> **Change control.** Frozen 2026-10-01; amended to Spec 1.7 (2026-10-05).
+> Amendments require a numbered revision (Spec 1.8, 1.9, …) plus a changelog
 > entry. Any change to the confidence model (§7) requires re-review against
 > `CAPABILITY_MATRIX.md` §1.
 
@@ -245,8 +252,9 @@ Unknown adducts **fail closed** (consistent with the 5 ppm gate).
 (computed via `pyteomics`, consistent with `cheminformatics`) — e.g. H₂O, NH₃,
 CO₂, CH₂O, SO₃, glycosyl/sulfate losses — matched within ppm tolerance. Emit
 `ChemicalRelationship(..., interpretation_status="hypothesis",
-molecule_relationship="related_molecule")`; unknown Δmass ⇒
-`interpretation_status="unassigned"`, `molecule_relationship="unknown"`.
+molecule_relationship="related_molecule")`; an uninterpretable Δmass emits **no
+edge** (the `"unassigned"` literal stays reserved in the schema but is never
+produced by the builder).
 
 **Prohibition.** No structural claim may be asserted by an edge; interpretations
 are strings explicitly tagged as hypotheses.
@@ -479,8 +487,8 @@ as the core interface • FBMN export • visualization/GUI • network-aware
 
 ## 15. Change control
 
-This specification is **frozen at Spec 1.0 and amended to Spec 1.6
-(2026-10-01)**. Amendments require:
+This specification is **frozen at Spec 1.0 and amended to Spec 1.7
+(2026-10-05)**. Amendments require:
 
 1. A numbered revision in this document's title and status block.
 2. A changelog entry in [`docs/CHANGELOG.md`](CHANGELOG.md).

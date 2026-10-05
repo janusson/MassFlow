@@ -242,9 +242,8 @@ molecular families (`MolecularFamily`), and the offline read-only
 by default.
 
 **Deferred (post-1.0 / experimental, not implemented):** community detection,
-networked MCP server, wiring of seeds from the annotation run, isotope /
-in-source-fragment / multimer ion-identity discovery, explicit feature-membership
-edges, `RepositoryGraphSource`, graph persistence in SQLite, GraphML, Cytoscape,
-FBMN, visualization, network-aware scoring, and ML. The frozen design for the
-whole subsystem is specified in
+networked MCP server, isotope / in-source-fragment / multimer ion-identity
+discovery, explicit feature-membership edges, `RepositoryGraphSource`, graph
+persistence in SQLite, GraphML, Cytoscape, FBMN, visualization, network-aware
+scoring, and ML. The frozen design for the whole subsystem is specified in
 [Network-Aware MS Annotation — Frozen Design Specification](network-aware-annotation-spec.md).

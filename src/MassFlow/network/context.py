@@ -16,8 +16,9 @@ is deliberately **one-directional and non-circular**:
   high-confidence seed.
 * Every inference records the exact seeds and incident edges that justify it.
 
-The seeds are supplied by the caller (in a future phase they are projected from
-the annotation run's ``FileExecutionResult`` rows); this module never runs the
+Seeds are supplied by the caller, or projected from an annotation run by
+:func:`seeds_from_results` (P6.1), which maps each ``FileExecutionResult``'s best
+hit per query spectrum to an :class:`AnnotationSeed`; this module never runs the
 annotation engine.
 """
 
