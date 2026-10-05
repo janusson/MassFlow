@@ -40,6 +40,7 @@ from MassFlow.network.models import (
     NodeIdField,
     RelationshipProvenance,
     spectrum_node_id,
+    utc_now_iso,
 )
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
@@ -200,6 +201,7 @@ def contextualize(
     cfg: "NetworkConfig",
     *,
     config_digest_sha256: Optional[str] = None,
+    created_at: Optional[str] = None,
 ) -> Contextualization:
     """
     Derive family contexts and network-inferred annotations from seed hits.
@@ -216,6 +218,9 @@ def contextualize(
         ``context_seed_q_threshold``.
     config_digest_sha256 : str or None, optional
         Digest of the effective configuration, recorded in provenance.
+    created_at : str or None, optional
+        ISO-8601 timestamp recorded on the context/inference provenance. Defaults
+        to the current UTC time; pass a fixed value for a reproducible run.
 
     Returns
     -------
@@ -252,6 +257,7 @@ def contextualize(
         parameters={"context_seed_q_threshold": threshold},
         config_digest_sha256=config_digest_sha256,
         source_module="MassFlow.network.context",
+        created_at=created_at or utc_now_iso(),
     )
 
     contexts: list[NetworkContext] = []

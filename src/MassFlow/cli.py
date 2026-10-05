@@ -1323,6 +1323,14 @@ def run_network_build(
         "--output",
         help="Output JSON path (default: <input_stem>_network.json).",
     ),
+    created_at: Optional[str] = typer.Option(
+        None,
+        "--created-at",
+        help=(
+            "ISO-8601 timestamp recorded on every provenance object. Pin it for a "
+            "byte-for-byte reproducible graph (default: current UTC time)."
+        ),
+    ),
 ):
     """
     Build a spectral molecular network from the configured experimental input.
@@ -1370,7 +1378,9 @@ def run_network_build(
         from MassFlow.network.build import build_spectral_graph
 
         digest = cfg.normalized_config()["config_digest_sha256"]
-        graph = build_spectral_graph(spectra, cfg.network, config_digest_sha256=digest)
+        graph = build_spectral_graph(
+            spectra, cfg.network, config_digest_sha256=digest, created_at=created_at
+        )
 
         output_path = (
             Path(output)
@@ -1406,6 +1416,14 @@ def run_network_analyse(
         None,
         "--output",
         help="Output graph JSON (default: <input_stem>_families.json).",
+    ),
+    created_at: Optional[str] = typer.Option(
+        None,
+        "--created-at",
+        help=(
+            "ISO-8601 timestamp recorded on every provenance object. Pin it for a "
+            "byte-for-byte reproducible graph (default: current UTC time)."
+        ),
     ),
 ):
     """
@@ -1456,12 +1474,13 @@ def run_network_analyse(
                 seeds,
                 cfg.network,
                 config_digest_sha256=cfg.normalized_config()["config_digest_sha256"],
+                created_at=created_at,
             )
             graph = apply_context(
                 graph, contextualization.contexts, contextualization.inferences
             )
 
-        families = detect_families(graph)
+        families = detect_families(graph, created_at=created_at)
         analysed = MolecularGraph(
             schema_version=graph.schema_version,
             nodes=graph.nodes,

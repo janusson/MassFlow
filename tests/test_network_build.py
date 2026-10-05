@@ -156,6 +156,35 @@ def test_build_is_deterministic() -> None:
     assert _strip_timestamps(first.to_dict()) == _strip_timestamps(second.to_dict())
 
 
+def test_fixed_created_at_makes_the_graph_json_byte_for_byte_reproducible() -> None:
+    """A pinned ``created_at`` must make two runs produce identical JSON + edge ids.
+
+    ``created_at`` defaults to the wall clock, so an ordinary run's serialized
+    graph differs every time even though the ids are stable. Passing a fixed
+    timestamp must remove that variation entirely (graph, edge and family
+    provenance alike).
+    """
+    spectra = [
+        _spectrum(500.0, "a"),
+        _spectrum(500.01, "b"),
+        _spectrum(600.0, "c", mz=_PEAKS_MZ + 20.0),
+    ]
+    pinned = "2026-01-01T00:00:00+00:00"
+
+    first = build_spectral_graph(spectra, _cfg(), created_at=pinned)
+    second = build_spectral_graph(spectra, _cfg(), created_at=pinned)
+
+    assert first.to_json() == second.to_json()
+    assert first.provenance.created_at == pinned
+    for relationship in first.relationships:
+        assert relationship.provenance.created_at == pinned
+    for family in first.families:
+        assert family.provenance.created_at == pinned
+    assert [r.relationship_id for r in first.relationships] == [
+        r.relationship_id for r in second.relationships
+    ]
+
+
 def test_input_spectra_are_not_mutated() -> None:
     first = _spectrum(500.0, "a")
     second = _spectrum(500.01, "b")

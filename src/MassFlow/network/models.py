@@ -432,7 +432,18 @@ def _coerce_breakdown(value: Any) -> Optional[Dict[str, float]]:
     return breakdown or None
 
 
-def _utc_now_iso() -> str:
+def utc_now_iso() -> str:
+    """Return the current UTC time as an ISO-8601 string (the provenance clock).
+
+    Every ``created_at`` field defaults to this. A caller that needs a
+    byte-for-byte reproducible graph passes a fixed value down instead (see
+    :func:`MassFlow.network.build.build_spectral_graph`).
+
+    Returns
+    -------
+    str
+        An ISO-8601 timestamp, e.g. ``"2026-01-01T00:00:00+00:00"``.
+    """
     return datetime.now(timezone.utc).isoformat()
 
 
@@ -814,7 +825,7 @@ class RelationshipProvenance(NetworkModel):
         description="MassFlow version that produced the edge.",
     )
     created_at: str = Field(
-        default_factory=_utc_now_iso, description="ISO-8601 UTC creation timestamp."
+        default_factory=utc_now_iso, description="ISO-8601 UTC creation timestamp."
     )
     source_module: str = Field(
         "MassFlow.network", description="Module that produced the edge."
@@ -1156,7 +1167,7 @@ class GraphProvenance(NetworkModel):
         default_factory=_installed_massflow_version, description="MassFlow version."
     )
     created_at: str = Field(
-        default_factory=_utc_now_iso, description="ISO-8601 UTC creation timestamp."
+        default_factory=utc_now_iso, description="ISO-8601 UTC creation timestamp."
     )
     builder: str = Field(
         "MassFlow.network", description="Component that built the graph."
@@ -1473,6 +1484,7 @@ class MolecularGraph(NetworkModel):
 
 __all__ = [
     "SCHEMA_VERSION",
+    "utc_now_iso",
     "IonMode",
     "MoleculeRelationship",
     "NodeId",

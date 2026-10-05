@@ -86,6 +86,42 @@ def test_network_build_writes_graph(tmp_path: Path) -> None:
     assert document["fdr_assessments"] == {}
 
 
+def test_network_build_created_at_pins_provenance_for_reproducible_output(
+    tmp_path: Path,
+) -> None:
+    config_file = _write_fixtures(
+        tmp_path,
+        "network:\n  enabled: true\n  min_score: 0.7\n  min_matched_peaks: 3\n",
+    )
+    pinned = "2026-01-01T00:00:00+00:00"
+    runner = CliRunner()
+
+    documents: list[bytes] = []
+    for label in ("first", "second"):
+        output_path = tmp_path / f"{label}.json"
+        result = runner.invoke(
+            cli.app,
+            [
+                "network",
+                "build",
+                "--config",
+                str(config_file),
+                "--output",
+                str(output_path),
+                "--created-at",
+                pinned,
+            ],
+        )
+        assert result.exit_code == 0, result.stdout
+        document = json.loads(output_path.read_text())
+        assert document["provenance"]["created_at"] == pinned
+        for relationship in document["relationships"]:
+            assert relationship["provenance"]["created_at"] == pinned
+        documents.append(output_path.read_bytes())
+
+    assert documents[0] == documents[1]
+
+
 def test_network_build_is_disabled_by_default(tmp_path: Path) -> None:
     config_file = _write_fixtures(tmp_path, "")
 

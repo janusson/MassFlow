@@ -26,6 +26,7 @@ from MassFlow.network.models import (
     Relationship,
     RelationshipProvenance,
     spectrum_node_id,
+    utc_now_iso,
 )
 from MassFlow.network.spectral import build_spectral_relationships
 
@@ -41,6 +42,7 @@ def build_spectral_graph(
     *,
     config_digest_sha256: Optional[str] = None,
     library_build_id: Optional[int] = None,
+    created_at: Optional[str] = None,
 ) -> MolecularGraph:
     """
     Build a spectral molecular graph from experimental spectra.
@@ -56,6 +58,10 @@ def build_spectral_graph(
         Digest of the effective MassFlow configuration, recorded in provenance.
     library_build_id : int or None, optional
         Reference-library build row to record, when applicable.
+    created_at : str or None, optional
+        ISO-8601 timestamp recorded on every provenance object. Defaults to the
+        current UTC time; pass a fixed value to make a run byte-for-byte
+        reproducible.
 
     Returns
     -------
@@ -68,6 +74,10 @@ def build_spectral_graph(
     --------
     >>> graph = build_spectral_graph(spectra, NetworkConfig(enabled=True))  # doctest: +SKIP
     """
+    # One timestamp for the whole run: every provenance record would otherwise
+    # read the clock independently, making the serialized graph differ per run.
+    created_at = created_at or utc_now_iso()
+
     # De-duplicate by content-addressed node id (deterministic: first wins).
     unique_spectra: list[object] = []
     node_ids: list[str] = []
@@ -101,6 +111,7 @@ def build_spectral_graph(
         config_digest_sha256=config_digest_sha256,
         library_build_id=library_build_id,
         source_module="MassFlow.network.spectral",
+        created_at=created_at,
     )
     relationships: list[Relationship] = []
     relationships.extend(
@@ -122,6 +133,7 @@ def build_spectral_graph(
             config_digest_sha256=config_digest_sha256,
             library_build_id=library_build_id,
             source_module="MassFlow.network.ion_identity",
+            created_at=created_at,
         )
         relationships.extend(
             build_ion_identity_relationships(features, cfg, provenance=ion_provenance)
@@ -135,6 +147,7 @@ def build_spectral_graph(
             config_digest_sha256=config_digest_sha256,
             library_build_id=library_build_id,
             source_module="MassFlow.network.chemical",
+            created_at=created_at,
         )
         relationships.extend(
             build_chemical_relationships(features, cfg, provenance=chemical_provenance)
@@ -148,6 +161,7 @@ def build_spectral_graph(
         builder="MassFlow.network.build",
         config_digest_sha256=config_digest_sha256,
         library_build_id=library_build_id,
+        created_at=created_at,
     )
     graph = MolecularGraph(
         nodes=nodes,
@@ -158,7 +172,7 @@ def build_spectral_graph(
 
     # Stage 6: deterministic molecular-family records over the assembled graph.
     if cfg.build_families:
-        families = detect_families(graph)
+        families = detect_families(graph, created_at=created_at)
         graph = MolecularGraph(
             schema_version=graph.schema_version,
             nodes=graph.nodes,

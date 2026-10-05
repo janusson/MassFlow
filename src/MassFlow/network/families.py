@@ -16,9 +16,13 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Sequence
+from typing import TYPE_CHECKING, Optional, Sequence
 
-from MassFlow.network.models import MolecularFamily, RelationshipProvenance
+from MassFlow.network.models import (
+    MolecularFamily,
+    RelationshipProvenance,
+    utc_now_iso,
+)
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from MassFlow.network.models import MolecularGraph
@@ -135,7 +139,9 @@ def connected_components(graph: "MolecularGraph") -> list[Component]:
     return components
 
 
-def detect_families(graph: "MolecularGraph") -> list[MolecularFamily]:
+def detect_families(
+    graph: "MolecularGraph", *, created_at: Optional[str] = None
+) -> list[MolecularFamily]:
     """
     Build molecular-family records from the graph's connected components.
 
@@ -148,6 +154,9 @@ def detect_families(graph: "MolecularGraph") -> list[MolecularFamily]:
     ----------
     graph : MolecularGraph
         The graph to analyse.
+    created_at : str or None, optional
+        ISO-8601 timestamp recorded on the family provenance. Defaults to the
+        current UTC time; pass a fixed value for a reproducible run.
 
     Returns
     -------
@@ -157,6 +166,7 @@ def detect_families(graph: "MolecularGraph") -> list[MolecularFamily]:
     provenance = RelationshipProvenance(
         algorithm="connected_components",
         source_module="MassFlow.network.families",
+        created_at=created_at or utc_now_iso(),
     )
     contexts_by_component = {
         context.component_id: context for context in graph.network_contexts
