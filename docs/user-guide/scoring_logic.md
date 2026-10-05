@@ -110,6 +110,48 @@ hits exist at all**, no calibration is possible and every query receives
 If there are **no target hits**, nothing is exported and no q-values are
 produced.
 
+### 5.1 Why the decoy null can be empty, and what the run reports
+
+An empty decoy null is not a lost decoy: decoys are generated, scored, and
+filtered exactly like targets (same MS1 precursor window — Da or ppm — same
+`min_score`, same `min_matched_peaks`, same adduct/ion-mode and RT gates), and
+they enter the competition as soon as one decoy hit clears those gates. It is
+the **positional peak matching** that keeps them out: a decoy is randomized so
+that it never coincides with its source at scoring tolerance (otherwise the
+true match's own decoy would compete with the true match and inflate the null,
+rejecting genuine annotations). Because a cosine/modified-cosine score only
+accrues from coincident fragment masses, such a decoy can only match a query by
+chance — and at production gates (`min_score` 0.6–0.7, `min_matched_peaks` 3,
+MS2 tolerance 0.02 Da) chance coincidence is far below the gate. The accepted
+target hits are then genuine matches and there is nothing for the decoy null to
+measure.
+
+The run says so explicitly:
+
+* `SimilarityEngine.decoy_diagnostics` reports `n_decoy_pairs_scored`,
+  `best_decoy_score`, `n_decoy_scores_above_min_score`,
+  `n_decoy_scores_above_gates`, `n_decoy_hits`, and `decoy_null_empty` for the
+  whole (possibly chunked) search;
+* the engine adds `decoy_null_empty` to `degraded_mode_flags`, the workflow adds
+  `fdr_uncalibrated`, and the warning carries the measured best decoy score —
+  so "decoys were scored and stayed below the gates" is distinguishable from
+  "decoys were never scored";
+* the exported rows are labeled `Uncalibrated` instead of
+  `Matched`/`Putative` (see [results.md](results.md)).
+
+Two configuration rules follow from the same geometry and are worth checking
+when a run reports zero decoy hits:
+
+* `processing.decoy_mz_shift_da` must **exceed** `similarity.ms2_tolerance`.
+  A smaller displacement turns each decoy into a near-copy of its source: the
+  decoy then competes with the true match and the q-values become
+  over-conservative (the engine logs a warning for such a configuration).
+* Conversely, a displacement above the tolerance guarantees that decoy hits are
+  scarce; this is a property of the score gates, not of the decoy generation.
+  Relaxing `min_score`/`min_matched_peaks` (a deliberate, documented decision)
+  is the only way to obtain decoy competitiveness there — never lower them
+  silently.
+
 ## 6. Heterogeneous engines (consensus, cascade, routing)
 
 A query is scored by exactly **one** engine (the router assigns easy queries to
@@ -148,6 +190,11 @@ produce **identical statistical behavior**:
   passed explicitly by the orchestrator, or derived from worker state, or
   counted while the streamed library is consumed. The small-library decision
   is therefore identical across modes.
+* Decoy-side search statistics are aggregated over the chunks of a streamed
+  search (counts summed, best score maximized, `decoy_null_empty` only when no
+  chunk produced a decoy hit), so `decoy_diagnostics` and the
+  `decoy_null_empty` degradation flag describe the whole search in every
+  execution mode.
 
 ## 8. What changed (audit of the previous behavior)
 

@@ -109,7 +109,10 @@ def test_decoy_entropy_matches_filtered_target_entropy():
 
     The decoy intensity profile is a permutation of the baseline-filtered
     target profile, so the sqrt-weighted spectral entropy matches exactly
-    (up to floating-point rounding) and no noise peak leaks into the decoy.
+    (up to floating-point rounding). The sub-floor noise peaks are excluded
+    from the entropy computation, but they stay in the decoy with their own
+    intensities: a decoy that dropped peaks would be systematically less
+    matchable than the library spectrum it stands in for.
     """
     from MassFlow.similarity import spectral_entropy
 
@@ -130,13 +133,11 @@ def test_decoy_entropy_matches_filtered_target_entropy():
         target_entropy, abs=1e-12
     )
 
-    # Strict baseline filtering before decoy construction: the two noise
-    # peaks (5.0 and 2.0 < 1% of base peak 1000) never reach the decoy.
+    # Baseline filtering governs the entropy only: the two noise peaks (5.0
+    # and 2.0 < 1% of base peak 1000) keep their own intensities and the peak
+    # list is complete, while the three signal intensities are permuted.
     decoy_intensities = np.asarray(decoy.peaks.intensities, dtype=np.float64)
-    assert decoy_intensities.size == 3
-    assert decoy_intensities.min() >= 0.01 * decoy_intensities.max()
-    assert set(np.round(decoy_intensities, 6).tolist()) == {
-        1000.0,
-        500.0,
-        200.0,
-    }
+    assert decoy_intensities.size == 5
+    assert sorted(decoy_intensities)[:2] == [2.0, 5.0]
+    assert sorted(decoy_intensities)[2:] == [200.0, 500.0, 1000.0]
+    assert decoy_intensities.max() == 1000.0  # base peak preserved

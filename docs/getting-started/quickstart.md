@@ -64,6 +64,9 @@ Generate a canonical starter configuration:
 
 ```shell
 uv run massflow init --output massflow_config.yaml
+
+# Alternatively, use the interactive wizard for a guided setup:
+uv run massflow config-wizard
 ```
 
 Open `massflow_config.yaml` in your favorite text editor. It is pre-populated with standard `matchms` processing filters and the classical `cosine` similarity algorithm.

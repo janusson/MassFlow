@@ -17,9 +17,14 @@ processing: # basic cleaning only
   # Entropy-based decoy generation for FDR calibration:
   # peaks below this fraction of the BASE PEAK are treated as baseline
   # noise and excluded before the sqrt-weighted spectral entropy is
-  # computed.
+  # computed. The decoy keeps its source's full peak list either way.
   decoy_min_relative_intensity: 0.01
   # per-peak m/z jitter (Da) randomizing decoy fragmentation pathways.
+  # Must exceed similarity.ms2_tolerance (0.02 Da): a smaller jitter makes
+  # each decoy a near-copy of its source and inflates the decoy null, while
+  # the positional jitter means decoy hits are scarce at production gates
+  # (runs report 'fdr_uncalibrated' with the conservative 1/N bound rather
+  # than an FDR estimate - see docs/user-guide/scoring_logic.md).
   decoy_mz_shift_da: 1.0
 
 similarity:

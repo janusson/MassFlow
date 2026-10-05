@@ -124,8 +124,13 @@ def test_run_annotation_pipeline_success(
 
     expected_out_file = out_dir / "experimental_results.csv"
     expected_report_file = out_dir / "experimental_results.report.yaml"
+    # The mocked engine returns a single target hit and no decoy hit at all, so
+    # the run has no decoy evidence: its rows are exported as uncalibrated.
     mock_save.assert_called_with(
-        mock_results, expected_out_file, query_spectra=[mock_query]
+        mock_results,
+        expected_out_file,
+        query_spectra=[mock_query],
+        uncalibrated=True,
     )
     mock_save_report.assert_called_once()
     report_args, report_kwargs = mock_save_report.call_args
@@ -541,11 +546,17 @@ def test_run_annotation_pipeline_export_routing(
 
     if export_format == "csv":
         mock_save_csv.assert_called_once_with(
-            mock_results, expected_out_file, query_spectra=[mock_query]
+            mock_results,
+            expected_out_file,
+            query_spectra=[mock_query],
+            uncalibrated=True,
         )
     elif export_format == "mztab":
         mock_save_mztab.assert_called_once_with(
-            mock_results, expected_out_file, query_spectra=[mock_query]
+            mock_results,
+            expected_out_file,
+            query_spectra=[mock_query],
+            uncalibrated=True,
         )
 
     mock_save_report.assert_called_once()

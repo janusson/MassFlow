@@ -69,7 +69,7 @@ Status legend: **✅ Stable** (implemented, tested, part of the v0.1 contract) �
 | Entropy-preserving decoys + per-query target-decoy FDR + diagnostic p-values | `similarity.py` (`generate_decoys`, `calculate_fdr`, `calibrate_query_level_fdr`), `workflow.py` | `test_decoy_generation.py`, `test_fdr.py`, `test_fdr_statistics.py` (contract tests) |
 | SQLite library build / inspect / merge (incl. lineage: `db inspect` reports build history, processing parameters & target-decoy configuration; annotation sidecars link to the exact build row) | `database.py`, `cli.py`, `library.py`, `workflow.py` | `test_database.py`, `test_cli_db.py`, `test_db_lineage.py` |
 | CSV, mzTab-M, YAML report, MSP/MGF export | `io.py`, `workflow.py` | `test_io.py`, `test_workflow.py`, `test_cli.py` |
-| 5 ppm precursor validation + isotopic envelopes (model layer and annotate-path gate) | `models.py`, `cheminformatics.py`, `processing.py` (`physical_integrity_reason`, `process_spectra[_batch]` gate), `library.py` (`prepare_library` strict raw-library abort), `workflow.py` | `test_precursor_physics.py`, `test_scientific_boundaries.py`, `test_cheminformatics.py`, `test_isotopic_distribution.py`, `test_adduct_validation.py`, `test_physics_gate.py` |
+| 5 ppm precursor validation + isotopic envelopes (model layer and annotate-path gate) | `models.py`, `cheminformatics.py`, `processing.py` (`physical_integrity_reason`, `process_spectra[_batch]` gate), `library.py` (`prepare_library` strict raw-library abort), `workflow.py` | `test_precursor_physics.py`, `test_scientific_boundaries.py`, `test_cheminformatics.py`, `test_isotopic_distribution.py`, `test_adduct_validation.py`, `test_adduct_registry.py`, `test_physics_gate.py` |
 
 ### 2.2 Implemented and tested — experimental (🧪)
 
@@ -131,7 +131,8 @@ change; they are the executable form of §1):
 - `test_processing.py`, `test_similarity.py`, `test_mathematical_proof.py`,
   `test_ms1_prefilter.py`, `test_decoy_generation.py`, `test_fdr.py`
 - `test_database.py`, `test_precursor_physics.py`, `test_cheminformatics.py`,
-  `test_isotopic_distribution.py`, `test_adduct_validation.py`
+  `test_isotopic_distribution.py`, `test_adduct_validation.py`,
+  `test_adduct_registry.py`
 - `test_end_to_end_mvp.py`, `test_pipeline_integrity.py`, `test_annotation_coverage.py`
 
 Experimental/optional surfaces are covered by: `test_ml_boundary.py`,
