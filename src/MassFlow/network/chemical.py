@@ -188,7 +188,15 @@ def build_chemical_relationships(
                 target_mass = source.neutral_mass - fragment_mass
                 if target_mass <= 0.0:
                     continue
-                window = target_mass * tolerance_ppm * 1e-6
+                # The tolerance is defined against the *fragment* mass (see the
+                # exact check below), so the prefilter window must use
+                # fragment_mass too. Sizing it on target_mass
+                # (= source.neutral_mass - fragment_mass) would narrow the window
+                # to (target_mass / fragment_mass) x the tolerance and silently
+                # drop real relationships whenever the remaining target is
+                # lighter than the loss (e.g. an H2O loss from a 30 Da molecule
+                # admits only ~3.3 ppm instead of 5).
+                window = fragment_mass * tolerance_ppm * 1e-6
                 lower = int(np.searchsorted(masses, target_mass - window, side="left"))
                 upper = int(np.searchsorted(masses, target_mass + window, side="right"))
                 for candidate_index in range(lower, upper):

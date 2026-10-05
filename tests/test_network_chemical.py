@@ -115,6 +115,21 @@ def _build(features: list[Feature], cfg: NetworkConfig) -> list[ChemicalRelation
     )
 
 
+def _loss_feature(
+    parent_mass: float, fragment_mass: float, ppm_error: float, *, index: int
+) -> Feature:
+    """A feature whose neutral mass sits off a ``fragment_mass`` loss by *ppm_error*.
+
+    ``observed_loss = parent_mass - neutral_mass = fragment_mass * (1 + ppm*1e-6)``,
+    so the exact ppm check reports ``ppm_error``.
+    """
+    return _feature(
+        parent_mass - fragment_mass,
+        index=index,
+        mass_shift=-fragment_mass * ppm_error * 1e-6,
+    )
+
+
 def test_neutral_loss_table_masses_are_physical() -> None:
     assert neutral_loss_mass("H2O") == pytest.approx(18.010565, abs=1e-4)
     assert neutral_loss_mass("CO2") == pytest.approx(43.989829, abs=1e-4)
@@ -163,6 +178,46 @@ def test_ppm_tolerance_is_respected() -> None:
     # 0.01 Da error on an 18 Da loss is ~555 ppm, far beyond the 5 ppm default.
     fragment = _feature(300.0 - _WATER + 0.01, index=1)
     assert _build([parent, fragment], _cfg()) == []
+
+
+def test_ppm_prefilter_is_a_superset_of_the_exact_check() -> None:
+    """Regression: the prefilter window must be sized on the *fragment* mass.
+
+    The window used to be ``target_mass * tolerance_ppm * 1e-6`` where
+    ``target_mass = parent - fragment``; for an H2O loss from M = 30.0106 the
+    target is only ~12.0 Da, so the window admitted ~3.3 ppm instead of 5 and a
+    4.9 ppm loss was silently dropped.
+    """
+    parent_mass = 30.0106
+    parent = _feature(parent_mass, index=0)
+
+    inside = _loss_feature(parent_mass, _WATER, 4.9, index=1)
+    found = _build([parent, inside], _cfg())
+    assert len(found) == 1
+    assert found[0].transformation == "loss:H2O"
+    assert found[0].neutral_loss is not None
+    assert found[0].neutral_loss.mass_error_ppm == pytest.approx(4.9, abs=1e-6)
+
+    beyond = _loss_feature(parent_mass, _WATER, 5.1, index=2)
+    assert _build([parent, beyond], _cfg()) == []
+
+
+def test_hexose_loss_from_a_glycoside_is_not_dropped_by_the_prefilter() -> None:
+    """A hexose loss from a ~300 Da precursor must survive the ppm prefilter.
+
+    The target for a 180 Da hexose loss off a 300 Da precursor is only ~120 Da,
+    so the old window admitted ~3.3 ppm and a 4.5 ppm loss was silently dropped.
+    """
+    hexose = neutral_loss_mass("C6H12O6")
+    parent_mass = 300.0
+    parent = _feature(parent_mass, index=0)
+    fragment = _loss_feature(parent_mass, hexose, 4.5, index=1)
+
+    found = _build([parent, fragment], _cfg())
+    assert len(found) == 1
+    assert found[0].transformation == "loss:C6H12O6"
+    assert found[0].neutral_loss is not None
+    assert found[0].neutral_loss.mass_error_ppm == pytest.approx(4.5, abs=1e-6)
 
 
 def test_unknown_adduct_fails_closed() -> None:
