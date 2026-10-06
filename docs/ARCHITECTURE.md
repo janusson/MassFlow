@@ -470,6 +470,30 @@ the science-facing helpers (peak downsampling, mirror alignment, plot
 rendering, file discovery, error hints) are pure functions covered by
 headless unit tests. See `docs/api/tui.md`.
 
+### `MassFlow.network` (experimental, post-1.0)
+Implements **Network-Aware MS Annotation** as a strictly downstream, read-only
+projection of the annotation engine: the stable path never imports this package,
+and the package imports none of `workflow`/`cli`/`database` (file writes go
+through `MassFlow.io`). It ships the graph-compatible data layer — deterministic,
+`PYTHONHASHSEED`-independent content-addressed node/relationship identifiers;
+`GraphNode`/`Feature`; layered evidence (`AnnotationEvidence` for L1 direct
+evidence and a query-scoped `FdrAssessment` for L2, the only FDR carrier); the
+typed edges unified as the discriminated `Relationship`; and a data-only,
+lossless-JSON `MolecularGraph` — plus the experimental stages built on it:
+spectral networking (`candidates`, `spectral`, `build`), LC-MS feature identity
+(`features`), ion-identity/adduct links (`ion_identity`), neutral-loss
+**hypotheses** (`chemical`), non-circular L5 contextualization (`context`),
+deterministic molecular families (`families`), and the offline, read-only
+`LocalGraphSource` MSMCP interface (`msmcp`).
+
+It is **disabled by default** (`network.enabled: false`) and exposed through the
+experimental `massflow network build/analyse/export` CLI. Confidence discipline
+is enforced structurally: no edge can carry a `q_value`/`p_value`/`fdr`/
+`confidence` field, FDR semantics are unchanged, and network context never
+alters L1/L2. There is no community detection, GraphML/Cytoscape/FBMN,
+visualization, or network-aware scoring. See `docs/network-data-model.md` and
+`docs/network-aware-annotation-spec.md`.
+
 ---
 
 ## Design Principles
