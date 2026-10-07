@@ -17,24 +17,24 @@ Get from installation to your first results in three simple steps.
 
 ### 1. Installation
 Run the setup script to configure your environment and install all necessary dependencies:
-\`\`\`shell
+```shell
 git clone https://github.com/janusson/MassFlow && cd MassFlow
 chmod +x setup.sh
 ./setup.sh
-\`\`\`
+```
 
 ### 2. Configure Your Project
 Instead of editing complex text files, use the interactive wizard to set up your analysis parameters:
-\`\`\`shell
+```shell
 uv run massflow config-wizard
-\`\`\`
+```
 *Follow the prompts to define your input files, reference library, and scoring thresholds.*
 
 ### 3. Run Annotation
 Start the analysis using the configuration file created by the wizard:
-\`\`\`shell
+```shell
 uv run massflow annotate --config massflow_config.yaml
-\`\`\`
+```
 *Your results will be saved as CSV or mzTab files in your output directory, accompanied by a provenance report for every file.*
 
 ---
@@ -58,11 +58,11 @@ Every result is linked back to its source. The generated provenance sidecars rec
 
 ### Interactive Console (TUI)
 Prefer a visual interface over the command line? Launch the MassFlow TUI to explore your data interactively:
-\`\`\`shell
+```shell
 # Install the TUI extra (or use --all-extras for everything)
 uv sync --extra tui
 uv run massflow tui
-\`\`\`
+```
 - **Browser:** Find and upload spectral files.
 - **Viewer:** Inspect centroid stick plots with a metadata panel.
 - **Identify:** Run target-decoy searches with real-time mirror plots.
@@ -75,9 +75,9 @@ MassFlow uses optimized SQLite and Zarr databases for lightning-fast searches, e
 
 ### Data Conversion
 If you have vendor-specific raw files (`.raw`, `.d`), MassFlow provides a wrapper for ProteoWizard's `msconvert` to bring your data into open formats:
-\`\`\`shell
+```shell
 uv run massflow convert --input raw_data/ --output converted_data/
-\`\`\`
+```
 
 ---
 
@@ -94,7 +94,7 @@ MassFlow is designed for high-performance "on-site" use.
 
 MassFlow requires **Python 3.13+**.
 
-\`\`\`shell
+```shell
 # The recommended path is to run `setup.sh`, which automates environment pinning and dependency sync. You can also perform these steps manually:
 uv python pin 3.13 && uv sync
 
@@ -103,7 +103,7 @@ uv python pin 3.13 && uv sync
 uv sync --extra tui    # Interactive console
 uv sync --extra ml     # ML scoring engines
 uv sync --extra hnsw   # Sub-linear search acceleration
-\`\`\`
+```
 
 ## License
 MIT. See [LICENSE](LICENSE).
