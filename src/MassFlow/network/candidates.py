@@ -29,6 +29,7 @@ def generate_candidate_pairs(
     precursor_mzs: ArrayLike,
     *,
     tolerance: float,
+    tolerance_ppm: Optional[float] = None,
     rt_seconds: Optional[ArrayLike] = None,
     rt_tolerance: Optional[float] = None,
     treat_missing_rt_as_compatible: bool = False,
@@ -43,8 +44,19 @@ def generate_candidate_pairs(
         are excluded from candidacy — a spectrum with no precursor cannot be
         windowed.
     tolerance : float
-        Maximum absolute precursor m/z difference (Da) for two spectra to be a
-        candidate pair. Must be positive.
+        Absolute component of the precursor m/z window, in **Da**: the floor of
+        the admitted precursor difference for two spectra to be a candidate
+        pair. Must be positive unless ``tolerance_ppm`` supplies a window. A
+        caller that must not be more selective than another stage's own
+        prefilter passes that prefilter's tolerance here, which keeps candidacy
+        a strict superset of it.
+    tolerance_ppm : float or None, optional
+        Relative component of the window, in **ppm**. The effective window for a
+        pair is ``max(tolerance, tolerance_ppm * mz / 1e6)``, evaluated on the
+        **lower** precursor m/z of the pair, so the relation is symmetric and
+        the window grows with mass — a fixed Da window is a drifting ppm window,
+        and on a high-resolution instrument that drift is a selectivity defect.
+        Must be positive when given.
     rt_seconds : sequence of float or None, optional
         Retention time in **seconds** per spectrum, aligned with
         ``precursor_mzs``. Required when ``rt_tolerance`` is set.
@@ -63,13 +75,16 @@ def generate_candidate_pairs(
     -------
     list of tuple[int, int]
         Sorted ``(i, j)`` index pairs with ``i < j``, where both precursors are
-        present and within ``tolerance`` (and within ``rt_tolerance`` when
-        given). Deterministic for identical inputs.
+        present and within the effective window ``max(tolerance,
+        tolerance_ppm * mz / 1e6)`` (and within ``rt_tolerance`` when given).
+        Deterministic for identical inputs.
 
     Raises
     ------
     ValueError
-        If ``tolerance`` is not positive, if ``rt_seconds`` is missing while
+        If ``tolerance`` is negative, if neither ``tolerance`` nor
+        ``tolerance_ppm`` supplies a positive window, if ``tolerance_ppm`` is
+        not positive when given, if ``rt_seconds`` is missing while
         ``rt_tolerance`` is set, or if the input lengths are inconsistent.
 
     Examples
@@ -77,8 +92,16 @@ def generate_candidate_pairs(
     >>> generate_candidate_pairs([100.0, 100.01, 200.0], tolerance=0.02)
     [(0, 1)]
     """
-    if tolerance <= 0.0:
-        raise ValueError(f"tolerance must be positive; got {tolerance!r}.")
+    if tolerance < 0.0:
+        raise ValueError(f"tolerance must not be negative; got {tolerance!r}.")
+    if tolerance_ppm is not None and tolerance_ppm <= 0.0:
+        raise ValueError(
+            f"tolerance_ppm must be positive when given; got {tolerance_ppm!r}."
+        )
+    if tolerance == 0.0 and tolerance_ppm is None:
+        raise ValueError(
+            "tolerance must be positive when no ppm window is given; got 0.0."
+        )
 
     mz_array = np.asarray(precursor_mzs, dtype=np.float64)
     n = mz_array.size
@@ -101,9 +124,17 @@ def generate_candidate_pairs(
     order = order[np.isfinite(mz_array[order])]
     sorted_mz = mz_array[order]
 
+    # Effective window per sorted position: the Da floor raised by the ppm
+    # component. It is evaluated on the pair's *lower* m/z and is monotone
+    # non-decreasing in m/z, so the sweep below stays a valid two-pointer scan.
+    if tolerance_ppm is None:
+        windows = np.full(sorted_mz.size, tolerance, dtype=np.float64)
+    else:
+        windows = np.maximum(tolerance, tolerance_ppm * sorted_mz / 1e6)
+
     pairs: list[tuple[int, int]] = []
     for position, i in enumerate(order):
-        upper = sorted_mz[position] + tolerance
+        upper = sorted_mz[position] + windows[position]
         for following in range(position + 1, order.size):
             j = int(order[following])
             if sorted_mz[following] > upper:

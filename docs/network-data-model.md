@@ -124,7 +124,14 @@ uv run massflow network build --config massflow_config.yaml --output network.jso
 ```
 
 * **Candidacy** — `MassFlow.network.candidates.generate_candidate_pairs` windows
-  spectra by precursor m/z (and optionally retention time) before scoring.
+  spectra by precursor m/z (and optionally retention time) before scoring. The
+  window's Da floor is `NetworkConfig.ms1_tolerance` — the similarity engine's own
+  MS1 prefilter — optionally raised by `precursor_candidacy_tolerance` expressed in
+  `precursor_candidacy_unit` (`"Da"` or `"ppm"`). Candidacy is therefore a strict
+  superset of the engine prefilter: changing it adds *scored pairs*, never edges,
+  because each scored pair still has to clear `min_score`/`min_matched_peaks`. A
+  `"ppm"` window scales with precursor m/z, which is the physically meaningful
+  choice on high-resolution data (a fixed Da window is a drifting ppm window).
 * **Edges** — `MassFlow.network.spectral.build_spectral_relationships` scores the
   candidate pairs and keeps those above `min_score`/`min_matched_peaks`, capped
   per node by `top_k_per_node`.

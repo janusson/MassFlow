@@ -908,7 +908,19 @@ class NetworkConfig(MassFlowBaseModel):
     algorithm : {"cosine", "modified_cosine"}
         Classical similarity used for spectral edges.
     ms1_tolerance : float
-        Precursor window (Da) used for candidate generation.
+        Precursor window (Da) applied by the similarity engine's own MS1
+        prefilter. Also the default Stage-1 candidacy window (see
+        ``precursor_candidacy_tolerance``).
+    precursor_candidacy_tolerance : float or None
+        Optional dedicated Stage-1 candidacy window, in units of
+        ``precursor_candidacy_unit``. ``None`` (default) keeps candidacy on
+        ``ms1_tolerance`` Da — today's behaviour. The effective candidacy window
+        is never narrower than ``ms1_tolerance`` Da, so changing it can only add
+        candidate pairs, never drop one the scoring engine would have scored.
+    precursor_candidacy_unit : {"Da", "ppm"}
+        Unit for ``precursor_candidacy_tolerance``. ``"ppm"`` scales the window
+        with precursor m/z, which is the physically meaningful choice for
+        high-resolution data (a fixed Da window is a drifting ppm window).
     ms2_tolerance : float
         Fragment matching tolerance (Da).
     min_score : float
@@ -957,7 +969,24 @@ class NetworkConfig(MassFlowBaseModel):
         description="Classical similarity used for spectral edges.",
     )
     ms1_tolerance: float = Field(
-        default=0.02, gt=0.0, description="Precursor window in Da for candidacy."
+        default=0.02,
+        gt=0.0,
+        description=(
+            "Precursor window (Da) applied by the similarity engine's MS1 "
+            "prefilter; also the default Stage-1 candidacy window."
+        ),
+    )
+    precursor_candidacy_tolerance: Optional[float] = Field(
+        default=None,
+        gt=0.0,
+        description=(
+            "Dedicated Stage-1 candidacy window, in precursor_candidacy_unit. "
+            "None (default) keeps candidacy on ms1_tolerance Da."
+        ),
+    )
+    precursor_candidacy_unit: Literal["Da", "ppm"] = Field(
+        default="Da",
+        description="Unit for precursor_candidacy_tolerance.",
     )
     ms2_tolerance: float = Field(
         default=0.02, gt=0.0, description="Fragment matching tolerance in Da."
