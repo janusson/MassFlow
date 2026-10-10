@@ -151,6 +151,43 @@ uv run pytest tests/test_cli.py
 uv run pytest tests/test_cli_db.py
 ```
 
+### Type checking
+
+Type checking runs over the **whole repository** (`src/` *and* `tests/`), so a
+change in `src/MassFlow/` that breaks a test file's typing is caught locally:
+
+```bash
+make typecheck        # mypy . (full: src + tests) — the required gate
+make static           # lint + format-check + full type check (no tests)
+make all              # fast local gate (lint, format, types, tests + coverage)
+make ci               # exact CI mirror: lock check, static, tests, scientific,
+                      # optional, and a strict docs build
+```
+
+`make typecheck-src` is a *fast, partial* check of `src/MassFlow` only, for quick
+iteration. It deliberately does **not** cover `tests/`, so always finish with
+`make typecheck` (or `make all`) before pushing — CI enforces the same full-repo
+scope.
+
+`make all` is the everyday gate. Run `make ci` before pushing a change that
+touches the lockfile, test markers, or documentation — it additionally runs
+`uv lock --check`, the `scientific` and `optional` test groups,
+`mkdocs build --strict`, and a self-generating end-to-end smoke run, matching
+the `lockfile-and-lint`, `test`, **and** `smoke` jobs in
+`.github/workflows/ci.yml`.
+
+The `smoke` step (`make smoke`, also a prerequisite of `make ci`) generates the
+tutorial dataset with `massflow tutorial` inside a throwaway temp directory and
+runs `massflow annotate` against it, then deletes the directory. It never
+touches the committed `tutorial/` fixtures, so it is safe to run repeatedly and
+works on a fresh checkout.
+
+Type checking is **not** a `pre-commit` hook: the `mirrors-mypy` hook runs in an
+isolated, dependency-sparse environment whose third-party types differ from the
+project's, so it can disagree with the real gate. `pre-commit` runs only the
+fast, dependency-free hooks (whitespace/EOF/YAML checks and `ruff`); run
+`make typecheck` (or `make ci`) explicitly instead.
+
 ### The golden scientific-validation suite
 
 `tests/test_scientific_validation.py` is a **known-answer** suite: every
@@ -234,9 +271,11 @@ For the current pre-0.1 line, the most stable surfaces are:
 - SQLite library workflows via `massflow db`
 - CSV result export
 
-Features such as terminal browsing, GraphML export, and advanced ML-backed
-similarity paths should be treated as experimental unless explicitly documented
-otherwise.
+Features such as terminal browsing, molecular networking (`massflow network`,
+post-1.0), and advanced ML-backed similarity paths should be treated as
+experimental unless explicitly documented otherwise. FBMN export, GraphML
+output, and `massflow visualize` are **declared non-goals** — not implemented
+and not planned (see `docs/CAPABILITY_MATRIX.md` §2.4 and §7 D-3).
 
 ## Code of Conduct
 

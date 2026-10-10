@@ -27,6 +27,7 @@ __all__ = [
     "database",
     "io",
     "ml_client",
+    "network",
     "processing",
     "protocols",
     "similarity",

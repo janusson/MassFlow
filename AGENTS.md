@@ -71,7 +71,7 @@ Tests that **can** use formula-based fallbacks (via `pyteomics`) should have **t
 ### 2.5 Pytest Markers
 
 - `@pytest.mark.core` — must pass for the v0.1 stable release contract. Use this for tests of `cosine`, `modified_cosine`, CSV/mzTab-M export, and SQLite DB workflows.
-- Tests for experimental features (`spec2vec`, `ms2deepscore`, `consensus`, `cascade`, GraphML networking) should NOT be marked `core`.
+- Tests for experimental features (`spec2vec`, `ms2deepscore`, `consensus`, `cascade`, `massflow network`) should NOT be marked `core`.
 
 ---
 
@@ -179,7 +179,7 @@ The 5-ppm tolerance is **physically mandated** and **not configurable**:
 
 - **Supported direct inputs**: mzML, mzXML, MGF, MSP, SQLite (`.db`, `.sqlite`).
 - **Explicitly rejected**: vendor raw formats (`.raw`, `.d`, `.wiff`, `.lcd`, `.t2d`, `.baf`). Do not add internal conversion logic.
-- **Stable outputs**: CSV, mzTab-M, and FBMN consensus_spectra.mgf + CSV pair.
+- **Stable outputs**: CSV and mzTab-M. FBMN (`consensus_spectra.mgf`), GraphML, Cytoscape, and `massflow visualize` are **declared non-goals** — not implemented and not planned; see `docs/CAPABILITY_MATRIX.md` §2.4 and §7 (D-3).
 
 ---
 
@@ -190,7 +190,7 @@ The 5-ppm tolerance is **physically mandated** and **not configurable**:
 | Status | Features | Constraint |
 |---|---|---|
 | **v0.1 Stable** | `cosine`, `modified_cosine`, `massflow annotate`, `massflow db`, CSV/mzTab-M export, SQLite libraries | Must not regress; all `@pytest.mark.core` tests must pass |
-| **Experimental** | `spec2vec`, `ms2deepscore`, `consensus`, `cascade`, GraphML networking, terminal browser | Can evolve freely; must not break stable paths |
+| **Experimental** | `spec2vec`, `ms2deepscore`, `consensus`, `cascade`, `massflow network` (post-1.0 Network-Aware MS Annotation; disabled by default), terminal browser | Can evolve freely; must not break stable paths |
 
 ### 6.2 Module Boundaries
 

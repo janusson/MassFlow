@@ -18,12 +18,15 @@ import json
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Iterable, Iterator, Optional
+from typing import TYPE_CHECKING, Any, Callable, Iterable, Iterator, Optional
 
 import numpy as np
 import polars as pl
 import yaml
 from matchms import Spectrum
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    from MassFlow.network import MolecularGraph
 from matchms.importing import (
     load_from_mgf,
     load_from_msp,
@@ -621,3 +624,74 @@ def save_match_results_to_mztab(
             f.write("SML\t" + "\t".join(row_vals) + "\n")
 
     logger.info(f"mzTab-M results saved to {output_path}")
+
+
+def save_molecular_graph(graph: "MolecularGraph", output_path: Path) -> None:
+    """
+    Serialize a :class:`~MassFlow.network.MolecularGraph` to a JSON file.
+
+    This is the file-system boundary for the graph data layer
+    (``AGENTS.md`` §6.2): :mod:`MassFlow.network` defines the models and their
+    in-memory (de)serialization, and this function performs the actual write.
+
+    Parameters
+    ----------
+    graph : MolecularGraph
+        The graph document to persist.
+    output_path : Path
+        Destination ``.json`` path. Parent directories are created if needed.
+
+    Returns
+    -------
+    None
+    """
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(graph.to_json(indent=2), encoding="utf-8")
+    logger.info(f"Molecular graph saved to {output_path}")
+
+
+def load_molecular_graph(input_path: Path) -> "MolecularGraph":
+    """
+    Load a :class:`~MassFlow.network.MolecularGraph` from a JSON file.
+
+    Parameters
+    ----------
+    input_path : Path
+        Source JSON path produced by :func:`save_molecular_graph`.
+
+    Returns
+    -------
+    MolecularGraph
+        The reconstructed graph document.
+
+    Raises
+    ------
+    ValueError
+        If the file was written with an incompatible schema version.
+    """
+    from MassFlow.network import MolecularGraph
+
+    input_path = Path(input_path)
+    return MolecularGraph.from_json(input_path.read_text(encoding="utf-8"))
+
+
+def save_families_jsonl(graph: "MolecularGraph", output_path: Path) -> None:
+    """
+    Export a graph's molecular families as newline-delimited JSON.
+
+    Parameters
+    ----------
+    graph : MolecularGraph
+        The graph whose ``families`` should be exported.
+    output_path : Path
+        Destination ``.jsonl`` path. Parent directories are created if needed.
+
+    Returns
+    -------
+    None
+    """
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(graph.to_family_jsonl(), encoding="utf-8")
+    logger.info(f"Molecular families saved to {output_path}")

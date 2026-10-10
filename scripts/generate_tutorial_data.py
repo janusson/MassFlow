@@ -211,8 +211,8 @@ def main(clean_first: bool = False) -> dict[str, Path]:
   output_directory: "tutorial/results"
 
 input:
-  input_path: "tutorial/tutorial_experimental.mgf"
-  library_path: "tutorial/tutorial_library.msp"
+  input_path: "tutorial_experimental.mgf"
+  library_path: "tutorial_library.msp"
   format: "mgf"
 
 processing:
@@ -225,7 +225,6 @@ similarity:
   algorithm: "cosine"
   ms1_tolerance: 0.02
   ms2_tolerance: 0.02
-  tolerance_unit: "Da"
   min_score: 0.1
   fdr_threshold: 1.0
 
