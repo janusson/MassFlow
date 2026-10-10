@@ -83,6 +83,25 @@ def _network_similarity_config(cfg: NetworkConfig):
     )
 
 
+def _candidacy_window(cfg: NetworkConfig) -> tuple[float, Optional[float]]:
+    """
+    Return the Stage-1 candidacy window as ``(da_floor, ppm_window)``.
+
+    The Da floor is never smaller than ``cfg.ms1_tolerance`` — the similarity
+    engine's own MS1 prefilter — so candidacy can only ever *admit* pairs the
+    engine would have accepted. Widening it is therefore a recall/performance
+    knob only: it adds scored pairs, never edges, because every scored pair
+    still has to clear ``min_score`` and ``min_matched_peaks``.
+    """
+    floor = cfg.ms1_tolerance
+    candidacy = cfg.precursor_candidacy_tolerance
+    if candidacy is None:
+        return floor, None
+    if cfg.precursor_candidacy_unit == "ppm":
+        return floor, candidacy
+    return max(floor, candidacy), None
+
+
 def build_spectral_relationships(
     spectra: Sequence[object],
     node_ids: Sequence[str],
@@ -145,9 +164,11 @@ def build_spectral_relationships(
     rt_seconds = np.array(
         [_retention_time_seconds(s) for s in spectra], dtype=np.float64
     )
+    candidacy_da, candidacy_ppm = _candidacy_window(cfg)
     candidate_pairs = generate_candidate_pairs(
         precursor_mzs,
-        tolerance=cfg.ms1_tolerance,
+        tolerance=candidacy_da,
+        tolerance_ppm=candidacy_ppm,
         rt_seconds=rt_seconds,
         rt_tolerance=cfg.rt_tolerance,
     )

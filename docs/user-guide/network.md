@@ -55,7 +55,8 @@ Every `network` field (all optional) is recorded in graph provenance. Key ones:
 | --- | --- | --- |
 | `enabled` | `false` | Master switch. |
 | `algorithm` | `modified_cosine` | `cosine` or `modified_cosine`. |
-| `ms1_tolerance` / `ms2_tolerance` | `0.02` | Precursor window (Da) / fragment tolerance (Da). |
+| `ms1_tolerance` / `ms2_tolerance` | `0.02` | Precursor window (Da) applied by the similarity engine's MS1 prefilter (also the default candidacy window) / fragment tolerance (Da). |
+| `precursor_candidacy_tolerance` / `precursor_candidacy_unit` | `null` / `"Da"` | Optional dedicated Stage-1 candidacy window. `"ppm"` scales with precursor m/z. The effective window is never narrower than `ms1_tolerance`, so widening it can only add scored pairs, never edges. |
 | `min_score` / `min_matched_peaks` | `0.7` / `6` | Edge thresholds. |
 | `rt_tolerance` | `null` | Optional retention-time window (seconds). |
 | `top_k_per_node` | `10` | Max incident edges per node (`null` = unlimited). |
