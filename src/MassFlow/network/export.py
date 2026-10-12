@@ -358,14 +358,23 @@ def _node_attributes(record: Optional[dict[str, Any]]) -> dict[str, Any]:
         if record["score"] is not None
         else record["network_support_score"]
     )
+    # ``primary_score`` mixes two scales: a spectral similarity in [0, 1] for a
+    # direct match, and an *unbounded* weighted-neighbour support sum for a
+    # network hypothesis. ``primary_score_kind`` tells consumers which it holds.
+    primary_score_kind = (
+        "match_score" if record["score"] is not None else "network_support"
+    )
     conflicting = record["network_conflicting_candidates"] or []
     attributes: dict[str, Any] = {
         "label": record["query_id"],
         "annotation_status": record["network_status"],
         "evidence_source": record["evidence_source"],
-        "reference_id": record["candidate_id"] or record["reference_id"],
+        "reference_id": record["reference_id"] or record["candidate_id"],
+        "candidate_id": record["candidate_id"],
+        "candidate_inchikey": record["candidate_inchikey"],
         "confidence_tier": record.get("confidence_tier"),
         "primary_score": primary_score,
+        "primary_score_kind": primary_score_kind,
         "q_value": record["q_value"],
         "network_support_score": record["network_support_score"],
         "supporting_neighbor_count": int(record["supporting_neighbor_count"]),

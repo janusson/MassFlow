@@ -543,6 +543,44 @@ def test_similar_names_do_not_merge_structures() -> None:
     assert out.filter(pl.col("evidence_source") == "network").height == 2
 
 
+def test_skeleton_inchikey_is_not_used_as_identity() -> None:
+    """A 14-char skeleton key is not stereochemically complete, so two library
+    entries sharing it must NOT be collapsed into one candidate."""
+    skeleton = _IK_A.split("-")[0]  # 14-char first block (stereochemistry lost)
+    edges = _edges([("s1", "centre", 0.9), ("s2", "centre", 0.9)])
+    matches = _matches(
+        [
+            _match("s1", "rA1", score=1.0, inchikey=skeleton),
+            _match("s2", "rA2", score=1.0, inchikey=skeleton),
+        ]
+    )
+    out = propagate_annotations(edges, matches)
+    network_rows = out.filter(pl.col("evidence_source") == "network")
+    assert network_rows.height == 2
+    assert set(network_rows["candidate_id"].to_list()) == {"rA1", "rA2"}
+
+
+def test_network_row_reference_id_is_the_library_id_not_the_inchikey() -> None:
+    edges = _edges([("s", "centre", 0.9)])
+    matches = _matches([_match("s", "rA", score=0.9, inchikey=_IK_A)])
+    out = propagate_annotations(edges, matches)
+    row = _find(out, query_id="centre", evidence_source="network")
+    assert row["candidate_id"] == _IK_A
+    assert row["reference_id"] == "rA"  # library entry id, not the InChIKey
+
+
+def test_network_row_carries_candidate_precursor_mz_and_smiles() -> None:
+    edges = _edges([("s", "centre", 0.9)])
+    matches = _matches([_match("s", "rA", score=0.9, inchikey=_IK_A)]).with_columns(
+        pl.lit(180.0634).alias("reference_precursor_mz"),
+        pl.lit("CC(=O)OC1=CC=CC=C1C(=O)O").alias("smiles"),
+    )
+    out = propagate_annotations(edges, matches)
+    row = _find(out, query_id="centre", evidence_source="network")
+    assert row["reference_precursor_mz"] == pytest.approx(180.0634)
+    assert row["smiles"] == "CC(=O)OC1=CC=CC=C1C(=O)O"
+
+
 # ---------------------------------------------------------------------------
 # Schema stability and preservation of original values
 # ---------------------------------------------------------------------------
