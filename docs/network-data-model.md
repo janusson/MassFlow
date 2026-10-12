@@ -106,6 +106,9 @@ inconsistent hand-written id is rejected.
 - `MolecularGraph.to_relationship_jsonl()` streams one edge per line for large
   graphs.
 - Documents carry a `schema_version`; an incompatible major version is rejected.
+  The current document version is `1.1` (additive over `1.0`: the L5 ambiguity
+  fields on `NetworkContext` / `MolecularFamily`); 1.x readers accept 1.x
+  documents.
 - File writes go through the I/O boundary:
   `MassFlow.io.save_molecular_graph(graph, path)` /
   `MassFlow.io.load_molecular_graph(path)`.
@@ -197,6 +200,12 @@ network-inferred annotations from direct, calibrated seed annotations
 * A component (`MassFlow.network.families.connected_components`) with at least one
   direct, calibrated seed whose `q_value <= context_seed_q_threshold` gets a
   `NetworkContext` (descriptive `label`, member and seed ids).
+* **Conflicting seeds are surfaced, never silently dropped.** When a component's
+  usable seeds disagree on the label, the deterministic majority (lexicographic
+  tie-break) still wins, and `NetworkContext.is_ambiguous` is `True` with
+  `conflicting_labels` listing the sorted non-winning labels (empty otherwise);
+  `MolecularFamily` inherits both. These fields are descriptive and carry no
+  confidence.
 * Each unseeded query node in that component gets an `AnnotationInference`
   (`status="network_inferred"`) recording the supporting seeds and its incident
   edges.

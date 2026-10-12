@@ -482,8 +482,9 @@ typed edges unified as the discriminated `Relationship`; and a data-only,
 lossless-JSON `MolecularGraph` — plus the experimental stages built on it:
 spectral networking (`candidates`, `spectral`, `build`), LC-MS feature identity
 (`features`), ion-identity/adduct links (`ion_identity`), neutral-loss
-**hypotheses** (`chemical`), non-circular L5 contextualization (`context`),
-deterministic molecular families (`families`), and the offline, read-only
+**hypotheses** (`chemical`), non-circular L5 contextualization with explicit,
+non-statistical ambiguity flagging (`context`), deterministic molecular families
+(`families`), and the offline, read-only
 `LocalGraphSource` MSMCP interface (`msmcp`).
 
 It is **disabled by default** (`network.enabled: false`) and exposed through the

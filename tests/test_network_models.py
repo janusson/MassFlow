@@ -21,6 +21,7 @@ from MassFlow.network import (
     FdrAssessment,
     GraphNode,
     IonIdentityRelationship,
+    NetworkContext,
     NeutralLoss,
     RelationshipProvenance,
     SpectralRelationship,
@@ -174,6 +175,49 @@ def test_fdr_assessment_bounds() -> None:
         FdrAssessment(q_value=1.5, calibrated=True, library_size=10)
     with pytest.raises(ValidationError):
         FdrAssessment(q_value=0.01, calibrated=True, library_size=-1)
+
+
+def _context_payload(**overrides: object) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "component_id": library_node_id(1, "component"),
+        "member_node_ids": (library_node_id(1, "member"),),
+        "member_count": 1,
+        "label": "X",
+        "seed_annotation_ids": ("ann1:" + "0" * 32,),
+        "provenance": _provenance("family_context"),
+    }
+    payload.update(overrides)
+    return payload
+
+
+def test_network_context_ambiguity_defaults_to_unambiguous() -> None:
+    context = NetworkContext(**_context_payload())
+    assert context.is_ambiguous is False
+    assert context.conflicting_labels == ()
+
+
+def test_network_context_accepts_consistent_ambiguity() -> None:
+    context = NetworkContext(
+        **_context_payload(is_ambiguous=True, conflicting_labels=("Y",))
+    )
+    assert context.is_ambiguous is True
+    assert context.conflicting_labels == ("Y",)
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"is_ambiguous": True, "conflicting_labels": ()},
+        {"is_ambiguous": False, "conflicting_labels": ("Y",)},
+        {"is_ambiguous": True, "conflicting_labels": ("X",)},
+        {"is_ambiguous": True, "conflicting_labels": ("Y", "Y")},
+    ],
+)
+def test_network_context_rejects_inconsistent_ambiguity(
+    overrides: dict[str, object],
+) -> None:
+    with pytest.raises(ValidationError):
+        NetworkContext(**_context_payload(**overrides))
 
 
 def test_annotation_evidence_from_search_result() -> None:

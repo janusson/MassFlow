@@ -1,6 +1,6 @@
 # Network-Aware MS Annotation — Frozen Design Specification
 
-> **STATUS: FROZEN DESIGN SPECIFICATION (Spec 1.7, 2026-10-05).**
+> **STATUS: FROZEN DESIGN SPECIFICATION (Spec 1.8, 2026-10-11).**
 >
 > **Amendments (record-keeping only; no design change).**
 >
@@ -37,6 +37,16 @@
 >   `MassFlow.network.chemical` and `docs/network-data-model.md`; and the stale
 >   "seeds wired in a future phase" notes are corrected —
 >   `MassFlow.network.context.seeds_from_results` (P6.1) performs that projection.
+> * **1.8 (2026-10-11):** Stage 5 contextualization now surfaces **conflicting
+>   seed labels** explicitly. `NetworkContext` (and, by inheritance,
+>   `MolecularFamily`) gains the descriptive, non-statistical fields
+>   `is_ambiguous: bool` and `conflicting_labels: tuple[str, ...]`. When a
+>   component's direct, calibrated seeds disagree, the winning label remains the
+>   deterministic majority (lexicographic tie-break) but the disagreement is
+>   recorded instead of silently discarded, so an ambiguous cluster can be
+>   reviewed. This is **descriptive only** — no re-ranking, no q-value/score/tier,
+>   and the §7 confidence-governance invariants are unchanged. Graph document
+>   `schema_version` advances to `1.1` (additive; 1.x readers stay compatible).
 >
 > All plan phases P1–P6 are now implemented; community detection, SQLite graph
 > persistence, GraphML/Cytoscape/FBMN, and visualization remain deferred.
@@ -45,8 +55,8 @@
 > [`docs/CAPABILITY_MATRIX.md`](CAPABILITY_MATRIX.md), **the capability matrix
 > governs** until it is amended.
 >
-> **Change control.** Frozen 2026-10-01; amended to Spec 1.7 (2026-10-05).
-> Amendments require a numbered revision (Spec 1.8, 1.9, …) plus a changelog
+> **Change control.** Frozen 2026-10-01; amended to Spec 1.8 (2026-10-11).
+> Amendments require a numbered revision (Spec 1.9, 2.0, …) plus a changelog
 > entry. Any change to the confidence model (§7) requires re-review against
 > `CAPABILITY_MATRIX.md` §1.
 
@@ -275,6 +285,10 @@ evidence.
 - A family inherits a **descriptive label** from its calibrated members, stored
   as **L5 `NetworkContext`** (`component_id`, `seed_annotation_ids`,
   `member_count`, `label`, `label_source`).
+- When a component's calibrated seeds disagree on the label, the deterministic
+  majority (lexicographic tie-break) wins, and the **conflict is surfaced** via the
+  descriptive L5 fields `is_ambiguous` / `conflicting_labels` — never silently
+  discarded. This is informational only and is inherited by `MolecularFamily`.
 - **Anti-circularity rules (binding):**
   1. Network context **cannot** write to `FdrAssessment`/`AnnotationEvidence`.
   2. Inferred annotations are a **distinct type** `AnnotationInference`
@@ -290,7 +304,8 @@ evidence.
 **API concept.** `contextualize_annotations(graph, cfg) -> list[NetworkContext]`.
 
 **New data-layer types (added with P5, same L1–L5 discipline):**
-`NetworkContext`, `AnnotationInference`.
+`NetworkContext`, `AnnotationInference`. (Spec 1.8: `NetworkContext` also carries
+`is_ambiguous` / `conflicting_labels`.)
 
 ---
 

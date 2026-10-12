@@ -90,7 +90,7 @@ Status legend: **✅ Stable** (implemented, tested, part of the v0.1 contract) �
 | TUI (`massflow tui`) | `tui/` | Requires `[tui]` extra |
 | `massflow watch` | `cli.py` | Requires `[watch]` extra |
 | `massflow convert` (ProteoWizard `msconvert` wrapper) | `convert.py`, `cli.py` | External binary required; see contradiction C-6 |
-| `massflow network build/analyse/export` (post-1.0 Network-Aware MS Annotation) | `network/`, `cli.py`, `io.py` (`save_molecular_graph`/`load_molecular_graph`/`save_families_jsonl`), `config.py` (`NetworkConfig`) | P1–P6 implemented and **disabled by default** (`network.enabled: false`): spectral / feature-identity / ion-identity / chemical networking, L5 annotation contextualization, molecular families, and an offline read-only `LocalGraphSource` MSMCP interface. No edge carries q-value/p-value/FDR; no community detection, GraphML/Cytoscape/FBMN, visualization, or network-aware scoring |
+| `massflow network build/analyse/export` (post-1.0 Network-Aware MS Annotation) | `network/`, `cli.py`, `io.py` (`save_molecular_graph`/`load_molecular_graph`/`save_families_jsonl`), `config.py` (`NetworkConfig`) | P1–P6 implemented and **disabled by default** (`network.enabled: false`): spectral / feature-identity / ion-identity / chemical networking, L5 annotation contextualization (with explicit, non-statistical ambiguity flagging: `is_ambiguous`/`conflicting_labels`), molecular families, and an offline read-only `LocalGraphSource` MSMCP interface. No edge carries q-value/p-value/FDR; no community detection, GraphML/Cytoscape/FBMN, visualization, or network-aware scoring |
 
 ### 2.3 Partially implemented (🟡)
 

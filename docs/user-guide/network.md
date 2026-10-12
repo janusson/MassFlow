@@ -94,7 +94,10 @@ With `--config`, the annotation pipeline is run on the same experimental input;
 its **calibrated, high-confidence** library hits (q-value ≤
 `context_seed_q_threshold`) seed L5 `NetworkContext` and `AnnotationInference`
 records. Inferences are a separate collection — they are **never** placed in the
-target-decoy pool, and they never change a q-value.
+target-decoy pool, and they never change a q-value. When a component's seeds
+disagree on the label, the deterministic majority still wins but the conflict is
+recorded (`NetworkContext.is_ambiguous` / `conflicting_labels`, inherited by
+`MolecularFamily`) so an ambiguous cluster can be reviewed.
 
 ### Export families
 
@@ -129,6 +132,9 @@ Statistical confidence is exposed **only** through `annotations()` (sourced from
 - No edge, context, inference, or family carries a q-value, score, or tier.
 - Network context and inferred annotations can never modify `FdrAssessment` or
   `AnnotationEvidence`.
+- Conflicting high-confidence seeds on a shared cluster are surfaced explicitly
+  (`is_ambiguous` / `conflicting_labels`); they are never silently discarded and
+  never re-rank a primary hit.
 - Uncalibrated runs (`fdr_uncalibrated`) produce **no** contexts — their q-values
   are the `1/N` rank bound, not an FDR estimate.
 - Chemical relationships are explicit hypotheses, never structural claims.

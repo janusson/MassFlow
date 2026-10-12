@@ -117,6 +117,21 @@ def test_family_inherits_label_from_context() -> None:
     assert all(family.seed_annotation_ids == () for family in unlabelled)
 
 
+def test_family_inherits_ambiguity_from_context() -> None:
+    base = _graph()
+    seeds = [
+        AnnotationSeed(node_id=base.nodes[0].node_id, label="X", q_value=0.001),
+        AnnotationSeed(node_id=base.nodes[1].node_id, label="Y", q_value=0.001),
+    ]
+    result = contextualize(base, seeds, _cfg())
+    analysed = apply_context(base, result.contexts, result.inferences)
+
+    family = next(f for f in detect_families(analysed) if f.label is not None)
+    assert family.label == "X"
+    assert family.is_ambiguous is True
+    assert family.conflicting_labels == ("Y",)
+
+
 def test_detect_families_is_deterministic() -> None:
     graph = _graph()
     first = detect_families(graph)

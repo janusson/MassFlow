@@ -280,6 +280,21 @@ def contextualize(
         label = min(
             label_counts, key=lambda candidate: (-label_counts[candidate], candidate)
         )
+        # Conflicting seed labels are surfaced (never discarded silently) so an
+        # ambiguous cluster can be reviewed. This is descriptive only: the winning
+        # label is still the deterministic majority and no confidence is altered.
+        conflicting_labels = tuple(
+            sorted(candidate for candidate in label_counts if candidate != label)
+        )
+        if conflicting_labels:
+            logger.debug(
+                "Ambiguous component %s: seeds disagree (%d distinct labels); "
+                "labelled %r, conflicting %s.",
+                component.component_id,
+                len(label_counts),
+                label,
+                conflicting_labels,
+            )
 
         seed_ids = tuple(
             dict.fromkeys(
@@ -294,6 +309,8 @@ def contextualize(
                 member_count=len(component.member_ids),
                 label=label,
                 seed_annotation_ids=seed_ids,
+                is_ambiguous=bool(conflicting_labels),
+                conflicting_labels=conflicting_labels,
                 provenance=provenance,
             )
         )

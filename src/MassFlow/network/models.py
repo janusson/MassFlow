@@ -91,7 +91,10 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 #: Version of the molecular-graph document schema written by this module.
-SCHEMA_VERSION = "1"
+#: 1.1 adds the descriptive L5 ambiguity fields (``is_ambiguous`` /
+#: ``conflicting_labels``) on ``NetworkContext`` / ``MolecularFamily``; the change
+#: is additive, so a 1.x reader still accepts a 1.0 document (and vice versa).
+SCHEMA_VERSION = "1.1"
 
 #: Version of the deterministic identifier scheme (embedded in every id prefix).
 _ID_SCHEME_VERSION = 1
@@ -1215,6 +1218,20 @@ class NetworkContext(NetworkModel):
     label_source: Literal["seed_annotation"] = Field(
         "seed_annotation", description="Where the label came from."
     )
+    is_ambiguous: bool = Field(
+        False,
+        description=(
+            "True when the component's usable seeds disagree on the label (more "
+            "than one distinct label). Descriptive only; carries no confidence."
+        ),
+    )
+    conflicting_labels: tuple[str, ...] = Field(
+        default_factory=tuple,
+        description=(
+            "Sorted non-winning seed labels present in the component; empty when "
+            "the component is not ambiguous."
+        ),
+    )
     seed_annotation_ids: tuple[str, ...] = Field(
         ...,
         min_length=1,
@@ -1230,6 +1247,17 @@ class NetworkContext(NetworkModel):
             raise ValueError("member_count must equal the number of member_node_ids.")
         if len(set(self.member_node_ids)) != len(self.member_node_ids):
             raise ValueError("member_node_ids must be unique.")
+        if self.is_ambiguous != bool(self.conflicting_labels):
+            raise ValueError(
+                "is_ambiguous must be True exactly when conflicting_labels is "
+                "non-empty."
+            )
+        if len(set(self.conflicting_labels)) != len(self.conflicting_labels):
+            raise ValueError("conflicting_labels must be unique.")
+        if self.label in self.conflicting_labels:
+            raise ValueError(
+                "the chosen label must not also appear in conflicting_labels."
+            )
         return self
 
 
@@ -1297,6 +1325,20 @@ class MolecularFamily(NetworkModel):
     label_source: Optional[Literal["seed_annotation"]] = Field(
         None, description="Source of the label, when present."
     )
+    is_ambiguous: bool = Field(
+        False,
+        description=(
+            "True when the family's inherited context had conflicting seed "
+            "labels. Descriptive only; carries no confidence."
+        ),
+    )
+    conflicting_labels: tuple[str, ...] = Field(
+        default_factory=tuple,
+        description=(
+            "Sorted non-winning seed labels for the family's component; empty when "
+            "the family is not ambiguous."
+        ),
+    )
     provenance: RelationshipProvenance = Field(
         ..., description="How this family was produced."
     )
@@ -1309,6 +1351,17 @@ class MolecularFamily(NetworkModel):
             raise ValueError("member_node_ids must be unique.")
         if len(set(self.edge_ids)) != len(self.edge_ids):
             raise ValueError("edge_ids must be unique.")
+        if self.is_ambiguous != bool(self.conflicting_labels):
+            raise ValueError(
+                "is_ambiguous must be True exactly when conflicting_labels is "
+                "non-empty."
+            )
+        if len(set(self.conflicting_labels)) != len(self.conflicting_labels):
+            raise ValueError("conflicting_labels must be unique.")
+        if self.label is not None and self.label in self.conflicting_labels:
+            raise ValueError(
+                "the chosen label must not also appear in conflicting_labels."
+            )
         return self
 
 

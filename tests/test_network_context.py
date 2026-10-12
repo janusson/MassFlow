@@ -200,6 +200,44 @@ def test_majority_label_wins_and_ties_break_lexicographically() -> None:
     assert tie.contexts[0].label == "X"
 
 
+def test_conflicting_seed_labels_are_surfaced_not_discarded() -> None:
+    """Two high-confidence seeds disagree on a shared component: the conflict is
+    made explicit, but the winning label stays the deterministic majority."""
+    graph = _graph()
+    result = contextualize(
+        graph, _seeds_for(graph, [(0, "Y", 0.001), (1, "X", 0.001)]), _cfg()
+    )
+
+    context = result.contexts[0]
+    assert context.label == "X"  # lexicographic tie-break
+    assert context.is_ambiguous is True
+    assert context.conflicting_labels == ("Y",)
+
+
+def test_agreeing_seed_labels_are_not_ambiguous() -> None:
+    graph = _graph()
+    result = contextualize(
+        graph, _seeds_for(graph, [(0, "X", 0.001), (1, "X", 0.001)]), _cfg()
+    )
+
+    context = result.contexts[0]
+    assert context.is_ambiguous is False
+    assert context.conflicting_labels == ()
+
+
+def test_ambiguity_records_do_not_carry_confidence() -> None:
+    """The ambiguity fields are descriptive and must not introduce confidence."""
+    graph = _graph()
+    result = contextualize(
+        graph, _seeds_for(graph, [(0, "Y", 0.001), (1, "X", 0.001)]), _cfg()
+    )
+    context = result.contexts[0]
+    assert isinstance(context.is_ambiguous, bool)
+    assert all(isinstance(label, str) for label in context.conflicting_labels)
+    for field in ("q_value", "p_value", "fdr", "confidence", "score"):
+        assert field not in NetworkContext.model_fields
+
+
 def test_seed_for_unknown_node_is_ignored() -> None:
     graph = _graph()
     seed = AnnotationSeed(
@@ -280,6 +318,19 @@ def test_apply_context_round_trips_and_revalidates() -> None:
     assert restored.to_dict() == updated.to_dict()
     assert len(restored.network_contexts) == 1
     assert len(restored.inferences) == 1
+
+
+def test_ambiguous_context_round_trips_losslessly() -> None:
+    graph = _graph()
+    result = contextualize(
+        graph, _seeds_for(graph, [(0, "Y", 0.001), (1, "X", 0.001)]), _cfg()
+    )
+    updated = apply_context(graph, result.contexts, result.inferences)
+
+    restored = MolecularGraph.from_json(updated.to_json())
+    restored_context = restored.network_contexts[0]
+    assert restored_context.is_ambiguous is True
+    assert restored_context.conflicting_labels == ("Y",)
 
 
 def test_graph_rejects_context_with_unknown_member() -> None:

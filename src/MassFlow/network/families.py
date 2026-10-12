@@ -195,6 +195,8 @@ def detect_families(
                 ),
                 label=context.label if context else None,
                 label_source=context.label_source if context else None,
+                is_ambiguous=context.is_ambiguous if context else False,
+                conflicting_labels=(context.conflicting_labels if context else ()),
                 provenance=provenance,
             )
         )
