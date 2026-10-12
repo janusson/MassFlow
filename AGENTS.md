@@ -179,7 +179,7 @@ The 5-ppm tolerance is **physically mandated** and **not configurable**:
 
 - **Supported direct inputs**: mzML, mzXML, MGF, MSP, SQLite (`.db`, `.sqlite`).
 - **Explicitly rejected**: vendor raw formats (`.raw`, `.d`, `.wiff`, `.lcd`, `.t2d`, `.baf`). Do not add internal conversion logic.
-- **Stable outputs**: CSV and mzTab-M. FBMN (`consensus_spectra.mgf`), GraphML, Cytoscape, and `massflow visualize` are **declared non-goals** — not implemented and not planned; see `docs/CAPABILITY_MATRIX.md` §2.4 and §7 (D-3).
+- **Stable outputs**: CSV and mzTab-M. FBMN (`consensus_spectra.mgf`), Cytoscape, `massflow visualize`, and GraphML *as the core interface* remain **declared non-goals** — not the product surface. An **experimental, opt-in, Python-API-only** graph export (`MassFlow.network.export.export_network_graph`) writes GraphML (optional `graph` extra) or dependency-free JSON node-link; it is not a CLI surface. See `docs/CAPABILITY_MATRIX.md` §2.2/§2.4 and §7 (D-3).
 
 ---
 
@@ -190,7 +190,7 @@ The 5-ppm tolerance is **physically mandated** and **not configurable**:
 | Status | Features | Constraint |
 |---|---|---|
 | **v0.1 Stable** | `cosine`, `modified_cosine`, `massflow annotate`, `massflow db`, CSV/mzTab-M export, SQLite libraries | Must not regress; all `@pytest.mark.core` tests must pass |
-| **Experimental** | `spec2vec`, `ms2deepscore`, `consensus`, `cascade`, `massflow network` (post-1.0 Network-Aware MS Annotation; disabled by default), terminal browser | Can evolve freely; must not break stable paths |
+| **Experimental** | `spec2vec`, `ms2deepscore`, `consensus`, `cascade`, `massflow network` (post-1.0 Network-Aware MS Annotation; disabled by default; includes opt-in propagation + GraphML/JSON graph export via the API), terminal browser | Can evolve freely; must not break stable paths |
 
 ### 6.2 Module Boundaries
 

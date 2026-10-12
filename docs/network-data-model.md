@@ -5,9 +5,11 @@
 > vocabulary. Stages 1–6 — **spectral networking**, **feature identity**,
 > **ion-identity (adduct)** relationships, **chemical (neutral-loss)** hypotheses,
 > **annotation contextualization** (L5 `NetworkContext` / `AnnotationInference`),
-> and **molecular families** (`MolecularFamily`) — plus the offline
+> **molecular families** (`MolecularFamily`) — plus the offline
 > **`LocalGraphSource`** interface shipped experimentally in P1–P6 and are opt-in
-> (`network.enabled`, disabled by default). Community detection, a networked MCP
+> (`network.enabled`, disabled by default). A DataFrame-oriented (Polars) one-hop
+> propagation scaffold (`MassFlow.network.propagation`, Python API only) is also
+> experimental. Community detection, a networked MCP
 > server, clustering, FBMN, GraphML, and visualization are **not** implemented.
 
 ## Purpose

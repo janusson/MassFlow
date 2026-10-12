@@ -90,7 +90,8 @@ Status legend: **✅ Stable** (implemented, tested, part of the v0.1 contract) �
 | TUI (`massflow tui`) | `tui/` | Requires `[tui]` extra |
 | `massflow watch` | `cli.py` | Requires `[watch]` extra |
 | `massflow convert` (ProteoWizard `msconvert` wrapper) | `convert.py`, `cli.py` | External binary required; see contradiction C-6 |
-| `massflow network build/analyse/export` (post-1.0 Network-Aware MS Annotation) | `network/`, `cli.py`, `io.py` (`save_molecular_graph`/`load_molecular_graph`/`save_families_jsonl`), `config.py` (`NetworkConfig`) | P1–P6 implemented and **disabled by default** (`network.enabled: false`): spectral / feature-identity / ion-identity / chemical networking, L5 annotation contextualization (with explicit, non-statistical ambiguity flagging: `is_ambiguous`/`conflicting_labels`), molecular families, and an offline read-only `LocalGraphSource` MSMCP interface. No edge carries q-value/p-value/FDR; no community detection, GraphML/Cytoscape/FBMN, visualization, or network-aware scoring |
+| `massflow network build/analyse/export` (post-1.0 Network-Aware MS Annotation) | `network/`, `cli.py`, `io.py` (`save_molecular_graph`/`load_molecular_graph`/`save_families_jsonl`), `config.py` (`NetworkConfig`) | P1–P6 implemented and **disabled by default** (`network.enabled: false`): spectral / feature-identity / ion-identity / chemical networking, L5 annotation contextualization (with explicit, non-statistical ambiguity flagging: `is_ambiguous`/`conflicting_labels`), molecular families, and an offline read-only `LocalGraphSource` MSMCP interface. No edge carries q-value/p-value/FDR; no community detection, FBMN, visualization, or network-aware scoring. GraphML/Cytoscape **as the core interface** remain non-goals (§2.4/D-3); an experimental interoperability export exists (§2.2 next row). A DataFrame-oriented (Polars) one-hop propagation scaffold (`MassFlow.network.propagation`: `validate_network_edges`, `propagate_annotations`, `NetworkPropagationConfig`) is additionally available as a **Python API only** (no CLI, no graph persistence) — it preserves direct-match scores/q-values/decoys unchanged, adds network columns/hypotheses, and re-ranks nothing (`tests/test_network.py`) |
+| Network annotation export for visualization (`MassFlow.network.export`: `export_network_annotations` unified tiered consensus table; `export_network_graph` → GraphML or JSON node-link) | `network/export.py`, `io.py` (`save_network_graph`), `pyproject.toml` (`graph` extra), `scripts/benchmark_network.py` | Experimental, **Python-API-only** (no CLI, no default-pipeline integration). Tiers (Tier 1 direct q≤0.01 / Tier 2 network-supported / Tier 3 conflicted-or-low-support) are descriptive — no q-value/score is re-derived. Writes go through `io.py`; GraphML needs the optional `graph` extra (networkx, already transitive via matchms), JSON is dependency-free. This is an **interchange utility**, not the core interface and not `massflow visualize` (both remain non-goals, §2.4/D-3). `tests/test_network_export.py` |
 
 ### 2.3 Partially implemented (🟡)
 
@@ -120,6 +121,14 @@ Status legend: **✅ Stable** (implemented, tested, part of the v0.1 contract) �
 > and every "planned/aspirational" claim has been removed. Programmatic graph
 > interchange is CSV/mzTab-M (stable) plus the experimental `MolecularGraph`
 > JSON/JSONL (`massflow network build/analyse/export`, §2.2).
+>
+> **D-3 refined (2026-10-12) — experimental export only.** An **opt-in,
+> Python-API-only** graph export now exists (§2.2, `MassFlow.network.export`:
+> `export_network_annotations`, `export_network_graph`). It is an
+> *interchange utility* for visualization (GraphML via the optional `graph`
+> extra, or dependency-free JSON node-link) and changes nothing about the
+> non-goals: GraphML/Cytoscape **as the core interface** and `massflow
+> visualize` remain unimplemented and unplanned.
 
 ### 2.5 Planned only (📋)
 

@@ -106,6 +106,11 @@ __all__ = [
     "apply_context",
     "seeds_from_results",
     "LocalGraphSource",
+    "NetworkPropagationConfig",
+    "validate_network_edges",
+    "propagate_annotations",
+    "export_network_annotations",
+    "export_network_graph",
 ]
 
 # Lazily-resolved algorithmic entry points (kept out of the import graph so the
@@ -138,6 +143,26 @@ _LAZY_ATTRIBUTES: dict[str, tuple[str, str]] = {
     "seeds_from_results": ("MassFlow.network.context", "seeds_from_results"),
     "LocalGraphSource": ("MassFlow.network.msmcp", "LocalGraphSource"),
     "build_spectral_graph": ("MassFlow.network.build", "build_spectral_graph"),
+    "NetworkPropagationConfig": (
+        "MassFlow.network.propagation",
+        "NetworkPropagationConfig",
+    ),
+    "validate_network_edges": (
+        "MassFlow.network.propagation",
+        "validate_network_edges",
+    ),
+    "propagate_annotations": (
+        "MassFlow.network.propagation",
+        "propagate_annotations",
+    ),
+    "export_network_annotations": (
+        "MassFlow.network.export",
+        "export_network_annotations",
+    ),
+    "export_network_graph": (
+        "MassFlow.network.export",
+        "export_network_graph",
+    ),
 }
 
 

@@ -695,3 +695,53 @@ def save_families_jsonl(graph: "MolecularGraph", output_path: Path) -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(graph.to_family_jsonl(), encoding="utf-8")
     logger.info(f"Molecular families saved to {output_path}")
+
+
+def save_network_graph(
+    graph: Any, output_path: Path, *, format: str = "graphml"
+) -> None:
+    """
+    Write a molecular-network graph document to GraphML or JSON node-link.
+
+    This is the file-system boundary for :mod:`MassFlow.network.export`
+    (``AGENTS.md`` §6.2): the network package builds the graph structure and
+    this function performs the actual write.
+
+    Parameters
+    ----------
+    graph : Any
+        For ``format="json"``, a JSON-serializable node-link mapping. For
+        ``format="graphml"``, a NetworkX graph.
+    output_path : Path
+        Destination path. Parent directories are created if needed.
+    format : {"graphml", "json"}
+        Serialization format.
+
+    Raises
+    ------
+    ValueError
+        If ``format`` is not ``"graphml"`` or ``"json"``.
+    ImportError
+        If ``format="graphml"`` and ``networkx`` is unavailable.
+    """
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if format == "json":
+        output_path.write_text(
+            json.dumps(graph, indent=2, sort_keys=False) + "\n", encoding="utf-8"
+        )
+    elif format == "graphml":
+        try:
+            import networkx as nx
+        except ImportError as exc:  # pragma: no cover - networkx ships with matchms
+            raise ImportError(
+                "GraphML network export requires networkx. Install it with "
+                "`pip install massflow[graph]` (or `uv sync --extra graph`)."
+            ) from exc
+        nx.write_graphml(graph, str(output_path))
+    else:
+        raise ValueError(
+            f"Unsupported network graph format: {format!r}. Use 'graphml' or 'json'."
+        )
+    logger.info(f"Network graph saved to {output_path}")

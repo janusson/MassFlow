@@ -47,6 +47,34 @@
 >   reviewed. This is **descriptive only** — no re-ranking, no q-value/score/tier,
 >   and the §7 confidence-governance invariants are unchanged. Graph document
 >   `schema_version` advances to `1.1` (additive; 1.x readers stay compatible).
+> * **1.9 (2026-10-12):** a **DataFrame-oriented one-hop propagation scaffold**
+>   is added as an independent post-search stage, `MassFlow.network.propagation`
+>   (`validate_network_edges`, `propagate_annotations`,
+>   `NetworkPropagationConfig`). It consumes an explicit edge table and the
+>   library `SearchResult` table as Polars DataFrames and returns a superset with
+>   additional **network-derived** columns; direct-match fields are preserved
+>   verbatim and network-derived candidates are a **distinct** hypothesis
+>   (`evidence_source == "network"`, null direct fields), never a library
+>   identification and never re-ranked. It is Python-API-only (no CLI, no graph
+>   persistence) and preserves §7 invariants unchanged. `scripts/benchmark_network.py`
+>   is extended to compare graph backends (NetworkX / igraph / SciPy CSR / custom
+>   CSR) for construction, traversal, one-hop voting, and a memory proxy, writing
+>   a JSON report to `.benchmarks/`; SciPy CSR was selected as the propagation
+>   backend on the recorded evidence. No new required dependency.
+> * **1.10 (2026-10-12):** a **unified export** layer is added at
+>   `MassFlow.network.export` (`export_network_annotations`,
+>   `export_network_graph`). `export_network_annotations` merges direct matches
+>   and propagated hypotheses into one deterministically ordered consensus table
+>   with descriptive `confidence_tier`s (Tier 1 direct q≤0.01; Tier 2
+>   network-supported; Tier 3 conflicted/low-support), preserving all provenance
+>   columns and never re-deriving a q-value/score. `export_network_graph` writes
+>   a node/edge visualization document with embedded node attributes (annotation
+>   status, reference id, confidence tier, primary score) as **GraphML**
+>   (optional `graph` extra; networkx, already transitive via matchms) or
+>   **dependency-free JSON node-link**, delegating file writes to
+>   `MassFlow.io.save_network_graph`. This is an **opt-in, Python-API-only
+>   interoperability export**: GraphML/Cytoscape *as the core interface* and
+>   `massflow visualize` remain non-goals (§14 unchanged). No CLI surface.
 >
 > All plan phases P1–P6 are now implemented; community detection, SQLite graph
 > persistence, GraphML/Cytoscape/FBMN, and visualization remain deferred.
@@ -164,9 +192,10 @@ MassFlow/network/            # v1.0 data layer, promoted from network.py to a pa
   ion_identity.py            # Stage 3 — same-molecule edges
   chemical.py                # Stage 4 — related-molecule hypotheses
   context.py                 # Stage 5 — contextualization (L5, non-statistical)
+  propagation.py             # one-hop DataFrame propagation (Python API, experimental)
+  export.py                  # unified tiered annotation table + GraphML/JSON graph export (Python API, experimental)
   families.py                # Stage 6 — family analysis
   build.py                   # orchestration: results -> MolecularGraph
-  export.py                  # machine-readable export (delegates writes to io.py)
   msmcp.py                   # Stage 7 — local machine interface
   config.py                  # NetworkConfig (Pydantic; disabled by default)
 ```
@@ -433,7 +462,12 @@ ML toggles are explicit and recorded in provenance.
 | Export | `O(V + E)` | streamed | JSONL for large graphs |
 
 **Defaults:** per-node `top_k` (small) + `min_score`. Log candidate/edge counts.
-Ship an opt-in benchmark (`scripts/benchmark_network.py`, `benchmark`-marked).
+Ship an opt-in benchmark (`scripts/benchmark_network.py`): `--mode spectral`
+measures Stage-1 construction scaling, `--mode backends` compares graph
+representations (NetworkX / igraph / SciPy CSR / custom CSR) for construction,
+traversal, one-hop voting and memory, writing a JSON report to `.benchmarks/`.
+Backend benchmarks additionally run, `benchmark`-marked, under
+`tests/benchmarks/`.
 
 > **Implementation note (P1, §10):** spectral scoring is candidate-driven — each
 > unordered candidate pair is scored once as a bounded single-query search, so no
@@ -497,6 +531,11 @@ benchmark.
 A GNPS cloud clone • internet-scale service as a requirement • GraphML/Cytoscape
 as the core interface • FBMN export • visualization/GUI • network-aware
 *scoring* of annotations • automatic structural elucidation • mandatory ML.
+
+> **Clarification (Spec 1.10).** The GraphML/Cytoscape non-goal concerns the
+> *core product interface*. An experimental, opt-in, **Python-API-only** graph
+> *export* for visualization interchange (`MassFlow.network.export`, GraphML/JSON)
+> is provided; it is not a CLI surface and does not make GraphML the interface.
 
 ---
 

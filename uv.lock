@@ -689,6 +689,9 @@ dependencies = [
 chem = [
     { name = "rdkit" },
 ]
+graph = [
+    { name = "networkx" },
+]
 hnsw = [
     { name = "hnswlib" },
 ]
@@ -729,6 +732,7 @@ requires-dist = [
     { name = "lxml" },
     { name = "matchms", specifier = ">=0.27.0" },
     { name = "ms2deepscore", marker = "extra == 'ml'", specifier = ">=1.0.0" },
+    { name = "networkx", marker = "extra == 'graph'", specifier = ">=3.2" },
     { name = "numpy", specifier = ">=1.26.4" },
     { name = "packaging", specifier = ">=26.0" },
     { name = "polars", specifier = ">=0.20.0" },
@@ -746,7 +750,7 @@ requires-dist = [
     { name = "watchfiles", marker = "extra == 'watch'", specifier = ">=1.1.1" },
     { name = "zarr", specifier = ">=3.2.1" },
 ]
-provides-extras = ["chem", "ml", "hnsw", "watch", "tui"]
+provides-extras = ["chem", "ml", "hnsw", "graph", "watch", "tui"]
 
 [package.metadata.requires-dev]
 dev = [
