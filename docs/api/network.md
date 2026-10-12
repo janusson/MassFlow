@@ -76,9 +76,21 @@ de-duplicates edges keeping the maximum weight.
 * Each candidate's support is `Σ edge_weight × seed_score` over the node's
   seed neighbours (or `Σ edge_weight` when `weight_seed_by_score` is false). The
   score is used as a similarity **magnitude**, never as a probability.
-* A node whose leading candidate holds `< conflict_min_support_share` of the
-  qualifying support (or ties within `conflict_tie_tolerance`) is flagged
-  **conflicted** — every competing candidate is preserved and none is promoted.
+* Support is **unnormalised and degree-dependent**: it is *not* bounded by `1`, and
+  a high-degree hub accumulates more support than a sparsely connected node. The
+  thresholds below are therefore relative to local connectivity, and raw support
+  values must not be compared across nodes of different degree.
+* **Conflict is two distinct rules**, both surfaced through `network_status`:
+    * *Ambiguity (network-only nodes)* — a node whose leading candidate holds
+      `< conflict_min_support_share` of the qualifying support (or ties within
+      `conflict_tie_tolerance`) is flagged `network_conflicted`; every competing
+      candidate is preserved and none is promoted.
+    * *Disagreement (direct nodes)* — a node that already has a direct match is
+      flagged `direct_match_conflict` when a **different** candidate is its leading
+      network-supported candidate, regardless of that candidate's share. The direct
+      assignment is left untouched and still tiers as a direct hit; only the
+      disagreement is surfaced. The asymmetry is deliberate: a direct hit is a real
+      identification, the network candidates are hypotheses.
 * Propagation is **one hop**: derived candidates are never re-used as seeds.
 
 ### Direct identifications vs. network hypotheses
@@ -129,10 +141,13 @@ export_network_graph(edges, table, "network.json", format="json")  # dependency-
 
 ### Graph attributes
 
-Each node carries `annotation_status`, `reference_id`, `confidence_tier`,
-`primary_score`, `evidence_source`, `network_support_score`,
-`supporting_neighbor_count`, and conflict metadata (`network_conflict`,
-`conflict_count`, `conflicting_candidates`). Edge `weight` is preserved. GraphML
-requires the optional `graph` extra; JSON node-link requires nothing extra.
+Each node carries `annotation_status`, `reference_id` (the library entry id;
+`candidate_id` / `candidate_inchikey` hold the compound identity),
+`confidence_tier`, `primary_score` plus `primary_score_kind` (`match_score` — a
+similarity in `[0, 1]` — or `network_support` — an unbounded support sum),
+`evidence_source`, `network_support_score`, `supporting_neighbor_count`, and the
+conflict metadata (`network_conflict`, `conflict_count`, `conflicting_candidates`).
+Edge `weight` is preserved. GraphML requires the optional `graph` extra; JSON
+node-link requires nothing extra.
 
 ::: MassFlow.network.export

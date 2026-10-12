@@ -33,6 +33,30 @@ Scientifically conservative by construction
 * **Network support is a hypothesis, not an identification.** A network-derived
   candidate carries ``evidence_source == "network"``, null direct-match fields,
   and a ``network_status`` that distinguishes it from a direct library hit.
+* **Support is an unnormalised magnitude, not a probability.** A candidate's
+  support is ``Σ edge_weight × seed_score`` over the node's seed neighbours (or
+  ``Σ edge_weight`` when ``weight_seed_by_score`` is false). It is *not* bounded
+  by ``1`` and is **degree-dependent**: a high-degree hub accumulates more
+  support than a sparsely connected node. ``min_support_score`` and
+  ``conflict_min_support_share`` are therefore relative to local connectivity,
+  and raw support values must not be compared across nodes of different degree.
+
+Conflict semantics
+------------------
+Two related but *distinct* conditions are surfaced through ``network_status``:
+
+* **Ambiguity (network-only nodes).** A node with no direct target match whose
+  qualifying support is split — the leading candidate holds less than
+  ``conflict_min_support_share`` of the total, or the top two tie within
+  ``conflict_tie_tolerance`` — is reported as ``network_conflicted`` and *every*
+  competing candidate is preserved (none is promoted).
+* **Disagreement (direct nodes).** A node that already has a direct match is
+  flagged ``direct_match_conflict`` when a *different* candidate is its leading
+  network-supported candidate, independent of that candidate's share. The direct
+  assignment is left untouched (and still tiers as a direct hit); only the
+  disagreement is made visible. This rule is deliberately asymmetric with the
+  ambiguity rule above, because the direct evidence is a real identification
+  while the network candidates are hypotheses.
 
 Canonical edge schema
 ---------------------
