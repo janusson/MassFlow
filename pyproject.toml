@@ -24,8 +24,12 @@ dependencies = [
     # rdkit moved to optional "chem" extra
     "rich>=15.0.0",
     "scikit-learn>=1.8.0",
-    # Pinned for macOS 15 dyld compatibility with matchms transitive dep
-    "scipy>=1.15.0",
+    # scipy 1.15.x resolves to a macOS wheel that will not load on newer macOS
+    # (observed on macOS 27/arm64: `import matchms` fails at dyld time with a
+    # dlopen error from scipy's _spropack extension). Verified fixed at 1.16.3:
+    # `import matchms` succeeds and the full suite passes. matchms 0.33.x caps
+    # scipy below 1.17, so 1.16.3 is the top of the reachable range.
+    "scipy>=1.16.3",
     "typer>=0.25.1",
     "zarr>=3.2.1",
 ]
