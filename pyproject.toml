@@ -24,8 +24,10 @@ dependencies = [
     # rdkit moved to optional "chem" extra
     "rich>=15.0.0",
     "scikit-learn>=1.8.0",
-    # Pinned for macOS 15 dyld compatibility with matchms transitive dep
-    "scipy>=1.15.0",
+    # scipy >=1.16 required: the 1.15.x macOS wheels carry a malformed
+    # __thread_bss section that stricter macOS dyld (>= 26) rejects, which
+    # breaks `import matchms` (its scipy.sparse dependency).
+    "scipy>=1.16.3",
     "typer>=0.25.1",
     "zarr>=3.2.1",
 ]
