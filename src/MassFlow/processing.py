@@ -533,11 +533,18 @@ def process_spectra_batch(
         except (ValueError, TypeError):
             rt = 0.0
 
+        try:
+            pmz = float(s.get("precursor_mz", 0.0))
+            if np.isnan(pmz):
+                pmz = 0.0
+        except (ValueError, TypeError):
+            pmz = 0.0
+
         metadata_rows.append(
             {
                 "batch_index": i,
                 "id": s.get("id"),
-                "precursor_mz": float(s.get("precursor_mz", 0.0)),
+                "precursor_mz": pmz,
                 "retention_time": rt,
                 "charge": charge,
                 "ionmode": s.get("ionmode"),

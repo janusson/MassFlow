@@ -103,6 +103,36 @@ def test_process_spectra_drops_none(processing_config):
     assert len(results) == 1
 
 
+def test_process_spectra_batch_missing_precursor(processing_config):
+    # Missing/string precursor mass values loaded by parsers should not crash
+    # the Polars batch extraction process with ValueError or TypeError.
+    spectra = [
+        Spectrum(
+            mz=np.array([100.0], dtype="float"),
+            intensities=np.array([100.0], dtype="float"),
+            metadata={"id": "spec1", "precursor_mz": "None"},
+        ),
+        Spectrum(
+            mz=np.array([200.0], dtype="float"),
+            intensities=np.array([200.0], dtype="float"),
+            metadata={"id": "spec2", "precursor_mz": None},
+        ),
+        Spectrum(
+            mz=np.array([300.0], dtype="float"),
+            intensities=np.array([300.0], dtype="float"),
+            metadata={"id": "spec3", "precursor_mz": "NaN"},
+        ),
+    ]
+
+    # Process batch should fallback to 0.0 precursor and return them
+    # Ensure they are not filtered out by default threshold
+    processing_config.min_peaks = 1
+    processing_config.noise_threshold = 0.0
+
+    results = processing.process_spectra_batch(spectra, processing_config)
+    assert len(results) == 3
+
+
 @pytest.fixture
 def mock_spectrum():
     return Spectrum(
