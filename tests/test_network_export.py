@@ -321,9 +321,13 @@ def test_json_export_embeds_node_attributes(tmp_path: Path) -> None:
 
     seed = nodes["seed"]
     assert seed["annotation_status"] == "direct_match"
-    assert seed["reference_id"] == _IK_A
+    # ``reference_id`` is the library entry id; the compound identity is exposed
+    # separately as ``candidate_id`` (the full InChIKey here).
+    assert seed["reference_id"] == "rA"
+    assert seed["candidate_id"] == _IK_A
     assert seed["confidence_tier"] == 1
     assert seed["primary_score"] == pytest.approx(0.95)
+    assert seed["primary_score_kind"] == "match_score"
     assert seed["evidence_source"] == "direct"
 
     target = nodes["target"]
@@ -404,7 +408,8 @@ def test_graphml_round_trip(tmp_path: Path) -> None:
 
     seed = graph.nodes["seed"]
     assert seed["annotation_status"] == "direct_match"
-    assert seed["reference_id"] == _IK_A
+    assert seed["reference_id"] == "rA"
+    assert seed["candidate_id"] == _IK_A
     assert int(seed["confidence_tier"]) == 1
     assert float(seed["primary_score"]) == pytest.approx(0.95)
 

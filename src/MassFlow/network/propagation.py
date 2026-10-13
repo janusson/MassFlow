@@ -24,10 +24,12 @@ Scientifically conservative by construction
 * **No probability reinterpretation.** Match scores are used as similarity
   *magnitudes* (documented), never read as probabilities; existing ``q_value`` /
   ``p_value`` semantics are preserved untouched.
-* **Candidate identity.** The compound identity is the full InChIKey when
-  present, otherwise the library ``reference_id`` (a unique per-entry proxy).
-  Names are never used as identity, so structures with similar names are not
-  silently merged.
+* **Candidate identity.** The compound identity is the full (27-character)
+  InChIKey when present, otherwise the library ``reference_id`` (a unique
+  per-entry proxy). A truncated 14-character "skeleton" key is *not* used as
+  identity — it does not distinguish stereoisomers — so such rows fall back to
+  ``reference_id`` (with a one-time warning). Names are never used as identity,
+  so structures with similar names are not silently merged.
 * **Network support is a hypothesis, not an identification.** A network-derived
   candidate carries ``evidence_source == "network"``, null direct-match fields,
   and a ``network_status`` that distinguishes it from a direct library hit.
@@ -50,6 +52,8 @@ import hashlib
 import json
 import logging
 import math
+import re
+from functools import lru_cache
 from typing import Any, Optional
 
 import numpy as np
@@ -261,17 +265,52 @@ def _finite_float(value: Any) -> Optional[float]:
     return number if math.isfinite(number) else None
 
 
+#: Canonical full InChIKey: 14-10-1 uppercase blocks (27 chars). The 14-char
+#: first block ("skeleton") is deliberately *not* accepted as identity: it
+#: collapses stereoisomers and isotopic variants into one candidate.
+_FULL_INCHIKEY_PATTERN = re.compile(r"^[A-Z]{14}-[A-Z]{10}-[A-Z]$")
+
+
+@lru_cache(maxsize=4096)
+def _warn_non_full_inchikey(value: str) -> None:
+    """Log once per distinct value that a non-full InChIKey was ignored."""
+    logger.warning(
+        "Ignoring non-full InChIKey %r as candidate identity; only the 27-char "
+        "full key is stereochemically complete. Falling back to reference_id.",
+        value,
+    )
+
+
+def _is_full_inchikey(value: str) -> bool:
+    """Return whether *value* is a canonical full (27-character) InChIKey."""
+    return _FULL_INCHIKEY_PATTERN.match(value) is not None
+
+
+def _record_min(mapping: dict[str, Any], key: str, value: Any) -> None:
+    """Keep the deterministic smallest non-``None`` *value* seen for *key*."""
+    if value is None:
+        return
+    current = mapping.get(key)
+    if current is None or value < current:
+        mapping[key] = value
+
+
 def _resolve_candidate_id(row: dict[str, Any]) -> Optional[str]:
     """
     Resolve the compound identity of a search-result row.
 
-    The full InChIKey is preferred; otherwise the library ``reference_id`` — a
-    unique per-entry proxy — is used. Names are deliberately never used, so two
-    different structures with similar names are not merged.
+    The *full* (27-character) InChIKey is preferred; otherwise the library
+    ``reference_id`` — a unique per-entry proxy — is used. A non-full InChIKey
+    (e.g. the 14-character skeleton block) is rejected as identity because it
+    merges stereoisomers, and the row falls back to ``reference_id``. Names are
+    deliberately never used, so two different structures with similar names are
+    not merged.
     """
     inchikey = _clean_text(row.get("inchikey"))
     if inchikey is not None:
-        return inchikey
+        if _is_full_inchikey(inchikey):
+            return inchikey
+        _warn_non_full_inchikey(inchikey)
     return _clean_text(row.get("reference_id"))
 
 
@@ -654,6 +693,9 @@ def propagate_annotations(
     seed_scores: dict[tuple[str, str], float] = {}
     candidate_names: dict[str, Optional[str]] = {}
     candidate_inchikeys: dict[str, Optional[str]] = {}
+    candidate_reference_ids: dict[str, str] = {}
+    candidate_precursor_mzs: dict[str, float] = {}
+    candidate_smiles: dict[str, str] = {}
     for row in match_rows:
         node_id = _clean_text(row.get(node_col))
         if node_id is None or node_id not in node_index:
@@ -666,8 +708,19 @@ def propagate_annotations(
         score = _finite_float(row.get("score"))
         if score is None:
             continue
-        candidate_names.setdefault(candidate_id, _clean_text(row.get("reference_name")))
-        candidate_inchikeys.setdefault(candidate_id, _clean_text(row.get("inchikey")))
+        _record_min(
+            candidate_names, candidate_id, _clean_text(row.get("reference_name"))
+        )
+        _record_min(candidate_inchikeys, candidate_id, _clean_text(row.get("inchikey")))
+        _record_min(
+            candidate_reference_ids, candidate_id, _clean_text(row.get("reference_id"))
+        )
+        _record_min(
+            candidate_precursor_mzs,
+            candidate_id,
+            _finite_float(row.get("reference_precursor_mz")),
+        )
+        _record_min(candidate_smiles, candidate_id, _clean_text(row.get("smiles")))
         key = (node_id, candidate_id)
         seed_scores[key] = max(seed_scores.get(key, 0.0), score)
 
@@ -727,6 +780,16 @@ def propagate_annotations(
         share = qualifying[0][1] / total if total > 0 else 0.0
         tie = (qualifying[0][1] - qualifying[1][1]) <= cfg.conflict_tie_tolerance
         return tie or share < cfg.conflict_min_support_share
+
+    def _candidate_metadata(candidate_id: str) -> dict[str, Any]:
+        """Deterministic structure/provenance metadata for a candidate identity."""
+        return {
+            "candidate_name": candidate_names.get(candidate_id),
+            "candidate_inchikey": candidate_inchikeys.get(candidate_id),
+            "reference_id": candidate_reference_ids.get(candidate_id) or candidate_id,
+            "reference_precursor_mz": candidate_precursor_mzs.get(candidate_id),
+            "smiles": candidate_smiles.get(candidate_id),
+        }
 
     output_rows: list[dict[str, Any]] = []
 
@@ -801,8 +864,6 @@ def propagate_annotations(
                     _network_row(
                         node_id=node_id,
                         candidate_id=candidate,
-                        candidate_name=candidate_names.get(candidate),
-                        candidate_inchikey=candidate_inchikeys.get(candidate),
                         support_value=value,
                         neighbour_count=int(
                             neighbour_count[
@@ -821,6 +882,7 @@ def propagate_annotations(
                         conflict=True,
                         conflicting=[c for c in others if c != candidate],
                         rank=rank,
+                        **_candidate_metadata(candidate),
                     )
                 )
         else:
@@ -829,8 +891,6 @@ def propagate_annotations(
                 _network_row(
                     node_id=node_id,
                     candidate_id=candidate,
-                    candidate_name=candidate_names.get(candidate),
-                    candidate_inchikey=candidate_inchikeys.get(candidate),
                     support_value=value,
                     neighbour_count=int(
                         neighbour_count[node_index[node_id], candidate_index[candidate]]
@@ -847,6 +907,7 @@ def propagate_annotations(
                     conflict=False,
                     conflicting=[],
                     rank=1,
+                    **_candidate_metadata(candidate),
                 )
             )
 
@@ -903,6 +964,9 @@ def _network_row(
     candidate_id: str,
     candidate_name: Optional[str],
     candidate_inchikey: Optional[str],
+    reference_id: Optional[str],
+    reference_precursor_mz: Optional[float],
+    smiles: Optional[str],
     support_value: float,
     neighbour_count: int,
     seed_ids: list[str],
@@ -918,8 +982,15 @@ def _network_row(
     output["is_direct_match"] = False
     output["candidate_id"] = candidate_id
     output["candidate_inchikey"] = candidate_inchikey
-    output["reference_id"] = candidate_id
+    # The candidate's *library* reference id and its structure/state are carried
+    # through so a hypothesis keeps the same provenance as a direct hit. The
+    # precursor m/z travels with the candidate but is never used as a hard gate:
+    # network edges (e.g. neutral-loss / chemical edges) may legitimately link
+    # nodes whose precursors differ.
+    output["reference_id"] = reference_id if reference_id is not None else candidate_id
     output["reference_name"] = candidate_name
+    output["reference_precursor_mz"] = reference_precursor_mz
+    output["smiles"] = smiles
     output["network_support_score"] = support_value
     output["supporting_neighbor_count"] = neighbour_count
     output["supporting_seed_ids"] = seed_ids
