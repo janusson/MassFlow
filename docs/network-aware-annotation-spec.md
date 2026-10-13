@@ -1,6 +1,6 @@
 # Network-Aware MS Annotation — Frozen Design Specification
 
-> **STATUS: FROZEN DESIGN SPECIFICATION (Spec 1.8, 2026-10-11).**
+> **STATUS: FROZEN DESIGN SPECIFICATION (Spec 1.10, 2026-10-12).**
 >
 > **Amendments (record-keeping only; no design change).**
 >
@@ -70,21 +70,23 @@
 >   columns and never re-deriving a q-value/score. `export_network_graph` writes
 >   a node/edge visualization document with embedded node attributes (annotation
 >   status, reference id, confidence tier, primary score) as **GraphML**
->   (optional `graph` extra; networkx, already transitive via matchms) or
+>   (optional `graph` extra; NetworkX with a guarded absence path) or
 >   **dependency-free JSON node-link**, delegating file writes to
 >   `MassFlow.io.save_network_graph`. This is an **opt-in, Python-API-only
 >   interoperability export**: GraphML/Cytoscape *as the core interface* and
 >   `massflow visualize` remain non-goals (§14 unchanged). No CLI surface.
 >
-> All plan phases P1–P6 are now implemented; community detection, SQLite graph
-> persistence, GraphML/Cytoscape/FBMN, and visualization remain deferred.
+> All plan phases P1–P6 are now implemented; community detection and SQLite graph
+> persistence remain deferred. FBMN, GraphML/Cytoscape as the core interface,
+> any GraphML CLI surface, and `massflow visualize` remain non-goals. Stable
+> result outputs remain CSV and mzTab-M.
 >
 > **Not a product contract.** Where this document conflicts with
 > [`docs/CAPABILITY_MATRIX.md`](CAPABILITY_MATRIX.md), **the capability matrix
 > governs** until it is amended.
 >
-> **Change control.** Frozen 2026-10-01; amended to Spec 1.8 (2026-10-11).
-> Amendments require a numbered revision (Spec 1.9, 2.0, …) plus a changelog
+> **Change control.** Frozen 2026-10-01; amended to Spec 1.10 (2026-10-12).
+> Amendments require a numbered revision (Spec 1.11, 2.0, …) plus a changelog
 > entry. Any change to the confidence model (§7) requires re-review against
 > `CAPABILITY_MATRIX.md` §1.
 

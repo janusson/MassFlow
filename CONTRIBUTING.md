@@ -273,9 +273,13 @@ For the current pre-0.1 line, the most stable surfaces are:
 
 Features such as terminal browsing, molecular networking (`massflow network`,
 post-1.0), and advanced ML-backed similarity paths should be treated as
-experimental unless explicitly documented otherwise. FBMN export, GraphML
-output, and `massflow visualize` are **declared non-goals** — not implemented
-and not planned (see `docs/CAPABILITY_MATRIX.md` §2.4 and §7 D-3).
+experimental unless explicitly documented otherwise. Stable annotation outputs
+remain CSV and mzTab-M. FBMN export, GraphML/Cytoscape as the core interface,
+any GraphML CLI surface, and `massflow visualize` are **declared non-goals**.
+The experimental, opt-in, Python-API-only
+`MassFlow.network.export.export_network_graph` supports GraphML through the
+optional `graph` extra and dependency-free JSON node-link interchange (see
+`docs/CAPABILITY_MATRIX.md` §2.2/§2.4 and §7 D-3).
 
 ## Code of Conduct
 

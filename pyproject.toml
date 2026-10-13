@@ -46,8 +46,8 @@ hnsw = [
     "hnswlib>=0.8.0",
 ]
 graph = [
-    # GraphML network export backend (MassFlow.network.export). Already provided
-    # transitively by matchms; declared explicitly so the requirement is visible.
+    # Explicit optional GraphML backend (MassFlow.network.export).
+    # JSON node-link export remains available without NetworkX.
     "networkx>=3.2",
 ]
 watch = [

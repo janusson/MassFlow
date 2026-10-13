@@ -3,19 +3,23 @@
 The `MassFlow.network` module defines MassFlow's graph-compatible data layer
 (stable identifiers, graph nodes, LC-MS features, layered annotation evidence,
 typed relationships, provenance, and the data-only `MolecularGraph` container
-with lossless JSON (de)serialization) and the experimental **Stage 1–2
+with lossless JSON (de)serialization) and the experimental **Stage 1–6
 networking** API (candidate generation, `candidates`; LC-MS feature identity,
 `features`; ion-identity / same-molecule links, `ion_identity`; neutral-loss
 hypotheses, `chemical`; deterministic components and family records, `families`;
 non-circular contextualization, `context`; offline read-only interface, `msmcp`;
 spectral edges, `spectral`; graph construction, `build`; one-hop annotation
 propagation, `propagation`; unified tiered export + graph serialization,
-`export`; exposed via
-`massflow network build` / `analyse` / `export`, disabled by default).
+`export`). Stages 1–6 are exposed via `massflow network build` / `analyse` /
+`export`, disabled by default. The DataFrame propagation and interchange export
+APIs are opt-in and **Python-API-only**, with no GraphML CLI surface.
 
 Community detection, a networked MCP server, and `RepositoryGraphSource` are
-**deferred** (post-1.0). FBMN, GraphML, and visualization are **declared
-non-goals** — not implemented and not planned. See
+**deferred** (post-1.0). Stable annotation outputs remain CSV and mzTab-M.
+FBMN, GraphML/Cytoscape as the core interface, and `massflow visualize` remain
+**non-goals**. `MassFlow.network.export.export_network_graph` provides
+experimental GraphML (optional `graph` extra) and dependency-free JSON
+node-link interchange. See
 [Network-Aware MS Annotation — Graph Data Model](../network-data-model.md) for
 the architecture, invariants, and the core-vs-deferred split.
 

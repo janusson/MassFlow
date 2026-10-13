@@ -127,10 +127,13 @@ uv run massflow convert --input data/raw_files/ --output data/mzml_files/
 ## Network Visualization (non-goal)
 
 !!! warning "Not implemented — declared non-goal"
-    GraphML/Cytoscape export and the `massflow visualize` command are
-    **non-goals** (D-3 resolved 2026-10-05): they do not exist and are not
-    planned. Molecular *networking* itself ships experimentally as
-    `massflow network build/analyse/export` (JSON/JSONL `MolecularGraph`), not
-    as GraphML. See [docs/index.md](../index.md) (Stable vs. Experimental), the
+    GraphML/Cytoscape as the core interface, FBMN export, any GraphML CLI
+    surface, and `massflow visualize` remain **non-goals**. Stable result
+    outputs remain CSV and mzTab-M. Molecular *networking* ships experimentally
+    as `massflow network build/analyse/export` (JSON/JSONL `MolecularGraph`).
+    An **opt-in, Python-API-only** interchange utility,
+    `MassFlow.network.export.export_network_graph`, writes GraphML with the
+    optional `graph` extra or dependency-free JSON node-link; see the
+    [network API](../api/network.md). See [docs/index.md](../index.md), the
     [Network guide](network.md), and `docs/CAPABILITY_MATRIX.md` for the
     authoritative capability list.

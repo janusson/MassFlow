@@ -9,8 +9,11 @@
 > **`LocalGraphSource`** interface shipped experimentally in P1–P6 and are opt-in
 > (`network.enabled`, disabled by default). A DataFrame-oriented (Polars) one-hop
 > propagation scaffold (`MassFlow.network.propagation`, Python API only) is also
-> experimental. Community detection, a networked MCP
-> server, clustering, FBMN, GraphML, and visualization are **not** implemented.
+> experimental. `MassFlow.network.export.export_network_graph` adds experimental,
+> opt-in, Python-API-only GraphML (optional `graph` extra) and dependency-free
+> JSON node-link interchange. Community detection and a networked MCP server
+> remain deferred. FBMN, GraphML/Cytoscape as the core interface, any GraphML CLI
+> surface, and `massflow visualize` remain **non-goals**.
 
 ## Purpose
 
@@ -25,9 +28,10 @@ spectra / features → annotation → pairwise relationships → molecular graph
 — can be built **without** touching the stable annotation path, the meaning of
 existing q-values/FDR, or the float64/retention-time/provenance guarantees.
 
-Nothing on the stable path (`workflow`, `cli`, `database`, `io`) imports this
-module, and this module imports none of them. The graph layer is a pure
-consumer.
+The data models are pure consumers of annotation results. The stable annotation
+workflow does not import the experimental network algorithms. The opt-in
+`massflow network` CLI loads them lazily, and the graph export API delegates
+file writes to `MassFlow.io`.
 
 ## The layered evidence model
 
@@ -252,9 +256,17 @@ molecular families (`MolecularFamily`), and the offline read-only
 `export`). All opt-in, fail-closed on unknown adducts, non-circular, and disabled
 by default.
 
+**Additional Python APIs (experimental):** one-hop DataFrame propagation and
+the unified annotation/graph exports in `MassFlow.network.export`. GraphML
+requires the optional `graph` extra; JSON node-link works without NetworkX.
+These are opt-in and have no GraphML CLI surface. Stable annotation outputs
+remain CSV and mzTab-M.
+
 **Deferred (post-1.0 / experimental, not implemented):** community detection,
 networked MCP server, isotope / in-source-fragment / multimer ion-identity
 discovery, explicit feature-membership edges, `RepositoryGraphSource`, graph
-persistence in SQLite, GraphML, Cytoscape, FBMN, visualization, network-aware
-scoring, and ML. The frozen design for the whole subsystem is specified in
+persistence in SQLite, network-aware scoring, and ML.
+
+**Non-goals:** GraphML/Cytoscape as the core interface, FBMN export, and
+`massflow visualize`. The frozen design for the whole subsystem is specified in
 [Network-Aware MS Annotation — Frozen Design Specification](network-aware-annotation-spec.md).

@@ -215,6 +215,24 @@ def network_seed_id(node_id: str, candidate_id: str) -> str:
 
     Uses ``hashlib`` (never the built-in ``hash``) so the identifier is stable
     across processes and independent of ``PYTHONHASHSEED``.
+
+    Parameters
+    ----------
+    node_id : str
+        Query node identifier.
+    candidate_id : str
+        Compound identity used by propagation (InChIKey or reference identifier).
+
+    Returns
+    -------
+    str
+        Content-derived seed identifier prefixed with ``"nseed1:"``.
+
+    Examples
+    --------
+    >>> seed_id = network_seed_id("query-1", "caffeine-reference")
+    >>> seed_id == network_seed_id("query-1", "caffeine-reference")
+    True
     """
     digest = hashlib.sha256(f"{node_id}\n{candidate_id}".encode("utf-8")).hexdigest()[
         :32
@@ -350,6 +368,16 @@ def validate_network_edges(
         If ``edges`` is not a :class:`polars.DataFrame`.
     ValueError
         If required columns are missing, or endpoints are null/empty.
+
+    Examples
+    --------
+    >>> import polars as pl
+    >>> edges = pl.DataFrame({
+    ...     "source_id": ["b", "a"], "target_id": ["a", "b"],
+    ...     "weight": [0.75, 0.5],
+    ... })
+    >>> validate_network_edges(edges).rows()
+    [('a', 'b', 0.75)]
     """
     if not isinstance(edges, pl.DataFrame):
         raise TypeError(
@@ -562,6 +590,22 @@ def propagate_annotations(
         If ``edges`` or ``matches`` is not a :class:`polars.DataFrame`.
     ValueError
         If ``matches`` is missing a required column, or edge validation fails.
+
+    Examples
+    --------
+    >>> import polars as pl
+    >>> edges = pl.DataFrame({
+    ...     "source_id": ["seed"], "target_id": ["target"], "weight": [0.8],
+    ... })
+    >>> matches = pl.DataFrame({
+    ...     "query_id": ["seed"], "reference_id": ["caffeine-reference"],
+    ...     "score": [0.9], "q_value": [0.001], "is_decoy": [False],
+    ... })
+    >>> result = propagate_annotations(edges, matches)
+    >>> result.filter(pl.col("query_id") == "target")["evidence_source"].to_list()
+    ['network']
+    >>> result.filter(pl.col("query_id") == "target")["q_value"].to_list()
+    [None]
     """
     cfg = config or NetworkPropagationConfig()
 

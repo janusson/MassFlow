@@ -39,11 +39,12 @@ paths are expected to pass):
 - Peptide/proteomics search of any kind (see §6).
 - TIIP indexing, O(1) peptide retrieval, BIN/BEST consensus spectra (see §6).
 - SIRIUS / MS-GF+ / MaRaCluster / FragPipe interoperability (see §6).
-- FBMN export, GraphML molecular networking, `massflow visualize` — **declared
-  non-goals** (D-3 resolved 2026-10-05; see §2.4 and the frozen networked
-  annotation spec §14). Not implemented and not planned; programmatic graph
-  interchange is CSV/mzTab-M plus the experimental `massflow network`
-  `MolecularGraph` JSON/JSONL.
+- FBMN export, GraphML/Cytoscape as the core interface, any GraphML CLI surface,
+  and `massflow visualize` — **declared non-goals** (D-3 refined 2026-10-12;
+  see §2.4 and the networked annotation spec §14). Stable result outputs remain
+  CSV/mzTab-M. Experimental interchange includes `MolecularGraph` JSON/JSONL
+  through `massflow network` and opt-in Python-API-only GraphML (`graph` extra)
+  or dependency-free JSON node-link through `export_network_graph` (§2.2).
 - ML engines (`spec2vec`, `ms2deepscore`), meta-engines (`consensus`, `cascade`),
   routing, streaming, TUI, HNSW, and `watch` — all **experimental**, not part of
   the support promise (§4.2).
@@ -91,7 +92,7 @@ Status legend: **✅ Stable** (implemented, tested, part of the v0.1 contract) �
 | `massflow watch` | `cli.py` | Requires `[watch]` extra |
 | `massflow convert` (ProteoWizard `msconvert` wrapper) | `convert.py`, `cli.py` | External binary required; see contradiction C-6 |
 | `massflow network build/analyse/export` (post-1.0 Network-Aware MS Annotation) | `network/`, `cli.py`, `io.py` (`save_molecular_graph`/`load_molecular_graph`/`save_families_jsonl`), `config.py` (`NetworkConfig`) | P1–P6 implemented and **disabled by default** (`network.enabled: false`): spectral / feature-identity / ion-identity / chemical networking, L5 annotation contextualization (with explicit, non-statistical ambiguity flagging: `is_ambiguous`/`conflicting_labels`), molecular families, and an offline read-only `LocalGraphSource` MSMCP interface. No edge carries q-value/p-value/FDR; no community detection, FBMN, visualization, or network-aware scoring. GraphML/Cytoscape **as the core interface** remain non-goals (§2.4/D-3); an experimental interoperability export exists (§2.2 next row). A DataFrame-oriented (Polars) one-hop propagation scaffold (`MassFlow.network.propagation`: `validate_network_edges`, `propagate_annotations`, `NetworkPropagationConfig`) is additionally available as a **Python API only** (no CLI, no graph persistence) — it preserves direct-match scores/q-values/decoys unchanged, adds network columns/hypotheses, and re-ranks nothing (`tests/test_network.py`) |
-| Network annotation export for visualization (`MassFlow.network.export`: `export_network_annotations` unified tiered consensus table; `export_network_graph` → GraphML or JSON node-link) | `network/export.py`, `io.py` (`save_network_graph`), `pyproject.toml` (`graph` extra), `scripts/benchmark_network.py` | Experimental, **Python-API-only** (no CLI, no default-pipeline integration). Tiers (Tier 1 direct q≤0.01 / Tier 2 network-supported / Tier 3 conflicted-or-low-support) are descriptive — no q-value/score is re-derived. Writes go through `io.py`; GraphML needs the optional `graph` extra (networkx, already transitive via matchms), JSON is dependency-free. This is an **interchange utility**, not the core interface and not `massflow visualize` (both remain non-goals, §2.4/D-3). `tests/test_network_export.py` |
+| Network annotation export for visualization (`MassFlow.network.export`: `export_network_annotations` unified tiered consensus table; `export_network_graph` → GraphML or JSON node-link) | `network/export.py`, `io.py` (`save_network_graph`), `pyproject.toml` (`graph` extra), `scripts/benchmark_network.py` | Experimental, **Python-API-only** (no CLI, no default-pipeline integration). Tiers (Tier 1 direct q≤0.01 / Tier 2 network-supported / Tier 3 conflicted-or-low-support) are descriptive — no q-value/score is re-derived. Writes go through `io.py`; GraphML needs the optional `graph` extra (NetworkX, guarded when absent), JSON is dependency-free. This is an **interchange utility**, not the core interface and not `massflow visualize` (both remain non-goals, §2.4/D-3). `tests/test_network_export.py` |
 
 ### 2.3 Partially implemented (🟡)
 
@@ -114,13 +115,13 @@ Status legend: **✅ Stable** (implemented, tested, part of the v0.1 contract) �
 | `core`-marked stable test suite as the CI gate | `AGENTS.md` §2.5/§6.1 | See §2.3 — marker discipline not applied |
 
 > **D-3 resolved (2026-10-05) — de-documented as non-goals.** FBMN export
-> (`consensus_spectra.mgf`), GraphML/Cytoscape molecular networking, and
+> (`consensus_spectra.mgf`), GraphML/Cytoscape as the core interface, and
 > `massflow visualize` were previously documented in places with no
 > implementation (former rows C-4/C-5). They are now declared explicit
 > **non-goals** of MassFlow (frozen [Network-Aware MS Annotation specification](network-aware-annotation-spec.md) §14)
-> and every "planned/aspirational" claim has been removed. Programmatic graph
-> interchange is CSV/mzTab-M (stable) plus the experimental `MolecularGraph`
-> JSON/JSONL (`massflow network build/analyse/export`, §2.2).
+> and every "planned/aspirational" claim for these workflows has been removed.
+> Stable result outputs remain CSV/mzTab-M. The experimental CLI uses
+> `MolecularGraph` JSON/JSONL (`massflow network build/analyse/export`, §2.2).
 >
 > **D-3 refined (2026-10-12) — experimental export only.** An **opt-in,
 > Python-API-only** graph export now exists (§2.2, `MassFlow.network.export`:
@@ -128,7 +129,7 @@ Status legend: **✅ Stable** (implemented, tested, part of the v0.1 contract) �
 > *interchange utility* for visualization (GraphML via the optional `graph`
 > extra, or dependency-free JSON node-link) and changes nothing about the
 > non-goals: GraphML/Cytoscape **as the core interface** and `massflow
-> visualize` remain unimplemented and unplanned.
+> visualize` remain unimplemented and unplanned. There is no GraphML CLI surface.
 
 ### 2.5 Planned only (📋)
 
@@ -181,7 +182,7 @@ referenced files are updated.
 | C-2 | `consensus`/`cascade` labeled **Stable** vs **Experimental** | `README.md` (Similarity engines table) vs `ARCHITECTURE.md`, `AGENTS.md` §6.1, `docs/index.md` | Meta-engines are implemented, tested, but outside the support promise (they degrade to classical when `[ml]` is absent) | **✓ resolved** — README engines table now marks cascade/consensus/spec2vec/ms2deepscore Experimental; the CLI and workflow flag experimental surfaces at run start |
 | C-3 | HNSW presented as a **core engineering pillar** vs an **experimental pre-stage**; sample config enables it (`hnsw_enabled: true`) vs default `false` | `README.md` (§Performance architecture) vs `config.py` (default), `ARCHITECTURE.md`, `AGENTS.md` | HNSW requires the `[hnsw]` extra and is only used by the experimental `cascade` engine; default config leaves it off | **✓ resolved** — README pillars reframed as experimental/optional; pipeline-diagram note added; `hnsw_enabled` remains default-false and cascade-only |
 | C-4 | **FBMN export claimed stable**; no implementation | `AGENTS.md` §5.4, `docs/index.md`, `docs/user-guide/results.md`, `.github/copilot-instructions.md` | Zero FBMN/`consensus_spectra` code in `src/` | **✓ resolved (D-3, 2026-10-05)** — de-documented as an explicit non-goal; no surface claims it |
-| C-5 | **GraphML networking + `visualize` documented**; no implementation, no `viz` extra | `docs/user-guide/annotation.md`, `docs/index.md`, `AGENTS.md` §6.1 | No `visualize` command, no graphml code, no `viz` extra in `pyproject.toml` | **✓ resolved (D-3, 2026-10-05)** — de-documented as explicit non-goals (spec §14) |
+| C-5 | **Historical audit:** GraphML networking + `visualize` were documented without implementation | `docs/user-guide/annotation.md`, `docs/index.md`, `AGENTS.md` §6.1 | No `visualize` command or GraphML CLI. Experimental `export_network_graph` now provides Python-API-only interchange with the optional `graph` extra (§2.2) | **✓ resolved (D-3, 2026-10-05; refined 2026-10-12)** — GraphML/Cytoscape as the core interface and `massflow visualize` remain non-goals (spec §14) |
 | C-6 | **Vendor conversion**: "intentionally does not perform vendor raw conversion internally" / "Do not add internal conversion logic" vs shipped `massflow convert` command (and `docs/index.md` calling it Stable) | `docs/ARCHITECTURE.md` §Unsupported formats; `AGENTS.md` §5.4 vs `cli.py`, `convert.py`, `docs/user-guide/annotation.md` | `convert.py` shells out to the **external** ProteoWizard `msconvert` binary; no in-house conversion code. The annotate pipeline itself still rejects vendor formats | The **annotate path** rejects vendor formats; `convert` is an optional external-tool wrapper. Classified **experimental** (§2.2) until the docs decide otherwise (open decision D-5) |
 | C-7 | `massflow watch` labeled **Stable** vs experimental | `docs/index.md` vs `AGENTS.md` §6.1, `pyproject.toml` (`[watch]` extra) | Implemented, requires `watchfiles`, long-running interactive loop, not covered by the v0.1 support promise | **✓ resolved** — `docs/index.md` row now Experimental; CLI help marks it EXPERIMENTAL |
 | C-8 | **Duplicate architecture sources of truth**: byte-identical `ARCHITECTURE.md` at repo root and `docs/ARCHITECTURE.md`; different files point at each | `ARCHITECTURE.md` (root), `docs/ARCHITECTURE.md`, `README.md`, `AGENTS.md`, `.github/copilot-instructions.md`, `mkdocs.yml` | Root copy is an exact byte-identical duplicate (diff: empty) of `docs/ARCHITECTURE.md`; mkdocs serves only `docs/ARCHITECTURE.md` | **✓ resolved (D-2 executed)** — root duplicate deleted; `docs.yml` copy step removed; AGENTS/CONTRIBUTING repointed at `docs/ARCHITECTURE.md`; `docs/ARCHITECTURE.md` is a superset of the deleted copy |
@@ -244,7 +245,7 @@ describing a substantially different architecture:
 | --- | --- | --- | --- |
 | D-1 | Version identity | Keep 0.1.0 baseline and purge "v0.2/v1.0" doc language, or release 0.2.0 and rename the contract | Affects every doc and the changelog; contract text assumes 0.1.0 |
 | D-2 | Duplicate `ARCHITECTURE.md` at repo root | Delete root copy (mkdocs already serves `docs/ARCHITECTURE.md`) or keep synced | **✓ executed (complexity-audit pass)** — root copy deleted; `docs.yml` copy step removed; references repointed |
-| D-3 | FBMN export and GraphML/`visualize` (both documented, neither implemented) | Implement them as experimental, or de-document them | **✓ executed (2026-10-05)** — **de-documented as non-goals** (spec §14); former §2.4 rows C-4/C-5 removed; no surface claims them. Network-Aware MS Annotation ships instead through the experimental `massflow network` surface (§2.2) |
+| D-3 | FBMN and GraphML/`visualize` workflow claims exceeded the implemented surface | De-document the workflows; explicitly scope experimental interchange | **✓ executed (2026-10-05), refined (2026-10-12)** — FBMN, GraphML/Cytoscape as the core interface, any GraphML CLI, and `massflow visualize` remain non-goals (spec §14). `export_network_graph` provides opt-in Python-API-only GraphML (`graph` extra) or dependency-free JSON node-link (§2.2); stable outputs remain CSV/mzTab-M |
 | D-4 | `core` marker discipline | Apply `@pytest.mark.core` to the §3 test set and gate CI on it, or drop the marker machinery | Makes the contract machine-enforceable |
 | D-5 | `massflow convert` status | Promote to stable (with `msconvert` prerequisite documented) or keep experimental | Affects §2.2/§4 C-6 |
 | D-6 | Redundant `[zarr]` extra | Remove the extra (zarr is core) or demote zarr to the extra | **✓ executed (complexity-audit pass)** — extra removed; zarr stays a core dependency |

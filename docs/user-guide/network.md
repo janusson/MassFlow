@@ -139,7 +139,17 @@ Statistical confidence is exposed **only** through `annotations()` (sourced from
   are the `1/N` rank bound, not an FDR estimate.
 - Chemical relationships are explicit hypotheses, never structural claims.
 
-## Not implemented (do not rely on it)
+## Experimental graph interchange (Python API only)
 
-Community detection, a networked MCP server / repository federation, GraphML,
-Cytoscape, FBMN export, and visualization.
+`MassFlow.network.export.export_network_graph` provides an opt-in interchange
+export: GraphML requires the optional `graph` extra (`uv sync --extra graph`),
+while JSON node-link needs no additional dependency or NetworkX. It consumes
+Polars edge and annotation tables; it is separate from the `MolecularGraph`
+JSON/JSONL documents used by the CLI. See the [network API](../api/network.md)
+for examples. Stable annotation outputs remain CSV and mzTab-M.
+
+## Deferred features and non-goals
+
+Community detection and a networked MCP server / repository federation remain
+deferred. FBMN export, GraphML/Cytoscape as the core interface, any GraphML CLI
+surface, and `massflow visualize` remain unimplemented and unplanned non-goals.

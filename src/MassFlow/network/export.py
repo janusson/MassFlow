@@ -60,13 +60,13 @@ try:  # optional backend — declared by the `graph` extra, shipped by matchms
     import networkx as nx
 
     _HAS_NETWORKX = True
-except ImportError:  # pragma: no cover -- tested via the "no networkx" fallback
+except ImportError:
     nx = None  # type: ignore[assignment]
     _HAS_NETWORKX = False
 
 logger = logging.getLogger(__name__)
 
-if not _HAS_NETWORKX:  # pragma: no cover -- networkx ships with matchms
+if not _HAS_NETWORKX:
     logger.info(
         "networkx is not installed. GraphML export is unavailable; the "
         "dependency-free JSON node-link export remains fully operational. "
@@ -306,6 +306,22 @@ def export_network_annotations(
     ------
     TypeError
         If either input is not a :class:`polars.DataFrame`.
+
+    Examples
+    --------
+    >>> import polars as pl
+    >>> from MassFlow.network.propagation import propagate_annotations
+    >>> edges = pl.DataFrame({
+    ...     "source_id": ["seed"], "target_id": ["target"], "weight": [0.8],
+    ... })
+    >>> matches = pl.DataFrame({
+    ...     "query_id": ["seed"], "reference_id": ["caffeine-reference"],
+    ...     "score": [0.9], "q_value": [0.001], "is_decoy": [False],
+    ... })
+    >>> propagated = propagate_annotations(edges, matches)
+    >>> table = export_network_annotations(matches, propagated)
+    >>> table.select("query_id", "evidence_source", "confidence_tier").rows()
+    [('seed', 'direct', 1), ('target', 'network', 2)]
     """
     if not isinstance(matches, pl.DataFrame):
         raise TypeError(
@@ -440,7 +456,12 @@ def export_network_graph(
         Destination file.
     format : {"graphml", "json"}
         Serialization format. ``"graphml"`` requires the optional ``networkx``
-        backend; ``"json"`` is dependency-free.
+        backend (install the ``graph`` extra); ``"json"`` is dependency-free.
+
+    Returns
+    -------
+    None
+        Writes the graph document to ``output_path``.
 
     Raises
     ------
@@ -450,6 +471,26 @@ def export_network_graph(
         If ``format`` is unsupported.
     ImportError
         If ``format="graphml"`` and ``networkx`` is unavailable.
+
+    Examples
+    --------
+    JSON node-link export works without NetworkX. Install the ``graph`` extra
+    to use ``format="graphml"`` with a ``.graphml`` destination instead.
+
+    >>> from pathlib import Path
+    >>> from tempfile import TemporaryDirectory
+    >>> import polars as pl
+    >>> edges = pl.DataFrame({
+    ...     "source_id": ["seed"], "target_id": ["target"], "weight": [0.8],
+    ... })
+    >>> annotations = pl.DataFrame({
+    ...     "query_id": ["seed"], "reference_id": ["caffeine-reference"],
+    ...     "score": [0.9], "q_value": [0.001], "is_decoy": [False],
+    ... })
+    >>> with TemporaryDirectory() as directory:
+    ...     output = Path(directory) / "network.json"
+    ...     export_network_graph(edges, annotations, output, format="json")
+    ...     assert output.is_file()
     """
     if format not in ("graphml", "json"):
         raise ValueError(

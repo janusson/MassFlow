@@ -39,7 +39,8 @@ We prioritize stability, predictability, and correct data handling over cutting-
 | `massflow tui` | *Experimental* | Interactive terminal console (`[tui]` extra) |
 | Advanced Engines (`spec2vec`, `ms2deepscore`, `consensus`, `cascade`) | *Experimental* | Higher setup and complex scientific validation; outside the stable support promise |
 | `massflow network build/analyse/export` | *Experimental* | Post-1.0 Network-Aware MS Annotation (spectral, feature-identity, ion-identity and chemical networking; molecular families; a local read-only MSMCP interface). Disabled by default (`network.enabled: true`); outside the stable support promise. See `docs/network-aware-annotation-spec.md` |
-| GraphML / Cytoscape / FBMN export & Visualization | **Non-goal** | Declared non-goals (D-3 resolved 2026-10-05); not implemented and not planned. Graph interchange is CSV/mzTab-M plus the experimental `MolecularGraph` JSON/JSONL from `massflow network` |
+| Graph interchange (`MassFlow.network.export.export_network_graph`) | **Experimental** | Opt-in, Python-API-only GraphML (optional `graph` extra) or dependency-free JSON node-link; see the [network API](api/network.md). No GraphML CLI surface |
+| GraphML/Cytoscape as the core interface, FBMN export & `massflow visualize` | **Non-goal** | Not implemented or planned (D-3 refined 2026-10-12). Stable result outputs remain CSV/mzTab-M; the experimental `massflow network` CLI uses `MolecularGraph` JSON/JSONL |
 | Language Server (LSP) | Removed | The standalone LSP module is not part of the codebase; `docs/api/server.md` documents the removal |
 
 ---

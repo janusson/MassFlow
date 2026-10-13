@@ -491,8 +491,15 @@ It is **disabled by default** (`network.enabled: false`) and exposed through the
 experimental `massflow network build/analyse/export` CLI. Confidence discipline
 is enforced structurally: no edge can carry a `q_value`/`p_value`/`fdr`/
 `confidence` field, FDR semantics are unchanged, and network context never
-alters L1/L2. There is no community detection, GraphML/Cytoscape/FBMN,
-visualization, or network-aware scoring. See `docs/network-data-model.md` and
+alters L1/L2. The separate, opt-in Python APIs in `network.propagation` and
+`network.export` provide one-hop hypotheses, a descriptive tiered annotation
+table, and graph interchange. `MassFlow.network.export.export_network_graph`
+writes GraphML (optional `graph` extra) or dependency-free JSON node-link;
+`io.save_network_graph` owns the file writes. JSON works without NetworkX.
+There is no GraphML CLI or default-pipeline integration. Stable result outputs
+remain CSV and mzTab-M. GraphML/Cytoscape as the core interface, FBMN export,
+and `massflow visualize` remain non-goals; community detection and network-aware
+scoring remain unimplemented. See `docs/network-data-model.md` and
 `docs/network-aware-annotation-spec.md`.
 
 ---

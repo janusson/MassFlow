@@ -512,6 +512,33 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Run the selected experimental network benchmark.
+
+    Parameters
+    ----------
+    argv : list of str or None, optional
+        Command-line arguments. ``None`` reads the process arguments.
+
+    Returns
+    -------
+    int
+        Exit status from the selected benchmark (zero on success).
+
+    Examples
+    --------
+    Run a small backend comparison with reports in a temporary directory.
+
+    >>> from contextlib import redirect_stdout
+    >>> from io import StringIO
+    >>> from tempfile import TemporaryDirectory
+    >>> with TemporaryDirectory() as directory:
+    ...     with redirect_stdout(StringIO()):
+    ...         status = main([
+    ...             "--mode", "backends", "--nodes", "10", "--repeats", "1",
+    ...             "--output-dir", directory,
+    ...         ])
+    ...     assert status == 0
+    """
     parser = _build_parser()
     args = parser.parse_args(argv)
     if args.repeats < 1:

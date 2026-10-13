@@ -715,7 +715,13 @@ def save_network_graph(
     output_path : Path
         Destination path. Parent directories are created if needed.
     format : {"graphml", "json"}
-        Serialization format.
+        Serialization format. GraphML requires the optional ``graph`` extra;
+        JSON node-link does not require NetworkX.
+
+    Returns
+    -------
+    None
+        Writes the document to ``output_path``.
 
     Raises
     ------
@@ -723,6 +729,19 @@ def save_network_graph(
         If ``format`` is not ``"graphml"`` or ``"json"``.
     ImportError
         If ``format="graphml"`` and ``networkx`` is unavailable.
+
+    Examples
+    --------
+    >>> from pathlib import Path
+    >>> from tempfile import TemporaryDirectory
+    >>> document = {
+    ...     "directed": False, "multigraph": False, "graph": {},
+    ...     "nodes": [{"id": "query-1"}], "links": [],
+    ... }
+    >>> with TemporaryDirectory() as directory:
+    ...     output = Path(directory) / "network.json"
+    ...     save_network_graph(document, output, format="json")
+    ...     assert output.is_file()
     """
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -734,7 +753,7 @@ def save_network_graph(
     elif format == "graphml":
         try:
             import networkx as nx
-        except ImportError as exc:  # pragma: no cover - networkx ships with matchms
+        except ImportError as exc:
             raise ImportError(
                 "GraphML network export requires networkx. Install it with "
                 "`pip install massflow[graph]` (or `uv sync --extra graph`)."

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import sys
 from pathlib import Path
 from typing import Any, Optional
 
@@ -458,6 +459,64 @@ def test_graphml_requires_networkx(
             tmp_path / "graph.graphml",
             format="graphml",
         )
+
+
+def test_export_module_import_without_networkx(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Exercise the real import guard while retaining the loaded core packages."""
+    from MassFlow.network import export as export_module
+
+    monkeypatch.setitem(sys.modules, "networkx", None)
+    spec = importlib.util.spec_from_file_location(
+        "_network_export_without_networkx", export_module.__file__
+    )
+    assert spec is not None and spec.loader is not None
+    isolated_module = importlib.util.module_from_spec(spec)
+    with caplog.at_level("INFO", logger=spec.name):
+        spec.loader.exec_module(isolated_module)
+    assert isolated_module._HAS_NETWORKX is False
+    assert "Install the 'graph' extra" in caplog.text
+
+    output = tmp_path / "network.json"
+    isolated_module.export_network_graph(
+        _edges([("seed", "target", 0.9)]), _annotation_table(), output, format="json"
+    )
+    document = json.loads(output.read_text())
+    assert {node["id"] for node in document["nodes"]} == {"seed", "target"}
+    assert document["links"][0]["weight"] == 0.9
+
+    graphml_output = tmp_path / "network.graphml"
+    with pytest.raises(ImportError, match=r"massflow\[graph\]"):
+        isolated_module.export_network_graph(
+            _edges([("seed", "target", 0.9)]),
+            _annotation_table(),
+            graphml_output,
+            format="graphml",
+        )
+    assert not graphml_output.exists()
+
+
+def test_save_network_graph_without_networkx(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The I/O boundary writes JSON and explains the missing GraphML extra."""
+    monkeypatch.setitem(sys.modules, "networkx", None)
+    document = {
+        "directed": False,
+        "multigraph": False,
+        "graph": {},
+        "nodes": [{"id": "query-1"}],
+        "links": [],
+    }
+    output = tmp_path / "network.json"
+    save_network_graph(document, output, format="json")
+    assert json.loads(output.read_text()) == document
+
+    graphml_output = tmp_path / "network.graphml"
+    with pytest.raises(ImportError, match=r"massflow\[graph\]"):
+        save_network_graph(None, graphml_output, format="graphml")
+    assert not graphml_output.exists()
 
 
 def test_graph_export_rejects_bad_format(tmp_path: Path) -> None:
