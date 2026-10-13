@@ -53,7 +53,7 @@ Key repository conventions (important, not generic)
 - Variable names are explicit: precursor_mz, retention_time_seconds, spectrum_peaks. Avoid abbreviations except domain-standard mz/rt in comments.
 - Database interaction rule: all raw SQL and schema changes live in src/MassFlow/database.py. Document schema/migration notes at the top of that file.
 - Tests: add tests alongside any behavior change. Run the specific test file locally before pushing.
-- Export filenames follow documented patterns: <input_stem>_results.<ext>. Only CSV and mzTab-M are shipped (`export.format: csv|mztab`); FBMN/`consensus_spectra.mgf` is NOT implemented — do not claim it.
+- Export filenames follow documented patterns: <input_stem>_results.<ext>. Stable annotation outputs are CSV and mzTab-M (`export.format: csv|mztab`); FBMN/`consensus_spectra.mgf` is NOT implemented. Experimental, opt-in, Python-API-only `MassFlow.network.export.export_network_graph` supports GraphML (optional `graph` extra) or dependency-free JSON node-link. GraphML/Cytoscape as the core interface, any GraphML CLI, and `massflow visualize` remain non-goals.
 
 ---
 

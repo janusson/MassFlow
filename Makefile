@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help lint format-check format typecheck test test-cov build clean all
+.PHONY: help lint format-check format typecheck typecheck-src static test test-cov build clean all ci smoke
 
 # ── Tooling ──────────────────────────────────────────────────────────────────
 UV := uv run
@@ -20,8 +20,14 @@ format: ## Auto-format code with ruff
 	$(UV) ruff format .
 
 # ── Type checking ────────────────────────────────────────────────────────────
-typecheck: ## Run mypy static type checker
+typecheck: ## Run mypy on the whole repo (src + tests) — the required gate
 	$(UV) mypy .
+
+typecheck-src: ## Fast mypy check of src/MassFlow only (PARTIAL — see note)
+	@echo "note: 'typecheck-src' checks ONLY src/MassFlow. Run 'make typecheck' (full repo: src + tests) before pushing."
+	$(UV) mypy src/MassFlow
+
+static: lint format-check typecheck ## Fast static gate (lint + format + full type check, no tests)
 
 # ── Tests ────────────────────────────────────────────────────────────────────
 test: ## Run the full test suite
@@ -48,4 +54,22 @@ clean: ## Remove build artifacts, caches, and coverage output
 	find . -type d -name .ruff_cache -exec rm -rf {} + 2>/dev/null || true
 
 # ── CI Pipeline ──────────────────────────────────────────────────────────────
-all: lint format-check typecheck test-cov ## Run the full CI pipeline
+all: lint format-check typecheck test-cov ## Run the full CI pipeline (fast local gate)
+
+smoke: ## Generate tutorial data in a temp dir and run the annotate quickstart
+	@TMP=$$(mktemp -d) ; \
+	trap 'rm -rf "$$TMP"' EXIT INT TERM ; \
+	echo "smoke: generating tutorial data in $$TMP" ; \
+	cd "$$TMP" && $(UV) --project "$(CURDIR)" massflow tutorial && \
+	$(UV) --project "$(CURDIR)" massflow annotate --config tutorial/tutorial_config.yaml && \
+	echo "smoke: annotate quickstart succeeded"
+
+ci: smoke ## Full CI mirror: lock check + static + tests + scientific + optional + docs
+	uv lock --check
+	$(UV) ruff check .
+	$(UV) ruff format --check .
+	$(UV) mypy .
+	$(UV) pytest --cov=src/MassFlow --cov-report=xml --cov-fail-under=80 -v
+	$(UV) pytest -m scientific -v
+	$(UV) pytest -m optional -v
+	$(UV) mkdocs build --strict

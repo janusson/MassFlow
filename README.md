@@ -79,6 +79,22 @@ If you have vendor-specific raw files (`.raw`, `.d`), MassFlow provides a wrappe
 uv run massflow convert --input raw_data/ --output converted_data/
 ```
 
+### Spectral Networking (Experimental)
+Build and analyse experimental MS/MS networks: spectral, LC-MS feature-identity,
+ion-identity (adduct), and neutral-loss (**hypothesis**) relationships, plus
+molecular families and an offline read-only MSMCP interface.
+
+```shell
+uv run massflow network build --config massflow_config.yaml
+uv run massflow network analyse --input network.json
+uv run massflow network export --input analysed.json
+```
+
+*Post-1.0 and experimental — disabled by default (opt in with `network.enabled: true`),
+and outside the stable support promise. See the
+[Graph Data Model](docs/network-data-model.md) and the
+[design spec](docs/network-aware-annotation-spec.md).*
+
 ---
 
 ## ⚙️ Technical Architecture (For Power Users)

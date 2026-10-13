@@ -18,12 +18,15 @@ import json
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Iterable, Iterator, Optional
+from typing import TYPE_CHECKING, Any, Callable, Iterable, Iterator, Optional
 
 import numpy as np
 import polars as pl
 import yaml
 from matchms import Spectrum
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    from MassFlow.network import MolecularGraph
 from matchms.importing import (
     load_from_mgf,
     load_from_msp,
@@ -621,3 +624,143 @@ def save_match_results_to_mztab(
             f.write("SML\t" + "\t".join(row_vals) + "\n")
 
     logger.info(f"mzTab-M results saved to {output_path}")
+
+
+def save_molecular_graph(graph: "MolecularGraph", output_path: Path) -> None:
+    """
+    Serialize a :class:`~MassFlow.network.MolecularGraph` to a JSON file.
+
+    This is the file-system boundary for the graph data layer
+    (``AGENTS.md`` §6.2): :mod:`MassFlow.network` defines the models and their
+    in-memory (de)serialization, and this function performs the actual write.
+
+    Parameters
+    ----------
+    graph : MolecularGraph
+        The graph document to persist.
+    output_path : Path
+        Destination ``.json`` path. Parent directories are created if needed.
+
+    Returns
+    -------
+    None
+    """
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(graph.to_json(indent=2), encoding="utf-8")
+    logger.info(f"Molecular graph saved to {output_path}")
+
+
+def load_molecular_graph(input_path: Path) -> "MolecularGraph":
+    """
+    Load a :class:`~MassFlow.network.MolecularGraph` from a JSON file.
+
+    Parameters
+    ----------
+    input_path : Path
+        Source JSON path produced by :func:`save_molecular_graph`.
+
+    Returns
+    -------
+    MolecularGraph
+        The reconstructed graph document.
+
+    Raises
+    ------
+    ValueError
+        If the file was written with an incompatible schema version.
+    """
+    from MassFlow.network import MolecularGraph
+
+    input_path = Path(input_path)
+    return MolecularGraph.from_json(input_path.read_text(encoding="utf-8"))
+
+
+def save_families_jsonl(graph: "MolecularGraph", output_path: Path) -> None:
+    """
+    Export a graph's molecular families as newline-delimited JSON.
+
+    Parameters
+    ----------
+    graph : MolecularGraph
+        The graph whose ``families`` should be exported.
+    output_path : Path
+        Destination ``.jsonl`` path. Parent directories are created if needed.
+
+    Returns
+    -------
+    None
+    """
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(graph.to_family_jsonl(), encoding="utf-8")
+    logger.info(f"Molecular families saved to {output_path}")
+
+
+def save_network_graph(
+    graph: Any, output_path: Path, *, format: str = "graphml"
+) -> None:
+    """
+    Write a molecular-network graph document to GraphML or JSON node-link.
+
+    This is the file-system boundary for :mod:`MassFlow.network.export`
+    (``AGENTS.md`` §6.2): the network package builds the graph structure and
+    this function performs the actual write.
+
+    Parameters
+    ----------
+    graph : Any
+        For ``format="json"``, a JSON-serializable node-link mapping. For
+        ``format="graphml"``, a NetworkX graph.
+    output_path : Path
+        Destination path. Parent directories are created if needed.
+    format : {"graphml", "json"}
+        Serialization format. GraphML requires the optional ``graph`` extra;
+        JSON node-link does not require NetworkX.
+
+    Returns
+    -------
+    None
+        Writes the document to ``output_path``.
+
+    Raises
+    ------
+    ValueError
+        If ``format`` is not ``"graphml"`` or ``"json"``.
+    ImportError
+        If ``format="graphml"`` and ``networkx`` is unavailable.
+
+    Examples
+    --------
+    >>> from pathlib import Path
+    >>> from tempfile import TemporaryDirectory
+    >>> document = {
+    ...     "directed": False, "multigraph": False, "graph": {},
+    ...     "nodes": [{"id": "query-1"}], "links": [],
+    ... }
+    >>> with TemporaryDirectory() as directory:
+    ...     output = Path(directory) / "network.json"
+    ...     save_network_graph(document, output, format="json")
+    ...     assert output.is_file()
+    """
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if format == "json":
+        output_path.write_text(
+            json.dumps(graph, indent=2, sort_keys=False) + "\n", encoding="utf-8"
+        )
+    elif format == "graphml":
+        try:
+            import networkx as nx
+        except ImportError as exc:
+            raise ImportError(
+                "GraphML network export requires networkx. Install it with "
+                "`pip install massflow[graph]` (or `uv sync --extra graph`)."
+            ) from exc
+        nx.write_graphml(graph, str(output_path))
+    else:
+        raise ValueError(
+            f"Unsupported network graph format: {format!r}. Use 'graphml' or 'json'."
+        )
+    logger.info(f"Network graph saved to {output_path}")

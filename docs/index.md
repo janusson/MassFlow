@@ -32,13 +32,15 @@ We prioritize stability, predictability, and correct data handling over cutting-
 | Open-format ingestion (`mzML`, `mzXML`, `MGF`, `MSP`) | **Stable** | Vendor raw formats rejected with an actionable error; `massflow convert` (experimental wrapper) can convert them externally |
 | SQLite library workflows (`massflow db ...`) | **Stable** | Recommended for reusable local libraries. `db inspect` reports build lineage: input files, config hash, processing parameters, target-decoy configuration, and exact build timestamps (records written by `db build`, `db merge`, and annotate library-store builds) |
 | `cosine` and `modified_cosine` | **Stable** | Best-supported classical scoring paths |
-| CSV and mzTab-M export | **Stable** | Main reporting surfaces (w/ YAML provenance reports). FBMN export is **not shipped** |
+| CSV and mzTab-M export | **Stable** | Main reporting surfaces (w/ YAML provenance reports). FBMN export is a declared **non-goal** |
 | Scientific validation (5 ppm precursor check, isotopic envelopes) | **Stable** | Implemented in `MassFlow.models`/`cheminformatics`; enforced as a processing gate on spectra with declared structural claims in the classical `annotate`/`db build` paths (query rejections counted per file; raw reference-library violations abort `annotate`), plus the streaming ingestion gate. Spectra without structural claims are exempt |
 | `massflow watch --config ...` | *Experimental* | Interactive live-reloading workflow (`[watch]` extra) |
 | `massflow stream-server` | *Experimental* | Real-time gRPC streaming (loopback default, TLS/auth required for remote) |
 | `massflow tui` | *Experimental* | Interactive terminal console (`[tui]` extra) |
 | Advanced Engines (`spec2vec`, `ms2deepscore`, `consensus`, `cascade`) | *Experimental* | Higher setup and complex scientific validation; outside the stable support promise |
-| GraphML networking & Visualization | *Planned* | Documented in places, **not implemented** — do not rely on it |
+| `massflow network build/analyse/export` | *Experimental* | Post-1.0 Network-Aware MS Annotation (spectral, feature-identity, ion-identity and chemical networking; molecular families; a local read-only MSMCP interface). Disabled by default (`network.enabled: true`); outside the stable support promise. See `docs/network-aware-annotation-spec.md` |
+| Graph interchange (`MassFlow.network.export.export_network_graph`) | **Experimental** | Opt-in, Python-API-only GraphML (optional `graph` extra) or dependency-free JSON node-link; see the [network API](api/network.md). No GraphML CLI surface |
+| GraphML/Cytoscape as the core interface, FBMN export & `massflow visualize` | **Non-goal** | Not implemented or planned (D-3 refined 2026-10-12). Stable result outputs remain CSV/mzTab-M; the experimental `massflow network` CLI uses `MolecularGraph` JSON/JSONL |
 | Language Server (LSP) | Removed | The standalone LSP module is not part of the codebase; `docs/api/server.md` documents the removal |
 
 ---

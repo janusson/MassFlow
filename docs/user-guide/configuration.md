@@ -91,7 +91,7 @@ Defines the output format.
 export:
   format: "csv"
 ```
-*   `format`: `"csv"` (default) or `"mztab"` — the only formats in the stable v0.1 contract. (Other formats such as `fbmn` are documented in places but not implemented; see the [Results guide](results.md) and `docs/CAPABILITY_MATRIX.md`.)
+*   `format`: `"csv"` (default) or `"mztab"` — the only formats in the stable v0.1 contract. (`fbmn` is a declared non-goal, not implemented; see the [Results guide](results.md) and `docs/CAPABILITY_MATRIX.md`.)
 
 ### `workflow`
 Reserved for future pipeline stages (peak picking, retention-time alignment, networking). It currently has **no active fields** — all orchestration is handled directly by the workflow module, and the stable annotation path runs on the `processing` + `similarity` sections alone.

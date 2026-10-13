@@ -2,6 +2,7 @@
 Tests for MassFlow CLI module.
 """
 
+from pathlib import Path
 from unittest.mock import patch
 
 from typer.testing import CliRunner
@@ -161,6 +162,37 @@ def test_run_init_exists_with_force(tmp_path):
         # Verify the generated template is a valid MassFlowConfig
         config = MassFlowConfig.from_yaml(output_file)
         assert config.project.name == "My_MassFlow_Analysis"
+
+
+def test_run_tutorial_generates_valid_config(tmp_path, monkeypatch):
+    """The tutorial generator must emit a strictly-valid, runnable config.
+
+    Regression guard: the generator previously wrote an unknown
+    ``similarity.tolerance_unit`` key (rejected by strict config validation)
+    and CWD-relative input paths (double-prefixed under config-relative
+    resolution), so ``massflow tutorial`` produced a tutorial that could not
+    be annotated.
+    """
+    monkeypatch.chdir(tmp_path)
+    runner = CliRunner()
+    result = runner.invoke(cli.app, ["tutorial"])
+
+    assert result.exit_code == 0, result.output
+    tutorial_dir = tmp_path / "tutorial"
+    assert (tutorial_dir / "tutorial_library.msp").exists()
+    assert (tutorial_dir / "tutorial_experimental.mgf").exists()
+
+    # The emitted config must survive strict validation (unknown keys rejected)
+    # and resolve its inputs to the generated fixtures relative to itself.
+    config = MassFlowConfig.from_yaml(tutorial_dir / "tutorial_config.yaml")
+    assert (
+        Path(config.input.input_path)
+        == (tutorial_dir / "tutorial_experimental.mgf").resolve()
+    )
+    assert (
+        Path(config.input.library_path)
+        == (tutorial_dir / "tutorial_library.msp").resolve()
+    )
 
 
 def test_main_no_args():

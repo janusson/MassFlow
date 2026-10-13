@@ -34,6 +34,8 @@ jobs:
         run: uv run ruff check .
       - name: Type checking (mypy)
         run: uv run mypy .
+      - name: Docs build (mkdocs --strict)
+        run: uv run mkdocs build --strict
 
   smoke:
     runs-on: ubuntu-latest
