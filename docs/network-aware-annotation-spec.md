@@ -524,7 +524,7 @@ benchmark.
 | N-5 | Graph persistence | JSON-only vs SQLite (new tables in `database.py`) | query performance vs schema surface |
 | N-6 | MSMCP transport/versioning | in-process + local CLI vs networked server | adoptability vs dependency |
 | N-7 | Repository federation | design `GraphSource` now, implement later | future-proofing cost |
-| N-8 | Doc reconciliation | ✓ resolved (2026-10-05): stale FBMN/GraphML "planned" claims removed repo-wide and D-3 de-documented as non-goals | consistency with `CAPABILITY_MATRIX.md` |
+| N-8 | Doc reconciliation | ✓ resolved (2026-10-05), refined (2026-10-12): stale FBMN/GraphML workflow claims removed; experimental Python-API-only GraphML/JSON interchange scoped explicitly while GraphML/Cytoscape as the core interface, any GraphML CLI, FBMN, and `massflow visualize` remain non-goals | consistency with `CAPABILITY_MATRIX.md` |
 
 ---
 

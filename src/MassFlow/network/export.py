@@ -15,10 +15,9 @@ CLI or the default pipeline, and it never changes the annotation contract.
 
 * **File I/O** is delegated to :func:`MassFlow.io.save_network_graph`
   (``AGENTS.md`` §6.2) — no other module writes files directly.
-* **networkx** is an *optional* backend used only for GraphML. It is imported
-  lazily and guarded; it is already provided transitively by ``matchms`` but is
-  declared explicitly by the ``graph`` extra. The JSON node-link export is
-  dependency-free and always available.
+* **networkx** is an *optional* backend used only for GraphML. Its module import
+  is guarded, and the dependency is declared explicitly by the ``graph`` extra.
+  The JSON node-link export is dependency-free and always available.
 * Tiers are **descriptive**: no tier re-derives a q-value, p-value or score.
   Direct evidence and network hypotheses remain distinct rows.
 
@@ -56,7 +55,7 @@ from MassFlow.network.propagation import (
     validate_network_edges,
 )
 
-try:  # optional backend — declared by the `graph` extra, shipped by matchms
+try:  # optional backend — declared explicitly by the `graph` extra
     import networkx as nx
 
     _HAS_NETWORKX = True

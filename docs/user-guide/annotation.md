@@ -124,9 +124,9 @@ uv run massflow convert --input data/raw_files/ --output data/mzml_files/
 
 ---
 
-## Network Visualization (non-goal)
+## Core and CLI network visualization (non-goal)
 
-!!! warning "Not implemented — declared non-goal"
+!!! warning "No core or CLI visualization workflow"
     GraphML/Cytoscape as the core interface, FBMN export, any GraphML CLI
     surface, and `massflow visualize` remain **non-goals**. Stable result
     outputs remain CSV and mzTab-M. Molecular *networking* ships experimentally
