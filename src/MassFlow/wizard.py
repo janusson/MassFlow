@@ -67,8 +67,11 @@ def run_config_wizard(output_path: Path) -> None:
         default="modified_cosine",
     )
 
+    min_score = FloatPrompt.ask("Minimum similarity score to keep a hit", default=0.7)
+    min_matched_peaks = IntPrompt.ask("Minimum matched fragment peaks", default=3)
     fdr_threshold = FloatPrompt.ask(
-        "FDR threshold (e.g., 0.01 for 1% FDR)", default=0.01
+        "FDR threshold (e.g., 0.05 for 5%; strict values need a large library)",
+        default=0.05,
     )
     ms1_tol = FloatPrompt.ask("MS1 precursor tolerance (Da)", default=0.02)
 
@@ -76,7 +79,9 @@ def run_config_wizard(output_path: Path) -> None:
     console.print("\n[bold yellow]--- Export Settings ---[/bold yellow]")
     export_format = Prompt.ask("Export format", choices=["csv", "mztab"], default="csv")
 
-    # Construct the config dict
+    # Construct the config dict. The processing toggles are set alongside their
+    # thresholds so the chosen min_peaks / noise_threshold actually take effect
+    # (a bare threshold with its toggle off is inert).
     config_dict = {
         "project": {
             "name": project_name,
@@ -88,11 +93,15 @@ def run_config_wizard(output_path: Path) -> None:
             "storage_backend": storage_backend,
         },
         "processing": {
+            "filter_min_peaks": True,
             "min_peaks": min_peaks,
+            "filter_by_intensity": True,
             "noise_threshold": noise_threshold,
         },
         "similarity": {
             "algorithm": algorithm,
+            "min_score": min_score,
+            "min_matched_peaks": min_matched_peaks,
             "fdr_threshold": fdr_threshold,
             "ms1_tolerance": ms1_tol,
         },
@@ -101,13 +110,38 @@ def run_config_wizard(output_path: Path) -> None:
         },
     }
 
+    # Validate against the real schema BEFORE writing: a wizard that emits a
+    # config the loader later rejects is worse than no wizard. The generated
+    # config must load through the same path `annotate` uses.
+    from MassFlow.config import MassFlowConfig
+
+    try:
+        MassFlowConfig(**config_dict)
+    except Exception as e:
+        console.print(
+            f"\n[bold red]Internal error: the wizard produced an invalid "
+            f"configuration ({e}). Please report this.[/bold red]"
+        )
+        raise
+
     # Save to YAML
     try:
         with open(output_path, "w") as f:
             yaml.dump(config_dict, f, default_flow_style=False, sort_keys=False)
 
         console.print(
-            f"\n[bold green]✓ Configuration successfully saved to {output_path}[/bold green]\n"
+            f"\n[bold green]✓ Configuration successfully saved to {output_path}[/bold green]"
+        )
+        console.print(
+            "\n[bold]Next steps:[/bold]\n"
+            f"  1. If your library is a raw .msp/.mgf with inconsistent "
+            f"metadata, curate it first:\n"
+            f"     [cyan]uv run massflow db build --input <library> --output "
+            f"<library.db> --config {output_path} --category library[/cyan]\n"
+            f"  2. Check compatibility before a long run:\n"
+            f"     [cyan]uv run massflow preflight --config {output_path}[/cyan]\n"
+            f"  3. Annotate:\n"
+            f"     [cyan]uv run massflow annotate --config {output_path}[/cyan]\n"
         )
     except Exception as e:
         console.print(f"\n[bold red]Error saving configuration: {e}[/bold red]")
