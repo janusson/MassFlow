@@ -153,7 +153,7 @@ def test_build_only_accepts_existing_store(tmp_path: Path, backend: str) -> None
     config.write_text(yaml.safe_dump(data))
     result = _invoke(config, columns=80)
     assert result.exit_code == 0, result.output
-    assert re.search(rf"\({re.escape(backend)},\s+1 spectra\)", result.output)
+    assert re.search(rf"\({re.escape(backend)},\s+1\s+spectra\)", result.output)
     assert not (tmp_path / "unused_output").exists()
 
 
