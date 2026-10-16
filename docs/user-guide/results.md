@@ -156,6 +156,21 @@ Batch runs continue across files: one bad file does not stop the others, but the
 
 ---
 
+## Zero-Hit Runs (All-`Unknown` Results)
+
+A run that exports rows but retains **no** accepted identification is a valid scientific result, not a failure. MassFlow distinguishes the causes and only attributes a zero-hit outcome to a stage when the pipeline actually has evidence for it:
+
+| # | Situation | Definitive? | Evidence |
+| :--- | :--- | :--- | :--- |
+| 1 | **Queries rejected during processing** | Yes | `spectra_rejected` / `spectra_loaded` in the `.report.yaml`; rejections in `massflow_quarantine.log`. An all-rejected file is reported as `failed`, not an empty success. |
+| 2 | **No compatible library precursors** | Yes for `cosine` (its MS1 gate); a likelihood factor for engines without an MS1 gate (e.g. `modified_cosine`) | `massflow preflight` precursor-compatibility coverage. |
+| 3 | **Candidates failing spectral matching** | Where counters permit | `preflight` MS2 peak-count distribution, and the target-side funnel in the run diagnostics. |
+| 4 | **Candidates filtered by score / statistical acceptance** | Where counters permit | `fdr_summary` and the `fdr_uncalibrated` / small-library warnings. |
+
+`massflow preflight` reports situations 1–3 before you run; the per-file report and warnings cover the rest. Because a small library is a *hard ceiling* on how many queries can match, `preflight` reports precursor coverage as a fraction and never promises identifications.
+
+---
+
 ## False Discovery Rate (FDR)
 
 MassFlow natively calculates a Target-Decoy False Discovery Rate (FDR) to provide statistical confidence in the reported annotations. The full statistical contract — competition unit, tie handling, small-library behavior, and heterogeneous engines — is defined in [Scoring Logic](scoring_logic.md).
@@ -172,21 +187,28 @@ An additional `p_value` column is exported as a **diagnostic**: the fraction of 
 
 ### Small Library Warnings
 
-Statistical FDR requires a sufficiently large null distribution (decoy set) to be accurate. If your reference library is too small (currently defined as `< 2000` spectra), the FDR calculation will be fundamentally under-powered.
+A smaller library limits the available target/decoy evidence and can reduce statistical precision. MassFlow flags libraries below its current `< 2000`-spectrum size recommendation, but size alone does **not** establish whether a particular run's FDR is calibrated; inspect that file's competition counts and `fdr_uncalibrated` flag. Two *independent* things are reported:
 
-If this happens, MassFlow will log a **CRITICAL SCIENTIFIC WARNING**:
+1. **Smallness itself** — always reported, because a small library also caps how many query spectra can match at all. It is a fact about the library and is **not** suppressed by changing `fdr_threshold`.
+2. **Strict-threshold caution** — shown only when `fdr_threshold` is strict (`< 0.1`): limited library size may reduce the precision of the decoy estimate, so a strict threshold can exclude plausible candidates. Whether the run actually has decoy calibration is determined by its per-file diagnostics, not library size alone.
+
+You will see a notice of this form:
 
 ```text
-CRITICAL SCIENTIFIC WARNING: SMALL LIBRARY DETECTED
-The library contains only 150 spectra.
-Target-Decoy False Discovery Rate (FDR) statistics are fundamentally invalid on
-small sample sizes because the decoy null-distribution will be too sparse.
-A strict FDR threshold (currently set to 0.01) will likely eliminate all true and putative matches as false positives.
+SMALL REFERENCE LIBRARY: 150 spectra.
+This is below the ~2000-spectrum library-size recommendation and caps how
+ many query spectra can match. Library size alone does not establish whether
+ this run's FDR is calibrated.
+
+fdr_threshold is 0.01 (strict). A smaller library limits the available
+ target/decoy evidence and may reduce estimate precision. Check this run's
+ per-file decoy-competition counts and calibration flag.
 
 Recommendation:
-1. Use a comprehensive library (e.g., GNPS, MoNA, NIST) for FDR validation.
-2. Or, if using a small specialized library, relax the `fdr_threshold`
-   (e.g., 0.1 or 1.0) in your config to evaluate raw Cosine scores directly.
+1. Use a larger, relevant library to support calibrated FDR estimation.
+2. Do not relax the FDR threshold just to obtain hits. Retain the configured
+   safeguards and treat an empty result as inconclusive when calibration is
+   underpowered.
 ```
 
-If you see this warning, it is highly recommended to increase your `fdr_threshold` to `1.0` in your YAML config and rely purely on the absolute `min_score` and `min_matched_peaks` thresholds to filter your results.
+The small-library caveat is not a reason to relax the FDR threshold just to obtain hits: doing so removes the intended statistical filter without making the calibration more reliable. Use a larger, relevant reference library for calibrated confidence, or report that the specialized-library result is exploratory and statistically underpowered. Relaxing `fdr_threshold` does **not** remove the smallness notice — the library is still small.

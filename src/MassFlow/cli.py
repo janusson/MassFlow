@@ -383,6 +383,15 @@ def run_annotate(
                 f"{r.hits_produced} hit(s), {r.spectra_loaded} spectra loaded, "
                 f"{r.spectra_rejected} rejected"
             )
+        # A zero-hit run is a valid outcome; explain it with the evidence the
+        # pipeline actually collected (advisory, never a soft failure).
+        if r.status != "failed" and r.hits_produced == 0 and r.zero_hit_reasons:
+            console.print("  [dim]0 hits — evidence:[/dim]")
+            for reason in r.zero_hit_reasons:
+                console.print(f"    [dim]- {_console_safe(reason)}[/dim]")
+            console.print(
+                "    [dim](run `massflow preflight` for full compatibility.)[/dim]"
+            )
 
     if n_failed > 0:
         console.print(
@@ -401,6 +410,39 @@ def run_annotate(
     console.print(
         f"[bold green]✓ Annotation complete![/bold green] Results saved to {cfg.project.output_directory}"
     )
+
+
+@app.command("preflight")
+def run_preflight(
+    config: str = typer.Option(
+        ..., "--config", help="Path to configuration YAML file."
+    ),
+):
+    """Report whether the query data and reference library are compatible.
+
+    Advisory, read-only pre-analysis: it reads the library and query inputs and
+    reports coverage, limitations, and the likely causes of an empty run. It
+    never scores spectra, never changes configuration, and never blocks a run.
+    """
+    from MassFlow.config import MassFlowConfig
+    from MassFlow.feasibility import (
+        build_feasibility_report,
+        render_feasibility_report,
+    )
+
+    try:
+        cfg = MassFlowConfig.from_yaml(config)
+        report = build_feasibility_report(cfg)
+    except Exception as e:
+        logger.error(f"Preflight failed: {e}")
+        _print_run_failure("Preflight failed", e)
+        raise typer.Exit(1)
+
+    try:
+        console.print(render_feasibility_report(report))
+    except Exception:
+        # Never let presentation break the analysis result.
+        typer.echo(render_feasibility_report(report))
 
 
 @app.command("convert")

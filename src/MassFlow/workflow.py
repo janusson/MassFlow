@@ -112,6 +112,11 @@ class FileExecutionResult:
     results: List[SearchResult] = field(default_factory=list, repr=False)
     fdr_summary: dict[str, int] | None = field(default=None, repr=False)
     library_provenance: dict[str, Any] | None = field(default=None, repr=False)
+    # Feasibility evidence attached for zero-hit diagnosis (advisory; see
+    # MassFlow.feasibility). These never affect the scientific result.
+    search_diagnostics: dict[str, Any] | None = field(default=None, repr=False)
+    compatibility: dict[str, Any] | None = field(default=None, repr=False)
+    zero_hit_reasons: list[str] = field(default_factory=list, repr=False)
 
 
 _worker_engine: SimilarityEngine | _MLEngineBase | MLEngineProtocol | None = None
@@ -403,29 +408,64 @@ def experimental_surface_flags(config: MassFlowConfig) -> list[str]:
     return flags
 
 
-def _emit_small_library_warning(lib_size: int, fdr_threshold: float) -> None:
-    """Emit a critical scientific warning about small-library FDR invalidity.
+# A reference library below this size is flagged for review. It is a hard
+# ceiling on how many query spectra can match, while its effect on FDR precision
+# depends on each run's decoy competitions and score distribution. Smallness is
+# reported unconditionally; the strict-threshold caution depends on the
+# configured threshold (see :func:`_emit_small_library_warning`).
+SMALL_LIBRARY_THRESHOLD = 2000
 
-    In an interactive terminal the warning is rendered as a visually distinct
-    Rich Panel.  When output is piped or redirected a clean single log line is
-    emitted instead.  Only one rendering path is taken — never both.
+
+def _emit_small_library_warning(lib_size: int, fdr_threshold: float) -> None:
+    """Report a small reference library and its statistical consequence.
+
+    The notice has two independent parts, and the first is reported
+    regardless of the second:
+
+    * **Smallness** is a fact about the library (how many spectra it holds)
+      and is always reported, because it caps how many query spectra can match
+      at all. It is never suppressed by changing ``fdr_threshold``.
+    * **FDR reliability** is run-specific: library size limits the available
+      target/decoy evidence, but does not alone establish whether a particular
+      run's FDR is calibrated. The strict-threshold caution is shown only when
+      the configured threshold is ``< 0.1``; the per-file FDR summary and
+      ``fdr_uncalibrated`` flag are authoritative for that run.
+
+    In an interactive terminal the notice is rendered as a Rich Panel; when
+    output is piped or redirected a clean single log line is emitted instead.
+    Only one rendering path is taken — never both.
     """
-    msg = (
-        f"CRITICAL SCIENTIFIC WARNING: SMALL LIBRARY DETECTED\n"
-        f"The library contains only {lib_size} spectra.\n"
-        f"Target-Decoy False Discovery Rate (FDR) statistics are fundamentally\n"
-        f"invalid on small sample sizes because the decoy null-distribution\n"
-        f"will be too sparse. A strict FDR threshold (currently set to\n"
-        f"{fdr_threshold}) will likely eliminate all true and putative matches\n"
-        f"as false positives.\n"
-        f"\n"
-        f"Recommendation:\n"
-        f"1. Use a comprehensive library (e.g., GNPS, MoNA, NIST) for FDR\n"
-        f"   validation.\n"
-        f"2. Or, if using a small specialized library, relax the\n"
-        f"   `fdr_threshold` (e.g., 0.1 or 1.0) in your config to evaluate\n"
-        f"   raw Cosine scores directly."
-    )
+    strict_fdr = fdr_threshold < 0.1
+    lines = [
+        f"SMALL REFERENCE LIBRARY: {lib_size} spectra.",
+        "This is below the ~%d-spectrum library-size recommendation and caps "
+        "how many query spectra can match. Library size alone does not establish "
+        "whether this run's FDR is calibrated; see its per-file FDR summary "
+        "and flags." % SMALL_LIBRARY_THRESHOLD,
+    ]
+    if strict_fdr:
+        lines += [
+            "",
+            f"fdr_threshold is {fdr_threshold:g} (strict). Fewer reference "
+            "spectra limit the available decoy evidence and can make FDR "
+            "estimates less precise; whether this run is calibrated is "
+            "reported per file, based on its actual decoy competitions.",
+            "",
+            "Recommendation:",
+            "1. Use a larger, relevant reference library to support calibrated "
+            "FDR estimation.",
+            "2. Do not relax the FDR threshold just to obtain hits; retain the "
+            "configured safeguards and treat an empty result as inconclusive "
+            "when calibration is underpowered.",
+        ]
+    else:
+        lines += [
+            "",
+            f"fdr_threshold is {fdr_threshold:g} and remains in effect. "
+            "FDR calibration is assessed per file from the actual decoy "
+            "competitions; small library size alone does not determine it.",
+        ]
+    msg = "\n".join(lines)
 
     if sys.stderr.isatty():
         # Interactive: show a styled Rich Panel only.
@@ -436,8 +476,8 @@ def _emit_small_library_warning(lib_size: int, fdr_threshold: float) -> None:
         console.print(
             Panel(
                 msg,
-                title="[bold yellow]Warning[/bold yellow]",
-                border_style="red",
+                title="[bold yellow]Small reference library[/bold yellow]",
+                border_style="yellow",
                 highlight=True,
             )
         )
@@ -555,6 +595,57 @@ def _build_classical_fallback_engine(
         rt_tolerance=similarity_config.rt_tolerance,
     )
     return SimilarityEngine(fallback_config)
+
+
+def _compute_compatibility(
+    backend: Any,
+    query_file: Path,
+    query_spectra: List[Spectrum],
+    config: MassFlowConfig,
+) -> dict[str, Any] | None:
+    """Precursor/ion-mode compatibility for one file (best-effort, advisory).
+
+    Reuses the same routines the `cosine` search uses, so the coverage reported
+    here matches what the search actually considers. Any failure returns None —
+    a diagnosis aid must never affect the run.
+    """
+    try:
+        from MassFlow.feasibility import (
+            precursor_compatibility,
+            profile_open_store,
+            query_profile_from_spectra,
+        )
+        from MassFlow.library import RawFileLibraryStore
+
+        # A raw-file backend has no cheap metadata path: profiling it would
+        # re-parse the whole library mid-run. Skip (compatibility stays None);
+        # the standalone `massflow preflight` covers raw libraries separately.
+        if isinstance(backend, RawFileLibraryStore):
+            return None
+
+        library_profile = profile_open_store(backend, Path(backend.store_path), config)
+        query_profile = query_profile_from_spectra(query_file, query_spectra)
+        report = precursor_compatibility(library_profile, query_profile, config)
+        return {
+            "engine": report.engine,
+            "ms1_gate_definitive": report.ms1_gate_definitive,
+            "tolerance_da": report.tolerance_da,
+            "resolution_ppm": report.resolution_ppm,
+            "rt_tolerance": report.rt_tolerance,
+            "n_queries": report.n_queries,
+            "n_queries_with_candidate": report.n_queries_with_candidate,
+            "n_queries_with_precursor_candidate": (
+                report.n_queries_with_precursor_candidate
+            ),
+            "n_queries_with_compatible_candidate": (
+                report.n_queries_with_compatible_candidate
+            ),
+            "n_candidate_pairs": report.n_candidate_pairs,
+            "n_missing_precursor_pairs": report.n_missing_precursor_pairs,
+        }
+    except Exception as exc:  # advisory only
+        logger.debug("Compatibility check skipped for %s: %s", query_file, exc)
+        return None
 
 
 def _process_single_file(
@@ -712,6 +803,12 @@ def _process_single_file(
                 spec = LibrarySpec(path=config.input.library_path, kind="file")
             backend = open_library(spec, config.processing)
 
+        # Advisory, per-file compatibility (reuses the search's own precursor and
+        # ion-mode gates). A failure here never affects the run.
+        result.compatibility = _compute_compatibility(
+            backend, query_file, query_spectra, config
+        )
+
         if enable_routing:
             # Routing dispatches queries across engines that each iterate the
             # library, so the (experimental) routing path materializes the
@@ -786,6 +883,9 @@ def _process_single_file(
         decoy_diagnostics: dict[str, Any] = dict(
             getattr(active_engine, "decoy_diagnostics", {}) or {}
         )
+        result.search_diagnostics = dict(
+            getattr(active_engine, "search_diagnostics", {}) or {}
+        )
 
         # Per-query target-decoy competition (TDC): the competition unit is the
         # query spectrum. Each query contributes its best target hit and its
@@ -807,17 +907,14 @@ def _process_single_file(
         else:
             lib_size = 0
 
-        is_small_library = lib_size < 2000
+        is_small_library = lib_size < SMALL_LIBRARY_THRESHOLD
 
         # When the parent process could not know the library size (direct API
-        # invocation without a prepared store), emit the small-library warning
-        # here so no execution mode silently loses it.
-        if (
-            is_small_library
-            and library_size is None
-            and _worker_library_spec is None
-            and getattr(config.similarity, "fdr_threshold", 0.01) < 0.1
-        ):
+        # invocation without a prepared store), emit the small-library notice
+        # here so no execution mode silently loses it. Smallness is reported
+        # regardless of fdr_threshold; only the FDR-reliability caveat inside
+        # the notice depends on the threshold.
+        if is_small_library and library_size is None and _worker_library_spec is None:
             _emit_small_library_warning(
                 lib_size, getattr(config.similarity, "fdr_threshold", 0.01)
             )
@@ -829,9 +926,10 @@ def _process_single_file(
 
         if is_small_library:
             result.warnings.append(
-                f"Small reference library ({lib_size} spectra): target-decoy FDR "
-                "is statistically weak below ~2000 entries; q-values are "
-                "conservative."
+                f"Small reference library ({lib_size} spectra, below the "
+                f"~{SMALL_LIBRARY_THRESHOLD} recommended): it caps how many "
+                "queries can match, and target-decoy FDR is statistically "
+                "weak at this size; q-values are conservative."
             )
 
         if fdr_summary["n_decoy_competitions"] == 0:
@@ -886,6 +984,24 @@ def _process_single_file(
         result.hits_produced = len(fdr_filtered_results)
         result.query_spectra = query_spectra
         result.results = fdr_filtered_results
+
+        # Zero-hit diagnosis: when nothing was accepted, record the available
+        # evidence for why. A zero-hit run is a valid scientific outcome; this
+        # never changes the result, it only explains it (advisory).
+        if result.hits_produced == 0:
+            from MassFlow.feasibility import diagnose_zero_hits
+
+            pre_fdr_target_hits = sum(
+                1 for r in all_results if not r.get("is_decoy", False)
+            )
+            result.zero_hit_reasons = diagnose_zero_hits(
+                n_queries=len(query_spectra),
+                n_rejected=result.spectra_rejected,
+                compatibility=result.compatibility,
+                search_diagnostics=result.search_diagnostics,
+                pre_fdr_target_hits=pre_fdr_target_hits,
+                fdr_uncalibrated="fdr_uncalibrated" in result.degraded_mode_flags,
+            )
 
         # A file processed with any degraded machinery is "degraded", never
         # silently "successful".
@@ -1041,6 +1157,15 @@ def _write_analysis_report(
     # libraries.
     if result.library_provenance is not None:
         report_payload["library"] = result.library_provenance
+
+    # Zero-hit diagnosis (advisory) and the feasibility evidence behind it.
+    # These explain a zero-hit run; they never change the scientific result.
+    if result.zero_hit_reasons:
+        report_payload["zero_hit_reasons"] = list(result.zero_hit_reasons)
+    if result.compatibility is not None:
+        report_payload["compatibility"] = result.compatibility
+    if result.search_diagnostics:
+        report_payload["search_diagnostics"] = result.search_diagnostics
 
     # Delegate to IO layer for file writing so tests can patch io.save_analysis_report
     io.save_analysis_report(report_path, report_payload)
@@ -1503,6 +1628,18 @@ def run_annotation_pipeline(
     # the exact library store used and its recorded build-history row.
     library_provenance = _build_library_provenance(config, library_spec, library_size)
 
+    # Concise, advisory library-side feasibility: what the reference library can
+    # support (size, precursor range, ionization modes). Full query<->library
+    # compatibility is available via `massflow preflight`. Best-effort: a
+    # feasibility failure must never affect the annotation run.
+    try:
+        from MassFlow.feasibility import profile_library, render_library_summary
+
+        lib_profile = profile_library(config, library_spec=library_spec)
+        logger.info("Feasibility (library): %s", render_library_summary(lib_profile))
+    except Exception as exc:  # advisory only
+        logger.debug("Library feasibility skipped: %s", exc)
+
     # FDR-calibration diagnostic: entropy-preserving decoys must not
     # systematically diverge from targets in spectral entropy. A large
     # delta indicates biased decoy generation and unreliable q-values.
@@ -1513,7 +1650,7 @@ def run_annotation_pipeline(
     # 1. Library is small (< 2000 spectra)
     # 2. User has actually requested strict FDR (threshold < 0.1)
     fdr_threshold = getattr(config.similarity, "fdr_threshold", 0.01)
-    if library_size < 2000 and fdr_threshold < 0.1:
+    if library_size < SMALL_LIBRARY_THRESHOLD:
         _emit_small_library_warning(library_size, fdr_threshold)
 
     # 2. Determine Input Files

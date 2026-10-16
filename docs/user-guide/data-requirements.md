@@ -52,6 +52,23 @@ If a **`smiles`**, **`inchi`**, or **`formula`** is provided, MassFlow triggers 
 
 **Enforcement in the pipeline** — "physically invalid" spectra are rejected by the processing gate in the classical `annotate`/`db build` paths (see `docs/user-guide/validation.md`): query spectra are rejected and counted per file (an all-rejected file is an explicit failure), raw reference-library entries abort the annotate run, and `db build` quarantines them. Spectra without structural claims are exempt from the gate.
 
+### Curating a non-conforming reference library
+
+Real-world exports (GNPS, MoNA) frequently contain entries whose declared formula/adduct disagrees with their precursor m/z. When that happens:
+
+*   `massflow annotate` **aborts** before scoring with a `PhysicalIntegrityError` naming the offending entries, because silently searching a shrunken reference pool would change every query's FDR calibration.
+*   `massflow db build` **quarantines** those entries — it logs each rejection to `massflow_quarantine.log` and stores the remaining spectra — producing a curated store you can search repeatedly:
+
+```shell
+uv run massflow db build \
+  --input data/libraries/my_library.msp \
+  --output results/my_library.db \
+  --config massflow_config.yaml \
+  --category library
+```
+
+Point `library_path` at the resulting `.db`. Use `massflow db inspect` to view how many spectra were stored, and `massflow preflight` to see how those spectra cover your queries before annotating.
+
 #### Isotopic Envelope Generation
 When a valid **`smiles`** is present, MassFlow automatically calculates a theoretical MS1 isotopic envelope (M, M+1, M+2, etc., normalized to the base peak). This theoretical envelope acts as a ground-truth signature, used by advanced ML routing and the `ConsensusEngine` to break ties between competing MS2 fragmentation annotations. If `smiles` is missing, this advanced credibility check cannot be performed.
 
