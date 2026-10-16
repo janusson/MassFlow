@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 from pathlib import Path
 
 import numpy as np
@@ -54,10 +55,13 @@ def _fixture(tmp_path: Path, suffix: str = "msp", backend: str = "sqlite") -> Pa
     return config
 
 
-def _invoke(config: Path) -> Result:
+def _invoke(config: Path, columns: int | None = None) -> Result:
     """Invoke the build-only mode through Typer."""
+    environment = {"COLUMNS": str(columns)} if columns is not None else None
     return CliRunner().invoke(
-        app, ["annotate", "--config", str(config), "--build-library-store"]
+        app,
+        ["annotate", "--config", str(config), "--build-library-store"],
+        env=environment,
     )
 
 
@@ -147,9 +151,9 @@ def test_build_only_accepts_existing_store(tmp_path: Path, backend: str) -> None
     # Preparing a library does not require this optional scoring engine.
     data["similarity"] = {"algorithm": "spec2vec"}
     config.write_text(yaml.safe_dump(data))
-    result = _invoke(config)
+    result = _invoke(config, columns=80)
     assert result.exit_code == 0, result.output
-    assert f"({backend}, 1 spectra)" in result.output
+    assert re.search(rf"\({re.escape(backend)},\s+1\s+spectra\)", result.output)
     assert not (tmp_path / "unused_output").exists()
 
 
