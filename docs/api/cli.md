@@ -23,14 +23,41 @@ core workflow. (`massflow serve` remains as a deprecated alias for
 
 For a complete walkthrough using all the core commands on real (synthetic) data, see the [Usage Guide](../user-guide/usage.md).
 
+## Prepare a library without annotating queries
+
+```bash
+massflow annotate --config massflow_config.yaml --build-library-store
+```
+
+This build-only mode prepares `input.library_path` using the same processing,
+strict 5 ppm physical-integrity gate, and cache as annotation, then prints the
+store path, backend, and spectrum count and exits. It does not load queries,
+construct a scoring engine, generate decoys, or write annotation results.
+The configuration still requires `input.input_path`, but that path need not
+exist until you run annotation.
+
+For raw MSP/MGF (or mzML/mzXML) libraries, `input.storage_backend` selects
+`sqlite` (default), `hybrid`, or `zarr`. Stores are placed under
+`project.output_directory` as `<library_stem>_library.db` (SQLite/hybrid) or
+`<library_stem>_library.zarr`. An unchanged source, processing configuration,
+and backend reuse the cached store. An existing store input is used directly.
+SQLite/hybrid stores retain the existing build lineage; pure Zarr stores retain
+cache metadata but do not support the SQLite build-history tables.
+
+Missing, vendor, or unsupported library inputs fail before store creation.
+Physical-integrity rejection aborts the build instead of silently reducing the
+reference pool. To select an explicit destination and curate a library by
+quarantining rejected entries, use `massflow db build` instead.
+Run `annotate` without the flag to search queries using the prepared cache.
+
 ## Pre-flight validation
 
 Every compute command (`annotate`, `db build`, `db merge`) validates its
 inputs before any library store is built or any file is searched: required
 files must exist, the reference library must be a loadable open-format/store
 input (vendor raw formats and unknown extensions abort with zero output
-artifacts), the similarity engine must be constructible with the installed
-optional extras (missing `massflow[ml]` aborts with the install fix instead
+artifacts). For normal annotation, the similarity engine must be constructible
+with the installed optional extras (missing `massflow[ml]` aborts with the install fix instead
 of a late worker crash), and optional-extras degradations
 (`consensus`/`cascade` without `[ml]`, `cascade` + `hnsw_enabled` without
 `[hnsw]`) are warned about up-front. Failures print a plain-English `fix:`

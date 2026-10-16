@@ -4,6 +4,8 @@ All notable changes to MassFlow will be documented in this file.
 
 ## [Unreleased]
 ### Added
+
+- Added `massflow annotate --build-library-store` to prepare or reuse the configured SQLite/hybrid/Zarr reference store without scoring queries, using the existing strict physical-integrity gate and build provenance. See [CLI reference](api/cli.md).
 - **`massflow tutorial` CLI command:** First-class command that generates a self-contained synthetic dataset (reference library, experimental queries, and pre-configured YAML) for instant local evaluation. No external files required.
 - **Enhanced tutorial generator:** `scripts/generate_tutorial_data.py` now prints formatted next-steps with the exact `db build` and `annotate` commands to run after generation.
 - **Hybrid SQLite + Zarr storage (Phase 1):** `SpectralDatabase` now supports a hybrid mode (`zarr_path=...` or `--backend hybrid`) where SQLite retains metadata plus a `zarr_ref`/`zarr_index` reference pair and fragment arrays live in a chunked, compressed `ZarrPeakArrayStore` with lock-free concurrent reads for multiprocessing.

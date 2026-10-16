@@ -285,8 +285,29 @@ def run_annotate(
     config: str = typer.Option(
         ..., "--config", help="Path to configuration YAML file."
     ),
-):
-    """Run the stable MassFlow annotation pipeline using a YAML configuration file."""
+    build_library_store: bool = typer.Option(
+        False,
+        "--build-library-store",
+        help="Prepare or reuse the configured library store, then exit without annotating queries.",
+    ),
+) -> None:
+    """Run annotation or prepare its library store from a YAML configuration.
+
+    Parameters
+    ----------
+    config : str
+        Path to the pipeline YAML configuration.
+    build_library_store : bool
+        Prepare only the reference library; do not load or score queries.
+
+    Returns
+    -------
+    None
+
+    Examples
+    --------
+    ``massflow annotate --config config.yaml --build-library-store``
+    """
     from MassFlow.config import MassFlowConfig
     from MassFlow.workflow import (
         experimental_surface_flags,
@@ -296,6 +317,22 @@ def run_annotate(
 
     try:
         cfg = MassFlowConfig.from_yaml(config)
+
+        if build_library_store:
+            from MassFlow.library import prepare_library
+
+            if cfg.input.library_path is None:
+                raise ValueError("Library path not specified in configuration.")
+            _preflight_db_build_source(Path(cfg.input.library_path))
+            library_spec, spectrum_count = prepare_library(cfg, cfg.output_directory)
+            if spectrum_count == 0:
+                raise ValueError("No valid spectra found in library.")
+            console.print(
+                "[bold green]✓ Library store ready:[/bold green] "
+                f"{_console_safe(str(library_spec.path))} "
+                f"({library_spec.storage_backend}, {spectrum_count} spectra)"
+            )
+            return
 
         # Package boundary: experimental engine/routing/HNSW/remote-ML
         # surfaces must be visibly flagged at the CLI, never silent.
