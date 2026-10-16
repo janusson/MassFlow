@@ -148,13 +148,38 @@ class TestPrepareLibrary:
         assert count == 1
         assert spec.path.exists()
 
-    def test_store_input_is_used_directly(self, tmp_path):
+    @pytest.mark.parametrize("backend_name", ["sqlite", "zarr", "hybrid"])
+    def test_store_input_is_used_directly_without_modification(
+        self, tmp_path, backend_name
+    ):
         from MassFlow.storage import create_spectral_store
 
-        store_path = tmp_path / "lib.db"
-        store = create_spectral_store(store_path, backend="sqlite")
+        store_path = tmp_path / ("lib.zarr" if backend_name == "zarr" else "lib.db")
+        store = create_spectral_store(store_path, backend=backend_name)
         store.add_spectra(iter([make_spectrum("ref_1", 200.0)]), category="library")
         store.close()
+
+        store_paths = [store_path]
+        if backend_name == "hybrid":
+            store_paths.append(store_path.with_suffix(".zarr"))
+
+        def snapshot(paths):
+            files = [
+                file_path
+                for path in paths
+                for file_path in ([path] if path.is_file() else path.rglob("*"))
+                if file_path.is_file()
+            ]
+            return sorted(
+                (
+                    str(file_path.relative_to(tmp_path)),
+                    file_path.stat().st_size,
+                    file_path.stat().st_mtime_ns,
+                )
+                for file_path in files
+            )
+
+        before = snapshot(store_paths)
 
         config = make_config(tmp_path, store_path)
         spec, count = prepare_library(config, tmp_path / "results")
@@ -162,6 +187,7 @@ class TestPrepareLibrary:
         assert spec.kind == "store"
         assert spec.path == store_path
         assert count == 1
+        assert snapshot(store_paths) == before
 
     def test_cache_reused_when_source_and_config_unchanged(self, tmp_path):
         library_path = tmp_path / "lib.msp"
@@ -190,6 +216,131 @@ class TestPrepareLibrary:
 
         assert spec_a.path == spec_b.path  # same location, rebuilt
         assert spec_b.path.stat().st_mtime_ns >= spec_a.path.stat().st_mtime_ns
+
+    @pytest.mark.parametrize("backend_name", ["sqlite", "zarr", "hybrid"])
+    def test_invalidated_cache_replaces_old_spectra(self, tmp_path, backend_name):
+        library_path = tmp_path / "lib.msp"
+        write_msp(library_path, [make_spectrum("ref_1", 200.0)])
+        output_dir = tmp_path / "results"
+        config = make_config(tmp_path, library_path)
+        config.input.storage_backend = backend_name
+
+        first_spec, _ = prepare_library(config, output_dir)
+        config.processing.min_peaks = 2
+        rebuilt_spec, rebuilt_count = prepare_library(config, output_dir)
+
+        backend = open_library(rebuilt_spec, config.processing)
+        try:
+            names = [s.get("compound_name") for s in backend.iter_spectra()]
+        finally:
+            backend.close()
+
+        assert rebuilt_spec.path == first_spec.path
+        assert rebuilt_count == 1
+        assert names == ["ref_1"]
+
+    @pytest.mark.parametrize("backend_name", ["sqlite", "zarr", "hybrid"])
+    def test_failed_rebuild_preserves_previous_cache(
+        self, tmp_path, backend_name, monkeypatch
+    ):
+        from MassFlow import library as library_module
+
+        library_path = tmp_path / "lib.msp"
+        write_msp(library_path, [make_spectrum("ref_1", 200.0)])
+        output_dir = tmp_path / "results"
+        original_config = make_config(tmp_path, library_path)
+        original_config.input.storage_backend = backend_name
+        original_spec, _ = prepare_library(original_config, output_dir)
+
+        changed_config = make_config(tmp_path, library_path)
+        changed_config.input.storage_backend = backend_name
+        changed_config.processing.min_peaks = 2
+        original_factory = library_module.create_spectral_store
+
+        def create_failing_store(store_path, backend):
+            store = original_factory(store_path, backend=backend)
+            original_add_spectra = store.add_spectra
+
+            def add_one_then_fail(spectra, category="default", batch_size=5000):
+                original_add_spectra(iter([next(iter(spectra))]), category, batch_size)
+                raise RuntimeError("simulated interrupted rebuild")
+
+            store.add_spectra = add_one_then_fail
+            return store
+
+        monkeypatch.setattr(
+            library_module, "create_spectral_store", create_failing_store
+        )
+        with pytest.raises(RuntimeError, match="simulated interrupted rebuild"):
+            prepare_library(changed_config, output_dir)
+
+        backend = open_library(original_spec, original_config.processing)
+        try:
+            names = [s.get("compound_name") for s in backend.iter_spectra()]
+        finally:
+            backend.close()
+
+        assert names == ["ref_1"]
+        monkeypatch.setattr(library_module, "create_spectral_store", original_factory)
+        cached_spec, cached_count = prepare_library(original_config, output_dir)
+        assert cached_spec.path == original_spec.path
+        assert cached_count == 1
+
+    @pytest.mark.parametrize("backend_name", ["sqlite", "zarr", "hybrid"])
+    def test_failed_cache_promotion_rolls_back_all_backend_paths(
+        self, tmp_path, backend_name, monkeypatch
+    ):
+        import os
+
+        from MassFlow import library as library_module
+
+        store_path = tmp_path / (
+            "library.zarr" if backend_name == "zarr" else "library.db"
+        )
+        staged_directory = tmp_path / "staging"
+        staged_directory.mkdir()
+        staged_store_path = staged_directory / store_path.name
+        meta_path = store_path.with_suffix(store_path.suffix + ".meta.json")
+        staged_meta_path = staged_store_path.with_suffix(
+            staged_store_path.suffix + ".meta.json"
+        )
+
+        def write_resource(path, value):
+            if path.suffix == ".zarr":
+                path.mkdir(parents=True)
+                (path / "marker").write_text(value)
+            else:
+                path.write_text(value)
+
+        related_paths = [store_path, meta_path]
+        if backend_name == "hybrid":
+            related_paths.append(store_path.with_suffix(".zarr"))
+        staged_paths = [staged_store_path, staged_meta_path]
+        if backend_name == "hybrid":
+            staged_paths.append(staged_store_path.with_suffix(".zarr"))
+        for path in related_paths:
+            write_resource(path, f"old:{path.name}")
+        for path in staged_paths:
+            write_resource(path, f"new:{path.name}")
+
+        original_replace = os.replace
+
+        def fail_on_metadata_promotion(source, destination):
+            if Path(source) == staged_meta_path:
+                raise OSError("simulated metadata promotion failure")
+            return original_replace(source, destination)
+
+        monkeypatch.setattr(library_module.os, "replace", fail_on_metadata_promotion)
+        with pytest.raises(OSError, match="simulated metadata promotion failure"):
+            library_module._promote_prepared_store(
+                staged_store_path, staged_meta_path, store_path, backend_name
+            )
+
+        for path in related_paths:
+            if path.is_dir():
+                assert (path / "marker").read_text() == f"old:{path.name}"
+            else:
+                assert path.read_text() == f"old:{path.name}"
 
     def test_cache_invalidated_when_source_changes(self, tmp_path):
         library_path = tmp_path / "lib.msp"
