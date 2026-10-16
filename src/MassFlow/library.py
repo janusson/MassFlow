@@ -39,10 +39,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-import os
 import re
-import shutil
-import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterator, Literal, Optional
@@ -328,14 +325,6 @@ def _store_is_fresh(
     )
 
 
-def _remove_path(path: Path) -> None:
-    """Remove a file, symlink, or directory if it exists."""
-    if path.is_dir() and not path.is_symlink():
-        shutil.rmtree(path)
-    else:
-        path.unlink(missing_ok=True)
-
-
 def _promote_prepared_store(
     staged_store_path: Path,
     staged_meta_path: Path,
@@ -349,57 +338,15 @@ def _promote_prepared_store(
     back so the previous cache remains available.
     """
     meta_path = store_path.with_suffix(store_path.suffix + ".meta.json")
-    resources = [(staged_store_path, store_path)]
+    resources: list[tuple[Optional[Path], Path]] = [(staged_store_path, store_path)]
     if backend == "hybrid":
         resources.append(
             (staged_store_path.with_suffix(".zarr"), store_path.with_suffix(".zarr"))
         )
+    elif store_path.suffix.lower() in {".db", ".sqlite"}:
+        resources.append((None, store_path.with_suffix(".zarr")))
     resources.append((staged_meta_path, meta_path))
-
-    backup_directory = Path(
-        tempfile.mkdtemp(prefix=f".{store_path.name}.backup-", dir=store_path.parent)
-    )
-    backups: list[tuple[Path, Path]] = []
-    installed: list[Path] = []
-    rollback_error: Optional[Exception] = None
-    try:
-        for _, destination in resources:
-            if destination.exists():
-                backup_path = backup_directory / destination.name
-                os.replace(destination, backup_path)
-                backups.append((backup_path, destination))
-        for staged_path, destination in resources:
-            os.replace(staged_path, destination)
-            installed.append(destination)
-    except Exception:
-        for destination in reversed(installed):
-            try:
-                _remove_path(destination)
-            except Exception as error:
-                rollback_error = error
-                break
-        if rollback_error is None:
-            for backup_path, destination in reversed(backups):
-                if backup_path.exists():
-                    try:
-                        os.replace(backup_path, destination)
-                    except Exception as error:
-                        rollback_error = error
-                        break
-        if rollback_error is not None:
-            logger.exception(
-                "Could not fully restore the prior prepared library cache; "
-                "the backup remains at %s",
-                backup_directory,
-            )
-            raise RuntimeError(
-                "Prepared library promotion failed and rollback was incomplete; "
-                f"the previous cache backup remains at {backup_directory}."
-            ) from rollback_error
-        raise
-    finally:
-        if rollback_error is None:
-            shutil.rmtree(backup_directory, ignore_errors=True)
+    io.promote_cache_resources(resources, store_path.parent)
 
 
 def _build_prepared_library_store(
@@ -410,10 +357,9 @@ def _build_prepared_library_store(
     fingerprint: str,
 ) -> int:
     """Build, validate, and promote a staged prepared-library cache."""
-    with tempfile.TemporaryDirectory(
-        prefix=f".{store_path.stem}.build-", dir=store_path.parent
-    ) as temporary_directory:
-        staging_directory = Path(temporary_directory)
+    with io.temporary_directory(
+        store_path.parent, prefix=".massflow-cache-build-"
+    ) as staging_directory:
         staged_store_path = staging_directory / store_path.name
         logger.info(
             "Building worker library store (%s): %s (source %s, %d MiB)",

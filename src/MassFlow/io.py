@@ -16,9 +16,13 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import shutil
+import tempfile
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Iterable, Iterator, Optional
+from typing import Any, Callable, Iterable, Iterator, Optional, Sequence
 
 import numpy as np
 import polars as pl
@@ -32,6 +36,77 @@ from matchms.importing import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+@contextmanager
+def temporary_directory(parent: Path, prefix: str) -> Iterator[Path]:
+    """Yield a temporary directory created beneath *parent*."""
+    with tempfile.TemporaryDirectory(prefix=prefix, dir=parent) as directory:
+        yield Path(directory)
+
+
+def _remove_path(path: Path) -> None:
+    """Remove a file, symlink, or directory if it exists."""
+    if path.is_dir() and not path.is_symlink():
+        shutil.rmtree(path)
+    else:
+        path.unlink(missing_ok=True)
+
+
+def promote_cache_resources(
+    resources: Sequence[tuple[Optional[Path], Path]], parent: Path
+) -> None:
+    """Promote staged cache resources, restoring prior resources on failure.
+
+    A ``None`` staged path means the destination is obsolete and should be
+    removed as part of the same transaction.
+    """
+    backup_directory = Path(
+        tempfile.mkdtemp(prefix=".massflow-cache-backup-", dir=parent)
+    )
+    backups: list[tuple[Path, Path]] = []
+    installed: list[Path] = []
+    rollback_error: Optional[BaseException] = None
+    try:
+        for _, destination in resources:
+            if destination.exists() or destination.is_symlink():
+                backup_path = backup_directory / destination.name
+                os.replace(destination, backup_path)
+                backups.append((backup_path, destination))
+        for staged_path, destination in resources:
+            if staged_path is not None:
+                os.replace(staged_path, destination)
+                installed.append(destination)
+    except BaseException:
+        for destination in reversed(installed):
+            try:
+                _remove_path(destination)
+            except BaseException as error:
+                rollback_error = error
+                break
+        if rollback_error is None:
+            for backup_path, destination in reversed(backups):
+                if backup_path.exists() or backup_path.is_symlink():
+                    try:
+                        os.replace(backup_path, destination)
+                    except BaseException as error:
+                        rollback_error = error
+                        break
+        if rollback_error is not None:
+            logger.exception(
+                "Could not fully restore the prior prepared library cache; "
+                "the backup remains at %s",
+                backup_directory,
+            )
+            raise RuntimeError(
+                "Prepared library promotion failed and rollback was incomplete; "
+                f"the previous cache backup remains at {backup_directory}."
+            ) from rollback_error
+        raise
+    finally:
+        if rollback_error is None:
+            shutil.rmtree(backup_directory, ignore_errors=True)
+
 
 PROPRIETARY_FORMATS = {".raw", ".d", ".wiff", ".lcd", ".t2d", ".baf"}
 
