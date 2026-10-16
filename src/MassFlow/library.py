@@ -325,6 +325,149 @@ def _store_is_fresh(
     )
 
 
+def _promote_prepared_store(
+    staged_store_path: Path,
+    staged_meta_path: Path,
+    store_path: Path,
+    backend: str,
+) -> None:
+    """Replace a managed cache only after its staged build is complete.
+
+    Store payloads and their freshness metadata are moved on the same
+    filesystem. If a promotion step raises, already moved files are rolled
+    back so the previous cache remains available.
+    """
+    meta_path = store_path.with_suffix(store_path.suffix + ".meta.json")
+    resources: list[tuple[Optional[Path], Path]] = [(staged_store_path, store_path)]
+    if backend == "hybrid":
+        resources.append(
+            (staged_store_path.with_suffix(".zarr"), store_path.with_suffix(".zarr"))
+        )
+    elif store_path.suffix.lower() in {".db", ".sqlite"}:
+        resources.append((None, store_path.with_suffix(".zarr")))
+    resources.append((staged_meta_path, meta_path))
+    io.promote_cache_resources(resources, store_path.parent)
+
+
+def _build_prepared_library_store(
+    config: MassFlowConfig,
+    library_path: Path,
+    store_path: Path,
+    backend_name: str,
+    fingerprint: str,
+) -> int:
+    """Build, validate, and promote a staged prepared-library cache."""
+    with io.temporary_directory(
+        store_path.parent, prefix=".massflow-cache-build-"
+    ) as staging_directory:
+        staged_store_path = staging_directory / store_path.name
+        logger.info(
+            "Building worker library store (%s): %s (source %s, %d MiB)",
+            backend_name,
+            store_path,
+            library_path,
+            library_path.stat().st_size // (1024 * 1024),
+        )
+        store = create_spectral_store(staged_store_path, backend=backend_name)
+        physics_rejections: dict[str, int] = {}
+
+        def _collect_physics_rejection(reason: str) -> None:
+            physics_rejections[reason] = physics_rejections.get(reason, 0) + 1
+
+        build_id: Optional[int] = None
+        try:
+            raw = io.load_spectra(library_path)
+            processed = processing.process_spectra(
+                raw, config.processing, rejection_reporter=_collect_physics_rejection
+            )
+            count = store.add_spectra(processed, category="library")
+        except Exception:
+            store.close()
+            raise
+        if physics_rejections:
+            store.close()
+            example_reasons = "; ".join(
+                f"{reason} (x{count})" if count > 1 else reason
+                for reason, count in list(physics_rejections.items())[:3]
+            )
+            raise processing.PhysicalIntegrityError(
+                "Reference library %s contains %d spectrum/spectra that fail "
+                "the strict 5 ppm physical-integrity validation and was not "
+                "stored. Fix or remove the offending entries, or rebuild a "
+                "curated store with `massflow db build`; examples: %s"
+                % (
+                    library_path,
+                    sum(physics_rejections.values()),
+                    example_reasons,
+                ),
+                rejection_reasons=list(physics_rejections),
+            )
+        if count == 0:
+            store.close()
+            raise ValueError("No valid spectra found in library.")
+
+        from MassFlow.database import record_library_build_provenance
+
+        normalized = config.normalized_config()
+        build_id = record_library_build_provenance(
+            store,
+            logger_tag=f"annotate library store {store_path}",
+            source_path=library_path,
+            spectrum_count=count,
+            category="library",
+            storage_backend=backend_name,
+            processing_config=config.processing.model_dump(mode="json"),
+            similarity_config=config.similarity.model_dump(mode="json"),
+            processing_fingerprint=fingerprint,
+            config_digest_sha256=normalized["config_digest_sha256"],
+            details={"annotate_prepared_store": True},
+        )
+        store.close()
+
+        validation_store = open_library(
+            LibrarySpec(
+                path=staged_store_path,
+                kind="store",
+                storage_backend=backend_name,
+            ),
+            config.processing,
+        )
+        try:
+            validated_count = validation_store.spectrum_count()
+        finally:
+            validation_store.close()
+        if validated_count != count:
+            raise RuntimeError(
+                "Prepared library store validation failed: "
+                f"expected {count} spectra, found {validated_count}."
+            )
+
+        source_stat = library_path.stat()
+        staged_meta_path = staged_store_path.with_suffix(
+            staged_store_path.suffix + ".meta.json"
+        )
+        staged_meta_path.write_text(
+            json.dumps(
+                {
+                    "source": str(library_path),
+                    "source_mtime_ns": source_stat.st_mtime_ns,
+                    "source_size": source_stat.st_size,
+                    "fingerprint": fingerprint,
+                    "backend": backend_name,
+                }
+            )
+        )
+        if not _store_is_fresh(
+            staged_store_path, library_path, fingerprint, backend_name
+        ):
+            raise RuntimeError("Prepared library cache metadata validation failed.")
+        _promote_prepared_store(
+            staged_store_path, staged_meta_path, store_path, backend_name
+        )
+        logger.info("Library store built with %d spectra (build #%s).", count, build_id)
+        return count
+
+
 def prepare_library(
     config: MassFlowConfig, output_directory: Path
 ) -> tuple[LibrarySpec, int]:
@@ -394,105 +537,9 @@ def prepare_library(
     fingerprint = _processing_fingerprint(config.processing)
 
     if not _store_is_fresh(store_path, library_path, fingerprint, backend_name):
-        logger.info(
-            "Building worker library store (%s): %s (source %s, %d MiB)",
-            backend_name,
-            store_path,
-            library_path,
-            library_path.stat().st_size // (1024 * 1024),
+        count = _build_prepared_library_store(
+            config, library_path, store_path, backend_name, fingerprint
         )
-        store = create_spectral_store(store_path, backend=backend_name)
-        # Collect physics-gate rejections during the streaming store build so
-        # the run can abort with the actual count and example reasons.
-        physics_rejections: dict[str, int] = {}
-
-        def _collect_physics_rejection(reason: str) -> None:
-            physics_rejections[reason] = physics_rejections.get(reason, 0) + 1
-
-        build_id: Optional[int] = None
-        try:
-            raw = io.load_spectra(library_path)
-            processed = processing.process_spectra(
-                raw, config.processing, rejection_reporter=_collect_physics_rejection
-            )
-            count = store.add_spectra(processed, category="library")
-        except Exception:
-            store.close()
-            raise
-        if physics_rejections:
-            # Strict reference-pool guarantee: a library spectrum that
-            # declares a structure whose metadata is malformed or whose
-            # precursor m/z contradicts the declared chemistry by >5 ppm must
-            # never silently shrink the target pool (every query's FDR
-            # calibration would change). Abort before any file is processed
-            # and remove the partial store so it cannot be cached/reused.
-            store.close()
-            if backend_name == "zarr":
-                import shutil
-
-                shutil.rmtree(store_path, ignore_errors=True)
-            else:
-                store_path.unlink(missing_ok=True)
-                if backend_name == "hybrid":
-                    import shutil
-
-                    shutil.rmtree(store_path.with_suffix(".zarr"), ignore_errors=True)
-            meta_path = store_path.with_suffix(store_path.suffix + ".meta.json")
-            meta_path.unlink(missing_ok=True)
-            example_reasons = "; ".join(
-                f"{reason} (x{count})" if count > 1 else reason
-                for reason, count in list(physics_rejections.items())[:3]
-            )
-            raise processing.PhysicalIntegrityError(
-                "Reference library %s contains %d spectrum/spectra that fail "
-                "the strict 5 ppm physical-integrity validation and was not "
-                "stored. Fix or remove the offending entries, or rebuild a "
-                "curated store with `massflow db build`; examples: %s"
-                % (
-                    library_path,
-                    sum(physics_rejections.values()),
-                    example_reasons,
-                ),
-                rejection_reasons=list(physics_rejections),
-            )
-        if count == 0:
-            store.close()
-            raise ValueError("No valid spectra found in library.")
-        # Record the build in the store's provenance history (SQLite-backed
-        # stores only): the annotate sidecar links every result back to this
-        # row via the config digest. Best-effort — provenance must never
-        # fail a library build.
-        from MassFlow.database import record_library_build_provenance
-
-        normalized = config.normalized_config()
-        build_id = record_library_build_provenance(
-            store,
-            logger_tag=f"annotate library store {store_path}",
-            source_path=library_path,
-            spectrum_count=count,
-            category="library",
-            storage_backend=backend_name,
-            processing_config=config.processing.model_dump(mode="json"),
-            similarity_config=config.similarity.model_dump(mode="json"),
-            processing_fingerprint=fingerprint,
-            config_digest_sha256=normalized["config_digest_sha256"],
-            details={"annotate_prepared_store": True},
-        )
-        store.close()
-        source_stat = library_path.stat()
-        meta_path = store_path.with_suffix(store_path.suffix + ".meta.json")
-        meta_path.write_text(
-            json.dumps(
-                {
-                    "source": str(library_path),
-                    "source_mtime_ns": source_stat.st_mtime_ns,
-                    "source_size": source_stat.st_size,
-                    "fingerprint": fingerprint,
-                    "backend": backend_name,
-                }
-            )
-        )
-        logger.info("Library store built with %d spectra (build #%s).", count, build_id)
     else:
         backend = open_library(
             LibrarySpec(path=store_path, kind="store", storage_backend=backend_name),
