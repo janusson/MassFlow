@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 
 
 @contextmanager
-def temporary_directory(parent: Path, prefix: str) -> Iterator[Path]:
+def _temporary_directory(parent: Path, prefix: str) -> Iterator[Path]:
     """Yield a temporary directory created beneath *parent*."""
     with tempfile.TemporaryDirectory(prefix=prefix, dir=parent) as directory:
         yield Path(directory)
@@ -53,7 +53,7 @@ def _remove_path(path: Path) -> None:
         path.unlink(missing_ok=True)
 
 
-def promote_cache_resources(
+def _promote_cache_resources(
     resources: Sequence[tuple[Optional[Path], Path]], parent: Path
 ) -> None:
     """Promote staged cache resources, restoring prior resources on failure.

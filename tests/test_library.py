@@ -150,7 +150,10 @@ class TestPrepareLibrary:
         assert count == 1
         assert spec.path.exists()
 
-    @pytest.mark.parametrize("backend_name", ["sqlite", "zarr", "hybrid"])
+    @pytest.mark.parametrize(
+        "backend_name",
+        [pytest.param("sqlite", marks=pytest.mark.core), "zarr", "hybrid"],
+    )
     def test_store_input_is_used_directly_without_modification(
         self, tmp_path: Path, backend_name: str
     ):
@@ -219,7 +222,10 @@ class TestPrepareLibrary:
         assert spec_a.path == spec_b.path  # same location, rebuilt
         assert spec_b.path.stat().st_mtime_ns >= spec_a.path.stat().st_mtime_ns
 
-    @pytest.mark.parametrize("backend_name", ["sqlite", "zarr", "hybrid"])
+    @pytest.mark.parametrize(
+        "backend_name",
+        [pytest.param("sqlite", marks=pytest.mark.core), "zarr", "hybrid"],
+    )
     def test_invalidated_cache_replaces_old_spectra(
         self,
         tmp_path: Path,
@@ -245,7 +251,10 @@ class TestPrepareLibrary:
         assert rebuilt_count == 1
         assert names == ["ref_1"]
 
-    @pytest.mark.parametrize("backend_name", ["sqlite", "zarr", "hybrid"])
+    @pytest.mark.parametrize(
+        "backend_name",
+        [pytest.param("sqlite", marks=pytest.mark.core), "zarr", "hybrid"],
+    )
     def test_failed_rebuild_preserves_previous_cache(
         self,
         tmp_path: Path,
@@ -331,6 +340,7 @@ class TestPrepareLibrary:
         related_paths = [store_path, meta_path]
         if backend_name == "hybrid":
             related_paths.append(store_path.with_suffix(".zarr"))
+            related_paths.append(store_path.with_suffix(".zarr.meta.json"))
         staged_paths = [staged_store_path, staged_meta_path]
         if backend_name == "hybrid":
             staged_paths.append(staged_store_path.with_suffix(".zarr"))
@@ -360,7 +370,10 @@ class TestPrepareLibrary:
             else:
                 assert path.read_text() == f"old:{path.name}"
 
-    @pytest.mark.parametrize("backend_name", ["sqlite", "zarr", "hybrid"])
+    @pytest.mark.parametrize(
+        "backend_name",
+        [pytest.param("sqlite", marks=pytest.mark.core), "zarr", "hybrid"],
+    )
     def test_promotion_rolls_back_on_keyboard_interrupt(
         self,
         tmp_path: Path,
@@ -443,6 +456,41 @@ class TestPrepareLibrary:
         assert sqlite_spec.path.exists()
         assert not hybrid_path.exists()
         assert _detect_store_backend(sqlite_spec.path) == "sqlite"
+
+    def test_hybrid_rebuild_invalidates_pure_zarr_cache_metadata(
+        self, tmp_path: Path
+    ) -> None:
+        library_path = tmp_path / "lib.msp"
+        write_msp(library_path, [make_spectrum("ref_1", 200.0)])
+        output_directory = tmp_path / "results"
+        config = make_config(tmp_path, library_path)
+        config.input.storage_backend = "zarr"
+        pure_zarr_spec, pure_zarr_count = prepare_library(config, output_directory)
+        pure_zarr_meta = pure_zarr_spec.path.with_suffix(
+            pure_zarr_spec.path.suffix + ".meta.json"
+        )
+        assert pure_zarr_count == 1
+        assert pure_zarr_meta.exists()
+
+        config.input.storage_backend = "hybrid"
+        hybrid_spec, hybrid_count = prepare_library(config, output_directory)
+        assert hybrid_count == 1
+        assert not pure_zarr_meta.exists()
+
+        config.input.storage_backend = "zarr"
+        rebuilt_zarr_spec, rebuilt_zarr_count = prepare_library(
+            config, output_directory
+        )
+        backend = open_library(rebuilt_zarr_spec, config.processing)
+        try:
+            names = [s.get("compound_name") for s in backend.iter_spectra()]
+        finally:
+            backend.close()
+
+        assert rebuilt_zarr_spec.path == pure_zarr_spec.path
+        assert rebuilt_zarr_count == 1
+        assert names == ["ref_1"]
+        assert hybrid_spec.path != rebuilt_zarr_spec.path
 
     def test_long_library_name_uses_bounded_staging_directory_prefix(
         self, tmp_path: Path

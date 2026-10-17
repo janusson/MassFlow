@@ -340,13 +340,14 @@ def _promote_prepared_store(
     meta_path = store_path.with_suffix(store_path.suffix + ".meta.json")
     resources: list[tuple[Optional[Path], Path]] = [(staged_store_path, store_path)]
     if backend == "hybrid":
-        resources.append(
-            (staged_store_path.with_suffix(".zarr"), store_path.with_suffix(".zarr"))
-        )
+        staged_zarr_path = staged_store_path.with_suffix(".zarr")
+        zarr_path = store_path.with_suffix(".zarr")
+        resources.append((staged_zarr_path, zarr_path))
+        resources.append((None, zarr_path.with_suffix(zarr_path.suffix + ".meta.json")))
     elif store_path.suffix.lower() in {".db", ".sqlite"}:
         resources.append((None, store_path.with_suffix(".zarr")))
     resources.append((staged_meta_path, meta_path))
-    io.promote_cache_resources(resources, store_path.parent)
+    io._promote_cache_resources(resources, store_path.parent)
 
 
 def _build_prepared_library_store(
@@ -357,7 +358,7 @@ def _build_prepared_library_store(
     fingerprint: str,
 ) -> int:
     """Build, validate, and promote a staged prepared-library cache."""
-    with io.temporary_directory(
+    with io._temporary_directory(
         store_path.parent, prefix=".massflow-cache-build-"
     ) as staging_directory:
         staged_store_path = staging_directory / store_path.name
