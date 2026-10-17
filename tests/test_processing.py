@@ -133,6 +133,21 @@ def test_process_spectra_batch_missing_precursor(processing_config):
     assert len(results) == 3
 
 
+@pytest.mark.parametrize(
+    "value",
+    [None, "None", "not-a-mass", float("nan"), float("inf"), float("-inf")],
+)
+def test_batch_precursor_coercion_normalizes_invalid_values(value):
+    result = processing._coerce_batch_precursor_mz(value)
+
+    assert np.isnan(result)
+
+
+def test_batch_precursor_coercion_rejects_overflow_and_non_scalar_values():
+    assert np.isnan(processing._coerce_batch_precursor_mz(10**10000))
+    assert np.isnan(processing._coerce_batch_precursor_mz([]))
+
+
 def test_process_spectra_batch_mz_filter_excludes_missing_precursor(
     processing_config,
 ):
