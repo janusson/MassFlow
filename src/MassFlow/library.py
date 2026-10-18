@@ -53,6 +53,10 @@ from MassFlow.storage import SpectralStore, create_spectral_store
 
 logger = logging.getLogger(__name__)
 
+# Increment when processing or validation semantics change without a config
+# change. Revision 1 rejects charge/adduct contradictions in structural claims.
+PROCESSING_SEMANTICS_REVISION = 1
+
 # Extension of MassFlow-native stores (opened directly by workers).
 _STORE_EXTENSIONS = {".db", ".sqlite", ".zarr"}
 
@@ -287,12 +291,19 @@ def open_library(
 def processing_fingerprint(processing_config: ProcessingConfig) -> str:
     """Stable fingerprint of the processing pipeline (cache invalidation).
 
-    SHA-256 over the canonical JSON of the processing configuration. This is
-    the same fingerprint recorded in library-build provenance rows so that
-    ``db inspect`` history can be correlated with the annotated-store cache.
+    SHA-256 over canonical JSON containing the processing configuration and
+    its semantics revision. A revision change invalidates managed caches even
+    when configuration is unchanged. This same fingerprint is recorded in
+    library-build provenance so ``db inspect`` history can be correlated with
+    the annotated-store cache. Externally supplied stores are used directly
+    and must be rebuilt explicitly to apply updated validation.
     """
+    payload = {
+        "processing_semantics_revision": PROCESSING_SEMANTICS_REVISION,
+        "processing": processing_config.model_dump(mode="json"),
+    }
     return hashlib.sha256(
-        processing_config.model_dump_json().encode("utf-8")
+        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
     ).hexdigest()
 
 
