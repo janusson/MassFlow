@@ -51,6 +51,7 @@ def make_spectrum(spec_id: str, precursor_mz: float = 100.0) -> Spectrum:
 @patch("MassFlow.workflow.io.save_match_results")
 @patch("MassFlow.workflow.get_similarity_engine")
 @patch("MassFlow.workflow.io.load_spectra")
+@pytest.mark.core
 def test_run_annotation_pipeline_success(
     mock_load,
     mock_engine_cls,
@@ -485,7 +486,13 @@ def test_process_single_file_tiny_library_fdr_sensitivity(
         assert result.results[0]["q_value"] == pytest.approx(expected_q_value)
 
 
-@pytest.mark.parametrize("export_format", ["csv", "mztab"])
+@pytest.mark.parametrize(
+    "export_format",
+    [
+        pytest.param("csv", marks=pytest.mark.core),
+        pytest.param("mztab", marks=pytest.mark.core),
+    ],
+)
 @patch("MassFlow.workflow.ProcessPoolExecutor")
 @patch("MassFlow.workflow.processing.process_spectra")
 @patch("MassFlow.workflow.io.save_analysis_report")

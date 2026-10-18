@@ -113,6 +113,7 @@ addopts = "-m 'not benchmark and not slow and not optional' --strict-markers"
 # future default now.
 asyncio_default_fixture_loop_scope = "function"
 markers = [
+    "core: stable v0.1 release-contract tests",
     "unit: fast, isolated unit tests (run by default)",
     "integration: cross-module integration tests (run by default)",
     "scientific: scientific-validation tests (run by default; CI runs them explicitly)",

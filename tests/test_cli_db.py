@@ -8,6 +8,10 @@ from typer.testing import CliRunner
 
 from MassFlow import cli
 
+import pytest
+
+pytestmark = pytest.mark.core
+
 
 @patch("MassFlow.database.SpectralDatabase")
 def test_run_db_inspect(mock_db_class):

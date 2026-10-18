@@ -69,6 +69,7 @@ def methylene_homolog(cocaine_spectrum: Spectrum) -> Spectrum:
     return Spectrum(mz=shifted_mz, intensities=orig_ints, metadata=new_metadata)
 
 
+@pytest.mark.core
 def test_modified_cosine_integration(
     cocaine_spectrum: Spectrum, methylene_homolog: Spectrum
 ) -> None:

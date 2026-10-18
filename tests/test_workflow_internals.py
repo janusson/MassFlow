@@ -341,6 +341,7 @@ class TestHandleFileResults:
             _handle_file_results(self._result(tmp_path), cfg)
             mock_save.assert_not_called()
 
+    @pytest.mark.core
     def test_csv_export(self, tmp_path):
         cfg = MassFlowConfig(
             project=ProjectConfig(output_directory=tmp_path),
@@ -356,6 +357,7 @@ class TestHandleFileResults:
                 )
                 mock_save.assert_called_once()
 
+    @pytest.mark.core
     def test_mztab_export(self, tmp_path):
         cfg = MassFlowConfig(
             project=ProjectConfig(output_directory=tmp_path),

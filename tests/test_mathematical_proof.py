@@ -17,7 +17,7 @@ from MassFlow.config import SimilarityConfig
 from MassFlow.similarity import SimilarityEngine
 import pytest
 
-pytestmark = pytest.mark.scientific
+pytestmark = [pytest.mark.core, pytest.mark.scientific]
 
 
 def _make_spectrum(

@@ -163,5 +163,5 @@ golden known-answer suite (including consensus/cascade runs) is unchanged.
 | --- | --- | --- |
 | R-1 | Deprecated config surface removal (`tolerance`, `workflow:`, `solvents:`, legacy `precursor_mz`/`retention_time`) | Remove at a v0.2 schema bump with a migration error message |
 | R-2 | Legacy-DB migration helpers + `scripts/migrations/` | Keep as tooling; remove once pre-array-schema DBs are out of circulation |
-| R-3 | `-m core` marker discipline | Retired in the pytest-config audit; the default selection + `-m scientific` is the contract gate. Reintroduce only if a stable-only CI job is wanted |
+| R-3 | `-m core` marker discipline | Reintroduced as an explicit stable v0.1 release-contract gate; run with `uv run pytest -m core`. It complements the full suite and scientific-validation group. |
 | R-4 | `streaming/engine.py` + `ml_client.py` both speak gRPC | Distinct contracts (instrument stream vs ML scoring); a shared transport helper would be a refactor, not a simplification |
