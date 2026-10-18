@@ -3,6 +3,16 @@
 All notable changes to MassFlow will be documented in this file.
 
 ## [Unreleased]
+### Fixed
+
+- `filter_by_mz` now truncates fragment peaks without rejecting spectra whose precursor
+  falls outside `mz_min..mz_max` (#95). Processing-semantics revision 2 invalidates managed
+  prepared caches once; externally supplied persistent stores require an explicit rebuild
+  from raw sources into a new output path. Existing intensity/count/normalization order and
+  physical-integrity checks are preserved. Per-file reports now include bounded
+  stage-specific reasons for configured-filter and processing-error drops, including
+  partial successes; the raw-library physics-abort policy remains separate.
+
 ### Added
 
 - Added `massflow annotate --build-library-store` to prepare or reuse the configured SQLite/hybrid/Zarr reference store without scoring queries, using the existing strict physical-integrity gate and build provenance. See [CLI reference](api/cli.md).

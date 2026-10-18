@@ -629,11 +629,13 @@ def _process_single_file(
         # file-level failure message (the drop itself is counted through the
         # usual processing length-delta accounting below).
         physics_collector = _RejectionCollector()
+        filter_collector = _RejectionCollector()
         query_spectra = list(
             processing.process_spectra(
                 validated_queries,
                 config.processing,
                 rejection_reporter=physics_collector,
+                filter_rejection_reporter=filter_collector,
             )
         )
 
@@ -641,6 +643,18 @@ def _process_single_file(
         n_processing_drops = max(n_validated - len(query_spectra), 0)
         result.spectra_loaded = n_validated
         result.spectra_rejected = rejection_collector.count + n_processing_drops
+        filter_note = ""
+        if filter_collector.count:
+            filter_reasons = "; ".join(filter_collector.reasons)
+            filter_note = (
+                f" ({filter_collector.count} processing rejections: {filter_reasons})"
+            )
+            result.warnings.append(filter_note.strip())
+        if physics_collector.count and query_spectra:
+            result.warnings.append(
+                f"{physics_collector.count} physical-integrity rejections: "
+                + "; ".join(physics_collector.reasons)
+            )
 
         if not query_spectra:
             # The file yielded no analyzable spectra: its data were NOT
@@ -657,7 +671,7 @@ def _process_single_file(
             result.fatal_errors.append(
                 f"No analyzable spectra: {rejection_collector.count} rejected "
                 f"by validation ({reasons}), {n_processing_drops} dropped by "
-                f"processing{physics_note}."
+                f"processing{physics_note}{filter_note}."
             )
             logger.error("Failed to process %s: %s", query_file, result.fatal_errors[0])
             return result

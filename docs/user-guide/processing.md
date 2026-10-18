@@ -70,7 +70,7 @@ processing:
   min_peaks: 5
 ```
 *   `filter_min_peaks`: Master toggle for peak count enforcement.
-*   `min_peaks`: The minimum number of peaks a spectrum must contain *after* noise filtering to survive. If a spectrum has fewer peaks than this, it is silently dropped.
+*   `min_peaks`: The minimum number of peaks a spectrum must contain *after* noise filtering to survive. If a spectrum has fewer peaks than this, it is dropped and counted. Per-file reports retain bounded processing-stage reasons.
 
 ### 3. M/Z Range Truncation
 
@@ -83,7 +83,7 @@ processing:
   mz_max: 1000.0
 ```
 *   `filter_by_mz`: Master toggle for m/z truncation.
-*   `mz_min` & `mz_max`: The allowed m/z window. Peaks outside this range are deleted. (Note: `mz_max` must be strictly greater than `mz_min`).
+*   `mz_min` & `mz_max`: The allowed m/z window. Peaks outside this inclusive range are deleted. This is a fragment m/z window, not a precursor eligibility filter: a precursor at m/z 800 can retain fragments in a 50–500 window. Precursor candidate matching uses the separate `similarity.ms1_tolerance` setting. (Note: `mz_max` must be strictly greater than `mz_min`).
 
 ### 4. Top-N Peak Reduction
 
@@ -114,3 +114,38 @@ processing:
 MassFlow's processing pipeline is designed to "fail fast".
 
 If a spectrum becomes invalid during processing—for example, if noise filtering removes so many peaks that the spectrum falls below the `min_peaks` threshold—the `processing.process_spectra` pipeline will silently drop that spectrum from the iterator rather than passing empty arrays to the similarity engine.
+
+
+### Processing revisions and persistent libraries
+
+Processing fingerprints hash canonical configuration plus a stable algorithm-semantics
+revision. Revision 2 corrects the fragment window; revision 1 introduced charge/adduct
+consistency. Identical configuration and revision produce identical fingerprints;
+changing the revision invalidates MassFlow-managed prepared caches. They rebuild once
+from raw input using staged replacement, then reuse the rebuilt store without appending
+old rows.
+
+Direct `.db`, `.sqlite`, and `.zarr` inputs are not automatically reprocessed. If built
+with earlier semantics, rebuild from the original raw library into a **new output path**,
+inspect the new store and quarantine counts, then change `input.library_path`. `db build`
+appends to an existing store; it does not repair one in place.
+
+The existing order remains intensity filtering → minimum peak count → fragment truncation
+→ optional top-N → normalization. The minimum is not rechecked after truncation. The low-level processing API may retain empty peaks after truncation, including
+with normalization enabled. Ingestion and scoring have their own
+validation policies. These are tested software behaviors, not independently validated
+choices of thresholds for an experimental assay.
+
+
+### Rejection reasons
+
+Query preprocessing records minimum-peak-count, intensity-filter, metadata-repair,
+normalization, and processing-error drops with stage and spectrum identifier when
+available. Counts remain in `spectra_rejected`; a bounded sample of reasons appears
+in per-file warnings, including for partially successful files. An all-rejected file
+has an explicit failed report with these reasons and no results table.
+
+The Python processing functions accept a keyword-only `filter_rejection_reporter`
+callback for non-physics drops. The existing `rejection_reporter` remains exclusive
+to physical-integrity failures: configured filtering does not cause the raw-library
+physics-abort policy to fire.

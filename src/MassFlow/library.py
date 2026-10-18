@@ -55,7 +55,8 @@ logger = logging.getLogger(__name__)
 
 # Increment when processing or validation semantics change without a config
 # change. Revision 1 rejects charge/adduct contradictions in structural claims.
-PROCESSING_SEMANTICS_REVISION = 1
+# Revision 2 applies filter_by_mz only to fragment peaks, never precursors.
+PROCESSING_SEMANTICS_REVISION = 2
 
 # Extension of MassFlow-native stores (opened directly by workers).
 _STORE_EXTENSIONS = {".db", ".sqlite", ".zarr"}

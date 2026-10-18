@@ -438,16 +438,48 @@ def metadata_processing(
     return s
 
 
+def _report_filter_rejection(
+    spectrum: Spectrum,
+    reason: str,
+    reporter: Optional[Callable[[str], None]],
+) -> None:
+    """Report a non-physics drop without changing physical-library policy."""
+    if reporter is not None:
+        reporter(f"{_spectrum_identifier(spectrum)}: {reason}")
+
+
 def peak_processing(
-    spectrum: Optional[Spectrum], config: ProcessingConfig
+    spectrum: Optional[Spectrum],
+    config: ProcessingConfig,
+    rejection_reporter: Optional[Callable[[str], None]] = None,
 ) -> Optional[Spectrum]:
     """
     Apply peak-level filters and normalization based on configuration.
+
+    Parameters
+    ----------
+    spectrum : matchms.Spectrum or None
+        Input spectrum. matchms filters return processed copies.
+    config : ProcessingConfig
+        Filter and normalization settings.
+    rejection_reporter : callable or None
+        Receives an identifier and stage when a filter returns no spectrum.
+
+    Returns
+    -------
+    matchms.Spectrum or None
+        Processed spectrum, or None when rejected. Empty peak arrays may
+        survive truncation; this preserves the existing filter order.
+
+    Examples
+    --------
+    >>> peak_processing(None, ProcessingConfig()) is None
+    True
     """
     if spectrum is None:
         return None
 
-    s: Optional[Spectrum] = spectrum
+    s = spectrum
 
     # 1. Filter Noise (Absolute Intensity)
     if getattr(config, "filter_by_intensity", True):
@@ -458,12 +490,24 @@ def peak_processing(
         )
         s = select_by_intensity(s, intensity_from=threshold, intensity_to=float("inf"))
         if s is None:
+            _report_filter_rejection(
+                spectrum, "intensity_filter: no spectrum retained", rejection_reporter
+            )
             return None
 
     # 2. Filter Peak Count
     if getattr(config, "filter_min_peaks", True):
+        peak_count = len(s.peaks)
         s = require_minimum_number_of_peaks(s, n_required=config.min_peaks)
         if s is None:
+            stage = "minimum_peak_count"
+            if getattr(config, "filter_by_intensity", True):
+                stage += " after intensity_filter"
+            _report_filter_rejection(
+                spectrum,
+                f"{stage}: {peak_count} peaks < {config.min_peaks}",
+                rejection_reporter,
+            )
             return None
 
     # 3. M/Z Range Truncation
@@ -472,6 +516,9 @@ def peak_processing(
         mz_to = getattr(config, "mz_max", 1000.0)
         s = select_by_mz(s, mz_from=mz_from, mz_to=mz_to)
         if s is None:
+            _report_filter_rejection(
+                spectrum, "fragment_mz_filter: no spectrum retained", rejection_reporter
+            )
             return None
 
     # 4. Max-Peak Restriction (Top-N)
@@ -480,12 +527,18 @@ def peak_processing(
         if n_max and n_max > 0:
             s = reduce_to_number_of_peaks(s, n_max=n_max)
             if s is None:
+                _report_filter_rejection(
+                    spectrum, "top_n_filter: no spectrum retained", rejection_reporter
+                )
                 return None
 
     # 5. Normalize Intensities
     if getattr(config, "normalize_intensity", True):
         s = normalize_intensities(s)
         if s is None:
+            _report_filter_rejection(
+                spectrum, "normalization: no spectrum retained", rejection_reporter
+            )
             return None
 
     return s
@@ -495,6 +548,8 @@ def process_spectra_batch(
     spectra: List[Spectrum],
     config: ProcessingConfig,
     rejection_reporter: Optional[Callable[[str], None]] = None,
+    *,
+    filter_rejection_reporter: Optional[Callable[[str], None]] = None,
 ) -> List[Spectrum]:
     """
     Process a batch of spectra using Polars for high-performance metadata operations.
@@ -509,9 +564,11 @@ def process_spectra_batch(
         Optional callback invoked with the rejection reason for every
         spectrum dropped by the strict 5 ppm physical-integrity gate. Used by
         the workflow to make chemistry rejections observable in the per-file
-        execution result (a scientific analysis must never silently drop
-        data). Peak-filter drops are *not* reported here; they remain
-        config-driven and are counted by the caller via the length delta.
+        execution result. This callback remains exclusive to physics failures.
+    filter_rejection_reporter : Callable[[str], None] or None
+        Separate callback for each configured-filter, metadata-repair, or
+        processing-error drop. Reasons include the stage and spectrum identifier.
+        Counts remain the caller's input/output length delta.
     """
     if not spectra:
         return []
@@ -519,44 +576,12 @@ def process_spectra_batch(
     # 1. Extract metadata into a Polars LazyFrame for fast batch validation
     metadata_rows = []
     for i, s in enumerate(spectra):
-        # Handle cases where charge might be a list or non-numeric
-        raw_charge = s.get("charge", 0)
-        if isinstance(raw_charge, (list, tuple)) and len(raw_charge) > 0:
-            charge = int(raw_charge[0])
-        elif hasattr(raw_charge, "__iter__") and not isinstance(
-            raw_charge, (str, bytes)
-        ):
-            # Handle matchms ChargeList or similar iterables
-            try:
-                charge = int(next(iter(raw_charge)))
-            except (StopIteration, ValueError, TypeError):
-                charge = 0
-        else:
-            try:
-                charge = int(raw_charge) if raw_charge is not None else 0
-            except (ValueError, TypeError):
-                charge = 0
-
-        try:
-            rt = float(s.get("retention_time", 0.0))
-        except (ValueError, TypeError):
-            rt = 0.0
-
-        try:
-            pmz = float(s.get("precursor_mz", 0.0))
-            if np.isnan(pmz):
-                pmz = 0.0
-        except (ValueError, TypeError):
-            pmz = 0.0
-
+        # The only batch eligibility check is peak count. Precursor/charge/RT
+        # metadata is repaired below and interpreted by the physical gate and
+        # scorer; coercing it here would create unused scientific sentinels.
         metadata_rows.append(
             {
                 "batch_index": i,
-                "id": s.get("id"),
-                "precursor_mz": pmz,
-                "retention_time": rt,
-                "charge": charge,
-                "ionmode": s.get("ionmode"),
                 "peak_count": len(s.peaks) if s.peaks else 0,
             }
         )
@@ -564,38 +589,26 @@ def process_spectra_batch(
     # Use LazyFrame to prepare filters without immediate execution
     lf = pl.LazyFrame(metadata_rows)
 
-    # Apply batch-level metadata filters, gated on the same documented
-    # toggles as the per-spectrum path (peak_processing):
-    #   - filter_min_peaks controls the minimum-peak-count rejection;
-    #   - filter_by_mz controls the precursor m/z window.
-    # Without this gating, the batch path silently dropped spectra even when
-    # the toggles were disabled (a configuration that said "do not filter"
-    # filtered anyway).
-    mz_min = getattr(config, "mz_min", 0.0)
-    mz_max = getattr(config, "mz_max", 1000.0)
+    # Only peak-count eligibility is a batch-level filter. filter_by_mz
+    # truncates fragment peaks in peak_processing; it is not a precursor
+    # eligibility window (precursor candidacy belongs to the scorer).
     min_peaks = getattr(config, "min_peaks", 1)
-
     batch_filters = []
-    if getattr(config, "filter_by_mz", False):
-        batch_filters.append(
-            (pl.col("precursor_mz") >= mz_min) & (pl.col("precursor_mz") <= mz_max)
-        )
     if getattr(config, "filter_min_peaks", False):
         batch_filters.append(pl.col("peak_count") >= min_peaks)
+        if filter_rejection_reporter is not None:
+            rejected = lf.filter(pl.col("peak_count") < min_peaks).collect()
+            for index in rejected.get_column("batch_index").to_list():
+                _report_filter_rejection(
+                    spectra[index],
+                    f"minimum_peak_count: {len(spectra[index].peaks)} peaks < {min_peaks}",
+                    filter_rejection_reporter,
+                )
 
     if batch_filters:
         filtered_lf = lf.filter(batch_filters)
     else:
         filtered_lf = lf
-
-    # Compute vectorized m/z offsets and neutral losses for the entire batch metadata table
-    # (This represents the relationship of the PRECURSOR to nominal mass ranges)
-    filtered_lf = filtered_lf.with_columns(
-        [
-            (pl.col("precursor_mz") % 1).alias("mz_nominal_offset"),
-            (pl.col("precursor_mz") - _WATER_MASS).alias("theoretical_water_loss"),
-        ]
-    )
 
     # Materialize the filtered metadata
     valid_metadata = filtered_lf.collect()
@@ -609,6 +622,11 @@ def process_spectra_batch(
             # Apply standard matchms metadata repairs
             spec = metadata_processing(spec, config)
             if spec is None:
+                _report_filter_rejection(
+                    spectra[idx],
+                    "metadata_processing: no spectrum retained",
+                    filter_rejection_reporter,
+                )
                 continue
         except Exception as e:
             logger.error(
@@ -620,6 +638,11 @@ def process_spectra_batch(
                     "step": "metadata_processing",
                 },
                 exc_info=True,
+            )
+            _report_filter_rejection(
+                spectra[idx],
+                f"metadata_processing error: {_short_exception_message(e)}",
+                filter_rejection_reporter,
             )
             continue
 
@@ -639,7 +662,7 @@ def process_spectra_batch(
 
         try:
             # Apply peak-level processing
-            spec = peak_processing(spec, config)
+            spec = peak_processing(spec, config, filter_rejection_reporter)
             if spec is None:
                 continue
         except Exception as e:
@@ -653,6 +676,11 @@ def process_spectra_batch(
                 },
                 exc_info=True,
             )
+            _report_filter_rejection(
+                spectra[idx],
+                f"peak_processing error: {_short_exception_message(e)}",
+                filter_rejection_reporter,
+            )
             continue
 
         processed_batch.append(spec)
@@ -664,6 +692,8 @@ def process_spectra(
     spectra: Iterable[Spectrum],
     config: ProcessingConfig,
     rejection_reporter: Optional[Callable[[str], None]] = None,
+    *,
+    filter_rejection_reporter: Optional[Callable[[str], None]] = None,
 ) -> Iterator[Spectrum]:
     """
     Orchestrate the full spectral processing pipeline.
@@ -679,6 +709,8 @@ def process_spectra(
         Optional callback invoked with the rejection reason for every
         spectrum dropped by the strict 5 ppm physical-integrity gate (see
         :func:`process_spectra_batch`).
+    filter_rejection_reporter : Callable[[str], None] or None
+        Separate callback for non-physics processing drops.
     """
     chunk_size = 5000
     chunk = []
@@ -689,8 +721,18 @@ def process_spectra(
         chunk.append(spectrum)
 
         if len(chunk) >= chunk_size:
-            yield from process_spectra_batch(chunk, config, rejection_reporter)
+            yield from process_spectra_batch(
+                chunk,
+                config,
+                rejection_reporter,
+                filter_rejection_reporter=filter_rejection_reporter,
+            )
             chunk.clear()
 
     if chunk:
-        yield from process_spectra_batch(chunk, config, rejection_reporter)
+        yield from process_spectra_batch(
+            chunk,
+            config,
+            rejection_reporter,
+            filter_rejection_reporter=filter_rejection_reporter,
+        )
