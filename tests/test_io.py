@@ -11,8 +11,6 @@ from matchms import Spectrum
 
 from MassFlow import io
 
-pytestmark = pytest.mark.core
-
 
 @pytest.fixture
 def mock_spectrum():
@@ -23,6 +21,7 @@ def mock_spectrum():
     )
 
 
+@pytest.mark.core
 def test_load_spectra_mgf(mock_spectrum, tmp_path):
     with patch("MassFlow.io.load_from_mgf") as mock_load:
         # Mock load_from_mgf to return an iterator of spectra
@@ -40,6 +39,7 @@ def test_load_spectra_mgf(mock_spectrum, tmp_path):
         assert result[0].get("id") == "spec1"
 
 
+@pytest.mark.core
 def test_load_spectra_msp(mock_spectrum, tmp_path):
     with patch("MassFlow.io.load_from_msp") as mock_load:
         mock_load.return_value = iter([mock_spectrum])
@@ -50,6 +50,7 @@ def test_load_spectra_msp(mock_spectrum, tmp_path):
         assert result[0].get("id") == "spec1"
 
 
+@pytest.mark.core
 def test_load_spectra_mzml(mock_spectrum, tmp_path):
     with patch("MassFlow.io.load_from_mzml") as mock_load:
         mock_load.return_value = iter([mock_spectrum])
@@ -60,6 +61,7 @@ def test_load_spectra_mzml(mock_spectrum, tmp_path):
         assert result[0].get("id") == "spec1"
 
 
+@pytest.mark.core
 def test_load_spectra_mzxml(mock_spectrum, tmp_path):
     with patch("MassFlow.io.load_from_mzxml") as mock_load:
         mock_load.return_value = iter([mock_spectrum])
@@ -70,6 +72,7 @@ def test_load_spectra_mzxml(mock_spectrum, tmp_path):
         assert result[0].get("id") == "spec1"
 
 
+@pytest.mark.core
 def test_load_spectra_db(mock_spectrum, tmp_path):
     # io.load_spectra now uses create_spectral_store factory.
     # Patch the factory to return a mock store.
@@ -87,6 +90,7 @@ def test_load_spectra_db(mock_spectrum, tmp_path):
         mock_factory.assert_called_with(p, backend="sqlite")
 
 
+@pytest.mark.core
 def test_load_spectra_proprietary_error(tmp_path):
     # Test that it raises error if vendor format is passed
     p = tmp_path / "test.raw"
@@ -98,6 +102,7 @@ def test_load_spectra_proprietary_error(tmp_path):
         list(io.load_spectra(p))
 
 
+@pytest.mark.core
 def test_load_spectra_unsupported_format(tmp_path):
     p = tmp_path / "test.xyz"
     p.touch()
@@ -114,6 +119,7 @@ def test_load_spectra_unsupported_format(tmp_path):
         ("bad.mzxml", "load_from_mzxml"),
     ],
 )
+@pytest.mark.core
 def test_load_spectra_propagates_malformed_loader_errors(
     file_name, loader_name, tmp_path
 ):
@@ -127,6 +133,7 @@ def test_load_spectra_propagates_malformed_loader_errors(
             list(io.load_spectra(p))
 
 
+@pytest.mark.core
 def test_save_match_results(tmp_path):
     results = [{"query_id": "q1", "reference_id": "r1", "score": 0.95}]
     out_path = tmp_path / "results.csv"
@@ -140,6 +147,7 @@ def test_save_match_results(tmp_path):
         assert "q1,r1,0.95" in content
 
 
+@pytest.mark.core
 def test_save_match_results_normalizes_list_valued_query_metadata(tmp_path):
     """Real mzML loaders emit list-valued retention times (e.g. ``[0.017]``
     or ``[]``); export must normalize them instead of crashing.
@@ -201,6 +209,7 @@ def test_save_match_results_serializes_nested_score_breakdown(tmp_path):
     assert '{"cosine":0.0,"modified_cosine":1.0}' in mztab_path.read_text()
 
 
+@pytest.mark.core
 def test_save_spectra_to_msp(tmp_path, mock_spectrum):
     out_path = tmp_path / "test.msp"
 
@@ -213,6 +222,7 @@ def test_save_spectra_to_msp(tmp_path, mock_spectrum):
         assert args[1] == str(out_path)
 
 
+@pytest.mark.core
 def test_save_spectra_to_mgf(tmp_path, mock_spectrum):
     out_path = tmp_path / "test.mgf"
 
@@ -225,6 +235,7 @@ def test_save_spectra_to_mgf(tmp_path, mock_spectrum):
         assert args[1] == str(out_path)
 
 
+@pytest.mark.core
 def test_save_match_results_to_mztab(tmp_path):
     results = [{"query_id": "q1", "reference_id": "r1", "score": 0.95}]
     out_path = tmp_path / "results.mztab"
