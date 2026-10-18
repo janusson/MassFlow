@@ -49,6 +49,14 @@ All notable changes to MassFlow will be documented in this file.
 - **Tooling deprecation & supply-chain hygiene:** `asyncio_default_fixture_loop_scope = "function"` is now set explicitly in `pyproject.toml`, silencing the pytest-asyncio deprecation warning about the future default change (all async fixtures in the suite are function-scoped, so behavior is unchanged). The docs site no longer loads `polyfill.io` (`mkdocs.yml`) — the CDN changed ownership in 2024 and is a known supply-chain risk, and MathJax 3 requires no polyfills on supported browsers.
 - **Docs accuracy (capability-audit follow-up):** `serve` is documented as the deprecated alias of `stream-server` in the CLI/server guides (examples now use `stream-server`); the README quickstart YAML no longer enables `hnsw_enabled` under `modified_cosine` (an invalid combination under strict config validation); the unimplemented FBMN export and GraphML/`massflow visualize` workflows are explicitly marked as **not shipped** in `docs/user-guide/results.md`, `docs/user-guide/annotation.md`, `docs/user-guide/configuration.md`, and `.github/copilot-instructions.md` (matching `docs/CAPABILITY_MATRIX.md` C-4/C-5); `MassFlow.library` and `MassFlow.ml_client` were added to `docs/api_reference.md`; the `workflow` config section no longer claims unimplemented toggles; the ML satellite example README warns that its reference servers are unauthenticated demos (loopback or TLS-terminated reverse proxy recommended).
 
+### Fixed
+
+- Installed wheels now include the tutorial generator. Generated YAML uses supported keys
+  and resolves paths relative to itself; seeded local randomness makes example files
+  reproducible. Existing tutorial input files require an explicit `--clean` before replacement.
+  Constructed peaks are labeled synthetic and carry no unchecked structural identifiers.
+
+
 ## [0.1.0] - 2026-05-10
 ### Added
 - **Formal Data Model:** Implemented Pydantic-based validation for all spectral metadata.

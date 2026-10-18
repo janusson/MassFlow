@@ -1,8 +1,8 @@
 """Generate synthetic tutorial data for MassFlow onboarding.
 
 Creates a self-contained ``tutorial/`` directory with:
-- ``tutorial_library.msp`` – reference steroid spectra (Testosterone, Progesterone, Cortisol)
-- ``tutorial_experimental.mgf`` – experimental queries (matches, analogues, and noise)
+- ``tutorial_library.msp`` – synthetic steroid-like reference examples
+- ``tutorial_experimental.mgf`` – synthetic queries (matches, shifts, and noise)
 - ``tutorial_config.yaml`` – pre-configured analysis parameters
 
 Usage (standalone)::
@@ -31,8 +31,6 @@ class SteroidSpec(TypedDict):
     name: str
     precursor_mz: float
     peaks: list[tuple[float, float]]
-    inchikey: str
-    smiles: str
 
 
 # ── Spectrum builder ──────────────────────────────────────────────────────────
@@ -42,19 +40,17 @@ def create_steroid_spectrum(
     name: str,
     precursor_mz: float,
     peaks: list[tuple[float, float]],
-    inchikey: str,
-    smiles: str,
 ) -> Spectrum:
-    """Build a matchms ``Spectrum`` with steroid metadata."""
+    """Build a synthetic example without unchecked structural identifiers."""
     mz, intensities = zip(*peaks)
     return Spectrum(
         mz=np.array(mz, dtype="float"),
         intensities=np.array(intensities, dtype="float"),
         metadata={
-            "compound_name": name,
+            # Peaks are constructed examples, not measured reference standards.
+            # Omit structural identifiers rather than attach unchecked identities.
+            "compound_name": f"Synthetic {name}-like example",
             "precursor_mz": precursor_mz,
-            "inchikey": inchikey,
-            "smiles": smiles,
             "ionmode": "positive",
             "charge": 1,
             "adduct": "[M+H]+",
@@ -86,10 +82,23 @@ def main(clean_first: bool = False) -> dict[str, Path]:
     if clean_first and tutorial_dir.exists():
         shutil.rmtree(tutorial_dir)
 
+    generated_files = [
+        tutorial_dir / "tutorial_library.msp",
+        tutorial_dir / "tutorial_experimental.mgf",
+        tutorial_dir / "tutorial_config.yaml",
+    ]
+    if any(path.exists() for path in generated_files):
+        raise FileExistsError(
+            "Tutorial input files already exist. Use a new working directory, "
+            "or --clean to explicitly delete and regenerate tutorial/."
+        )
+
     tutorial_dir.mkdir(exist_ok=True)
     results_dir.mkdir(exist_ok=True)
 
-    # ── Reference library: steroid standards ──────────────────────────────
+    rng = np.random.default_rng(42)
+
+    # ── Reference library: synthetic steroid-like examples ──────────────────────────────
     steroids_lib: list[SteroidSpec] = [
         {
             "name": "Testosterone",
@@ -101,8 +110,6 @@ def main(clean_first: bool = False) -> dict[str, Path]:
                 (271.206, 0.6),
                 (289.216, 1.0),
             ],
-            "inchikey": "XLYOFNOQVPJJNP-UHFFFAOYSA-N",
-            "smiles": "CC12CCC3C(C1CCC2O)CCC4=CC(=O)CCC34C",
         },
         {
             "name": "Progesterone",
@@ -114,8 +121,6 @@ def main(clean_first: bool = False) -> dict[str, Path]:
                 (297.221, 0.2),
                 (315.232, 1.0),
             ],
-            "inchikey": "OSYQYABOXYAWRY-UHFFFAOYSA-N",
-            "smiles": "CC(=O)C1CCC2C1(CCC3C2CCC4=CC(=O)CCC34C)C",
         },
         {
             "name": "Cortisol",
@@ -128,8 +133,6 @@ def main(clean_first: bool = False) -> dict[str, Path]:
                 (345.206, 0.3),
                 (363.217, 1.0),
             ],
-            "inchikey": "JLYXYYPFDSBSJV-UHFFFAOYSA-N",
-            "smiles": "CC12CC(C(C1(CCC3C2CCC4=CC(=O)CCC34C)O)C(=O)CO)O",
         },
     ]
 
@@ -150,9 +153,9 @@ def main(clean_first: bool = False) -> dict[str, Path]:
     exp_spectra.append(
         Spectrum(
             mz=lib_spectra[0].peaks.mz
-            + np.random.normal(0, 0.001, len(lib_spectra[0].peaks.mz)),
+            + rng.normal(0, 0.001, len(lib_spectra[0].peaks.mz)),
             intensities=lib_spectra[0].peaks.intensities
-            * np.random.uniform(0.9, 1.1, len(lib_spectra[0].peaks.mz)),
+            * rng.uniform(0.9, 1.1, len(lib_spectra[0].peaks.mz)),
             metadata={
                 "precursor_mz": 289.216,
                 "scan_id": "scan_101",
@@ -165,9 +168,9 @@ def main(clean_first: bool = False) -> dict[str, Path]:
     exp_spectra.append(
         Spectrum(
             mz=lib_spectra[1].peaks.mz
-            + np.random.normal(0, 0.002, len(lib_spectra[1].peaks.mz)),
+            + rng.normal(0, 0.002, len(lib_spectra[1].peaks.mz)),
             intensities=lib_spectra[1].peaks.intensities
-            * np.random.uniform(0.8, 1.2, len(lib_spectra[1].peaks.mz)),
+            * rng.uniform(0.8, 1.2, len(lib_spectra[1].peaks.mz)),
             metadata={
                 "precursor_mz": 315.232,
                 "scan_id": "scan_102",
@@ -208,11 +211,11 @@ def main(clean_first: bool = False) -> dict[str, Path]:
     # ── Tutorial configuration ────────────────────────────────────────────
     config_content = """project:
   name: "MassFlow_Tutorial"
-  output_directory: "tutorial/results"
+  output_directory: "results"
 
 input:
-  input_path: "tutorial/tutorial_experimental.mgf"
-  library_path: "tutorial/tutorial_library.msp"
+  input_path: "tutorial_experimental.mgf"
+  library_path: "tutorial_library.msp"
   format: "mgf"
 
 processing:
@@ -225,7 +228,6 @@ similarity:
   algorithm: "cosine"
   ms1_tolerance: 0.02
   ms2_tolerance: 0.02
-  tolerance_unit: "Da"
   min_score: 0.1
   fdr_threshold: 1.0
 
@@ -268,7 +270,8 @@ def _print_next_steps(
     print("      --config tutorial/tutorial_config.yaml \\")
     print("      --category library")
     print()
-    print("  # 2. Annotate experimental spectra against the database")
+    print("  # 2. Annotate against the raw library in the generated config")
+    print("  # To use compiled_library.db instead, first set input.library_path to it.")
     print("  uv run massflow annotate --config tutorial/tutorial_config.yaml")
     print()
     print(f"{sep}")

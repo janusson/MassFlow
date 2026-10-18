@@ -242,12 +242,16 @@ def run_tutorial(
     from rich.panel import Panel
 
     try:
-        # Import the tutorial generator script as a module.
-        script_path = (
-            Path(__file__).resolve().parent.parent.parent
-            / "scripts"
-            / "generate_tutorial_data.py"
-        )
+        # The wheel includes the same generator under MassFlow; an editable
+        # checkout uses the source script. Neither mode depends on cwd.
+        package_directory = Path(__file__).resolve().parent
+        script_path = package_directory / "_tutorial_generator.py"
+        if not script_path.is_file():
+            script_path = (
+                package_directory.parent.parent
+                / "scripts"
+                / "generate_tutorial_data.py"
+            )
         spec = importlib.util.spec_from_file_location(
             "generate_tutorial_data", str(script_path)
         )

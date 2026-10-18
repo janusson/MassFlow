@@ -66,6 +66,9 @@ cascade = "MassFlow.similarity:CascadeEngine"
 [tool.hatch.build.targets.wheel]
 packages = ["src/MassFlow"]
 
+[tool.hatch.build.targets.wheel.force-include]
+"scripts/generate_tutorial_data.py" = "MassFlow/_tutorial_generator.py"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
