@@ -6,6 +6,8 @@ from matchms import Spectrum
 
 from MassFlow.database import SpectralDatabase
 
+pytestmark = pytest.mark.core
+
 
 @pytest.fixture
 def temp_db(tmp_path):

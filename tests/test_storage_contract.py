@@ -272,8 +272,20 @@ def _backend_stream_snapshot(backend: SpectralStore) -> dict:
     }
 
 
-@pytest.mark.parametrize("backend_a", ["sqlite", "zarr", "hybrid"])
-@pytest.mark.parametrize("backend_b", ["sqlite", "zarr", "hybrid"])
+@pytest.mark.parametrize(
+    ("backend_a", "backend_b"),
+    [
+        pytest.param("sqlite", "sqlite", marks=pytest.mark.core),
+        ("sqlite", "zarr"),
+        ("sqlite", "hybrid"),
+        ("zarr", "sqlite"),
+        ("zarr", "zarr"),
+        ("zarr", "hybrid"),
+        ("hybrid", "sqlite"),
+        ("hybrid", "zarr"),
+        ("hybrid", "hybrid"),
+    ],
+)
 def test_contract_same_search_across_backends(
     tmp_path: Path, backend_a: str, backend_b: str
 ) -> None:

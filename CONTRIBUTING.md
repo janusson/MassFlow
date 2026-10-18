@@ -136,7 +136,9 @@ uv run pytest -m scientific
 
 New tests belong to a group:
 
-- default (unmarked) — unit and core integration tests;
+- default (unmarked) — unit and integration tests included in the full suite;
+- `core` — stable v0.1 release-contract tests for scoring, exports, annotation,
+  and SQLite library workflows (`uv run pytest -m core`);
 - `scientific` — scientific-validation tests (module-level
   `pytestmark = pytest.mark.scientific`);
 - `benchmark` — anything in `tests/benchmarks/` (marked automatically);

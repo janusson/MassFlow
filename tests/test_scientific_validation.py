@@ -282,6 +282,8 @@ class TestManifestIntegrity:
 class TestKnownAnswerScores:
     """Hand-computed scores from the Watrous/Stein cosine definition."""
 
+    pytestmark = pytest.mark.core
+
     @pytest.fixture(scope="class")
     def spectra(self):
         return {

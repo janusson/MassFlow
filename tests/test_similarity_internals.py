@@ -351,6 +351,8 @@ def test_calculate_empirical_p_values_basic():
 class TestSimilarityEngine:
     """Cover SimilarityEngine edge cases."""
 
+    pytestmark = pytest.mark.core
+
     def test_unsupported_algorithm_raises(self):
         """Test that SimilarityEngine raises for unsupported algorithm (bypassed Pydantic validation)."""
         cfg = SimilarityConfig(algorithm="cosine")

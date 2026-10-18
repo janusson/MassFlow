@@ -11,6 +11,8 @@ from matchms import Spectrum
 
 from MassFlow import io
 
+pytestmark = pytest.mark.core
+
 
 @pytest.fixture
 def mock_spectrum():
