@@ -39,8 +39,27 @@ logger = logging.getLogger(__name__)
 
 
 @contextmanager
-def _temporary_directory(parent: Path, prefix: str) -> Iterator[Path]:
-    """Yield a temporary directory created beneath *parent*."""
+def temporary_directory(parent: Path, prefix: str) -> Iterator[Path]:
+    """Create a temporary directory below a selected parent directory.
+
+    Parameters
+    ----------
+    parent : Path
+        Existing directory on the same filesystem as resources that may be
+        atomically promoted from the temporary directory.
+    prefix : str
+        Prefix for the temporary directory name.
+
+    Yields
+    ------
+    Path
+        The temporary directory path. It is removed when the context exits.
+
+    Examples
+    --------
+    >>> with temporary_directory(Path("results"), ".massflow-stage-") as stage:
+    ...     (stage / "payload").write_text("ready")
+    """
     with tempfile.TemporaryDirectory(prefix=prefix, dir=parent) as directory:
         yield Path(directory)
 
@@ -53,13 +72,32 @@ def _remove_path(path: Path) -> None:
         path.unlink(missing_ok=True)
 
 
-def _promote_cache_resources(
+def promote_cache_resources(
     resources: Sequence[tuple[Optional[Path], Path]], parent: Path
 ) -> None:
-    """Promote staged cache resources, restoring prior resources on failure.
+    """Promote staged cache resources as one rollback-capable transaction.
 
     A ``None`` staged path means the destination is obsolete and should be
-    removed as part of the same transaction.
+    removed as part of the same transaction. All staged resources and
+    destinations must be on the same filesystem to support atomic replacement.
+
+    Parameters
+    ----------
+    resources : Sequence[tuple[Optional[Path], Path]]
+        Ordered staged-source and destination pairs. A missing source removes
+        its destination transactionally.
+    parent : Path
+        Existing directory used to store temporary rollback backups.
+
+    Returns
+    -------
+    None
+        The operation completes without a return value. On failure, previous
+        destinations are restored before the original exception is raised.
+
+    Examples
+    --------
+    >>> promote_cache_resources([(Path("stage/store.db"), Path("cache/store.db"))], Path("cache"))
     """
     backup_directory = Path(
         tempfile.mkdtemp(prefix=".massflow-cache-backup-", dir=parent)

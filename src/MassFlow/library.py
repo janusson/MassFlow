@@ -347,7 +347,7 @@ def _promote_prepared_store(
     elif store_path.suffix.lower() in {".db", ".sqlite"}:
         resources.append((None, store_path.with_suffix(".zarr")))
     resources.append((staged_meta_path, meta_path))
-    io._promote_cache_resources(resources, store_path.parent)
+    io.promote_cache_resources(resources, store_path.parent)
 
 
 def _build_prepared_library_store(
@@ -358,7 +358,7 @@ def _build_prepared_library_store(
     fingerprint: str,
 ) -> int:
     """Build, validate, and promote a staged prepared-library cache."""
-    with io._temporary_directory(
+    with io.temporary_directory(
         store_path.parent, prefix=".massflow-cache-build-"
     ) as staging_directory:
         staged_store_path = staging_directory / store_path.name
