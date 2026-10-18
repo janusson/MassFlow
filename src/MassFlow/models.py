@@ -10,6 +10,8 @@ to ``formula``-based mass validation via pyteomics, and the classical
 cosine-scoring pipeline continues without interruption.
 """
 
+from __future__ import annotations
+
 import json
 import logging
 from typing import Any, Dict, List, Literal, Optional
@@ -30,6 +32,7 @@ from MassFlow.cheminformatics import (
     _formula_to_isotopic_envelope,
     _formula_to_monoisotopic_mass,
     _smiles_to_formula,
+    adduct_charge,
     compute_adduct_offset,
     normalize_adduct,
 )
@@ -218,6 +221,13 @@ class SpectrumMetadata(BaseModel):
         # structure cannot be confirmed.
         offset = compute_adduct_offset(self.adduct)
         if offset is None:
+            self.__dict__["is_physically_valid"] = False
+            return self
+
+        # The registry's signed charge is part of the ion definition. A
+        # conflicting metadata charge must not supply a different denominator
+        # (or lose its sign through abs()) and manufacture a passing m/z.
+        if self.charge != adduct_charge(self.adduct):
             self.__dict__["is_physically_valid"] = False
             return self
 

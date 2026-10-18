@@ -14,8 +14,9 @@ When the `MassFlow.models` layer processes a candidate structure (via a chemical
 
 1. Calculates the **exact monoisotopic mass** of the neutral molecule (formula-first, pyteomics; structure parsing via RDKit when no formula is declared).
 2. Identifies the **adduct offset** (e.g., +1.007276 Da for `[M+H]+`).
-3. Computes the **theoretical m/z**: $(ExactMass + AdductOffset) / |Charge|$.
-4. Compares this to your experimental `precursor_mz`.
+3. Requires the declared **signed charge** to agree with the registered adduct (for example, `[M+2H]2+` requires `+2`). Contradictory charge magnitude or sign sets `is_physically_valid = False`.
+4. Computes the **theoretical m/z**: $(ExactMass + AdductOffset) / |Charge|$.
+5. Compares this to your experimental `precursor_mz`.
 
 If the deviation is greater than **5.0 ppm**, the record is flagged `is_physically_valid = False` by `MolecularStructure` / `SpectrumMetadata`. This prevents "lucky" MS2 matches from being reported if the parent mass doesn't physically support the identification.
 
@@ -29,6 +30,12 @@ If the deviation is greater than **5.0 ppm**, the record is flagged `is_physical
   * spectra **without** structural claims are exempt — the check only applies to declared chemistry, so raw experimental files (which carry no formula/SMILES) pass through at no measurable cost.
 
 An adduct is required for the precursor-mass comparison: it may be declared explicitly or imputed from `ionmode` (`positive` → `[M+H]+`, `negative` → `[M-H]-`). When no adduct and no ion mode are available, or when the charge is unknown, the strict comparison is skipped for that spectrum exactly as documented for `SpectrumMetadata`.
+
+### Applying validation changes to stored libraries
+
+Prepared caches managed by MassFlow are fingerprinted using canonical processing configuration plus an explicit processing-semantics revision. Revision 1 introduces charge/adduct consistency validation; older caches rebuild once from their raw sources, using the existing staged replacement mechanism. A raw library with contradictory entries aborts preparation with the offending charge/adduct in the rejection reason.
+
+User-supplied `.db`, `.sqlite`, and `.zarr` libraries are used directly and are not revalidated or rewritten automatically. Rebuild from the original raw sources with `massflow db build` into a **new output path that does not already exist**: the command appends to an existing store, so reusing the old output preserves invalid entries. Inspect the new store and review quarantine messages/counts, then update `input.library_path` to the new store. See the [charge/adduct experiment](../validation/2026-10-17-charge-adduct-consistency.md) for evidence and limitations.
 
 ### Supported Adducts & Offsets
 

@@ -10,6 +10,8 @@ deriving formulas), strict physical-integrity validation of declared chemistry
 It is designed to fail fast on invalid data while logging detailed diagnostics.
 """
 
+from __future__ import annotations
+
 import logging
 from typing import Any, Callable, Iterable, Iterator, List, Optional, Tuple
 
@@ -132,6 +134,7 @@ def physical_integrity_reason(spectrum: Spectrum) -> Optional[str]:
       or imputed from ``ionmode``), a precursor m/z deviating from the
       theoretical m/z by more than 5 ppm is rejected;
     * a non-registry adduct with an otherwise complete context is rejected;
+    * a charge contradicting the registered adduct's signed charge is rejected;
     * malformed structural metadata (e.g. an unparseable formula) is
       rejected with the underlying error.
 
@@ -283,9 +286,9 @@ def physical_integrity_reason(spectrum: Spectrum) -> Optional[str]:
         return None
 
     # The molecule is valid, so an invalid spectrum verdict is either an
-    # unsupported adduct or a >5 ppm precursor deviation. Recompute the
-    # display values (identical arithmetic to the model validator).
-    from MassFlow.cheminformatics import compute_adduct_offset
+    # unsupported adduct, contradictory charge, or >5 ppm precursor deviation.
+    # Recompute the display values (identical arithmetic to the model validator).
+    from MassFlow.cheminformatics import adduct_charge, compute_adduct_offset
 
     effective_adduct = metadata.adduct
     offset = compute_adduct_offset(effective_adduct) if effective_adduct else None
@@ -294,6 +297,12 @@ def physical_integrity_reason(spectrum: Spectrum) -> Optional[str]:
             f"spectrum {spec_id}: adduct {effective_adduct!r} is not supported "
             "by the MassFlow adduct registry; strict precursor validation "
             "cannot confirm the declared structure"
+        )
+    expected_charge = adduct_charge(effective_adduct)
+    if metadata.charge != expected_charge:
+        return (
+            f"spectrum {spec_id}: charge {metadata.charge} contradicts "
+            f"adduct {effective_adduct!r}, which requires charge {expected_charge}"
         )
     if metadata.charge and molecule.exact_mass is not None:
         theoretical_mz = (molecule.exact_mass + offset) / abs(metadata.charge)
