@@ -194,6 +194,40 @@ def _merge_decoy_diagnostics(per_chunk: list[dict[str, Any]]) -> dict[str, Any]:
     return merged
 
 
+def _merge_search_diagnostics(per_chunk: list[dict[str, Any]]) -> dict[str, Any]:
+    """Aggregate per-chunk target-side funnel diagnostics into one summary.
+
+    A chunked (streamed) library search is ONE logical search: its funnel must
+    describe every chunk, not just the last one. Pair/result counts and the
+    number of reference spectra are summed; the query count is the maximum
+    (each chunk shares the same query set and contributes a slice of the
+    reference library).
+    """
+    merged: dict[str, Any] = {
+        "n_target_refs": 0,
+        "n_queries": 0,
+        "n_target_pairs_scored": 0,
+        "n_target_scores_above_min_score": 0,
+        "n_target_scores_above_gates": 0,
+        "n_target_results": 0,
+    }
+    for chunk in per_chunk:
+        if not chunk:
+            continue
+        for key in (
+            "n_target_pairs_scored",
+            "n_target_scores_above_min_score",
+            "n_target_scores_above_gates",
+            "n_target_results",
+            "n_target_refs",
+        ):
+            value = chunk.get(key)
+            if isinstance(value, int):
+                merged[key] += value
+        merged["n_queries"] = max(merged["n_queries"], int(chunk.get("n_queries", 0)))
+    return merged
+
+
 def _handle_lazy_reference_spectra(func):
     """Decorator to allow search engines to lazily process generator inputs in chunks."""
 
@@ -211,6 +245,7 @@ def _handle_lazy_reference_spectra(func):
             all_results = []
             processed_count = 0
             chunk_diagnostics: list[dict[str, Any]] = []
+            chunk_search_diagnostics: list[dict[str, Any]] = []
             chunk_flags: list[str] = []
 
             # When chunking, pre-computed ref_precursor_mzs / ref_is_decoy
@@ -246,12 +281,19 @@ def _handle_lazy_reference_spectra(func):
                     chunk_diagnostics.append(
                         dict(getattr(self, "decoy_diagnostics", {}) or {})
                     )
+                chunk_search_diagnostics.append(
+                    dict(getattr(self, "search_diagnostics", {}) or {})
+                )
                 chunk_flags.extend(getattr(self, "degraded_mode_flags", []) or [])
 
             # Re-publish the per-chunk records as one search-level record so the
             # caller sees the whole streamed search, not the last chunk only.
             if chunk_diagnostics and hasattr(self, "_decoy_diagnostics"):
                 self._decoy_diagnostics = _merge_decoy_diagnostics(chunk_diagnostics)
+            if chunk_search_diagnostics and hasattr(self, "_search_diagnostics"):
+                self._search_diagnostics = _merge_search_diagnostics(
+                    chunk_search_diagnostics
+                )
             if chunk_flags and hasattr(self, "_degraded_flags"):
                 merged_flags: list[str] = []
                 for flag in chunk_flags:
@@ -1148,6 +1190,13 @@ class SimilarityEngine:
         # q-values are the 1/N rank bound) from "decoys were never scored"
         # (a plumbing failure).
         self._decoy_diagnostics: dict[str, Any] = {}
+        # Target-side funnel diagnostics of the most recent search: how many
+        # reference-query pairs entered scoring (targets only), how many cleared
+        # the score gate, and how many cleared both the score and matched-peak
+        # gates. This is the evidence the workflow uses to explain a zero-hit
+        # file ("candidates existed but none met the gates" vs "nothing was
+        # scored") without guessing.
+        self._search_diagnostics: dict[str, Any] = {}
 
     @property
     def degraded_mode_flags(self) -> list[str]:
@@ -1174,6 +1223,24 @@ class SimilarityEngine:
             ``include_decoys=False``.
         """
         return dict(self._decoy_diagnostics)
+
+    @property
+    def search_diagnostics(self) -> dict[str, Any]:
+        """Target-side funnel statistics of the most recent ``search()`` call.
+
+        Returns
+        -------
+        dict
+            ``n_target_refs`` (reference spectra scored), ``n_queries``,
+            ``n_target_pairs_scored`` (target reference-query pairs that entered
+            scoring), ``n_target_scores_above_min_score`` (target pairs whose
+            score alone passed ``min_score``), ``n_target_scores_above_gates``
+            (target pairs that passed both ``min_score`` and
+            ``min_matched_peaks``) and ``n_target_results`` (target hits
+            collected after the adduct / retention-time gates). Empty when the
+            last search had no targets.
+        """
+        return dict(self._search_diagnostics)
 
     @_handle_lazy_reference_spectra
     def search(
@@ -1245,6 +1312,7 @@ class SimilarityEngine:
         # a clean search never carries stale markers from an earlier call.
         self._degraded_flags = []
         self._decoy_diagnostics = {}
+        self._search_diagnostics = {}
 
         cutoff = min_score if min_score is not None else self.config.min_score
 
@@ -1287,6 +1355,13 @@ class SimilarityEngine:
 
         n_queries = len(query_spectra)
 
+        # Target-side funnel default: a full-matrix path scores every
+        # reference-query pair. Sparse candidate paths override this with the
+        # actual number of target pairs entering scoring.
+        n_target_pairs_scored = n_targets * n_queries
+        scored_rows: np.ndarray | None = None
+        scored_cols: np.ndarray | None = None
+
         # ------------------------------------------------------------------
         # Candidate generation & scoring
         # ------------------------------------------------------------------
@@ -1319,6 +1394,8 @@ class SimilarityEngine:
                     min_matches=self.config.min_matched_peaks,
                     algorithm="modified_cosine",
                 )
+                n_target_pairs_scored = int(np.count_nonzero(idx_row < n_targets))
+                scored_rows, scored_cols = idx_row, idx_col
                 if len(idx_row) > 0:
                     sparse_results = self.similarity_function.sparse_array(
                         all_references,
@@ -1368,6 +1445,8 @@ class SimilarityEngine:
                 idx_row, idx_col = _ms1_prefilter(
                     all_references, query_spectra, ms1_tol, res_ppm
                 )
+            n_target_pairs_scored = int(np.count_nonzero(idx_row < n_targets))
+            scored_rows, scored_cols = idx_row, idx_col
 
             if len(idx_row) > 0:
                 sparse_results = self.similarity_function.sparse_array(
@@ -1550,7 +1629,70 @@ class SimilarityEngine:
                 results=results,
             )
 
+        self._record_search_diagnostics(
+            numeric_scores=numeric_scores,
+            matches_count=matches_count,
+            n_targets=n_targets,
+            n_queries=n_queries,
+            cutoff=cutoff,
+            results=results,
+            n_target_pairs_scored=n_target_pairs_scored,
+            scored_rows=scored_rows,
+            scored_cols=scored_cols,
+        )
+
         return results
+
+    def _record_search_diagnostics(
+        self,
+        numeric_scores: np.ndarray,
+        matches_count: np.ndarray,
+        n_targets: int,
+        n_queries: int,
+        cutoff: float,
+        results: List[SearchResult],
+        n_target_pairs_scored: int,
+        scored_rows: np.ndarray | None,
+        scored_cols: np.ndarray | None,
+    ) -> None:
+        """Record the target-side scoring funnel of the last search.
+
+        This is the evidence behind an empty result: whether reference-query
+        pairs entered scoring at all, how many cleared the score gate alone, and
+        how many cleared both the score and matched-peak gates. Attribution in
+        the workflow never claims more than these counters support.
+        """
+        if n_targets <= 0:
+            self._search_diagnostics = {}
+            return
+
+        target_scores: np.ndarray
+        target_matches: np.ndarray
+        if scored_rows is None or scored_cols is None:
+            target_scores = numeric_scores[:n_targets].astype(np.float64).ravel()
+            target_matches = matches_count[:n_targets].ravel()
+        else:
+            target_mask = scored_rows < n_targets
+            target_rows = scored_rows[target_mask].astype(np.int64, copy=False)
+            target_cols = scored_cols[target_mask].astype(np.int64, copy=False)
+            target_scores = numeric_scores[target_rows, target_cols].astype(np.float64)
+            target_matches = matches_count[target_rows, target_cols]
+        above_score = target_scores >= cutoff
+        if self.config.min_matched_peaks > 0:
+            qualified = above_score & (target_matches >= self.config.min_matched_peaks)
+        else:
+            qualified = above_score
+
+        self._search_diagnostics = {
+            "n_target_refs": int(n_targets),
+            "n_queries": int(n_queries),
+            "n_target_pairs_scored": int(n_target_pairs_scored),
+            "n_target_scores_above_min_score": int(np.count_nonzero(above_score)),
+            "n_target_scores_above_gates": int(np.count_nonzero(qualified)),
+            "n_target_results": int(
+                sum(1 for r in results if not r.get("is_decoy", False))
+            ),
+        }
 
     def _record_decoy_diagnostics(
         self,

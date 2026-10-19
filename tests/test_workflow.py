@@ -259,6 +259,19 @@ def test_run_annotation_pipeline_no_reference_spectra(
         run_annotation_pipeline(config)
 
 
+def test_small_library_notice_separates_size_from_run_specific_fdr(caplog):
+    """A relaxed threshold does not hide size or invent an FDR conclusion."""
+    from MassFlow.workflow import _emit_small_library_warning
+
+    with caplog.at_level(logging.WARNING):
+        _emit_small_library_warning(1166, 1.0)
+
+    message = "\n".join(record.message for record in caplog.records)
+    assert "SMALL REFERENCE LIBRARY: 1166 spectra" in message
+    assert "does not establish whether this run's FDR is calibrated" in message
+    assert "q-values are still screened by a conservative bound" not in message
+
+
 @pytest.mark.parametrize(
     ("reference_count", "should_warn"), [(1999, True), (2000, False)]
 )
@@ -319,8 +332,7 @@ def test_run_annotation_pipeline_small_library_warning_threshold(
         run_annotation_pipeline(config)
 
     found_warning = any(
-        "CRITICAL SCIENTIFIC WARNING: SMALL LIBRARY DETECTED" in record.message
-        for record in caplog.records
+        "SMALL REFERENCE LIBRARY" in record.message for record in caplog.records
     )
     assert found_warning is should_warn
     mock_save.assert_called_once()

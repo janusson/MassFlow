@@ -45,8 +45,8 @@ input:
   storage_backend: "sqlite"
 ```
 *   `input_path`: The experimental file **or** directory to process. A directory is recursively scanned for supported spectral files.
-*   `library_path`: The file path to your reference library (e.g., an `.msp` file or a MassFlow `.db` SQLite file).
-*   `format`: (Optional) An explicit format hint. If omitted, MassFlow infers the format from the file extension.
+*   `library_path`: The file path to your reference library (e.g., an `.msp` file or a MassFlow `.db` SQLite file). A raw library that fails the strict 5 ppm physical-integrity gate aborts `annotate`; curate it once with `massflow db build` and point here at the resulting `.db`.
+*   `format`: (Optional) An explicit format hint. If omitted, MassFlow infers the format from the file extension. **Leave it unset for directory inputs that mix formats** — a fixed hint is applied to every file, so a `.msp` and a `.mzML` in the same folder cannot share one value.
 *   `storage_backend`: (Optional) How the reference library is stored: `"sqlite"` (default, BLOB peak arrays), `"zarr"` (pure Zarr), or `"hybrid"` (SQLite metadata + chunked Zarr peak arrays). The setting has **one unambiguous meaning everywhere**: it selects the backend of the library store built for the run — `massflow db build`, the annotation pipeline (`prepare_library`), and the streaming server all honor it. Pre-existing store inputs (`.db`/`.sqlite`/`.zarr`) are opened directly in their own backend. The annotation layer consumes every backend through the single `SpectralStore` interface, so SQLite, Zarr, and hybrid libraries produce identical results (verified by `tests/test_storage_contract.py`).
 
 ### `processing`

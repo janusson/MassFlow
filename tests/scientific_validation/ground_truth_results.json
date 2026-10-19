@@ -74,7 +74,7 @@
         "library_size": 7
       },
       "warnings": [
-        "Small reference library (7 spectra): target-decoy FDR is statistically weak below ~2000 entries; q-values are conservative.",
+        "Small reference library (7 spectra, below the ~2000 recommended): it caps how many queries can match, and target-decoy FDR is statistically weak at this size; q-values are conservative.",
         "No decoy hits survived scoring; q-values are uncalibrated (1/N rank bound). FDR claims are not supported for this file. Decoys were generated and scored (42 decoy pairs); the best decoy score was 0.0000, below the configured gates \u2014 no decoy-based false-positive estimate is possible at this configuration."
       ],
       "degraded_mode_flags": [
@@ -340,7 +340,7 @@
         "library_size": 7
       },
       "warnings": [
-        "Small reference library (7 spectra): target-decoy FDR is statistically weak below ~2000 entries; q-values are conservative.",
+        "Small reference library (7 spectra, below the ~2000 recommended): it caps how many queries can match, and target-decoy FDR is statistically weak at this size; q-values are conservative.",
         "No decoy hits survived scoring; q-values are uncalibrated (1/N rank bound). FDR claims are not supported for this file. Decoys were generated and scored (42 decoy pairs); the best decoy score was 0.0000, below the configured gates \u2014 no decoy-based false-positive estimate is possible at this configuration."
       ],
       "degraded_mode_flags": [
@@ -689,7 +689,7 @@
         "library_size": 7
       },
       "warnings": [
-        "Small reference library (7 spectra): target-decoy FDR is statistically weak below ~2000 entries; q-values are conservative."
+        "Small reference library (7 spectra, below the ~2000 recommended): it caps how many queries can match, and target-decoy FDR is statistically weak at this size; q-values are conservative."
       ],
       "degraded_mode_flags": [],
       "queries": {
@@ -1099,7 +1099,7 @@
         "library_size": 7
       },
       "warnings": [
-        "Small reference library (7 spectra): target-decoy FDR is statistically weak below ~2000 entries; q-values are conservative.",
+        "Small reference library (7 spectra, below the ~2000 recommended): it caps how many queries can match, and target-decoy FDR is statistically weak at this size; q-values are conservative.",
         "No decoy hits survived scoring; q-values are uncalibrated (1/N rank bound). FDR claims are not supported for this file. The configured engine does not report decoy-side search statistics; decoys are generated and scored through its internal pipeline."
       ],
       "degraded_mode_flags": [
@@ -1447,7 +1447,7 @@
         "library_size": 7
       },
       "warnings": [
-        "Small reference library (7 spectra): target-decoy FDR is statistically weak below ~2000 entries; q-values are conservative.",
+        "Small reference library (7 spectra, below the ~2000 recommended): it caps how many queries can match, and target-decoy FDR is statistically weak at this size; q-values are conservative.",
         "No decoy hits survived scoring; q-values are uncalibrated (1/N rank bound). FDR claims are not supported for this file. Decoys were generated and scored (42 decoy pairs); the best decoy score was 0.0000, below the configured gates \u2014 no decoy-based false-positive estimate is possible at this configuration."
       ],
       "degraded_mode_flags": [

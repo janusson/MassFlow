@@ -13,7 +13,7 @@ It transforms your experimental spectra (`.mzML`, `.mgf`) and reference librarie
 
 ## 🚀 Quick Start
 
-Get from installation to your first results in three simple steps.
+Get from installation to your first results in four simple steps.
 
 ### 1. Installation
 Run the setup script to configure your environment and install all necessary dependencies:
@@ -23,19 +23,48 @@ chmod +x setup.sh
 ./setup.sh
 ```
 
-### 2. Configure Your Project
-Instead of editing complex text files, use the interactive wizard to set up your analysis parameters:
+### 2. Create a configuration
+Generate a schema-valid starter file, then edit its input and library paths:
 ```shell
+uv run massflow init --output massflow_config.yaml
+# Or use the guided wizard:
 uv run massflow config-wizard
 ```
-*Follow the prompts to define your input files, reference library, and scoring thresholds.*
+Relative paths resolve against the config file's directory. Leave `input.format` unset (`null`) when the input directory contains mixed formats; MassFlow will infer each file's type from its extension.
 
-### 3. Run Annotation
-Start the analysis using the configuration file created by the wizard:
+### 3. Prepare your reference library
+MassFlow searches experimental spectra against a reference library. A raw `.msp`, `.mgf`, or `.mzML` can be used directly **if its entries pass the strict 5 ppm physical-integrity check**. When a raw library has entries whose declared formula/structure contradicts the precursor m/z, curate it into a store first:
 ```shell
+uv run massflow db build \
+  --input my_library.msp \
+  --output results/my_library.db \
+  --config massflow_config.yaml \
+  --category library
+```
+`db build` **quarantines** entries that fail the physical-integrity gate (and applies the configured processing), then stores the rest. Pointing `annotate` directly at a raw library with such integrity failures instead **aborts** — MassFlow will not silently search a shrunken library. Set `input.library_path` to the resulting `.db`. See [Data Requirements](docs/user-guide/data-requirements.md).
+
+### 4. Check compatibility, then annotate
+Before a long run, check whether the data and library have plausible precursor coverage:
+```shell
+uv run massflow preflight --config massflow_config.yaml
 uv run massflow annotate --config massflow_config.yaml
 ```
-*Your results will be saved as CSV or mzTab files in your output directory, accompanied by a provenance report for every file.*
+`preflight` is advisory and does not score spectra, change parameters, or guarantee an identification. Results are saved as CSV or mzTab in the configured output directory, with provenance reports.
+
+---
+
+## 🩺 Why did I get zero hits?
+
+A run that finishes with **0 accepted identifications is a valid scientific outcome, not a crash.** MassFlow distinguishes four situations, and `massflow preflight` plus the per-file report tell you which one you are in:
+
+| Situation | What it means | Where to look |
+| :--- | :--- | :--- |
+| **Data not usable** | Queries were rejected while loading/validating (empty peaks, missing precursor, failed the 5 ppm gate). | `spectra_loaded` / `spectra_rejected` in the `.report.yaml`; `massflow_quarantine.log` |
+| **No library coverage** | For `cosine`, no candidate survives the configured precursor, adduct-mode, and RT gates. Other engines may score outside the precursor window, so preflight labels that coverage as heuristic. | `massflow preflight` compatibility assessment |
+| **Candidates rejected** | Precursor-eligible pairs may still fail fragment matching, adduct-mode/RT filters, or score thresholds. Preflight can report sparse query peaks; the annotation report records actual scored-pair funnel counts where available. | `preflight` peak counts and the per-file `.report.yaml` |
+| **Filtered statistically** | Hits passed the score gates but were removed by FDR filtering (common on small libraries at a strict `fdr_threshold`). | The `fdr_uncalibrated` / small-library warnings and the `.report.yaml` |
+
+Start with `massflow preflight`; it explains what it can establish versus what remains uncertain, and never changes your parameters for you.
 
 ---
 

@@ -153,8 +153,9 @@ def suggest_fix(exception: BaseException) -> Optional[str]:
         return "A required package is missing. Install the optional extra shown in the error (e.g. pip install massflow[ml] or massflow[tui])."
     if _LIBRARY_TOO_SMALL_RE.search(message):
         return (
-            "Target-decoy FDR is statistically weak on small libraries. Use a "
-            "larger reference library, or relax fdr_threshold toward 1.0."
+            "Target-decoy FDR may be statistically weak on small libraries. "
+            "Use a larger, relevant reference library; do not relax the FDR "
+            "threshold just to obtain hits."
         )
     if name == "PhysicalIntegrityError" or "physical-integrity" in message.lower():
         return (

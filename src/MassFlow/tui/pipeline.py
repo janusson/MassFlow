@@ -399,9 +399,10 @@ def run_identification(request: IdentificationRequest) -> IdentificationOutcome:
 
     if len(references) < _SMALL_LIBRARY_THRESHOLD and request.fdr_threshold < 0.1:
         warnings.append(
-            f"Library has only {len(references)} spectra; target-decoy FDR is "
-            "statistically weak below ~2000 entries. Relax fdr_threshold or use "
-            "a larger library."
+            f"Library has only {len(references)} spectra; target-decoy FDR may "
+            "be statistically weak below ~2000 entries. Use a larger, relevant "
+            "library for calibrated confidence; do not relax FDR thresholds "
+            "just to obtain hits."
         )
 
     # --- 5. FDR calibration ---------------------------------------------------
