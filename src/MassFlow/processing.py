@@ -482,6 +482,18 @@ def peak_processing(
     return s
 
 
+def _coerce_batch_precursor_mz(value: object) -> np.float64:
+    """Convert a batch precursor m/z to float64, using NaN when invalid."""
+    if not np.isscalar(value):
+        return np.float64(np.nan)
+    scalar_value: Any = value
+    try:
+        precursor_mz = float(scalar_value)
+    except (TypeError, ValueError, OverflowError):
+        return np.float64(np.nan)
+    return np.float64(precursor_mz) if np.isfinite(precursor_mz) else np.float64(np.nan)
+
+
 def process_spectra_batch(
     spectra: List[Spectrum],
     config: ProcessingConfig,
@@ -533,18 +545,13 @@ def process_spectra_batch(
         except (ValueError, TypeError):
             rt = 0.0
 
-        try:
-            pmz = float(s.get("precursor_mz", 0.0))
-            if np.isnan(pmz):
-                pmz = 0.0
-        except (ValueError, TypeError):
-            pmz = 0.0
+        precursor_mz = _coerce_batch_precursor_mz(s.get("precursor_mz"))
 
         metadata_rows.append(
             {
                 "batch_index": i,
                 "id": s.get("id"),
-                "precursor_mz": pmz,
+                "precursor_mz": precursor_mz,
                 "retention_time": rt,
                 "charge": charge,
                 "ionmode": s.get("ionmode"),

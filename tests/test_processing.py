@@ -78,6 +78,7 @@ def test_process_spectra_exception_handling(processing_config):
         mock_meta.side_effect = side_effect
 
         # We need to make sure peak_processing also passes the good one
+        processing_config.filter_by_mz = False
         processing_config.min_peaks = 1
         processing_config.noise_threshold = 0.0
 
@@ -96,6 +97,7 @@ def test_process_spectra_drops_none(processing_config):
             metadata={"id": "good"},
         ),
     ]
+    processing_config.filter_by_mz = False
     processing_config.min_peaks = 1
     processing_config.noise_threshold = 0.0
 
@@ -104,33 +106,74 @@ def test_process_spectra_drops_none(processing_config):
 
 
 def test_process_spectra_batch_missing_precursor(processing_config):
-    # Missing/string precursor mass values loaded by parsers should not crash
-    # the Polars batch extraction process with ValueError or TypeError.
+    """Missing precursor values remain missing in the unfiltered batch path."""
     spectra = [
         Spectrum(
-            mz=np.array([100.0], dtype="float"),
-            intensities=np.array([100.0], dtype="float"),
+            mz=np.array([100.0], dtype=np.float64),
+            intensities=np.array([100.0], dtype=np.float64),
             metadata={"id": "spec1", "precursor_mz": "None"},
         ),
         Spectrum(
-            mz=np.array([200.0], dtype="float"),
-            intensities=np.array([200.0], dtype="float"),
+            mz=np.array([200.0], dtype=np.float64),
+            intensities=np.array([200.0], dtype=np.float64),
             metadata={"id": "spec2", "precursor_mz": None},
         ),
         Spectrum(
-            mz=np.array([300.0], dtype="float"),
-            intensities=np.array([300.0], dtype="float"),
+            mz=np.array([300.0], dtype=np.float64),
+            intensities=np.array([300.0], dtype=np.float64),
             metadata={"id": "spec3", "precursor_mz": "NaN"},
         ),
     ]
 
-    # Process batch should fallback to 0.0 precursor and return them
-    # Ensure they are not filtered out by default threshold
+    processing_config.filter_by_mz = False
     processing_config.min_peaks = 1
     processing_config.noise_threshold = 0.0
 
     results = processing.process_spectra_batch(spectra, processing_config)
     assert len(results) == 3
+
+
+@pytest.mark.parametrize(
+    "value",
+    [None, "None", "not-a-mass", float("nan"), float("inf"), float("-inf")],
+)
+def test_batch_precursor_coercion_normalizes_invalid_values(value):
+    result = processing._coerce_batch_precursor_mz(value)
+
+    assert np.isnan(result)
+
+
+def test_batch_precursor_coercion_rejects_overflow_and_non_scalar_values():
+    assert np.isnan(processing._coerce_batch_precursor_mz(10**10000))
+    assert np.isnan(processing._coerce_batch_precursor_mz([]))
+
+
+def test_process_spectra_batch_mz_filter_excludes_missing_precursor(
+    processing_config,
+):
+    """The opt-in precursor window excludes unknown masses, not valid spectra."""
+    spectra = [
+        Spectrum(
+            mz=np.array([100.0], dtype=np.float64),
+            intensities=np.array([100.0], dtype=np.float64),
+            metadata={"id": "missing", "precursor_mz": None},
+        ),
+        Spectrum(
+            mz=np.array([200.0], dtype=np.float64),
+            intensities=np.array([200.0], dtype=np.float64),
+            metadata={"id": "valid", "precursor_mz": 250.123456789},
+        ),
+    ]
+    processing_config.filter_by_mz = True
+    processing_config.mz_min = 0.0
+    processing_config.mz_max = 500.0
+    processing_config.filter_min_peaks = False
+    processing_config.noise_threshold = 0.0
+
+    results = processing.process_spectra_batch(spectra, processing_config)
+
+    assert [result.get("id") for result in results] == ["valid"]
+    assert results[0].get("precursor_mz") == 250.123456789
 
 
 @pytest.fixture
