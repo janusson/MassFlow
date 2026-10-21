@@ -53,6 +53,11 @@ from MassFlow.storage import SpectralStore, create_spectral_store
 
 logger = logging.getLogger(__name__)
 
+# Increment whenever processing semantics change independently of configuration.
+# Revision 2 uses fragment-only m/z windows. The separate charge/adduct PR uses
+# revision 1; combining the two changes must advance the revision again.
+PROCESSING_SEMANTICS_REVISION = 2
+
 # Extension of MassFlow-native stores (opened directly by workers).
 _STORE_EXTENSIONS = {".db", ".sqlite", ".zarr"}
 
@@ -285,15 +290,34 @@ def open_library(
 
 
 def processing_fingerprint(processing_config: ProcessingConfig) -> str:
-    """Stable fingerprint of the processing pipeline (cache invalidation).
+    """Fingerprint the processing configuration and algorithm revision.
 
-    SHA-256 over the canonical JSON of the processing configuration. This is
-    the same fingerprint recorded in library-build provenance rows so that
-    ``db inspect`` history can be correlated with the annotated-store cache.
+    SHA-256 over canonical JSON with sorted keys and compact separators.
+    A semantics-only change invalidates managed prepared caches even when the
+    user's configuration is unchanged. Direct persistent store inputs are not
+    rebuilt. Library-build provenance records this same fingerprint.
+
+    Parameters
+    ----------
+    processing_config : ProcessingConfig
+        Processing settings to combine with the semantics revision.
+
+    Returns
+    -------
+    str
+        Deterministic hexadecimal SHA-256 digest.
+
+    Examples
+    --------
+    >>> len(processing_fingerprint(ProcessingConfig()))
+    64
     """
-    return hashlib.sha256(
-        processing_config.model_dump_json().encode("utf-8")
-    ).hexdigest()
+    payload = {
+        "processing_semantics_revision": PROCESSING_SEMANTICS_REVISION,
+        "processing": processing_config.model_dump(mode="json"),
+    }
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 # Backward-compatible alias for the pre-provenance private helper name.

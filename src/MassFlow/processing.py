@@ -555,22 +555,10 @@ def process_spectra_batch(
     # Use LazyFrame to prepare filters without immediate execution
     lf = pl.LazyFrame(metadata_rows)
 
-    # Apply batch-level metadata filters, gated on the same documented
-    # toggles as the per-spectrum path (peak_processing):
-    #   - filter_min_peaks controls the minimum-peak-count rejection;
-    #   - filter_by_mz controls the precursor m/z window.
-    # Without this gating, the batch path silently dropped spectra even when
-    # the toggles were disabled (a configuration that said "do not filter"
-    # filtered anyway).
-    mz_min = getattr(config, "mz_min", 0.0)
-    mz_max = getattr(config, "mz_max", 1000.0)
+    # Batch eligibility uses peak count only. filter_by_mz truncates fragment
+    # peaks later in peak_processing; precursor candidacy belongs to scoring.
     min_peaks = getattr(config, "min_peaks", 1)
-
     batch_filters = []
-    if getattr(config, "filter_by_mz", False):
-        batch_filters.append(
-            (pl.col("precursor_mz") >= mz_min) & (pl.col("precursor_mz") <= mz_max)
-        )
     if getattr(config, "filter_min_peaks", False):
         batch_filters.append(pl.col("peak_count") >= min_peaks)
 
