@@ -53,9 +53,10 @@ from MassFlow.storage import SpectralStore, create_spectral_store
 
 logger = logging.getLogger(__name__)
 
-# Increment when processing or validation semantics change without a config
-# change. Revision 1 rejects charge/adduct contradictions in structural claims.
-PROCESSING_SEMANTICS_REVISION = 1
+# Processing semantics revision 3 covers missing-precursor normalization,
+# charge/adduct consistency, and fragment-only m/z windows. A single combined
+# revision invalidates caches built under any of the prior contracts.
+PROCESSING_SEMANTICS_REVISION = 3
 
 # Extension of MassFlow-native stores (opened directly by workers).
 _STORE_EXTENSIONS = {".db", ".sqlite", ".zarr"}
@@ -289,22 +290,34 @@ def open_library(
 
 
 def processing_fingerprint(processing_config: ProcessingConfig) -> str:
-    """Stable fingerprint of the processing pipeline (cache invalidation).
+    """Fingerprint the processing configuration and semantics revision.
 
-    SHA-256 over canonical JSON containing the processing configuration and
-    its semantics revision. A revision change invalidates managed caches even
-    when configuration is unchanged. This same fingerprint is recorded in
-    library-build provenance so ``db inspect`` history can be correlated with
-    the annotated-store cache. Externally supplied stores are used directly
-    and must be rebuilt explicitly to apply updated validation.
+    Managed caches are invalidated whenever the configured processing contract
+    changes, while persistent store inputs remain untouched and must be rebuilt
+    explicitly from raw sources into a new destination. The same digest is
+    recorded in build provenance.
+
+    Parameters
+    ----------
+    processing_config : ProcessingConfig
+        Processing settings to combine with the semantics revision.
+
+    Returns
+    -------
+    str
+        Deterministic hexadecimal SHA-256 digest.
+
+    Examples
+    --------
+    >>> len(processing_fingerprint(ProcessingConfig()))
+    64
     """
     payload = {
         "processing_semantics_revision": PROCESSING_SEMANTICS_REVISION,
         "processing": processing_config.model_dump(mode="json"),
     }
-    return hashlib.sha256(
-        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    ).hexdigest()
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 # Backward-compatible alias for the pre-provenance private helper name.
