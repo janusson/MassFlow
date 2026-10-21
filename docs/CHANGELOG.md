@@ -3,6 +3,18 @@
 All notable changes to MassFlow will be documented in this file.
 
 ## [Unreleased]
+
+### Fixed — fragment filtering and cache semantics (#95)
+
+- Apply `filter_by_mz` to fragment peaks only; retain spectra whose precursor
+  lies outside the fragment window. Preserve intensity/count order, the current
+  empty-spectrum policy and the fixed 5 ppm physical-integrity gate.
+- Include an explicit processing-semantics revision in canonical cache/build
+  fingerprints. Managed prepared caches rebuild without mixing legacy rows;
+  explicit persistent store inputs require a manual rebuild from raw sources
+  into a new destination. See the processing guide for migration and PR #103
+  integration requirements.
+
 ### Added
 
 - Added `massflow annotate --build-library-store` to prepare or reuse the configured SQLite/hybrid/Zarr reference store without scoring queries, using the existing strict physical-integrity gate and build provenance. See [CLI reference](api/cli.md).

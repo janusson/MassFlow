@@ -82,7 +82,7 @@ processing:
   mz_min: 0.0
   mz_max: 1000.0
 ```
-*   `filter_by_mz`: Master toggle for m/z truncation.
+*   `filter_by_mz`: Master toggle for **fragment-peak** m/z truncation. It does not filter the precursor m/z or decide precursor candidacy.
 *   `mz_min` & `mz_max`: The allowed m/z window. Peaks outside this range are deleted. (Note: `mz_max` must be strictly greater than `mz_min`).
 
 ### 4. Top-N Peak Reduction
@@ -109,8 +109,42 @@ processing:
 
 ---
 
-## Fail-Fast Behavior
+## Filter order and empty spectra
 
-MassFlow's processing pipeline is designed to "fail fast".
+The batch path may reject an input already below the enabled minimum peak
+count. Metadata repair and the strict 5 ppm physical-integrity gate then run
+before peak processing. Intensity filtering precedes minimum-count filtering;
+fragment truncation, top-N reduction and normalization follow in that order.
+The minimum count is not reapplied after truncation. An empty spectrum created
+by truncation can therefore survive processing; this correction preserves that
+existing policy rather than introducing a new empty-spectrum filter.
 
-If a spectrum becomes invalid during processing—for example, if noise filtering removes so many peaks that the spectrum falls below the `min_peaks` threshold—the `processing.process_spectra` pipeline will silently drop that spectrum from the iterator rather than passing empty arrays to the similarity engine.
+For example, a spectrum with precursor m/z 800 and fragments at 49, 50, 100,
+500 and 501 survives a 50–500 fragment window with peaks 50, 100 and 500.
+Precursor candidacy is a separate scoring setting. The physical-integrity gate
+still rejects a declared formula/adduct whose precursor exceeds the fixed 5 ppm
+tolerance.
+
+## Processing fingerprints and cache migration
+
+`MassFlow.library.processing_fingerprint()` hashes canonical JSON containing
+`processing_semantics_revision` and the JSON processing configuration, with
+sorted keys and compact separators. The explicit revision changes when an
+algorithm change alters processing even if the configuration stays identical;
+it is independent of package versions and Git SHAs. It is also recorded in
+library-build provenance.
+
+Revision 2 applies fragment-only windows. Old config-only fingerprints and
+revision-1 fingerprints invalidate MassFlow-managed prepared SQLite, Zarr and
+hybrid caches built from raw files. The existing staged replacement rebuilds
+without mixing old/new rows, then reuses the unchanged rebuilt cache.
+
+Explicit `.db`, `.sqlite` and `.zarr` input libraries are opened directly and
+are **not** rebuilt or rewritten automatically. Previously generated persistent
+stores may retain rows discarded or altered under old processing. Rebuild from
+raw source into a **new destination** when corrected processing is required;
+appending to an existing store does not remove its old rows.
+
+The separate charge/adduct fix in PR #103 also revises processing semantics.
+Combining that fix with this one requires a new revision identifying the combined
+behavior; do not silently downgrade or reuse a fingerprint for different data.
