@@ -1,0 +1,39 @@
+{
+  "all_prior_metric_dictionaries_identical": true,
+  "application_harness_commit": "4dab3c2",
+  "clean_run_exit_code": 0,
+  "coverage_percent": 82.39,
+  "deselected": 35,
+  "full_command": "uv run pytest --cov=src/MassFlow --cov-report=xml --cov-fail-under=80 -v",
+  "full_passed": 1369,
+  "logs": {
+    "docs": {
+      "path": "/tmp/massflow-benchmark-release-docs.log",
+      "sha256": "f54460f311884af11e0abae2c3a333b244ac0082cb846366f826d73d8d3d7aa2"
+    },
+    "focused": {
+      "path": "/tmp/massflow-benchmark-final-focused.log",
+      "sha256": "bc71910d2ee35c53e7128f2f524a655ed5ab43e403cb245f33fff5b63aa56cae"
+    },
+    "full": {
+      "path": "/tmp/massflow-benchmark-qualified-full.log",
+      "sha256": "bcd619b1bce4419a596fd6454986435c694d8accdc51ef8c4d102caf847c2dc2"
+    },
+    "lint": {
+      "path": "/tmp/massflow-benchmark-release-lint.log",
+      "sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18"
+    },
+    "lock": {
+      "path": "/tmp/massflow-benchmark-release-lock.log",
+      "sha256": "0cc9122eee388ee0f1801b8a391fb6e6d7a26cf71c1850810b7557cbb21509cc"
+    },
+    "typing": {
+      "path": "/tmp/massflow-benchmark-final-mypy.log",
+      "sha256": "59ce853b1dbcad0b530424d358edd99048c72681051af588de530da8d7a68d66"
+    }
+  },
+  "new_tests": 13,
+  "schema_version": 1,
+  "skipped": 7,
+  "two_fresh_archives_sha256": "cb30a4aab9d06dc5978c08e73397106a104955f1c31a57671ee5c15025985529"
+}

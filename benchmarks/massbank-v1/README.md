@@ -1,5 +1,7 @@
 # Frozen measured-spectrum diagnostic benchmark
 
+See [measured results and limitations](RESULTS.md) for the completed clean run.
+
 This is an executable, small **diagnostic**, not a validated identification method
 or FDR-control certificate. Production algorithms are unchanged on main
 `ffef50bff913fcf400cb3de72595dab50e4f3fd8`. Correctness PRs #101/#103–#107 and the
