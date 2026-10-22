@@ -417,7 +417,20 @@ class TestNumericalParityScaffolding:
         from MassFlow.similarity import SearchResult
 
         # SearchResult is a TypedDict; its __annotations__ define the required keys.
-        required_keys = set(get_type_hints(SearchResult).keys())
+        from typing import NotRequired, get_origin
+
+        hints = get_type_hints(SearchResult, include_extras=True)
+        optional_keys = {
+            key for key, hint in hints.items() if get_origin(hint) is NotRequired
+        }
+        assert optional_keys == {
+            "confidence_state",
+            "confidence_q_value",
+            "confidence_method",
+            "confidence_scope",
+            "confidence_limitations",
+        }
+        required_keys = set(hints) - optional_keys
         expected_keys = {
             "query_id",
             "query_precursor_mz",

@@ -448,7 +448,7 @@ def _build_results_dataframe(
     consistent data shaping, merging, and status labeling.
 
     ``uncalibrated`` marks rows produced by a run whose decoy null was empty:
-    the q-values are then the conservative ``1/N`` rank bound, not a
+    the q-values are then the legacy ``1/N`` rank diagnostic, not a
     target-decoy FDR estimate, so no row may read as confident. Rows of such a
     run carry ``Annotation_Status = "Uncalibrated"`` (queries without any hit
     keep ``"Unknown"``).
@@ -464,7 +464,7 @@ def _build_results_dataframe(
     for r in results:
         clean_r = {}
         for key, value in r.items():
-            if isinstance(value, dict):
+            if isinstance(value, (dict, list, tuple)):
                 clean_r[key] = json.dumps(value, sort_keys=True, separators=(",", ":"))
             elif hasattr(value, "item"):
                 clean_r[key] = value.item()
@@ -509,6 +509,24 @@ def _build_results_dataframe(
             return None
         df = pl.DataFrame(clean_results)
 
+    if not clean_results:
+        df = df.with_columns(
+            pl.lit("unavailable").alias("confidence_state"),
+            pl.lit(None, dtype=pl.Float64).alias("confidence_q_value"),
+            pl.lit("pooled_query_maxima_plus_one_v1").alias("confidence_method"),
+            pl.lit("query_best_target").alias("confidence_scope"),
+            pl.lit('["no_target_observations"]').alias("confidence_limitations"),
+        )
+    if "confidence_state" in df.columns:
+        df = df.with_columns(pl.col("confidence_state").fill_null("unavailable"))
+    unvalidated_confidence = (
+        pl.col("confidence_state").is_in(
+            ["estimated_uncalibrated", "unavailable", "invalid"]
+        )
+        if "confidence_state" in df.columns
+        else pl.lit(False)
+    )
+
     # Add Annotation_Status. A run without decoy evidence cannot support an
     # FDR claim, so its hits are labeled "Uncalibrated" instead of
     # "Matched"/"Putative" (queries without a hit stay "Unknown").
@@ -516,7 +534,7 @@ def _build_results_dataframe(
         status = (
             pl.when(pl.col("score").is_null())
             .then(pl.lit("Unknown"))
-            .when(pl.lit(uncalibrated))
+            .when(pl.lit(uncalibrated) | unvalidated_confidence)
             .then(pl.lit("Uncalibrated"))
             .when(pl.col("score") >= 0.9)
             .then(pl.lit("Matched"))
@@ -562,7 +580,7 @@ def save_match_results(
         are still represented in the CSV output.
     uncalibrated : bool
         True when the run's decoy null was empty and the q-values are the
-        conservative ``1/N`` rank bound (no FDR claim is supported).
+        legacy ``1/N`` rank diagnostic (no FDR claim is supported).
 
     Returns
     -------
@@ -704,7 +722,7 @@ def save_match_results_to_mztab(
         Full set of experimental query spectra.
     uncalibrated : bool
         True when the run's decoy null was empty and the q-values are the
-        conservative ``1/N`` rank bound (no FDR claim is supported); matched
+        legacy ``1/N`` rank diagnostic (no FDR claim is supported); matched
         rows are then labeled ``Uncalibrated``.
     """
     df = _build_results_dataframe(results, query_spectra, uncalibrated=uncalibrated)

@@ -5,9 +5,12 @@
 [![Python 3.13+](https://img.shields.io/badge/python-3.13+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-**MassFlow is a high-precision toolkit for tandem mass spectrometry (MS/MS) annotation.**
+**MassFlow searches small-molecule MS/MS spectra against local reference libraries.**
 
-It transforms your experimental spectra (`.mzML`, `.mgf`) and reference libraries (`.msp`, SQLite databases) into calibrated structural annotations. Designed for the lab, MassFlow prioritizes scientific rigor, reproducibility, and speed.
+It produces spectral similarity scores, ranked candidate annotations, and
+query-level numerical target/decoy estimates with provenance. These outputs are
+not experimentally confirmed identities. Empirical identification accuracy and
+FDR control remain unvalidated for a declared deployment domain.
 
 ---
 
@@ -41,16 +44,38 @@ uv run massflow annotate --config massflow_config.yaml
 
 ## 🔬 Scientific Integrity
 
-MassFlow is built to ensure your annotations are chemically plausible and statistically sound.
+MassFlow separates spectral similarity, candidate ranking, chemical plausibility
+and statistical confidence. Passing software tests does not validate chemical
+identification accuracy.
 
-### The Physical Integrity Gate
-To prevent "garbage-in, garbage-out" results, MassFlow enforces a strict **5 ppm precursor validation**. If a spectrum's measured mass deviates from the theoretical mass of its claimed molecule by more than 5 ppm, it is rejected before it ever reaches the scoring engine. This ensures that your results are based on real chemistry, not random matches.
+### Chemical plausibility
 
-### Honest Confidence (FDR Calibration)
-We use **entropy-preserving decoys** to calibrate confidence. By creating fake spectra that mimic the information content of your real data, MassFlow provides a reliable **q-value** for every hit. You can trust your annotations because the program knows exactly how often a random match occurs in your specific dataset.
+Declared formula/structure/adduct metadata can be checked against a fixed 5-ppm
+precursor policy. Missing chemical context skips parts of that comparison;
+externally supplied persistent libraries are trusted inputs. This is metadata
+consistency checking, not proof of identity or a universal instrument specification.
 
-### Full Provenance
-Every result is linked back to its source. The generated provenance sidecars record the exact library version, processing parameters, and timestamps used, making your workflow fully auditable for publications.
+### Confidence availability and limitations
+
+The current estimator pools each query's best qualifying target and decoy scores.
+Synthetic decoys preserve precursor metadata and permute/jitter fragments; their
+ability to represent incorrect chemical matches has not been empirically validated.
+No output is labelled statistically calibrated solely because decoys survive.
+
+Results expose `confidence_state` (`estimated_uncalibrated`, `unavailable`, or
+`invalid`), nullable `confidence_q_value`, methodology and limitations. With no
+surviving decoys, the statistical estimate is unavailable. Historical `q_value`
+and `p_value` columns and their filtering remain for compatibility; their empty-null
+values are numerical rank diagnostics, not FDR estimates or error bounds.
+A q-value is not the probability that an individual candidate is incorrect.
+See [confidence semantics](docs/user-guide/confidence-semantics.md).
+
+### Traceability
+
+Provenance sidecars describe the library input, effective configuration and run
+context. Source-spectrum identity must be unique and retained separately from
+chemical identity. Legacy stores with missing/duplicate record identifiers need
+curation or rebuilding; sidecars cannot reconstruct provenance already lost.
 
 ---
 
