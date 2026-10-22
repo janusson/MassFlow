@@ -132,7 +132,8 @@ Parsing/leakage auditing is outside the per-arm pipeline timer.
 [Artifact index](measured-2026-10-22/artifacts.json) identifies 51 external native,
 input, candidate and reference-ledger files by byte count/SHA256. Source archive and
 native databases/peak files are not committed. Each arm has a small committed JSON
-report and JSONL ledger retaining all 100 query outcomes, including exclusions.
+report projection (duplicate outcome arrays removed, original result hash retained)
+and JSONL ledger retaining all 100 query outcomes, including exclusions.
 Per-row source accession/hash plus the frozen archive resolve ground-truth records.
 All installed library versions, effective defaults, input hashes, harness hashes,
 commit/dirty state, OS and configuration are preserved.
