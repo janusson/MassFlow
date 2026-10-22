@@ -89,7 +89,7 @@ class RawFileLibraryStore(SpectralStore):
         """Nothing to open: the file is parsed lazily on each read."""
 
     def _iter_processed(self) -> Iterator[Spectrum]:
-        raw = io.load_spectra(self.store_path)
+        raw = io.load_spectra(self.store_path, assign_record_ids=True)
         for spectrum in processing.process_spectra(raw, self._processing_config):
             if spectrum is None:
                 continue
@@ -284,15 +284,26 @@ def open_library(
     return RawFileLibraryStore(spec.path, processing_config)
 
 
+_PROCESSING_SEMANTICS_REVISION = 3
+
+
 def processing_fingerprint(processing_config: ProcessingConfig) -> str:
     """Stable fingerprint of the processing pipeline (cache invalidation).
 
-    SHA-256 over the canonical JSON of the processing configuration. This is
-    the same fingerprint recorded in library-build provenance rows so that
-    ``db inspect`` history can be correlated with the annotated-store cache.
+    Hash canonical processing configuration plus a stable semantics revision.
+    Revision 3 adds per-record library provenance, invalidating prepared caches
+    whose spectra may lack unambiguous IDs. Native input stores are not rebuilt.
+    The fingerprint is also recorded in library-build provenance rows.
     """
     return hashlib.sha256(
-        processing_config.model_dump_json().encode("utf-8")
+        json.dumps(
+            {
+                "config": processing_config.model_dump(),
+                "semantics_revision": _PROCESSING_SEMANTICS_REVISION,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
     ).hexdigest()
 
 
@@ -377,7 +388,7 @@ def _build_prepared_library_store(
 
         build_id: Optional[int] = None
         try:
-            raw = io.load_spectra(library_path)
+            raw = io.load_spectra(library_path, assign_record_ids=True)
             processed = processing.process_spectra(
                 raw, config.processing, rejection_reporter=_collect_physics_rejection
             )
