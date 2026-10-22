@@ -105,6 +105,7 @@ nav:
       - Data & Math:
           - Data Requirements: user-guide/data-requirements.md
           - Scoring Logic: user-guide/scoring_logic.md
+          - Confidence Semantics: user-guide/confidence-semantics.md
           - Multiprocessing & Memory Model: multiprocessing.md
   - Architecture: ARCHITECTURE.md
   - Product Contract & Capability Matrix: CAPABILITY_MATRIX.md

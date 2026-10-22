@@ -865,7 +865,10 @@ def main() -> None:
             # are labeled "Uncalibrated" (the q-values are the 1/N rank
             # bound, not an FDR estimate). The status contract therefore
             # depends on the calibration state, not on the score alone.
-            uncalibrated = result.fdr_summary.get("n_decoy_competitions", 0) == 0
+            uncalibrated = (
+                result.confidence_summary is not None
+                and result.confidence_summary["state"] != "calibrated"
+            )
             for q_id, truth in per_query_truth.items():
                 expected_rows = expected_export.get(q_id, [])
                 actual_rows = exported.get(q_id, [])

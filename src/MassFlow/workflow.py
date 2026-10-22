@@ -111,6 +111,7 @@ class FileExecutionResult:
     query_spectra: List[Spectrum] = field(default_factory=list, repr=False)
     results: List[SearchResult] = field(default_factory=list, repr=False)
     fdr_summary: dict[str, int] | None = field(default=None, repr=False)
+    confidence_summary: dict[str, Any] | None = field(default=None, repr=False)
     library_provenance: dict[str, Any] | None = field(default=None, repr=False)
 
 
@@ -404,27 +405,18 @@ def experimental_surface_flags(config: MassFlowConfig) -> list[str]:
 
 
 def _emit_small_library_warning(lib_size: int, fdr_threshold: float) -> None:
-    """Emit a critical scientific warning about small-library FDR invalidity.
+    """Emit a library-size advisory without asserting statistical sufficiency.
 
     In an interactive terminal the warning is rendered as a visually distinct
     Rich Panel.  When output is piped or redirected a clean single log line is
     emitted instead.  Only one rendering path is taken — never both.
     """
     msg = (
-        f"CRITICAL SCIENTIFIC WARNING: SMALL LIBRARY DETECTED\n"
-        f"The library contains only {lib_size} spectra.\n"
-        f"Target-Decoy False Discovery Rate (FDR) statistics are fundamentally\n"
-        f"invalid on small sample sizes because the decoy null-distribution\n"
-        f"will be too sparse. A strict FDR threshold (currently set to\n"
-        f"{fdr_threshold}) will likely eliminate all true and putative matches\n"
-        f"as false positives.\n"
-        f"\n"
-        f"Recommendation:\n"
-        f"1. Use a comprehensive library (e.g., GNPS, MoNA, NIST) for FDR\n"
-        f"   validation.\n"
-        f"2. Or, if using a small specialized library, relax the\n"
-        f"   `fdr_threshold` (e.g., 0.1 or 1.0) in your config to evaluate\n"
-        f"   raw Cosine scores directly."
+        f"Small library advisory: {lib_size} reference spectra; configured "
+        f"fdr_threshold={fdr_threshold}. Library size alone cannot establish "
+        "calibration or error control. Inspect surviving decoy counts and "
+        "confidence_state; sparse or absent decoy evidence limits interpretation. "
+        "Changing a threshold does not validate an estimate."
     )
 
     if sys.stderr.isatty():
@@ -791,9 +783,15 @@ def _process_single_file(
         # query spectrum. Each query contributes its best target hit and its
         # best decoy hit exactly once (see
         # MassFlow.similarity.calculate_fdr for the full contract).
-        from MassFlow.similarity import calibrate_query_level_fdr
+        from MassFlow.confidence import assess_confidence
 
-        q_by_query, p_by_query, fdr_summary = calibrate_query_level_fdr(all_results)
+        assessment = assess_confidence(all_results)
+        result.confidence_summary = assessment.metadata()
+        if assessment.state == "invalid":
+            raise ValueError(f"Invalid confidence family: {assessment.invalid_reason}")
+        q_by_query = assessment.legacy_q_values
+        p_by_query = assessment.legacy_p_values
+        fdr_summary = assessment.summary
 
         # True processed library size (targets only): the explicit parameter
         # from the parent's store build is authoritative; direct-API callers
@@ -830,26 +828,19 @@ def _process_single_file(
         if is_small_library:
             result.warnings.append(
                 f"Small reference library ({lib_size} spectra): target-decoy FDR "
-                "is statistically weak below ~2000 entries; q-values are "
-                "conservative."
+                "calibration is unvalidated; inspect surviving decoy counts and "
+                "confidence_state. Library size alone establishes no error bound."
             )
 
         if fdr_summary["n_decoy_competitions"] == 0:
-            # No decoy evidence at all: q-values are the uncalibrated 1/N
-            # bound, not a target-decoy estimate. This must be explicit — and
-            # so must the reason, because the two possible reasons have very
-            # different fixes: decoys were never scored (configuration or
-            # plumbing problem) versus decoys were scored but no decoy hit
-            # reached the configured score/matched-peak gates (the decoy
-            # spectra share no fragment positions with real fragments at
-            # scoring tolerance, so production gates are out of reach for
-            # them; the accepted target hits are genuine matches and no
-            # false-positive rate can be estimated from this run).
+            # No decoy evidence: retain the historical numerical diagnostic,
+            # explicitly unavailable as a statistical estimate. Neither a
+            # target's correctness nor an error bound follows from this null.
             result.degraded_mode_flags.append("fdr_uncalibrated")
             detail = _describe_empty_decoy_null(decoy_diagnostics)
             result.warnings.append(
                 "No decoy hits survived scoring; q-values are uncalibrated "
-                "(1/N rank bound). FDR claims are not supported for this "
+                "(legacy 1/N rank diagnostic). FDR claims are not supported for this "
                 f"file. {detail}"
             )
 
@@ -874,6 +865,11 @@ def _process_single_file(
             q_val = q_by_query.get(query_id, 1.0)
             p_val = p_by_query.get(query_id, 1.0)
 
+            res["confidence_state"] = assessment.state
+            res["confidence_q_value"] = assessment.q_values.get(query_id)
+            res["confidence_method"] = "pooled_query_maxima_plus_one_v1"
+            res["confidence_scope"] = "query_best_target"
+            res["confidence_limitations"] = list(assessment.limitations)
             res["q_value"] = q_val
             res["p_value"] = p_val
 
@@ -955,7 +951,7 @@ def _handle_file_results(
 
     results_dict = cast(List[Dict[str, Any]], result.results)
     # A run whose decoy null was empty supports no FDR claim: its q-values are
-    # the conservative 1/N rank bound. The rows are exported (the score filter
+    # a legacy 1/N rank diagnostic. The rows are exported (the score filter
     # is real evidence) but labeled uncalibrated so the table can never be read
     # as FDR-controlled.
     uncalibrated = "fdr_uncalibrated" in result.degraded_mode_flags
@@ -1033,6 +1029,9 @@ def _write_analysis_report(
             "model": "per_query_target_decoy",
             **result.fdr_summary,
         }
+
+    if result.confidence_summary is not None:
+        report_payload["confidence"] = result.confidence_summary
 
     # Library lineage: the exact database store searched, its build-history
     # row (input file, config hash, processing fingerprint, exact build

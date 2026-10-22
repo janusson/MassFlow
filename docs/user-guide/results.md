@@ -38,9 +38,9 @@ The CSV contains the actual annotation hits, including the computed `score`, `ma
 
 | Status | Meaning |
 | :--- | :--- |
-| `Matched` | Score ≥ 0.9 and the run was FDR-calibrated (its queries competed against decoys). |
-| `Putative` | Score < 0.9 and the run was FDR-calibrated. |
-| `Uncalibrated` | The run produced **no decoy competition at all**, so its `q_value` column is the conservative `1/N` rank bound rather than a target-decoy FDR estimate; the file is also flagged `fdr_uncalibrated` + `decoy_null_empty` and carries a warning with the measured best decoy score. The scored hits are still exported — they remain score-filtered candidates — but no row may be read as FDR-controlled. See [Scoring & FDR](scoring_logic.md#5-when-is-fdr-used-what-happens-for-small-libraries). |
+| `Matched` | Legacy score category (score ≥ 0.9); never a confirmed identity. Assessed unvalidated rows use Uncalibrated. |
+| `Putative` | Legacy score category (score < 0.9); not a validated confidence level. |
+| `Uncalibrated` | The run produced **no decoy competition at all**, so its `q_value` column is the legacy `1/N` rank diagnostic rather than a target-decoy FDR estimate; the file is also flagged `fdr_uncalibrated` + `decoy_null_empty` and carries a warning with the measured best decoy score. The scored hits are still exported — they remain score-filtered candidates — but no row may be read as FDR-controlled. See [Scoring & FDR](confidence-semantics.md). |
 | `Unknown` | No hit for this query (base row). |
 
 **Example: `experiment_results.csv`**
@@ -158,9 +158,16 @@ Batch runs continue across files: one bad file does not stop the others, but the
 
 ## False Discovery Rate (FDR)
 
-MassFlow natively calculates a Target-Decoy False Discovery Rate (FDR) to provide statistical confidence in the reported annotations. The full statistical contract — competition unit, tie handling, small-library behavior, and heterogeneous engines — is defined in [Scoring Logic](scoring_logic.md).
+MassFlow calculates a numerical query-maxima estimate, not empirically demonstrated
+FDR control. See [confidence semantics](confidence-semantics.md) for the exact
+formula, explicit states, nullable estimate, family, inherited-row limitations and
+historical column/filter compatibility. Both populated and empty nulls remain
+scientifically uncalibrated; no nominal q threshold proves an observed error rate.
 
-### How It Works
+Increasing `fdr_threshold` only changes selection; it does not cure a sparse or
+unrepresentative decoy null. Inspect counts, methodology and limitations before
+interpreting any confidence column.
+## How It Works
 
 1.  **Decoy Generation:** Before searching, MassFlow generates a set of "decoy" spectra from your reference library. These are shuffled, jittered versions of the true targets that are known *not* to exist in your sample. Decoy generation is deterministic and identical across single-file, multi-file, and streaming runs.
 2.  **Scoring:** Your experimental queries are scored against both the true target library and the decoy library.
