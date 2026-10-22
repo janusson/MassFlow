@@ -1,0 +1,28 @@
+{
+  "algorithms": [
+    "cosine",
+    "modified_cosine"
+  ],
+  "arms": [
+    "present",
+    "mixed"
+  ],
+  "interpretation": "diagnostic_not_confirmatory",
+  "processing": {
+    "filter_by_mz": false,
+    "filter_min_peaks": true,
+    "min_peaks": 3,
+    "repair_inchi_inchikey_smiles": false
+  },
+  "schema_version": 1,
+  "seed": 42,
+  "similarity": {
+    "enable_numba_prefilter": false,
+    "fdr_threshold": 1.0,
+    "min_matched_peaks": 3,
+    "min_score": 0.6,
+    "ms1_tolerance": 0.02,
+    "ms2_tolerance": 0.02,
+    "rt_tolerance": null
+  }
+}
