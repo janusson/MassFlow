@@ -1207,8 +1207,8 @@ class SimilarityEngine:
             value from the initial configuration is used.
         top_n : int or None, optional
             An optional override for the maximum number of results to return per
-            query spectrum. If None, all matches exceeding the thresholds are
-            returned.
+            query spectrum after score, matched-peak, adduct-mode, and retention-
+            time filtering. If None, all eligible matches are returned.
         include_decoys : bool, optional
             If True, generate and search against decoy spectra for FDR calculation.
             If False, search only against the provided reference_spectra. Default
@@ -1477,11 +1477,8 @@ class SimilarityEngine:
             # Sort descending by score
             sorted_idx_rel = np.argsort(valid_scores)[::-1]
 
-            # Apply Top N
-            if top_n is not None:
-                sorted_idx_rel = sorted_idx_rel[:top_n]
-
             final_indices = valid_indices[sorted_idx_rel]
+            query_results: List[SearchResult] = []
 
             # Extract Metadata
             q = query_spectra[i]
@@ -1516,7 +1513,7 @@ class SimilarityEngine:
                 if ref_is_decoy is not None and idx < len(ref_is_decoy):
                     is_decoy = bool(ref_is_decoy[idx])
 
-                results.append(
+                query_results.append(
                     {
                         "query_id": q_id,
                         "query_precursor_mz": q_mz_val,
@@ -1540,6 +1537,9 @@ class SimilarityEngine:
                         "score_breakdown": None,
                     }
                 )
+
+            # Ineligible high-scoring references must not consume result slots.
+            results.extend(query_results[:top_n])
 
         if include_decoys:
             self._record_decoy_diagnostics(
