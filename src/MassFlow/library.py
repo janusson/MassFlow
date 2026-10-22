@@ -53,10 +53,10 @@ from MassFlow.storage import SpectralStore, create_spectral_store
 
 logger = logging.getLogger(__name__)
 
-# Processing semantics revision 3 covers missing-precursor normalization,
-# charge/adduct consistency, and fragment-only m/z windows. A single combined
-# revision invalidates caches built under any of the prior contracts.
-PROCESSING_SEMANTICS_REVISION = 3
+# Revision 4 covers missing-precursor normalization, fragment-only m/z
+# windows, charge/adduct consistency, and acquisition-record identity.
+# Keep one revision so caches cannot mix records built under older contracts.
+PROCESSING_SEMANTICS_REVISION = 4
 
 # Extension of MassFlow-native stores (opened directly by workers).
 _STORE_EXTENSIONS = {".db", ".sqlite", ".zarr"}
@@ -94,7 +94,7 @@ class RawFileLibraryStore(SpectralStore):
         """Nothing to open: the file is parsed lazily on each read."""
 
     def _iter_processed(self) -> Iterator[Spectrum]:
-        raw = io.load_spectra(self.store_path)
+        raw = io.load_spectra(self.store_path, assign_record_ids=True)
         for spectrum in processing.process_spectra(raw, self._processing_config):
             if spectrum is None:
                 continue
@@ -290,12 +290,12 @@ def open_library(
 
 
 def processing_fingerprint(processing_config: ProcessingConfig) -> str:
-    """Fingerprint the processing configuration and semantics revision.
+    """Fingerprint processing settings and the combined semantics revision.
 
-    Managed caches are invalidated whenever the configured processing contract
-    changes, while persistent store inputs remain untouched and must be rebuilt
-    explicitly from raw sources into a new destination. The same digest is
-    recorded in build provenance.
+    A revision change invalidates managed prepared caches even when the
+    configuration is unchanged. Direct persistent stores are not rewritten;
+    rebuild those from raw sources into a new destination. This digest is also
+    stored in library-build provenance.
 
     Parameters
     ----------
@@ -401,7 +401,7 @@ def _build_prepared_library_store(
 
         build_id: Optional[int] = None
         try:
-            raw = io.load_spectra(library_path)
+            raw = io.load_spectra(library_path, assign_record_ids=True)
             processed = processing.process_spectra(
                 raw, config.processing, rejection_reporter=_collect_physics_rejection
             )

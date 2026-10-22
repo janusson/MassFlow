@@ -117,6 +117,35 @@ if not _HAS_ML:
     )
 
 
+def _require_reference_record_ids(
+    references: Sequence[Spectrum], *, include_decoys: bool
+) -> None:
+    """Reject ambiguous record keys before meta-engine aggregation or routing."""
+    # Metadata extraction is per Spectrum, not a loop over spectral arrays.
+    identifiers = [reference.get("id") for reference in references]
+    if any(
+        identifier is None or not str(identifier).strip() for identifier in identifiers
+    ):
+        raise ValueError(
+            "Meta-engine references require non-empty unique spectrum id values; "
+            "load raw libraries with assign_record_ids=True or rebuild the store."
+        )
+    record_ids = {str(identifier) for identifier in identifiers}
+    if len(record_ids) != len(identifiers):
+        raise ValueError(
+            "Meta-engine references require unique spectrum id values; "
+            "chemical identity is not spectral-record identity. Rebuild the library "
+            "from raw sources with assign_record_ids=True."
+        )
+    if include_decoys and any(
+        f"{identifier}_decoy" in record_ids for identifier in record_ids
+    ):
+        raise ValueError(
+            "Meta-engine references require unique target and generated decoy id "
+            "values; rename colliding source IDs before rebuilding the library."
+        )
+
+
 def calculate_mass_error_ppm(query_mz: float, ref_mz: float) -> float:
     """Calculate the mass error in parts-per-million (ppm).
 
@@ -2086,6 +2115,7 @@ class ConsensusEngine(_MLEngineBase):
             return []
 
         ref_list = list(reference_spectra)
+        _require_reference_record_ids(ref_list, include_decoys=include_decoys)
         cutoff = min_score if min_score is not None else self.config.min_score
         min_engines = self.config.consensus_min_engines
 
@@ -2590,6 +2620,7 @@ class CascadeEngine(_MLEngineBase):
             return []
 
         ref_list = list(reference_spectra)
+        _require_reference_record_ids(ref_list, include_decoys=include_decoys)
         lower_bound = self.config.cascade_lower_bound
         upper_bound = (
             min_score if min_score is not None else self.config.cascade_upper_bound

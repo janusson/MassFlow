@@ -14,6 +14,7 @@ harmonization is deferred to :mod:`MassFlow.processing` after import.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -322,10 +323,42 @@ def _validate_spectra_iterator(
             )
 
 
+def _assign_library_record_ids(
+    spectra: Iterable[Spectrum], source_path: Path
+) -> Iterator[Spectrum]:
+    """Clone library records with source locators and unambiguous per-file IDs."""
+    with source_path.open("rb") as handle:
+        source_sha256 = hashlib.file_digest(handle, "sha256").hexdigest()
+    seen_ids: set[str] = set()
+    # Source ordinals precede validation/filtering; chemistry never keys records.
+    for source_index, spectrum in enumerate(spectra):
+        if spectrum is None:
+            continue
+        original_id = spectrum.get("id")
+        record_id = str(original_id) if original_id is not None else ""
+        if not record_id.strip() or record_id in seen_ids:
+            record_id = f"massflow:sha256:{source_sha256}:spectrum:{source_index}"
+        if record_id in seen_ids:
+            raise ValueError(
+                f"Library record ID collides with generated ID: {record_id}"
+            )
+        seen_ids.add(record_id)
+        # Spectrum is mutable: clone before adding record provenance.
+        record = spectrum.clone()
+        record.set("id", record_id)
+        record.set("massflow_original_id", original_id)
+        record.set("massflow_source_path", str(source_path.resolve()))
+        record.set("massflow_source_sha256", source_sha256)
+        record.set("massflow_source_index", source_index)
+        yield record
+
+
 def load_spectra(
     file_path: Path,
     file_format: Optional[str] = None,
     rejection_reporter: Optional[Callable[[str], None]] = None,
+    *,
+    assign_record_ids: bool = False,
 ) -> Iterator[Spectrum]:
     """
     Load spectra from an open spectral file or a MassFlow-native store.
@@ -349,6 +382,12 @@ def load_spectra(
         Optional callback invoked with the rejection reason for every
         spectrum dropped by the validation layer (see
         :func:`_validate_spectra_iterator`).
+    assign_record_ids : bool
+        For raw library ingestion, clone each loader record with its source
+        SHA-256 and zero-based loader ordinal. Preserve the first occurrence of
+        an existing ID; missing or repeated IDs receive a content/ordinal ID.
+        Original IDs remain in ``massflow_original_id``. Chemical identifiers
+        are never used as record keys. Native stores are read without changes.
 
     Yields
     ------
@@ -409,6 +448,11 @@ def load_spectra(
         loader = store.get_spectra()
     else:
         raise ValueError(f"Format '{fmt}' is not supported by MassFlow.")
+
+    # Assign library identity before validation, so rejected records cannot
+    # renumber later source records. Query loading keeps its existing contract.
+    if assign_record_ids and fmt not in {"db", "sqlite", "zarr"}:
+        loader = _assign_library_record_ids(loader, path)
 
     # Step 3: Yield spectra through the validation layer
     yield from _validate_spectra_iterator(loader, path, rejection_reporter)
