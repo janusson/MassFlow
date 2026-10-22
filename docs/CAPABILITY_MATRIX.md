@@ -28,7 +28,7 @@ paths are expected to pass):
 | Ingestion | `mzML`, `mzXML`, `MGF`, `MSP`, MassFlow SQLite (`.db`/`.sqlite`); vendor raw formats rejected with `UnsupportedVendorFormatError` |
 | Processing | `matchms`-based metadata cleaning, RT extraction, intensity/m/z filters, top-N reduction, normalization |
 | Similarity | `cosine`, `modified_cosine` (always available) |
-| Confidence | Per-query target-decoy competition (TDC): entropy-preserving decoy generation, per-query q-values, empirical p-values as diagnostic (see the [FDR statistical contract](user-guide/scoring_logic.md)) |
+| Confidence | Pooled per-query target/decoy maxima, numerical q estimates and diagnostic empirical p-values; empirical calibration and incorrect-match representativeness are unvalidated (see the [FDR statistical contract](user-guide/scoring_logic.md)) |
 | Storage | SQLite libraries (`massflow db build/inspect/merge`) with persisted build lineage (input files, config hash, processing parameters, timestamps); optional hybrid SQLite+Zarr backend; BLOB→Zarr migration scripts |
 | Exports | Per-input CSV and mzTab-M result tables, YAML provenance sidecar with per-file status/spectra counts/degradation flags (`<input_stem>_results.<ext>` + `.report.yaml`), explicit `<stem>_failed.report.yaml` for failed files (never an empty CSV), MSP/MGF spectrum export |
 | Scientific integrity | 5 ppm precursor validation and theoretical isotopic envelopes in the `MassFlow.models` / `MassFlow.cheminformatics` layer; **enforced as a processing gate** on spectra with declared structural claims in the classical `annotate`/`db build` paths and in the streaming ingestion gate (**D-8 executed**, 2026-09-06) |
@@ -66,7 +66,7 @@ Status legend: **✅ Stable** (implemented, tested, part of the v0.1 contract) �
 | `matchms` processing pipeline | `processing.py` | `test_processing.py` |
 | `cosine`, `modified_cosine` scoring | `similarity.py` | `test_mathematical_proof.py`, `test_similarity.py`, `test_ms1_prefilter.py` |
 | MS1 prefilter (Da and ppm modes) | `similarity.py` | `test_ms1_prefilter.py` |
-| Entropy-preserving decoys + per-query target-decoy FDR + diagnostic p-values | `similarity.py` (`generate_decoys`, `calculate_fdr`, `calibrate_query_level_fdr`), `workflow.py` | `test_decoy_generation.py`, `test_fdr.py`, `test_fdr_statistics.py` (contract tests) |
+| Precursor-preserving synthetic decoys + pooled query-maxima q estimates + diagnostic p-values | `similarity.py` (`generate_decoys`, `calculate_fdr`, `calibrate_query_level_fdr`), `workflow.py` | `test_decoy_generation.py`, `test_fdr.py`, `test_fdr_statistics.py` (contract tests) |
 | SQLite library build / inspect / merge (incl. lineage: `db inspect` reports build history, processing parameters & target-decoy configuration; annotation sidecars link to the exact build row) | `database.py`, `cli.py`, `library.py`, `workflow.py` | `test_database.py`, `test_cli_db.py`, `test_db_lineage.py` |
 | CSV, mzTab-M, YAML report, MSP/MGF export | `io.py`, `workflow.py` | `test_io.py`, `test_workflow.py`, `test_cli.py` |
 | 5 ppm precursor validation + isotopic envelopes (model layer and annotate-path gate) | `models.py`, `cheminformatics.py`, `processing.py` (`physical_integrity_reason`, `process_spectra[_batch]` gate), `library.py` (`prepare_library` strict raw-library abort), `workflow.py` | `test_precursor_physics.py`, `test_scientific_boundaries.py`, `test_cheminformatics.py`, `test_isotopic_distribution.py`, `test_adduct_validation.py`, `test_adduct_registry.py`, `test_physics_gate.py` |
@@ -92,7 +92,7 @@ Status legend: **✅ Stable** (implemented, tested, part of the v0.1 contract) �
 
 | Capability | Reality | Gap |
 | --- | --- | --- |
-| `@pytest.mark.core` stable-contract gate | Marker defined in `pyproject.toml` and described in `AGENTS.md` | Only **one** test file (`test_zarr_hybrid.py`) actually applies it; the gate is not exercised as documented |
+| `@pytest.mark.core` stable-contract gate | Marker defined in `pyproject.toml` and described in `AGENTS.md` | Applied across stable scoring, processing, export and SQLite tests; `pytest -m core` is a subset, not a substitute for the full coverage gate |
 | Triage bitmask flags | `database.py` computes and stores `triage_flags` JSON on insert; consumed by `MLRouter` thresholds | Only meaningful with `enable_routing: true` (default false); no standalone user surface |
 
 > **D-8 executed (2026-09-06):** the 5 ppm scientific-validation row that previously
@@ -108,7 +108,7 @@ Status legend: **✅ Stable** (implemented, tested, part of the v0.1 contract) �
 | FBMN export (`consensus_spectra.mgf` + CSV pair) | `AGENTS.md` §5.4 (stable output), `docs/index.md` (Stable), `docs/user-guide/results.md`, `.github/copilot-instructions.md` | **No code anywhere in `src/`** (grep for `FBMN`/`consensus_spectra` returns zero matches in source). Export surface is CSV/mzTab-M only |
 | GraphML molecular networking + `massflow visualize` + `viz` extra | `docs/user-guide/annotation.md` (§Network Visualization), `docs/index.md` (Experimental), `AGENTS.md` §6.1 | **No `visualize` command in `cli.py`, no graphml code in `src/`, no `viz` extra in `pyproject.toml`** |
 | LSP language server | `docs/index.md` (Experimental: "Language Server (LSP)") | Removed; `docs/api/server.md` documents the removal. The stale row in `docs/index.md` is the only live reference |
-| `core`-marked stable test suite as the CI gate | `AGENTS.md` §2.5/§6.1 | See §2.3 — marker discipline not applied |
+| `core`-marked stable test suite as the CI gate | `AGENTS.md` §2.5/§6.1 | Core selection is implemented across stable paths; full coverage and scientific groups remain separate gates |
 
 ### 2.5 Planned only (📋)
 

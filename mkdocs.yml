@@ -131,5 +131,6 @@ nav:
       - Cheminformatics: api/cheminformatics.md
       - Consensus: api/consensus.md
       - Server: api/server.md
+  - 1.0 Release Readiness: release/1.0-readiness.md
   - Roadmap: post-v0.1-roadmap.md
   - Changelog: CHANGELOG.md
