@@ -10,6 +10,8 @@ deriving formulas), strict physical-integrity validation of declared chemistry
 It is designed to fail fast on invalid data while logging detailed diagnostics.
 """
 
+from __future__ import annotations
+
 import logging
 from typing import Any, Callable, Iterable, Iterator, List, Optional, Tuple
 
@@ -374,7 +376,14 @@ def metadata_processing(
         # matchms filters return a new spectrum or None
         from matchms.filtering import repair_inchi_inchikey_smiles
 
-        s = repair_inchi_inchikey_smiles(s)
+        # The repair filter accepts absent strings, but explicit None values
+        # otherwise raise in SpeciesString and discard the entire acquisition.
+        # Normalize missing chemistry on a clone; never borrow another record.
+        s = s.clone()
+        for structural_field in ("inchi", "inchikey", "smiles"):
+            if s.get(structural_field) is None:
+                s.set(structural_field, "")
+        s = repair_inchi_inchikey_smiles(s, clone=False)
         if s is None:
             return None
         s = harmonize_undefined_smiles(s)
