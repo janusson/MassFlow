@@ -289,7 +289,9 @@ def _packet_to_search_result(
         "precursor_mz_error_ppm": float(result.get("mass_error_ppm") or np.nan),
         "annotation_tier": result.get("annotation_tier") or "",
         "structural_similarity": float(result.get("structural_similarity") or np.nan),
-        "fdr_q_value": float(result.get("q_value") or np.nan),
+        "fdr_q_value": float(result["q_value"])
+        if result.get("q_value") is not None
+        else float("nan"),
     }
 
 
