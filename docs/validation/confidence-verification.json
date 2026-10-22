@@ -36,12 +36,12 @@
       "log": "/tmp/massflow-confidence-final-lint.log"
     },
     "docs": {
-      "sha256": "ff3e2a4a4e74c1646c5efea87b809bc741fc1d5a3d9fb00fa30ab87522c0ce43",
-      "log": "/tmp/massflow-confidence-final-docs.log"
+      "log": "/tmp/massflow-confidence-final-docs.log",
+      "sha256": "bfe1a003515c5288d11d9a7b281cb705931e94599503130f3183b945ee6fdedd"
     },
     "build": {
-      "sha256": "c41476e6ea296fe915629b85ded95566c0554c633960765885f65b004f7e7d8a",
-      "log": "/tmp/massflow-confidence-final-build.log"
+      "log": "/tmp/massflow-confidence-qualified-build.log",
+      "sha256": "c41476e6ea296fe915629b85ded95566c0554c633960765885f65b004f7e7d8a"
     },
     "ties_red": {
       "sha256": "57f478bc304bdb6211109ee120ea0880da409655f1c6414ac986d95a580e0d96",
@@ -51,5 +51,6 @@
       "sha256": "528978b4d5a2faa2520352a4bc8e8dd84fd6315fa7d9980549ca82e4bc96fb41",
       "log": "/tmp/massflow-confidence-review-red.log"
     }
-  }
+  },
+  "verified_source_commit": "78fcddc"
 }
