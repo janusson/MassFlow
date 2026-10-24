@@ -400,6 +400,9 @@ def run_arm(
                 "interpretation": "descriptive_observed_FDP_only_not_error_control",
             }
         )
+    reference_rejection_reasons: dict[str, list[str]] = {
+        key: value for key, value in reasons.items() if key in reference_map
+    }
     payload = {
         "schema_version": 1,
         "metrics": metrics.evaluate(accounting, captured),
@@ -446,9 +449,7 @@ def run_arm(
             ],
             "limitation": "Search exports qualified hits only. Empty candidate sets cannot distinguish precursor, score and peak-gate losses; no per-gate counts are inferred.",
         },
-        "reference_rejection_reasons": {
-            key: value for key, value in reasons.items() if key in reference_map
-        },
+        "reference_rejection_reasons": reference_rejection_reasons,
     }
     truth_labels = {
         f"query_{query_index:04d}": {
@@ -482,7 +483,7 @@ def run_arm(
             "present"
         ]
         query_attribution["truth_reference_preparation_rejections"] = {
-            reference_id: payload["reference_rejection_reasons"].get(reference_id, [])
+            reference_id: reference_rejection_reasons.get(reference_id, [])
             for reference_id in query_attribution.get(
                 "truth_reference_ids_missing_after_preparation", []
             )
