@@ -38,6 +38,7 @@ from matchms.filtering import (
 
 from MassFlow.cheminformatics import normalize_adduct
 from MassFlow.config import ProcessingConfig
+from MassFlow.diagnostics import DiagnosticReason, DiagnosticStage, RejectionEvent
 
 # Neutral monoisotopic mass of water (H2O), computed once at import time from
 # pyteomics to guarantee SSOT consistency across the codebase.
@@ -537,6 +538,7 @@ def process_spectra_batch(
     spectra: List[Spectrum],
     config: ProcessingConfig,
     rejection_reporter: Optional[Callable[[str], None]] = None,
+    diagnostic_reporter: Optional[Callable[[RejectionEvent], None]] = None,
 ) -> List[Spectrum]:
     """
     Process a batch of spectra using Polars for high-performance metadata operations.
@@ -552,8 +554,9 @@ def process_spectra_batch(
         spectrum dropped by the strict 5 ppm physical-integrity gate. Used by
         the workflow to make chemistry rejections observable in the per-file
         execution result (a scientific analysis must never silently drop
-        data). Peak-filter drops are *not* reported here; they remain
-        config-driven and are counted by the caller via the length delta.
+        data). Peak-filter drops are counted by the caller via the length delta.
+    diagnostic_reporter : Callable[[RejectionEvent], None] or None
+        Optional typed observer for bounded failure-attribution diagnostics.
     """
     if not spectra:
         return []
@@ -625,6 +628,23 @@ def process_spectra_batch(
     # Materialize the filtered metadata
     valid_metadata = filtered_lf.collect()
     valid_indices = valid_metadata.get_column("batch_index").to_list()
+    if diagnostic_reporter is not None and getattr(config, "filter_min_peaks", False):
+        valid_index_set = set(valid_indices)
+        for index, spectrum in enumerate(spectra):
+            if index not in valid_index_set:
+                diagnostic_reporter(
+                    RejectionEvent(
+                        stage=DiagnosticStage.PEAK_PROCESSING,
+                        reason=DiagnosticReason.INSUFFICIENT_PEAKS,
+                        detail=(
+                            f"peak_count={len(spectrum.peaks) if spectrum.peaks else 0}; "
+                            f"min_peaks={min_peaks}"
+                        ),
+                        spectrum_id=str(spectrum.get("id"))
+                        if spectrum.get("id") is not None
+                        else None,
+                    )
+                )
 
     processed_batch = []
     for idx in valid_indices:
@@ -634,8 +654,30 @@ def process_spectra_batch(
             # Apply standard matchms metadata repairs
             spec = metadata_processing(spec, config)
             if spec is None:
+                if diagnostic_reporter is not None:
+                    diagnostic_reporter(
+                        RejectionEvent(
+                            stage=DiagnosticStage.METADATA_PROCESSING,
+                            reason=DiagnosticReason.PROCESSING_REJECTED_UNKNOWN,
+                            detail="metadata processing returned no spectrum",
+                            spectrum_id=str(spectra[idx].get("id"))
+                            if spectra[idx].get("id") is not None
+                            else None,
+                        )
+                    )
                 continue
         except Exception as e:
+            if diagnostic_reporter is not None:
+                diagnostic_reporter(
+                    RejectionEvent(
+                        stage=DiagnosticStage.METADATA_PROCESSING,
+                        reason=DiagnosticReason.PROCESSING_REJECTED_UNKNOWN,
+                        detail=f"{type(e).__name__}: {e}",
+                        spectrum_id=str(spec.get("id"))
+                        if spec.get("id") is not None
+                        else None,
+                    )
+                )
             logger.error(
                 f"Skipping spectrum due to metadata processing error: {e}",
                 extra={
@@ -660,14 +702,47 @@ def process_spectra_batch(
             )
             if rejection_reporter is not None:
                 rejection_reporter(physics_reason)
+            if diagnostic_reporter is not None:
+                diagnostic_reporter(
+                    RejectionEvent(
+                        stage=DiagnosticStage.PHYSICAL_INTEGRITY,
+                        reason=DiagnosticReason.PHYSICAL_INTEGRITY_REJECTED,
+                        detail=physics_reason,
+                        spectrum_id=str(spec.get("id"))
+                        if spec.get("id") is not None
+                        else None,
+                    )
+                )
             continue
 
         try:
             # Apply peak-level processing
             spec = peak_processing(spec, config)
             if spec is None:
+                if diagnostic_reporter is not None:
+                    diagnostic_reporter(
+                        RejectionEvent(
+                            stage=DiagnosticStage.PEAK_PROCESSING,
+                            reason=DiagnosticReason.PROCESSING_REJECTED_UNKNOWN,
+                            detail="peak processing returned no spectrum",
+                            spectrum_id=str(spectra[idx].get("id"))
+                            if spectra[idx].get("id") is not None
+                            else None,
+                        )
+                    )
                 continue
         except Exception as e:
+            if diagnostic_reporter is not None:
+                diagnostic_reporter(
+                    RejectionEvent(
+                        stage=DiagnosticStage.PEAK_PROCESSING,
+                        reason=DiagnosticReason.PROCESSING_REJECTED_UNKNOWN,
+                        detail=f"{type(e).__name__}: {e}",
+                        spectrum_id=str(spec.get("id"))
+                        if spec.get("id") is not None
+                        else None,
+                    )
+                )
             logger.error(
                 f"Skipping spectrum due to peak processing error: {e}",
                 extra={
@@ -689,6 +764,7 @@ def process_spectra(
     spectra: Iterable[Spectrum],
     config: ProcessingConfig,
     rejection_reporter: Optional[Callable[[str], None]] = None,
+    diagnostic_reporter: Optional[Callable[[RejectionEvent], None]] = None,
 ) -> Iterator[Spectrum]:
     """
     Orchestrate the full spectral processing pipeline.
@@ -704,6 +780,8 @@ def process_spectra(
         Optional callback invoked with the rejection reason for every
         spectrum dropped by the strict 5 ppm physical-integrity gate (see
         :func:`process_spectra_batch`).
+    diagnostic_reporter : Callable[[RejectionEvent], None] or None
+        Optional typed observer for bounded failure-attribution diagnostics.
     """
     chunk_size = 5000
     chunk = []
@@ -714,8 +792,12 @@ def process_spectra(
         chunk.append(spectrum)
 
         if len(chunk) >= chunk_size:
-            yield from process_spectra_batch(chunk, config, rejection_reporter)
+            yield from process_spectra_batch(
+                chunk, config, rejection_reporter, diagnostic_reporter
+            )
             chunk.clear()
 
     if chunk:
-        yield from process_spectra_batch(chunk, config, rejection_reporter)
+        yield from process_spectra_batch(
+            chunk, config, rejection_reporter, diagnostic_reporter
+        )
