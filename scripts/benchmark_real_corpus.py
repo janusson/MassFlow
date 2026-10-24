@@ -331,6 +331,7 @@ def build_real_benchmark(
     workdir.mkdir(parents=True, exist_ok=True)
     library_mode_counts: Counter[str] = Counter()
     library_type_counts: Counter[str] = Counter()
+    library_adduct_counts: Counter[str] = Counter()
     library_charge_counts: Counter[str] = Counter()
     for library_record in lib_records:
         library_metadata = library_record["meta"]
@@ -363,6 +364,7 @@ def build_real_benchmark(
         "library_source_metadata_counts": {
             "ion_mode": dict(sorted(library_mode_counts.items())),
             "precursor_type": dict(sorted(library_type_counts.items())),
+            "adduct": dict(sorted(library_adduct_counts.items())),
             "charge": dict(sorted(library_charge_counts.items())),
         },
         "query_sources": {},
@@ -431,10 +433,8 @@ def build_real_benchmark(
             source_precursor_type = rec["meta"].get("precursor_type") or rec[
                 "meta"
             ].get("precursortype")
-            source_adduct = (
-                rec["meta"].get("adduct")
-                or rec["meta"].get("adductionname")
-                or source_precursor_type
+            source_adduct = rec["meta"].get("adduct") or rec["meta"].get(
+                "adductionname"
             )
             stats["selected_source_metadata"][qid] = {
                 "source": qf,
