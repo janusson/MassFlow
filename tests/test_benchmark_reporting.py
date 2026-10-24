@@ -282,6 +282,54 @@ def test_result_comparison_requires_identical_query_denominators() -> None:
         )
 
 
+def test_result_comparison_preserves_missing_matched_peaks_as_null() -> None:
+    baseline = [
+        {
+            "query_id": "q1",
+            "reference_id": "ref-a",
+            "score": "0.9",
+            "matched_peaks": "",
+        }
+    ]
+    current = [
+        {
+            "query_id": "q1",
+            "reference_id": "ref-a",
+            "score": "0.9",
+            "matched_peaks": "0",
+        }
+    ]
+
+    comparison = compare_result_rows(baseline, current)
+
+    assert comparison["queries_with_matched_peak_changes"] == 1
+    assert comparison["by_query"]["q1"]["matched_peak_changes"] == [
+        {"reference_id": "ref-a", "before": None, "after": 0}
+    ]
+
+
+def test_result_comparison_rejects_malformed_matched_peaks() -> None:
+    with pytest.raises(ValueError, match="matched_peaks"):
+        compare_result_rows(
+            [
+                {
+                    "query_id": "q1",
+                    "reference_id": "ref-a",
+                    "score": "0.9",
+                    "matched_peaks": "not-a-count",
+                }
+            ],
+            [
+                {
+                    "query_id": "q1",
+                    "reference_id": "ref-a",
+                    "score": "0.9",
+                    "matched_peaks": "0",
+                }
+            ],
+        )
+
+
 def test_diagnostic_summary_by_source_keeps_preprocessing_and_search_denominators_separate() -> (
     None
 ):
@@ -427,15 +475,28 @@ def test_truth_pair_attribution_uses_last_surviving_stage() -> None:
 
 def test_truth_ranking_uses_the_declared_identity_endpoint() -> None:
     hits = [
-        {"reference_id": "other", "inchikey": "XYZABCDEFGHIJK-ABCDEFGHIJ-A"},
-        {"reference_id": "stereo-a", "inchikey": "ABCABCDEFGHIJK-ABCDEFGHIJ-A"},
-        {"reference_id": "stereo-b", "inchikey": "ABCABCDEFGHIJK-ABCDEFGHIJ-B"},
+        {
+            "reference_id": "other",
+            "inchikey": "XYZABCDEFGHIJK-ABCDEFGHIJ-A",
+            "score": "0.95",
+        },
+        {
+            "reference_id": "stereo-a",
+            "inchikey": "ABCABCDEFGHIJK-ABCDEFGHIJ-A",
+            "score": "0.90",
+        },
+        {
+            "reference_id": "stereo-b",
+            "inchikey": "ABCABCDEFGHIJK-ABCDEFGHIJ-B",
+            "score": "0.80",
+        },
     ]
 
     connectivity_rank = _distinct_truth_identity_rank(
         hits,
         reference_column="reference_id",
         identity_column="inchikey",
+        score_column="score",
         truth_identity="ABCABCDEFGHIJK",
         truth_reference_ids={"stereo-a", "stereo-b"},
         identity_endpoint="connectivity",
@@ -444,6 +505,7 @@ def test_truth_ranking_uses_the_declared_identity_endpoint() -> None:
         hits,
         reference_column="reference_id",
         identity_column="inchikey",
+        score_column="score",
         truth_identity="ABCABCDEFGHIJK-ABCDEFGHIJ-B",
         truth_reference_ids={"stereo-b"},
         identity_endpoint="inchikey",
@@ -451,3 +513,30 @@ def test_truth_ranking_uses_the_declared_identity_endpoint() -> None:
 
     assert connectivity_rank == 2
     assert exact_rank == 3
+
+
+def test_truth_ranking_ties_break_on_structure_identity_not_accession() -> None:
+    hits = [
+        {
+            "reference_id": "ref-a",
+            "inchikey": "ZZZABCDEFGHIJK-ABCDEFGHIJ-N",
+            "score": "0.9",
+        },
+        {
+            "reference_id": "ref-z",
+            "inchikey": "AAAABCDEFGHIJK-ABCDEFGHIJ-N",
+            "score": "0.9",
+        },
+    ]
+
+    rank = _distinct_truth_identity_rank(
+        hits,
+        reference_column="reference_id",
+        identity_column="inchikey",
+        score_column="score",
+        truth_identity="AAAABCDEFGHIJK-ABCDEFGHIJ-N",
+        truth_reference_ids={"ref-z"},
+        identity_endpoint="inchikey",
+    )
+
+    assert rank == 1

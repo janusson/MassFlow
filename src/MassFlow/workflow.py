@@ -955,11 +955,14 @@ def _process_single_file(
                 result.retrieval_diagnostics.get("unknown_or_unattributable", 0)
             )
             search_queries = search_diagnostics.get("queries", {})
-            if isinstance(search_queries, dict):
+            if not isinstance(search_queries, dict):
+                search_queries = {}
+            processed_query_count = len(query_spectra)
+            confidence_state_counts: dict[str, int] = {}
+            if search_queries:
                 exported_query_ids = {
                     str(row.get("query_id")) for row in fdr_filtered_results
                 }
-                confidence_state_counts: dict[str, int] = {}
                 for query_id, query_diagnostic in search_queries.items():
                     query_diagnostic["confidence_state"] = assessment.state
                     confidence_state_counts[assessment.state] = (
@@ -977,15 +980,29 @@ def _process_single_file(
                     terminal_outcomes[outcome] = terminal_outcomes.get(outcome, 0) + 1
                     if outcome == DiagnosticReason.UNKNOWN.value:
                         unknown_count += 1
-                result.retrieval_diagnostics["confidence_state_counts"] = dict(
-                    sorted(confidence_state_counts.items())
+                missing_query_count = max(
+                    processed_query_count - len(search_queries), 0
                 )
+                if missing_query_count:
+                    unknown_outcome = DiagnosticReason.UNKNOWN.value
+                    terminal_outcomes[unknown_outcome] = (
+                        terminal_outcomes.get(unknown_outcome, 0) + missing_query_count
+                    )
+                    unknown_count += missing_query_count
+                    confidence_state_counts[assessment.state] = (
+                        confidence_state_counts.get(assessment.state, 0)
+                        + missing_query_count
+                    )
             else:
-                terminal_outcomes[DiagnosticReason.UNKNOWN.value] = len(query_spectra)
-                unknown_count += len(query_spectra)
-                result.retrieval_diagnostics["confidence_state_counts"] = {
-                    assessment.state: len(query_spectra)
-                }
+                unknown_outcome = DiagnosticReason.UNKNOWN.value
+                terminal_outcomes[unknown_outcome] = (
+                    terminal_outcomes.get(unknown_outcome, 0) + processed_query_count
+                )
+                unknown_count += processed_query_count
+                confidence_state_counts[assessment.state] = processed_query_count
+            result.retrieval_diagnostics["confidence_state_counts"] = dict(
+                sorted(confidence_state_counts.items())
+            )
             result.retrieval_diagnostics["terminal_query_outcomes"] = dict(
                 sorted(terminal_outcomes.items())
             )

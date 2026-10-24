@@ -5,7 +5,10 @@ from __future__ import annotations
 import math
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
+
+if TYPE_CHECKING:
+    from MassFlow.config import MassFlowConfig
 
 
 REPORT_SCHEMA_VERSION = 2
@@ -412,9 +415,16 @@ def _distinct_truth_identity_rank(
     truth_identity: str,
     truth_reference_ids: set[str],
     identity_endpoint: str,
+    score_column: str | None = None,
 ) -> int | None:
-    """Rank a truth identity after collapsing repeated acquisition records."""
-    observed_identities: set[str] = set()
+    """Rank a truth identity using the primary metric's structure tie-break.
+
+    Repeated acquisitions of one structure collapse to their best score, and
+    equal scores order by the structure identity rather than by accession.
+    This is the same deterministic ranking used by
+    :func:`scripts.validation_benchmark.metrics._summarize`.
+    """
+    structure_scores: dict[str, float] = {}
     for row in hits:
         raw_reference_id = (
             row.get(reference_column) if reference_column is not None else None
@@ -431,22 +441,38 @@ def _distinct_truth_identity_rank(
             if raw_identity in (None, ""):
                 continue
             identity = str(raw_identity)
-            if identity_endpoint == "connectivity" and "-" in identity:
-                identity = identity.split("-", 1)[0]
-        if identity in observed_identities:
-            continue
-        observed_identities.add(identity)
-        if identity == truth_identity:
-            return len(observed_identities)
-    return None
+            if identity_endpoint == "connectivity":
+                identity = identity.split("-")[0]
+        if score_column is None:
+            score = 0.0
+        else:
+            raw_score = row.get(score_column)
+            if raw_score is None:
+                raise ValueError(f"candidate {identity!r} has a missing score")
+            try:
+                score = float(raw_score)
+            except (TypeError, ValueError) as error:
+                raise ValueError(
+                    f"candidate {identity!r} has a nonnumeric score: {raw_score!r}"
+                ) from error
+            if not math.isfinite(score):
+                raise ValueError(f"candidate {identity!r} has a nonfinite score")
+        previous = structure_scores.get(identity)
+        if previous is None or score > previous:
+            structure_scores[identity] = score
+    if truth_identity not in structure_scores:
+        return None
+    ranked = sorted(structure_scores, key=lambda key: (-structure_scores[key], key))
+    return ranked.index(truth_identity) + 1
 
 
 def attribute_truth_candidates(
     labels: Mapping[str, Mapping[str, Any]],
     result_rows: Sequence[Mapping[str, Any]],
     *,
-    config_path: str,
+    config_path: str | None = None,
     prepared_library_path: str,
+    config: MassFlowConfig | None = None,
     run_diagnostics: Mapping[str, Any] | None = None,
     identity_endpoint: str = "inchikey",
 ) -> dict[str, Any]:
@@ -463,10 +489,15 @@ def attribute_truth_candidates(
         Per-query benchmark truth labels, including ``true_lib_records``.
     result_rows : Sequence[Mapping[str, Any]]
         Full-library result CSV rows, including no-hit query rows.
-    config_path : str
-        Effective YAML configuration used for the annotation run.
+    config_path : str or None
+        Effective YAML configuration used for the annotation run. Ignored when
+        ``config`` is supplied.
     prepared_library_path : str
         Read-only prepared store used by that run.
+    config : MassFlowConfig or None
+        Already-validated configuration from the run. Supplying it avoids
+        reinterpreting relative paths against the configuration file's
+        directory.
     identity_endpoint : str, default="inchikey"
         Benchmark truth identity: exact full InChIKey or connectivity block.
     run_diagnostics : Mapping[str, Any] or None
@@ -488,7 +519,13 @@ def attribute_truth_candidates(
     from MassFlow.library import LibrarySpec, open_library
     from MassFlow.similarity import SimilarityEngine
 
-    config = MassFlowConfig.from_yaml(config_path)
+    if config is None:
+        if config_path is None:
+            raise ValueError(
+                "attribute_truth_candidates requires config or config_path"
+            )
+        config = MassFlowConfig.from_yaml(str(Path(config_path).resolve()))
+    prepared_library_path = str(Path(prepared_library_path).resolve())
     query_iterator = io.load_spectra(Path(config.input.input_path))
     processed_queries = list(
         processing.process_spectra(query_iterator, config.processing)
@@ -603,6 +640,7 @@ def attribute_truth_candidates(
                     truth_identity=truth_identity,
                     truth_reference_ids=set(truth_reference_ids),
                     identity_endpoint=identity_endpoint,
+                    score_column=score_column,
                 )
             else:
                 true_ids = set(truth_reference_ids)
@@ -753,12 +791,26 @@ def compare_result_rows(
             if score is None:
                 raise ValueError(f"query {query_id!r} has a missing candidate score")
             matched_raw = row.get(matched_column)
-            try:
-                matched_peaks = (
-                    int(float(matched_raw)) if matched_raw is not None else 0
-                )
-            except (TypeError, ValueError):
-                matched_peaks = 0
+            if matched_raw is None or (
+                isinstance(matched_raw, str) and not matched_raw.strip()
+            ):
+                matched_peaks = None
+            else:
+                try:
+                    parsed_matched = float(matched_raw)
+                except (TypeError, ValueError) as error:
+                    raise ValueError(
+                        f"query {query_id!r} has a nonnumeric matched_peaks: "
+                        f"{matched_raw!r}"
+                    ) from error
+                if not math.isfinite(parsed_matched) or parsed_matched != int(
+                    parsed_matched
+                ):
+                    raise ValueError(
+                        f"query {query_id!r} has an invalid matched_peaks: "
+                        f"{matched_raw!r}"
+                    )
+                matched_peaks = int(parsed_matched)
             candidates[query_id].append(
                 {
                     "reference_id": str(reference_id),

@@ -341,6 +341,26 @@ def _empty_search_pair_counts(reference_pairs: int) -> dict[str, Any]:
     }
 
 
+def _effective_decoy_mask(
+    all_references: list[Spectrum],
+    ref_is_decoy: np.ndarray | None,
+    n_targets: int,
+) -> np.ndarray:
+    """Resolve each reference's effective target/decoy identity from flags."""
+    mask = np.asarray(
+        [
+            bool(reference.get("is_decoy", False)) or index >= n_targets
+            for index, reference in enumerate(all_references)
+        ],
+        dtype=bool,
+    )
+    if ref_is_decoy is not None:
+        supplied = np.asarray(ref_is_decoy, dtype=bool).reshape(-1)
+        limit = min(supplied.size, mask.size)
+        mask[:limit] = supplied[:limit]
+    return mask
+
+
 def _finish_search_pair_counts(counts: dict[str, Any]) -> None:
     """Derive disjoint rejection counts and flag non-monotone observations."""
     stages = (
@@ -1607,7 +1627,11 @@ class SimilarityEngine:
             n_targets = len(all_references)
 
         n_queries = len(query_spectra)
-        n_decoys = len(all_references) - n_targets
+        effective_decoy_mask = _effective_decoy_mask(
+            all_references, ref_is_decoy, n_targets
+        )
+        n_effective_targets = int(np.count_nonzero(~effective_decoy_mask))
+        n_effective_decoys = int(np.count_nonzero(effective_decoy_mask))
         prefilter_pair_rows: np.ndarray | None = None
         prefilter_pair_cols: np.ndarray | None = None
         candidate_generation = "full_scoring"
@@ -1793,8 +1817,8 @@ class SimilarityEngine:
                         "query_id": str(
                             query_spectrum.get("id", f"query_{query_index}")
                         ),
-                        "target": _empty_search_pair_counts(n_targets),
-                        "decoy": _empty_search_pair_counts(n_decoys),
+                        "target": _empty_search_pair_counts(n_effective_targets),
+                        "decoy": _empty_search_pair_counts(n_effective_decoys),
                     }
                 )
             if prefilter_pair_rows is None or prefilter_pair_cols is None:
@@ -1810,7 +1834,7 @@ class SimilarityEngine:
             else:
                 pair_rows = prefilter_pair_rows
                 pair_cols = prefilter_pair_cols
-                pair_classes = (pair_rows >= n_targets).astype(np.intp)
+                pair_classes = effective_decoy_mask[pair_rows].astype(np.intp)
                 pair_groups = pair_cols * 2 + pair_classes
                 group_count = np.bincount(pair_groups, minlength=n_queries * 2)
                 pair_scores = numeric_scores[pair_rows, pair_cols]
@@ -1891,12 +1915,12 @@ class SimilarityEngine:
             if collect_diagnostics and (
                 prefilter_pair_rows is None or prefilter_pair_cols is None
             ):
-                for category, lower, upper in (
-                    ("target", 0, n_targets),
-                    ("decoy", n_targets, len(all_references)),
+                for category, class_mask in (
+                    ("target", ~effective_decoy_mask),
+                    ("decoy", effective_decoy_mask),
                 ):
-                    scores_for_class = query_scores[lower:upper]
-                    matches_for_class = query_matches[lower:upper]
+                    scores_for_class = query_scores[class_mask]
+                    matches_for_class = query_matches[class_mask]
                     score_pass = scores_for_class >= cutoff
                     match_pass = score_pass & (
                         matches_for_class >= self.config.min_matched_peaks
@@ -1943,7 +1967,9 @@ class SimilarityEngine:
 
             for idx in final_indices:
                 ref = all_references[idx]
-                diagnostic_class = "decoy" if idx >= n_targets else "target"
+                diagnostic_class = (
+                    "decoy" if bool(effective_decoy_mask[idx]) else "target"
+                )
 
                 # --- Adduct-mode compatibility gate ---
                 ref_adduct: str | None = ref.get("adduct")  # type: ignore[assignment]
@@ -1970,9 +1996,7 @@ class SimilarityEngine:
                 ref_mz = ref.get("precursor_mz")
                 ref_mz_val = float(ref_mz) if ref_mz is not None else None
 
-                is_decoy = bool(ref.get("is_decoy", False)) or (idx >= n_targets)
-                if ref_is_decoy is not None and idx < len(ref_is_decoy):
-                    is_decoy = bool(ref_is_decoy[idx])
+                is_decoy = bool(effective_decoy_mask[idx])
 
                 query_results.append(
                     {
@@ -2029,7 +2053,7 @@ class SimilarityEngine:
             self._record_decoy_diagnostics(
                 numeric_scores=numeric_scores,
                 matches_count=matches_count,
-                n_targets=n_targets,
+                decoy_mask=effective_decoy_mask,
                 cutoff=cutoff,
                 results=results,
             )
@@ -2040,7 +2064,7 @@ class SimilarityEngine:
         self,
         numeric_scores: np.ndarray,
         matches_count: np.ndarray,
-        n_targets: int,
+        decoy_mask: np.ndarray,
         cutoff: float,
         results: List[SearchResult],
     ) -> None:
@@ -2055,12 +2079,12 @@ class SimilarityEngine:
         versus decoys never scored — is what makes the zero-decoy-hit report
         diagnosable instead of mysterious.
         """
-        n_decoy_refs = numeric_scores.shape[0] - n_targets
+        n_decoy_refs = int(np.count_nonzero(decoy_mask))
         if n_decoy_refs <= 0:
             return
 
-        decoy_scores = numeric_scores[n_targets:].astype(np.float64)
-        decoy_matches = matches_count[n_targets:]
+        decoy_scores = numeric_scores[decoy_mask].astype(np.float64)
+        decoy_matches = matches_count[decoy_mask]
         above_score = decoy_scores >= cutoff
         if self.config.min_matched_peaks > 0:
             qualified = above_score & (decoy_matches >= self.config.min_matched_peaks)

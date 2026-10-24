@@ -104,6 +104,35 @@ def test_diagnostics_are_opt_in_and_do_not_change_scores_or_results() -> None:
     assert query_funnel["terminal_outcome"] == DiagnosticReason.CANDIDATE_RETURNED.value
 
 
+def test_pre_generated_decoys_use_effective_flags_in_pair_diagnostics() -> None:
+    query = _spectrum("query", 200.0)
+    target = _spectrum("target", 200.0)
+    decoy = _spectrum("decoy", 200.0)
+    engine = SimilarityEngine(_cosine_config(collect_retrieval_diagnostics=True))
+
+    results = engine.search(
+        [query],
+        [target, decoy],
+        include_decoys=False,
+        ref_is_decoy=np.asarray([False, True], dtype=bool),
+    )
+
+    assert {row["reference_id"]: row["is_decoy"] for row in results} == {
+        "target": False,
+        "decoy": True,
+    }
+    funnel = engine.retrieval_diagnostics
+    query_counts = funnel["queries"]["query"]
+    assert query_counts["target"]["reference_pairs_total"] == 1
+    assert query_counts["decoy"]["reference_pairs_total"] == 1
+    assert query_counts["target"]["scored_pairs"] == 1
+    assert query_counts["decoy"]["scored_pairs"] == 1
+    assert query_counts["target"]["returned_by_search"] == 1
+    assert query_counts["decoy"]["returned_by_search"] == 1
+    assert funnel["pair_stages"]["target"]["reference_pairs_total"] == 1
+    assert funnel["pair_stages"]["decoy"]["reference_pairs_total"] == 1
+
+
 def test_no_precursor_candidate_is_a_distinct_terminal_outcome() -> None:
     engine = SimilarityEngine(_cosine_config(collect_retrieval_diagnostics=True))
     engine.search(
@@ -432,6 +461,75 @@ def test_annotation_pipeline_exports_query_funnel_and_confidence_state(
     assert payload["search"]["queries"]["query"]["target"]["returned_by_search"] == 1
     yaml_sidecar = output_directory / "query_results.report.yaml"
     assert str(json_sidecar) in yaml_sidecar.read_text()
+
+
+def test_workflow_accounts_for_searches_without_engine_diagnostics(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from MassFlow.workflow import run_annotation_pipeline
+
+    library_path = tmp_path / "library.msp"
+    library_path.write_text(
+        "NAME: ref\n"
+        "ID: ref\n"
+        "PRECURSOR_MZ: 200\n"
+        "CHARGE: 1\n"
+        "NUM PEAKS: 3\n"
+        "100 1\n"
+        "150 2\n"
+        "175 3\n\n"
+    )
+    query_path = tmp_path / "query.mgf"
+    query_path.write_text(
+        "BEGIN IONS\n"
+        "TITLE=query\n"
+        "ID=query\n"
+        "PEPMASS=200\n"
+        "CHARGE=1+\n"
+        "100 1\n"
+        "150 2\n"
+        "175 3\n"
+        "END IONS\n"
+    )
+    config = MassFlowConfig(
+        project=ProjectConfig(
+            name="missing-diagnostics-test",
+            output_directory=tmp_path / "output",
+        ),
+        input=InputConfig(
+            input_path=query_path,
+            library_path=library_path,
+            format="mgf",
+        ),
+        processing=ProcessingConfig(filter_min_peaks=True, min_peaks=3),
+        similarity=_cosine_config(
+            collect_retrieval_diagnostics=True,
+            fdr_threshold=1.0,
+        ),
+    )
+    original_search = SimilarityEngine.search
+
+    def search_without_diagnostics(
+        engine: SimilarityEngine, *args: Any, **kwargs: Any
+    ) -> Any:
+        results = original_search(engine, *args, **kwargs)
+        engine._retrieval_diagnostics = {}
+        return results
+
+    monkeypatch.setattr(SimilarityEngine, "search", search_without_diagnostics)
+    result = run_annotation_pipeline(config)[0]
+
+    assert result.retrieval_diagnostics is not None
+    assert result.retrieval_diagnostics["search"]["status"] == "unavailable"
+    assert result.retrieval_diagnostics["terminal_query_outcomes"] == {
+        "preprocessing_rejected": 0,
+        "unknown": 1,
+    }
+    confidence_state = result.retrieval_diagnostics["confidence"]["state"]
+    assert result.retrieval_diagnostics["confidence_state_counts"] == {
+        confidence_state: 1
+    }
+    assert result.retrieval_diagnostics["unknown_or_unattributable"] == 1
 
 
 def test_modified_cosine_diagnostics_preserve_full_candidate_domain() -> None:

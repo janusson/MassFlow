@@ -148,6 +148,7 @@ def run_arm(
     --------
     >>> # run_arm(queries, references, settings, Path('new-run'), absent=set())
     """
+    output = output.resolve()
     if output.exists():
         raise ValueError(f"Refusing to overwrite benchmark run: {output}")
     output.mkdir(parents=True)
@@ -468,7 +469,7 @@ def run_arm(
     truth_attribution = attribute_truth_candidates(
         truth_labels,
         results[0].results if results else [],
-        config_path=str(output / "effective_config.json"),
+        config=config,
         prepared_library_path=str(output / "native" / "library_library.db"),
         run_diagnostics=(results[0].retrieval_diagnostics if results else None),
         identity_endpoint="inchikey",
