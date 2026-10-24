@@ -172,7 +172,10 @@ def run_arm(
                 "min_peaks": 3,
                 "repair_inchi_inchikey_smiles": False,
             },
-            "similarity": settings,
+            "similarity": {
+                **settings,
+                "collect_retrieval_diagnostics": True,
+            },
             "export": {"format": "csv"},
         }
     )
@@ -413,6 +416,9 @@ def run_arm(
         ),
         "warnings": results[0].warnings if results else [],
         "candidate_rows": len(captured),
+        "retrieval_diagnostics": (
+            results[0].retrieval_diagnostics if results else None
+        ),
         "reference_records_after_processing": len(
             seen["processed"] & set(reference_map)
         ),
