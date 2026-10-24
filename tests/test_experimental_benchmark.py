@@ -187,6 +187,38 @@ def test_real_record_pipeline_present_and_absent(tmp_path: Path) -> None:
     )
 
 
+def test_relative_output_path_is_resolved_before_truth_attribution(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import json
+
+    dataset, _, runner = _api()
+    query = dataset.read_record(FIXTURES / "MSBNK-Athens_Univ-AU111202.txt")
+    reference = dataset.read_record(FIXTURES / "MSBNK-Eawag-EA258301.txt")
+    settings = {
+        "algorithm": "cosine",
+        "ms1_tolerance": 0.02,
+        "ms2_tolerance": 0.02,
+        "min_score": 0.6,
+        "min_matched_peaks": 3,
+        "fdr_threshold": 1.0,
+        "enable_numba_prefilter": False,
+    }
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(runner, "_environment", lambda: {"pipeline": "test"})
+
+    result = runner.run_arm(
+        [query], [reference], settings, Path("relative-run"), absent=set()
+    )
+
+    effective_config = json.loads(
+        (tmp_path / "relative-run" / "effective_config.json").read_text()
+    )
+    assert Path(effective_config["input"]["input_path"]).is_absolute()
+    assert Path(effective_config["project"]["output_directory"]).is_absolute()
+    assert result["truth_attribution"]["query_count"] == 1
+
+
 def test_production_numpy_scalars_serialize_without_silent_nan(tmp_path: Path) -> None:
     import json
     import numpy as np

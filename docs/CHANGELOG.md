@@ -17,6 +17,8 @@ All notable changes to MassFlow will be documented in this file.
 
 ### Added
 
+- Opt-in retrieval-funnel diagnostics (`similarity.collect_retrieval_diagnostics`) emit a versioned JSON sidecar with bounded typed preprocessing rejections, sequential target/decoy pair-stage counts, mutually exclusive query outcomes, confidence states, effective configuration, and input/library fingerprints. The benchmark harness keeps truth labels separate and adds query-level truth-record loss/rank attribution. Diagnostics do not alter scoring or candidate order; unknown causes remain explicitly unattributed.
+
 - Added `massflow annotate --build-library-store` to prepare or reuse the configured SQLite/hybrid/Zarr reference store without scoring queries, using the existing strict physical-integrity gate and build provenance. See [CLI reference](api/cli.md).
 - **`massflow tutorial` CLI command:** First-class command that generates a self-contained synthetic dataset (reference library, experimental queries, and pre-configured YAML) for instant local evaluation. No external files required.
 - **Enhanced tutorial generator:** `scripts/generate_tutorial_data.py` now prints formatted next-steps with the exact `db build` and `annotate` commands to run after generation.

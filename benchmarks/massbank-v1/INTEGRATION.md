@@ -39,6 +39,23 @@ machine-readable per-query comparison, before/after metric records, evidence pat
 and artifact hashes are in
 [`integrated-candidate-comparison.json`](integrated-candidate-comparison.json).
 
+## Retrieval-funnel diagnostics
+
+The later non-scoring retrieval-funnel rerun uses the same frozen source, manifest,
+parameters, and denominators. It preserves stage counts, pre-threshold score
+histograms, query-level truth-record attribution, confidence states, and comparison
+against the frozen candidate output. See
+[`DIAGNOSTIC-FUNNEL.md`](DIAGNOSTIC-FUNNEL.md) and
+[`retrieval-diagnostic-comparison.json`](retrieval-diagnostic-comparison.json).
+
+## Retrieval-funnel diagnostic rerun
+
+The diagnostics-enabled rerun preserves the frozen MassBank source, selection,
+parameters, and denominators while recording production search stages and separate
+truth-only candidate attribution. See
+[`DIAGNOSTIC-FUNNEL.md`](DIAGNOSTIC-FUNNEL.md) and
+[`retrieval-diagnostic-comparison.json`](retrieval-diagnostic-comparison.json).
+
 ## Confidence and candidate-domain findings
 
 | Arm | Target / surviving decoy query competitions | Explicit candidate confidence state |

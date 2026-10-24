@@ -532,6 +532,13 @@ class SimilarityConfig(MassFlowBaseModel):
     min_score: float = 0.6
     analog_search: bool = False
     min_matched_peaks: int = 3
+    collect_retrieval_diagnostics: bool = Field(
+        default=False,
+        description=(
+            "Collect bounded, machine-readable spectrum and candidate-stage "
+            "diagnostics without changing scoring."
+        ),
+    )
     fdr_threshold: float = 0.01
     rt_tolerance: Optional[float] = Field(
         default=None,

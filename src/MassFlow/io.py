@@ -36,6 +36,8 @@ from matchms.importing import (
     load_from_mzxml,
 )
 
+from MassFlow.diagnostics import DiagnosticReason, DiagnosticStage, RejectionEvent
+
 logger = logging.getLogger(__name__)
 
 
@@ -224,6 +226,7 @@ def _validate_spectra_iterator(
     spectra: Iterable[Spectrum],
     source_path: Path,
     rejection_reporter: Optional[Callable[[str], None]] = None,
+    diagnostic_reporter: Optional[Callable[[RejectionEvent], None]] = None,
 ) -> Iterator[Spectrum]:
     """
     A high-performance validation layer for spectrum iterators.
@@ -279,12 +282,14 @@ def _validate_spectra_iterator(
 
         is_valid = True
         rejection_reason = ""
+        diagnostic_reason = DiagnosticReason.INPUT_INVALID
 
         # 1. Precursor Check
         precursor_mz = spectrum.get("precursor_mz")
         if precursor_mz is None:
             is_valid = False
             rejection_reason = "Missing precursor_mz"
+            diagnostic_reason = DiagnosticReason.PRECURSOR_MISSING
         else:
             try:
                 if float(precursor_mz) <= 0:
@@ -317,6 +322,18 @@ def _validate_spectra_iterator(
         else:
             if rejection_reporter is not None:
                 rejection_reporter(rejection_reason)
+            if diagnostic_reporter is not None:
+                diagnostic_reporter(
+                    RejectionEvent(
+                        stage=DiagnosticStage.INPUT_VALIDATION,
+                        reason=diagnostic_reason,
+                        detail=rejection_reason,
+                        spectrum_id=(
+                            str(spectrum.get("id") or spectrum.get("spectrum_id") or "")
+                            or None
+                        ),
+                    )
+                )
             quarantine_logger.warning(
                 f"Quarantined Spectrum | Source: {source_path.name} | "
                 f"ID: {spec_id} | Reason: {rejection_reason}"
@@ -360,6 +377,7 @@ def load_spectra(
     rejection_reporter: Optional[Callable[[str], None]] = None,
     *,
     assign_record_ids: bool = False,
+    diagnostic_reporter: Optional[Callable[[RejectionEvent], None]] = None,
 ) -> Iterator[Spectrum]:
     """
     Load spectra from an open spectral file or a MassFlow-native store.
@@ -389,6 +407,8 @@ def load_spectra(
         an existing ID; missing or repeated IDs receive a content/ordinal ID.
         Original IDs remain in ``massflow_original_id``. Chemical identifiers
         are never used as record keys. Native stores are read without changes.
+    diagnostic_reporter : Callable[[RejectionEvent], None] or None
+        Optional typed observer for bounded failure-attribution diagnostics.
 
     Yields
     ------
@@ -456,7 +476,9 @@ def load_spectra(
         loader = _assign_library_record_ids(loader, path)
 
     # Step 3: Yield spectra through the validation layer
-    yield from _validate_spectra_iterator(loader, path, rejection_reporter)
+    yield from _validate_spectra_iterator(
+        loader, path, rejection_reporter, diagnostic_reporter
+    )
 
 
 def _optional_float(value: Any) -> Optional[float]:
@@ -697,6 +719,28 @@ def save_analysis_report(
         )
 
     logger.info(f"Analysis report saved to {output_path}")
+
+
+def save_retrieval_diagnostics_json(
+    output_path: Path, diagnostics: dict[str, Any]
+) -> None:
+    """Write a compact machine-readable retrieval-funnel sidecar.
+
+    Parameters
+    ----------
+    output_path : Path
+        Destination JSON path.
+    diagnostics : dict[str, Any]
+        Versioned, JSON-safe diagnostic payload.
+
+    Returns
+    -------
+    None
+    """
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open("w", encoding="utf-8") as output_file:
+        json.dump(diagnostics, output_file, indent=2, sort_keys=True, allow_nan=False)
+        output_file.write("\n")
 
 
 def save_spectra_to_msp(spectra: Iterable[Spectrum], export_path: Path) -> None:

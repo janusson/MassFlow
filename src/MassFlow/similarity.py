@@ -10,6 +10,7 @@ calculation, result filtering/formatting, decoy generation, and FDR estimation.
 from __future__ import annotations
 
 import concurrent.futures
+import copy
 import hashlib
 import importlib.metadata
 import logging
@@ -46,6 +47,7 @@ except ImportError:
 
 from MassFlow.cheminformatics import adduct_charge
 from MassFlow.config import SimilarityConfig
+from MassFlow.diagnostics import DiagnosticReason
 from MassFlow.models import TriageProfile
 from MassFlow.protocols import MLEngineProtocol
 
@@ -260,6 +262,268 @@ def _merge_decoy_diagnostics(per_chunk: list[dict[str, Any]]) -> dict[str, Any]:
     return merged
 
 
+_SCORE_HISTOGRAM_EDGES = np.linspace(0.0, 1.0, 11, dtype=np.float64)
+
+
+def _empty_score_distribution() -> dict[str, Any]:
+    """Create fixed-bin counts for raw pair scores before the score gate."""
+    return {
+        "bin_edges": [float(edge) for edge in _SCORE_HISTOGRAM_EDGES],
+        "counts": [0] * (len(_SCORE_HISTOGRAM_EDGES) - 1),
+        "below_range": 0,
+        "above_range": 0,
+        "nonfinite": 0,
+    }
+
+
+def _score_distribution(scores: np.ndarray) -> dict[str, Any]:
+    """Summarize pair scores without retaining a score trace."""
+    values = np.asarray(scores, dtype=np.float64).reshape(-1)
+    finite = np.isfinite(values)
+    in_range = (
+        finite
+        & (values >= _SCORE_HISTOGRAM_EDGES[0])
+        & (values <= _SCORE_HISTOGRAM_EDGES[-1])
+    )
+    histogram = np.histogram(values[in_range], bins=_SCORE_HISTOGRAM_EDGES)[0]
+    return {
+        "bin_edges": [float(edge) for edge in _SCORE_HISTOGRAM_EDGES],
+        "counts": [int(count) for count in histogram],
+        "below_range": int(np.count_nonzero(finite & (values < 0.0))),
+        "above_range": int(np.count_nonzero(finite & (values > 1.0))),
+        "nonfinite": int(np.count_nonzero(~finite)),
+    }
+
+
+def _merge_score_distributions(
+    destination: dict[str, Any], source: dict[str, Any]
+) -> None:
+    """Sum fixed score-bin counts across queries or streamed chunks."""
+    if destination["bin_edges"] != source["bin_edges"]:
+        raise ValueError("cannot merge score distributions with different bin edges")
+    destination["counts"] = [
+        int(left) + int(right)
+        for left, right in zip(destination["counts"], source["counts"])
+    ]
+    for field_name in ("below_range", "above_range", "nonfinite"):
+        destination[field_name] += int(source[field_name])
+
+
+_SEARCH_PAIR_COUNT_FIELDS = (
+    "reference_pairs_total",
+    "prefilter_pairs",
+    "scored_pairs",
+    "score_threshold_pass_pairs",
+    "matched_peak_pass_pairs",
+    "polarity_compatible_pairs",
+    "rt_eligible_pairs",
+    "eligible_before_top_n",
+    "returned_by_search",
+)
+
+
+def _empty_search_pair_counts(reference_pairs: int) -> dict[str, Any]:
+    """Create the sequential pair-stage counts for one query/reference class."""
+    return {
+        "reference_pairs_total": reference_pairs,
+        "prefilter_pairs": 0,
+        "scored_pairs": 0,
+        "score_threshold_pass_pairs": 0,
+        "matched_peak_pass_pairs": 0,
+        "polarity_compatible_pairs": 0,
+        "rt_eligible_pairs": 0,
+        "eligible_before_top_n": 0,
+        "returned_by_search": 0,
+        "rejection_counts": {},
+        "unattributable_pairs": 0,
+        "stage_accounting_consistent": True,
+        "score_distribution": _empty_score_distribution(),
+    }
+
+
+def _effective_decoy_mask(
+    all_references: list[Spectrum],
+    ref_is_decoy: np.ndarray | None,
+    n_targets: int,
+) -> np.ndarray:
+    """Resolve each reference's effective target/decoy identity from flags."""
+    mask = np.asarray(
+        [
+            bool(reference.get("is_decoy", False)) or index >= n_targets
+            for index, reference in enumerate(all_references)
+        ],
+        dtype=bool,
+    )
+    if ref_is_decoy is not None:
+        supplied = np.asarray(ref_is_decoy, dtype=bool).reshape(-1)
+        limit = min(supplied.size, mask.size)
+        mask[:limit] = supplied[:limit]
+    return mask
+
+
+def _finish_search_pair_counts(counts: dict[str, Any]) -> None:
+    """Derive disjoint rejection counts and flag non-monotone observations."""
+    stages = (
+        ("prefilter_rejected", "reference_pairs_total", "prefilter_pairs"),
+        ("score_below_threshold", "scored_pairs", "score_threshold_pass_pairs"),
+        (
+            "insufficient_fragment_matches",
+            "score_threshold_pass_pairs",
+            "matched_peak_pass_pairs",
+        ),
+        (
+            "polarity_incompatible",
+            "matched_peak_pass_pairs",
+            "polarity_compatible_pairs",
+        ),
+        (
+            "rt_outside_tolerance",
+            "polarity_compatible_pairs",
+            "rt_eligible_pairs",
+        ),
+        (
+            "candidate_ranked_below_limit",
+            "eligible_before_top_n",
+            "returned_by_search",
+        ),
+    )
+    upward_deltas = [
+        max(int(counts[after]) - int(counts[before]), 0)
+        for _reason, before, after in stages
+    ]
+    unattributable_pairs = max(upward_deltas, default=0)
+    counts["unattributable_pairs"] = unattributable_pairs
+    counts["stage_accounting_consistent"] = unattributable_pairs == 0
+    rejection_counts: dict[str, int] = {}
+    for reason, before, after in stages:
+        rejected = int(counts[before]) - int(counts[after])
+        if reason == "prefilter_rejected":
+            rejected -= unattributable_pairs
+        if rejected > 0:
+            rejection_counts[reason] = rejected
+    counts["rejection_counts"] = rejection_counts
+
+
+def _search_terminal_outcome(generation: str, target_counts: dict[str, Any]) -> str:
+    """Choose one observed terminal query outcome from the target funnel."""
+    if target_counts["returned_by_search"] > 0:
+        return DiagnosticReason.CANDIDATE_RETURNED.value
+    if target_counts.get("unattributable_pairs", 0) > 0:
+        return DiagnosticReason.UNKNOWN.value
+    if target_counts["prefilter_pairs"] == 0:
+        if generation == "ms1_precursor_window":
+            return DiagnosticReason.NO_PRECURSOR_CANDIDATES.value
+        if generation == "modified_cosine_pair_prefilter":
+            return DiagnosticReason.PREFILTER_REJECTED.value
+    if target_counts["score_threshold_pass_pairs"] == 0:
+        return DiagnosticReason.SCORE_BELOW_THRESHOLD.value
+    if target_counts["matched_peak_pass_pairs"] == 0:
+        return DiagnosticReason.INSUFFICIENT_FRAGMENT_MATCHES.value
+    if target_counts["polarity_compatible_pairs"] == 0:
+        return DiagnosticReason.POLARITY_INCOMPATIBLE.value
+    if target_counts["rt_eligible_pairs"] == 0:
+        return DiagnosticReason.RT_OUTSIDE_TOLERANCE.value
+    if target_counts["eligible_before_top_n"] > target_counts["returned_by_search"]:
+        return DiagnosticReason.CANDIDATE_RANKED_BELOW_LIMIT.value
+    return DiagnosticReason.NO_ELIGIBLE_CANDIDATE.value
+
+
+def _summarize_search_queries(
+    algorithm: str,
+    generation: str,
+    queries: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
+    """Build pair-stage totals without retaining query-reference matrices."""
+    totals = {kind: _empty_search_pair_counts(0) for kind in ("target", "decoy")}
+    for query in queries.values():
+        for kind in ("target", "decoy"):
+            counts = query[kind]
+            _finish_search_pair_counts(counts)
+            for field_name in _SEARCH_PAIR_COUNT_FIELDS:
+                totals[kind][field_name] += int(counts[field_name])
+            totals[kind]["unattributable_pairs"] += int(counts["unattributable_pairs"])
+            totals[kind]["stage_accounting_consistent"] = bool(
+                totals[kind]["stage_accounting_consistent"]
+                and counts["stage_accounting_consistent"]
+            )
+            _merge_score_distributions(
+                totals[kind]["score_distribution"],
+                counts["score_distribution"],
+            )
+            for reason, count in counts["rejection_counts"].items():
+                totals[kind]["rejection_counts"][reason] = (
+                    totals[kind]["rejection_counts"].get(reason, 0) + count
+                )
+        query["terminal_outcome"] = _search_terminal_outcome(
+            generation, query["target"]
+        )
+    return {
+        "status": "collected",
+        "algorithm": algorithm,
+        "candidate_generation": generation,
+        "pair_stages": totals,
+        "queries": queries,
+    }
+
+
+def _merge_query_diagnostic_counts(
+    queries: dict[str, dict[str, Any]],
+    chunk_queries: dict[str, dict[str, Any]],
+) -> None:
+    """Merge one chunk's query counts into the running per-query totals."""
+    for query_id, query in chunk_queries.items():
+        if query_id not in queries:
+            queries[query_id] = {
+                "query_id": query.get("query_id", query_id),
+                "target": _empty_search_pair_counts(0),
+                "decoy": _empty_search_pair_counts(0),
+            }
+        for kind in ("target", "decoy"):
+            destination = queries[query_id][kind]
+            source = query[kind]
+            for field_name in _SEARCH_PAIR_COUNT_FIELDS:
+                destination[field_name] += int(source[field_name])
+            _merge_score_distributions(
+                destination["score_distribution"],
+                source["score_distribution"],
+            )
+
+
+def _finalize_search_diagnostics(
+    algorithm: str,
+    generation: str,
+    queries: dict[str, dict[str, Any]],
+    final_results: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Reconcile returned counts and summarize the running chunk totals."""
+    final_by_query: dict[str, dict[str, int]] = {}
+    for result in final_results:
+        query_id = str(result["query_id"])
+        counts = final_by_query.setdefault(query_id, {"target": 0, "decoy": 0})
+        counts["decoy" if result.get("is_decoy", False) else "target"] += 1
+    for query_id, query in queries.items():
+        final_counts = final_by_query.get(query_id, {"target": 0, "decoy": 0})
+        for kind in ("target", "decoy"):
+            query[kind]["returned_by_search"] = final_counts[kind]
+    return _summarize_search_queries(algorithm, generation, queries)
+
+
+def _merge_search_diagnostics(
+    per_chunk: list[dict[str, Any]],
+    *,
+    final_results: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Merge bounded query-stage counts from streamed library chunks."""
+    if not per_chunk:
+        return {}
+    generation = str(per_chunk[0].get("candidate_generation", "unknown"))
+    algorithm = str(per_chunk[0].get("algorithm", "unknown"))
+    queries: dict[str, dict[str, Any]] = {}
+    for chunk in per_chunk:
+        _merge_query_diagnostic_counts(queries, chunk.get("queries", {}))
+    return _finalize_search_diagnostics(algorithm, generation, queries, final_results)
+
+
 def _handle_lazy_reference_spectra(func):
     """Decorator to allow search engines to lazily process generator inputs in chunks."""
 
@@ -277,7 +541,12 @@ def _handle_lazy_reference_spectra(func):
             all_results = []
             processed_count = 0
             chunk_diagnostics: list[dict[str, Any]] = []
+            merged_queries: dict[str, dict[str, Any]] = {}
+            merged_generation = "unknown"
+            merged_algorithm = "unknown"
             chunk_flags: list[str] = []
+            if hasattr(self, "_retrieval_diagnostics"):
+                self._retrieval_diagnostics = {}
 
             # When chunking, pre-computed ref_precursor_mzs / ref_is_decoy
             # arrays are aligned with the *full* library, not individual chunks.
@@ -314,6 +583,21 @@ def _handle_lazy_reference_spectra(func):
                         **chunk_kwargs,
                     )
                 )
+                current_search_diagnostics = getattr(self, "retrieval_diagnostics", {})
+                if current_search_diagnostics:
+                    if not merged_queries:
+                        merged_generation = str(
+                            current_search_diagnostics.get(
+                                "candidate_generation", "unknown"
+                            )
+                        )
+                        merged_algorithm = str(
+                            current_search_diagnostics.get("algorithm", "unknown")
+                        )
+                    _merge_query_diagnostic_counts(
+                        merged_queries,
+                        current_search_diagnostics.get("queries", {}),
+                    )
                 if include_decoys:
                     chunk_diagnostics.append(
                         dict(getattr(self, "decoy_diagnostics", {}) or {})
@@ -340,8 +624,17 @@ def _handle_lazy_reference_spectra(func):
                 for q_id, hits in grouped.items():
                     hits.sort(key=lambda hit: (-hit["score"], hit["reference_id"]))
                     final_res.extend(hits[:top_n])
-                return final_res
-            return all_results
+            else:
+                final_res = all_results
+
+            if merged_queries:
+                self._retrieval_diagnostics = _finalize_search_diagnostics(
+                    merged_algorithm,
+                    merged_generation,
+                    merged_queries,
+                    final_res,
+                )
+            return final_res
         return func(
             self,
             query_spectra,
@@ -1216,6 +1509,12 @@ class SimilarityEngine:
         # q-values are legacy 1/N rank diagnostics) from "decoys were never scored"
         # (a plumbing failure).
         self._decoy_diagnostics: dict[str, Any] = {}
+        self._retrieval_diagnostics: dict[str, Any] = {}
+
+    @property
+    def retrieval_diagnostics(self) -> dict[str, Any]:
+        """Bounded per-query stage counts from the most recent search call."""
+        return copy.deepcopy(self._retrieval_diagnostics)
 
     @property
     def degraded_mode_flags(self) -> list[str]:
@@ -1306,13 +1605,13 @@ class SimilarityEngine:
             match and contains relevant metadata (e.g., query ID, reference name,
             score, SMILES).
         """
-        if not query_spectra or not reference_spectra:
-            return []
-
-        # Per-search degradation record and decoy diagnostics: always reset so
-        # a clean search never carries stale markers from an earlier call.
+        # Per-search diagnostics always reset so an empty search never carries
+        # stale state from an earlier call.
         self._degraded_flags = []
         self._decoy_diagnostics = {}
+        self._retrieval_diagnostics = {}
+        if not query_spectra or not reference_spectra:
+            return []
 
         cutoff = min_score if min_score is not None else self.config.min_score
 
@@ -1356,6 +1655,14 @@ class SimilarityEngine:
             n_targets = len(all_references)
 
         n_queries = len(query_spectra)
+        effective_decoy_mask = _effective_decoy_mask(
+            all_references, ref_is_decoy, n_targets
+        )
+        n_effective_targets = int(np.count_nonzero(~effective_decoy_mask))
+        n_effective_decoys = int(np.count_nonzero(effective_decoy_mask))
+        prefilter_pair_rows: np.ndarray | None = None
+        prefilter_pair_cols: np.ndarray | None = None
+        candidate_generation = "full_scoring"
 
         # ------------------------------------------------------------------
         # Candidate generation & scoring
@@ -1389,6 +1696,9 @@ class SimilarityEngine:
                     min_matches=self.config.min_matched_peaks,
                     algorithm="modified_cosine",
                 )
+                prefilter_pair_rows = np.asarray(idx_row, dtype=np.intp)
+                prefilter_pair_cols = np.asarray(idx_col, dtype=np.intp)
+                candidate_generation = "modified_cosine_pair_prefilter"
                 if len(idx_row) > 0:
                     sparse_results = self.similarity_function.sparse_array(
                         all_references,
@@ -1438,6 +1748,9 @@ class SimilarityEngine:
                 idx_row, idx_col = _ms1_prefilter(
                     all_references, query_spectra, ms1_tol, res_ppm
                 )
+            prefilter_pair_rows = np.asarray(idx_row, dtype=np.intp)
+            prefilter_pair_cols = np.asarray(idx_col, dtype=np.intp)
+            candidate_generation = "ms1_precursor_window"
 
             if len(idx_row) > 0:
                 sparse_results = self.similarity_function.sparse_array(
@@ -1523,12 +1836,133 @@ class SimilarityEngine:
 
         numeric_scores = scores_array[score_cols[0]].astype(float)
         matches_count = scores_array[match_cols[0]]
+        collect_diagnostics = self.config.collect_retrieval_diagnostics
+        query_stage_counts: list[dict[str, Any]] = []
+        if collect_diagnostics:
+            for query_index, query_spectrum in enumerate(query_spectra):
+                query_stage_counts.append(
+                    {
+                        "query_id": str(
+                            query_spectrum.get("id", f"query_{query_index}")
+                        ),
+                        "target": _empty_search_pair_counts(n_effective_targets),
+                        "decoy": _empty_search_pair_counts(n_effective_decoys),
+                    }
+                )
+            if prefilter_pair_rows is None or prefilter_pair_cols is None:
+                for query_counts in query_stage_counts:
+                    for category in ("target", "decoy"):
+                        stage_counts = query_counts[category]
+                        stage_counts["prefilter_pairs"] = stage_counts[
+                            "reference_pairs_total"
+                        ]
+                        stage_counts["scored_pairs"] = stage_counts[
+                            "reference_pairs_total"
+                        ]
+            else:
+                pair_rows = prefilter_pair_rows
+                pair_cols = prefilter_pair_cols
+                pair_classes = effective_decoy_mask[pair_rows].astype(np.intp)
+                pair_groups = pair_cols * 2 + pair_classes
+                group_count = np.bincount(pair_groups, minlength=n_queries * 2)
+                pair_scores = numeric_scores[pair_rows, pair_cols]
+                pair_matches = matches_count[pair_rows, pair_cols]
+                score_pass = pair_scores >= cutoff
+                match_pass = score_pass & (
+                    pair_matches >= self.config.min_matched_peaks
+                )
+                score_group_count = np.bincount(
+                    pair_groups[score_pass], minlength=n_queries * 2
+                )
+                match_group_count = np.bincount(
+                    pair_groups[match_pass], minlength=n_queries * 2
+                )
+                class_score_histograms: dict[str, np.ndarray] = {}
+                class_score_exceptions: dict[str, dict[str, np.ndarray]] = {}
+                query_edges = np.arange(n_queries + 1, dtype=np.float64)
+                finite_scores = np.isfinite(pair_scores)
+                in_range_scores = (
+                    finite_scores & (pair_scores >= 0.0) & (pair_scores <= 1.0)
+                )
+                for class_index, category in enumerate(("target", "decoy")):
+                    class_mask = pair_classes == class_index
+                    class_score_histograms[category] = np.histogram2d(
+                        pair_cols[class_mask & in_range_scores].astype(np.float64),
+                        pair_scores[class_mask & in_range_scores],
+                        bins=(query_edges, _SCORE_HISTOGRAM_EDGES),
+                    )[0].astype(np.int64)
+                    class_score_exceptions[category] = {
+                        "below_range": np.bincount(
+                            pair_cols[class_mask & finite_scores & (pair_scores < 0.0)],
+                            minlength=n_queries,
+                        ),
+                        "above_range": np.bincount(
+                            pair_cols[class_mask & finite_scores & (pair_scores > 1.0)],
+                            minlength=n_queries,
+                        ),
+                        "nonfinite": np.bincount(
+                            pair_cols[class_mask & ~finite_scores],
+                            minlength=n_queries,
+                        ),
+                    }
+                for query_index, query_counts in enumerate(query_stage_counts):
+                    for class_index, category in enumerate(("target", "decoy")):
+                        group_index = query_index * 2 + class_index
+                        stage_counts = query_counts[category]
+                        stage_counts["score_distribution"] = {
+                            "bin_edges": [
+                                float(edge) for edge in _SCORE_HISTOGRAM_EDGES
+                            ],
+                            "counts": [
+                                int(count)
+                                for count in class_score_histograms[category][
+                                    query_index
+                                ]
+                            ],
+                            **{
+                                field_name: int(values[query_index])
+                                for field_name, values in class_score_exceptions[
+                                    category
+                                ].items()
+                            },
+                        }
+                        stage_counts["prefilter_pairs"] = int(group_count[group_index])
+                        stage_counts["scored_pairs"] = int(group_count[group_index])
+                        stage_counts["score_threshold_pass_pairs"] = int(
+                            score_group_count[group_index]
+                        )
+                        stage_counts["matched_peak_pass_pairs"] = int(
+                            match_group_count[group_index]
+                        )
 
         # Iterate per query to apply top_n filtering
         # Note: Filtering is vectorized per query column
         for i in range(n_queries):
             query_scores = numeric_scores[:, i]
             query_matches = matches_count[:, i]
+            if collect_diagnostics and (
+                prefilter_pair_rows is None or prefilter_pair_cols is None
+            ):
+                for category, class_mask in (
+                    ("target", ~effective_decoy_mask),
+                    ("decoy", effective_decoy_mask),
+                ):
+                    scores_for_class = query_scores[class_mask]
+                    matches_for_class = query_matches[class_mask]
+                    score_pass = scores_for_class >= cutoff
+                    match_pass = score_pass & (
+                        matches_for_class >= self.config.min_matched_peaks
+                    )
+                    stage_counts = query_stage_counts[i][category]
+                    stage_counts["score_threshold_pass_pairs"] = int(
+                        np.count_nonzero(score_pass)
+                    )
+                    stage_counts["matched_peak_pass_pairs"] = int(
+                        np.count_nonzero(match_pass)
+                    )
+                    stage_counts["score_distribution"] = _score_distribution(
+                        scores_for_class
+                    )
 
             # 1. Score threshold mask
             mask = query_scores >= cutoff
@@ -1536,7 +1970,6 @@ class SimilarityEngine:
             # 2. Match count threshold mask (if applicable)
             if self.config.min_matched_peaks > 0:
                 mask &= query_matches >= self.config.min_matched_peaks
-
             valid_indices = np.where(mask)[0]
 
             if valid_indices.size == 0:
@@ -1562,11 +1995,18 @@ class SimilarityEngine:
 
             for idx in final_indices:
                 ref = all_references[idx]
+                diagnostic_class = (
+                    "decoy" if bool(effective_decoy_mask[idx]) else "target"
+                )
 
                 # --- Adduct-mode compatibility gate ---
                 ref_adduct: str | None = ref.get("adduct")  # type: ignore[assignment]
                 if not _adduct_modes_compatible(ref_adduct, q_adduct):
                     continue
+                if collect_diagnostics:
+                    query_stage_counts[i][diagnostic_class][
+                        "polarity_compatible_pairs"
+                    ] += 1
 
                 # --- Retention time filtering ---
                 if self.config.rt_tolerance is not None:
@@ -1575,6 +2015,8 @@ class SimilarityEngine:
                     if not _is_missing(q_rt) and not _is_missing(ref_rt):
                         if abs(float(q_rt) - float(ref_rt)) > self.config.rt_tolerance:
                             continue
+                if collect_diagnostics:
+                    query_stage_counts[i][diagnostic_class]["rt_eligible_pairs"] += 1
 
                 score_val = float(numeric_scores[idx, i])
                 match_val = int(matches_count[idx, i])
@@ -1582,9 +2024,7 @@ class SimilarityEngine:
                 ref_mz = ref.get("precursor_mz")
                 ref_mz_val = float(ref_mz) if ref_mz is not None else None
 
-                is_decoy = bool(ref.get("is_decoy", False)) or (idx >= n_targets)
-                if ref_is_decoy is not None and idx < len(ref_is_decoy):
-                    is_decoy = bool(ref_is_decoy[idx])
+                is_decoy = bool(effective_decoy_mask[idx])
 
                 query_results.append(
                     {
@@ -1613,13 +2053,35 @@ class SimilarityEngine:
                 )
 
             # Ineligible high-scoring references must not consume result slots.
-            results.extend(query_results[:top_n])
+            selected_results = query_results[:top_n]
+            results.extend(selected_results)
+            if collect_diagnostics:
+                for candidate in query_results:
+                    category = "decoy" if candidate["is_decoy"] else "target"
+                    query_stage_counts[i][category]["eligible_before_top_n"] += 1
+                for candidate in selected_results:
+                    category = "decoy" if candidate["is_decoy"] else "target"
+                    query_stage_counts[i][category]["returned_by_search"] += 1
+
+        if collect_diagnostics:
+            diagnostic_queries: dict[str, dict[str, Any]] = {}
+            for index, query_counts in enumerate(query_stage_counts):
+                query_id = query_counts["query_id"]
+                key = query_id
+                if key in diagnostic_queries:
+                    key = f"{query_id}#duplicate_{index}"
+                diagnostic_queries[key] = query_counts
+            self._retrieval_diagnostics = _summarize_search_queries(
+                self.config.algorithm,
+                candidate_generation,
+                diagnostic_queries,
+            )
 
         if include_decoys:
             self._record_decoy_diagnostics(
                 numeric_scores=numeric_scores,
                 matches_count=matches_count,
-                n_targets=n_targets,
+                decoy_mask=effective_decoy_mask,
                 cutoff=cutoff,
                 results=results,
             )
@@ -1630,7 +2092,7 @@ class SimilarityEngine:
         self,
         numeric_scores: np.ndarray,
         matches_count: np.ndarray,
-        n_targets: int,
+        decoy_mask: np.ndarray,
         cutoff: float,
         results: List[SearchResult],
     ) -> None:
@@ -1645,12 +2107,12 @@ class SimilarityEngine:
         versus decoys never scored — is what makes the zero-decoy-hit report
         diagnosable instead of mysterious.
         """
-        n_decoy_refs = numeric_scores.shape[0] - n_targets
+        n_decoy_refs = int(np.count_nonzero(decoy_mask))
         if n_decoy_refs <= 0:
             return
 
-        decoy_scores = numeric_scores[n_targets:].astype(np.float64)
-        decoy_matches = matches_count[n_targets:]
+        decoy_scores = numeric_scores[decoy_mask].astype(np.float64)
+        decoy_matches = matches_count[decoy_mask]
         above_score = decoy_scores >= cutoff
         if self.config.min_matched_peaks > 0:
             qualified = above_score & (decoy_matches >= self.config.min_matched_peaks)
