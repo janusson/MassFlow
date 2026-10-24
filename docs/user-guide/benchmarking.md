@@ -180,3 +180,10 @@ exception counts equal `scored_pairs`; prefilter-excluded pairs are not included
 in the distribution. This bounded summary is sufficient to distinguish “scored
 but below threshold” from “never reached scoring” without retaining a full
 query-reference score matrix.
+
+The benchmark report adds `retrieval_diagnostics_by_source`: per-instrument
+selected/preprocessing-rejected/searched/no-call counts, target/decoy pair
+funnel totals, score histograms, confidence states, and terminal outcomes. Its
+preprocessing-rejected denominator is derived from benchmark peak-count labels
+and checked against the production query-ID funnel; unobserved non-preprocessing
+records are kept as unknown rather than silently classified.
