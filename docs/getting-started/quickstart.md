@@ -28,6 +28,7 @@ uv run massflow tutorial
 ```
 
 This creates a `tutorial/` directory with a reference library, example queries, and a YAML config. Review the synthetic inputs and configuration before running the candidate workflow.
+The generator is a repository development aid and is not bundled as a wheel resource; the installed-package workflow starts with `massflow init`.
 
 For a complete walkthrough, see the [Usage Guide](../user-guide/usage.md).
 

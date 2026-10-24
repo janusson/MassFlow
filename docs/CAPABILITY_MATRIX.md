@@ -38,6 +38,7 @@ The proposed supported candidate-release surface (subject to the evidence gates 
 
 - Peptide/proteomics search of any kind (see §6).
 - TIIP indexing, O(1) peptide retrieval, BIN/BEST consensus spectra (see §6).
+- The synthetic `massflow tutorial` generator is a repository-script convenience, not an installed-wheel support promise.
 - SIRIUS / MS-GF+ / MaRaCluster / FragPipe interoperability (see §6).
 - FBMN export, GraphML molecular networking, `massflow visualize` — documented
   in places but **not implemented** (§4.4). Treat as aspirational until shipped.
