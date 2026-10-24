@@ -47,6 +47,8 @@ import statistics
 import subprocess
 import sys
 import time
+
+import numpy as np
 from pathlib import Path
 from typing import Any, Iterable, Optional
 
@@ -334,6 +336,7 @@ def build_real_benchmark(
         "library_duplicate_spectra": len(lib_records) - len(lib_hashes),
         "query_sources": {},
         "selected_source_metadata": {},
+        "selected_truth_reference_precursor_mz": {},
         "truth_pair_source_ion_mode_cross_tab": {},
     }
     (workdir / "library.msp").write_text(
@@ -403,10 +406,22 @@ def build_real_benchmark(
                 "adduct": source_adduct,
                 "charge": rec["meta"].get("charge"),
                 "precursor_mz": precursor_of(rec["meta"]),
+                "search_precursor_mz": (
+                    float(f"{precursor_of(rec['meta']):.6f}")
+                    if precursor_of(rec["meta"]) is not None
+                    else None
+                ),
                 "instrument": rec["meta"].get("instrument")
                 or rec["meta"].get("instrumenttype"),
             }
             for library_index in lib_by_key[ik[:14]]:
+                library_record_id = f"LIB_{library_index:06d}"
+                library_precursor_mz = precursor_of(lib_records[library_index]["meta"])
+                stats["selected_truth_reference_precursor_mz"][library_record_id] = (
+                    float(f"{library_precursor_mz:.6f}")
+                    if library_precursor_mz is not None
+                    else None
+                )
                 library_meta = lib_records[library_index]["meta"]
                 library_ion_mode = (
                     (
@@ -445,6 +460,141 @@ def build_real_benchmark(
     )
     (workdir / "labels.json").write_text(json.dumps(labels, indent=2, sort_keys=True))
     return {"stats": stats, "labels": labels}
+
+
+def audit_truth_precursor_eligibility(
+    labels: dict[str, Any],
+    stats: dict[str, Any],
+    *,
+    min_query_peaks: int,
+) -> dict[str, Any]:
+    """Quantify truth-record precursor differences at the configured MS1 windows.
+
+    This benchmark-only analysis uses only the selected truth labels and the
+    exact six-decimal query/library precursor values serialized for search. It
+    does not pass truth labels into MassFlow or change the candidate cohort.
+
+    Parameters
+    ----------
+    labels : dict[str, Any]
+        Selected benchmark query labels.
+    stats : dict[str, Any]
+        Dataset provenance with source and truth-reference precursor metadata.
+    min_query_peaks : int
+        Preprocessing threshold that defines the searched-query denominator.
+
+    Returns
+    -------
+    dict[str, Any]
+        Per-source true-record MS1-window coverage and absolute-mass-difference
+        summaries. Quantiles use NumPy's linear interpolation method.
+    """
+    source_metadata = stats.get("selected_source_metadata", {})
+    reference_precursors = stats.get("selected_truth_reference_precursor_mz", {})
+    by_source: dict[str, list[tuple[str, float, list[float]]]] = {}
+    missing_query_precursors: dict[str, int] = {}
+    missing_reference_precursors: dict[str, int] = {}
+    for query_id, label in labels.items():
+        source = str(label.get("source", "unknown"))
+        metadata = source_metadata.get(query_id, {})
+        query_precursor_mz = metadata.get("search_precursor_mz")
+        if query_precursor_mz is None:
+            missing_query_precursors[source] = (
+                missing_query_precursors.get(source, 0) + 1
+            )
+            continue
+        differences: list[float] = []
+        for reference_id in label.get("true_lib_records", []):
+            reference_precursor_mz = reference_precursors.get(str(reference_id))
+            if reference_precursor_mz is None:
+                missing_reference_precursors[source] = (
+                    missing_reference_precursors.get(source, 0) + 1
+                )
+                continue
+            differences.append(
+                abs(float(query_precursor_mz) - float(reference_precursor_mz))
+            )
+        by_source.setdefault(source, []).append(
+            (str(query_id), float(query_precursor_mz), differences)
+        )
+
+    report: dict[str, Any] = {
+        "schema_version": 1,
+        "mass_error_summary": "absolute query minus truth-reference precursor m/z in Da",
+        "quantile_method": "numpy.quantile(method='linear')",
+        "tolerance_denominator": "configured cosine MS1 half-window in Da",
+        "by_source": {},
+    }
+    for source, query_records in sorted(by_source.items()):
+        all_differences = [
+            difference
+            for _query_id, _precursor_mz, differences in query_records
+            for difference in differences
+        ]
+        searched_records = [
+            record
+            for record in query_records
+            if int(labels[record[0]].get("peak_count", min_query_peaks))
+            >= min_query_peaks
+        ]
+        searched_differences = [
+            difference
+            for _query_id, _precursor_mz, differences in searched_records
+            for difference in differences
+        ]
+
+        def summarize(differences: list[float]) -> dict[str, Any]:
+            if not differences:
+                return {"pair_count": 0, "absolute_difference_da": None}
+            values = np.asarray(differences, dtype=np.float64)
+            quantiles = np.quantile(values, [0.0, 0.5, 0.9, 0.95, 1.0])
+            return {
+                "pair_count": int(values.size),
+                "absolute_difference_da": {
+                    "min": float(quantiles[0]),
+                    "median": float(quantiles[1]),
+                    "p90": float(quantiles[2]),
+                    "p95": float(quantiles[3]),
+                    "max": float(quantiles[4]),
+                },
+            }
+
+        tolerances: dict[str, Any] = {}
+        for tolerance in (0.01, 0.02):
+            selected_pairs = [
+                difference for difference in all_differences if difference <= tolerance
+            ]
+            searched_pairs = [
+                difference
+                for difference in searched_differences
+                if difference <= tolerance
+            ]
+            selected_queries = sum(
+                any(difference <= tolerance for difference in differences)
+                for _query_id, _precursor_mz, differences in query_records
+            )
+            searched_queries = sum(
+                any(difference <= tolerance for difference in differences)
+                for _query_id, _precursor_mz, differences in searched_records
+            )
+            tolerances[f"{tolerance:.2f}_Da"] = {
+                "selected_true_reference_pairs_in_window": len(selected_pairs),
+                "selected_queries_with_any_truth_pair_in_window": selected_queries,
+                "searched_true_reference_pairs_in_window": len(searched_pairs),
+                "searched_queries_with_any_truth_pair_in_window": searched_queries,
+            }
+        report["by_source"][source] = {
+            "selected_queries": len(query_records),
+            "searched_queries": len(searched_records),
+            "selected_truth_pairs": summarize(all_differences),
+            "searched_truth_pairs": summarize(searched_differences),
+            "tolerances": tolerances,
+            "missing_query_precursor_count": missing_query_precursors.get(source, 0),
+            "missing_truth_reference_precursor_count": missing_reference_precursors.get(
+                source, 0
+            ),
+        }
+    return report
 
 
 # ---------------------------------------------------------------------------
@@ -878,6 +1028,9 @@ def main(argv: Optional[list[str]] = None) -> int:
             "python_version": sys.version.split()[0],
             "git": _git_provenance(),
         },
+        "truth_precursor_eligibility_audit": audit_truth_precursor_eligibility(
+            labels, s, min_query_peaks=args.min_query_peaks
+        ),
         "source_metadata_audit": {
             "normalized_query_writer": {
                 "ionmode": "Positive",

@@ -8,7 +8,10 @@ from scripts.benchmark_reporting import (
     evaluate_query_retrieval,
     summarize_diagnostics_by_source,
 )
-from scripts.benchmark_real_corpus import evaluate_real
+from scripts.benchmark_real_corpus import (
+    audit_truth_precursor_eligibility,
+    evaluate_real,
+)
 
 
 @pytest.fixture
@@ -342,3 +345,51 @@ def test_diagnostic_summary_by_source_keeps_preprocessing_and_search_denominator
     assert result["by_source"]["LTQ"]["searched_without_candidate"] == 1
     assert result["by_source"]["QTOF"]["with_candidate"] == 1
     assert result["by_source"]["QTOF"]["confidence_state_counts"] == {"unavailable": 1}
+
+
+def test_truth_precursor_audit_uses_serialized_values_and_explicit_denominators() -> (
+    None
+):
+    labels = {
+        "q_in_window": {
+            "source": "LTQ",
+            "peak_count": 4,
+            "true_lib_records": ["ref-a", "ref-b"],
+        },
+        "q_preprocessing_rejected": {
+            "source": "LTQ",
+            "peak_count": 2,
+            "true_lib_records": ["ref-a"],
+        },
+    }
+    stats = {
+        "selected_source_metadata": {
+            "q_in_window": {"search_precursor_mz": 200.0},
+            "q_preprocessing_rejected": {"search_precursor_mz": 300.0},
+        },
+        "selected_truth_reference_precursor_mz": {
+            "ref-a": 200.005,
+            "ref-b": 200.03,
+        },
+    }
+
+    result = audit_truth_precursor_eligibility(
+        labels,
+        stats,
+        min_query_peaks=3,
+    )
+
+    source = result["by_source"]["LTQ"]
+    assert source["selected_queries"] == 2
+    assert source["searched_queries"] == 1
+    assert source["selected_truth_pairs"]["pair_count"] == 3
+    assert source["searched_truth_pairs"]["pair_count"] == 2
+    assert (
+        source["tolerances"]["0.01_Da"][
+            "searched_queries_with_any_truth_pair_in_window"
+        ]
+        == 1
+    )
+    assert (
+        source["tolerances"]["0.02_Da"]["searched_true_reference_pairs_in_window"] == 1
+    )

@@ -187,3 +187,11 @@ funnel totals, score histograms, confidence states, and terminal outcomes. Its
 preprocessing-rejected denominator is derived from benchmark peak-count labels
 and checked against the production query-ID funnel; unobserved non-preprocessing
 records are kept as unknown rather than silently classified.
+
+`truth_precursor_eligibility_audit` compares the serialized query precursor
+masses to the serialized precursor masses of the benchmark-labelled truth
+records at the reported MS1 windows. It reports pair- and query-level window
+coverage with selected and searched denominators, and labels the quantile
+method. This post-hoc calculation characterizes a configured eligibility gate;
+it does not widen that gate, change a candidate result, or establish that an
+MS/MS match would pass fragment or score thresholds.
