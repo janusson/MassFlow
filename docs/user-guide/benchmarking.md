@@ -171,3 +171,12 @@ marks such stage arithmetic with `stage_accounting_consistent: false` and
 `unattributable_pairs`; it does not invent a score- or prefilter-rejection
 cause. This edge behavior is preserved for compatibility, and is not exercised
 by the cross-instrument benchmark's `0.4` score / 3 matched-peak gates.
+
+Each pair-stage class also includes `score_distribution`, a fixed 0.1-wide
+histogram of finite scores submitted to scoring and before the configured score
+cutoff. The final bin includes score 1.0; below-range, above-range, and
+non-finite values are counted separately. Histogram counts plus those three
+exception counts equal `scored_pairs`; prefilter-excluded pairs are not included
+in the distribution. This bounded summary is sufficient to distinguish “scored
+but below threshold” from “never reached scoring” without retaining a full
+query-reference score matrix.

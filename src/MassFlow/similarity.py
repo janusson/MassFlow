@@ -262,6 +262,53 @@ def _merge_decoy_diagnostics(per_chunk: list[dict[str, Any]]) -> dict[str, Any]:
     return merged
 
 
+_SCORE_HISTOGRAM_EDGES = np.linspace(0.0, 1.0, 11, dtype=np.float64)
+
+
+def _empty_score_distribution() -> dict[str, Any]:
+    """Create fixed-bin counts for raw pair scores before the score gate."""
+    return {
+        "bin_edges": [float(edge) for edge in _SCORE_HISTOGRAM_EDGES],
+        "counts": [0] * (len(_SCORE_HISTOGRAM_EDGES) - 1),
+        "below_range": 0,
+        "above_range": 0,
+        "nonfinite": 0,
+    }
+
+
+def _score_distribution(scores: np.ndarray) -> dict[str, Any]:
+    """Summarize pair scores without retaining a score trace."""
+    values = np.asarray(scores, dtype=np.float64).reshape(-1)
+    finite = np.isfinite(values)
+    in_range = (
+        finite
+        & (values >= _SCORE_HISTOGRAM_EDGES[0])
+        & (values <= _SCORE_HISTOGRAM_EDGES[-1])
+    )
+    histogram = np.histogram(values[in_range], bins=_SCORE_HISTOGRAM_EDGES)[0]
+    return {
+        "bin_edges": [float(edge) for edge in _SCORE_HISTOGRAM_EDGES],
+        "counts": [int(count) for count in histogram],
+        "below_range": int(np.count_nonzero(finite & (values < 0.0))),
+        "above_range": int(np.count_nonzero(finite & (values > 1.0))),
+        "nonfinite": int(np.count_nonzero(~finite)),
+    }
+
+
+def _merge_score_distributions(
+    destination: dict[str, Any], source: dict[str, Any]
+) -> None:
+    """Sum fixed score-bin counts across queries or streamed chunks."""
+    if destination["bin_edges"] != source["bin_edges"]:
+        raise ValueError("cannot merge score distributions with different bin edges")
+    destination["counts"] = [
+        int(left) + int(right)
+        for left, right in zip(destination["counts"], source["counts"])
+    ]
+    for field_name in ("below_range", "above_range", "nonfinite"):
+        destination[field_name] += int(source[field_name])
+
+
 _SEARCH_PAIR_COUNT_FIELDS = (
     "reference_pairs_total",
     "prefilter_pairs",
@@ -290,6 +337,7 @@ def _empty_search_pair_counts(reference_pairs: int) -> dict[str, Any]:
         "rejection_counts": {},
         "unattributable_pairs": 0,
         "stage_accounting_consistent": True,
+        "score_distribution": _empty_score_distribution(),
     }
 
 
@@ -378,6 +426,10 @@ def _summarize_search_queries(
                 totals[kind]["stage_accounting_consistent"]
                 and counts["stage_accounting_consistent"]
             )
+            _merge_score_distributions(
+                totals[kind]["score_distribution"],
+                counts["score_distribution"],
+            )
             for reason, count in counts["rejection_counts"].items():
                 totals[kind]["rejection_counts"][reason] = (
                     totals[kind]["rejection_counts"].get(reason, 0) + count
@@ -418,6 +470,10 @@ def _merge_search_diagnostics(
                 source = query[kind]
                 for field_name in _SEARCH_PAIR_COUNT_FIELDS:
                     destination[field_name] += int(source[field_name])
+                _merge_score_distributions(
+                    destination["score_distribution"],
+                    source["score_distribution"],
+                )
 
     final_by_query: dict[str, dict[str, int]] = {}
     for result in final_results:
@@ -1769,10 +1825,55 @@ class SimilarityEngine:
                 match_group_count = np.bincount(
                     pair_groups[match_pass], minlength=n_queries * 2
                 )
+                class_score_histograms: dict[str, np.ndarray] = {}
+                class_score_exceptions: dict[str, dict[str, np.ndarray]] = {}
+                query_edges = np.arange(n_queries + 1, dtype=np.float64)
+                finite_scores = np.isfinite(pair_scores)
+                in_range_scores = (
+                    finite_scores & (pair_scores >= 0.0) & (pair_scores <= 1.0)
+                )
+                for class_index, category in enumerate(("target", "decoy")):
+                    class_mask = pair_classes == class_index
+                    class_score_histograms[category] = np.histogram2d(
+                        pair_cols[class_mask & in_range_scores].astype(np.float64),
+                        pair_scores[class_mask & in_range_scores],
+                        bins=(query_edges, _SCORE_HISTOGRAM_EDGES),
+                    )[0].astype(np.int64)
+                    class_score_exceptions[category] = {
+                        "below_range": np.bincount(
+                            pair_cols[class_mask & finite_scores & (pair_scores < 0.0)],
+                            minlength=n_queries,
+                        ),
+                        "above_range": np.bincount(
+                            pair_cols[class_mask & finite_scores & (pair_scores > 1.0)],
+                            minlength=n_queries,
+                        ),
+                        "nonfinite": np.bincount(
+                            pair_cols[class_mask & ~finite_scores],
+                            minlength=n_queries,
+                        ),
+                    }
                 for query_index, query_counts in enumerate(query_stage_counts):
                     for class_index, category in enumerate(("target", "decoy")):
                         group_index = query_index * 2 + class_index
                         stage_counts = query_counts[category]
+                        stage_counts["score_distribution"] = {
+                            "bin_edges": [
+                                float(edge) for edge in _SCORE_HISTOGRAM_EDGES
+                            ],
+                            "counts": [
+                                int(count)
+                                for count in class_score_histograms[category][
+                                    query_index
+                                ]
+                            ],
+                            **{
+                                field_name: int(values[query_index])
+                                for field_name, values in class_score_exceptions[
+                                    category
+                                ].items()
+                            },
+                        }
                         stage_counts["prefilter_pairs"] = int(group_count[group_index])
                         stage_counts["scored_pairs"] = int(group_count[group_index])
                         stage_counts["score_threshold_pass_pairs"] = int(
@@ -1806,6 +1907,9 @@ class SimilarityEngine:
                     )
                     stage_counts["matched_peak_pass_pairs"] = int(
                         np.count_nonzero(match_pass)
+                    )
+                    stage_counts["score_distribution"] = _score_distribution(
+                        scores_for_class
                     )
 
             # 1. Score threshold mask

@@ -986,6 +986,12 @@ def main(argv: Optional[list[str]] = None) -> int:
                     prepared_library_path=str(prepared_library_path),
                     run_diagnostics=diagnostics_payload,
                 )
+                for query_id, query_attribution in truth_attribution.get(
+                    "by_query", {}
+                ).items():
+                    query_attribution["raw_source_metadata"] = s.get(
+                        "selected_source_metadata", {}
+                    ).get(query_id)
         metrics["retrieval_diagnostics"] = diagnostics_payload
         metrics["truth_attribution"] = truth_attribution
         if args.compare_results_to is not None:

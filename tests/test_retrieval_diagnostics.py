@@ -94,6 +94,12 @@ def test_diagnostics_are_opt_in_and_do_not_change_scores_or_results() -> None:
     assert target["rt_eligible_pairs"] == 2
     assert target["eligible_before_top_n"] == 2
     assert target["returned_by_search"] == 2
+    score_distribution = target["score_distribution"]
+    assert sum(score_distribution["counts"]) == target["scored_pairs"]
+    assert score_distribution["counts"][-1] == 2
+    assert score_distribution["below_range"] == 0
+    assert score_distribution["above_range"] == 0
+    assert score_distribution["nonfinite"] == 0
     assert target["rejection_counts"] == {"prefilter_rejected": 1}
     assert query_funnel["terminal_outcome"] == DiagnosticReason.CANDIDATE_RETURNED.value
 
@@ -222,10 +228,10 @@ def test_lazy_library_diagnostics_merge_chunk_counts(monkeypatch) -> None:
     assert query_funnel["target"]["reference_pairs_total"] == 2
     assert query_funnel["target"]["prefilter_pairs"] == 1
     assert query_funnel["target"]["eligible_before_top_n"] == 1
-    assert (
-        engine.retrieval_diagnostics["pair_stages"]["target"]["reference_pairs_total"]
-        == 2
-    )
+    assert sum(query_funnel["target"]["score_distribution"]["counts"]) == 1
+    aggregate_target = engine.retrieval_diagnostics["pair_stages"]["target"]
+    assert aggregate_target["reference_pairs_total"] == 2
+    assert sum(aggregate_target["score_distribution"]["counts"]) == 1
 
 
 def test_typed_rejection_events_are_bounded_and_preserve_details(
@@ -426,3 +432,32 @@ def test_annotation_pipeline_exports_query_funnel_and_confidence_state(
     assert payload["search"]["queries"]["query"]["target"]["returned_by_search"] == 1
     yaml_sidecar = output_directory / "query_results.report.yaml"
     assert str(json_sidecar) in yaml_sidecar.read_text()
+
+
+def test_modified_cosine_diagnostics_preserve_full_candidate_domain() -> None:
+    query = _spectrum("query", 200.0)
+    references = [
+        _spectrum("same-precursor", 200.0),
+        _spectrum("shifted-precursor", 300.0),
+    ]
+    engine = SimilarityEngine(
+        SimilarityConfig(
+            algorithm="modified_cosine",
+            ms1_tolerance=0.02,
+            ms2_tolerance=0.01,
+            min_score=0.4,
+            min_matched_peaks=3,
+            collect_retrieval_diagnostics=True,
+        )
+    )
+
+    results = engine.search([query], references, include_decoys=False)
+
+    query_funnel = engine.retrieval_diagnostics["queries"]["query"]
+    assert {row["reference_id"] for row in results} == {
+        "same-precursor",
+        "shifted-precursor",
+    }
+    assert engine.retrieval_diagnostics["candidate_generation"] == "full_scoring"
+    assert query_funnel["target"]["prefilter_pairs"] == 2
+    assert query_funnel["target"]["score_distribution"]["counts"][-1] == 2
