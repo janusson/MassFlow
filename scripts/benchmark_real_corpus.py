@@ -329,15 +329,47 @@ def build_real_benchmark(
         lib_hashes.add(peak_hash(rec["peaks"]))
 
     workdir.mkdir(parents=True, exist_ok=True)
+    library_mode_counts: Counter[str] = Counter()
+    library_type_counts: Counter[str] = Counter()
+    library_charge_counts: Counter[str] = Counter()
+    for library_record in lib_records:
+        library_metadata = library_record["meta"]
+        library_mode_counts[
+            (
+                library_metadata.get("ionmode")
+                or library_metadata.get("ion_mode")
+                or "unknown"
+            )
+            .strip()
+            .upper()
+        ] += 1
+        library_type_counts[
+            (
+                library_metadata.get("precursor_type")
+                or library_metadata.get("precursortype")
+                or "unknown"
+            )
+            .strip()
+            .upper()
+        ] += 1
+        library_charge_counts[
+            (library_metadata.get("charge") or "unknown").strip()
+        ] += 1
     stats: dict[str, Any] = {
         "library_file": library_file,
         "library_records": len(lib_records),
         "library_distinct_connectivity": len(lib_by_key),
         "library_duplicate_spectra": len(lib_records) - len(lib_hashes),
+        "library_source_metadata_counts": {
+            "ion_mode": dict(sorted(library_mode_counts.items())),
+            "precursor_type": dict(sorted(library_type_counts.items())),
+            "charge": dict(sorted(library_charge_counts.items())),
+        },
         "query_sources": {},
         "selected_source_metadata": {},
         "selected_truth_reference_precursor_mz": {},
         "truth_pair_source_ion_mode_cross_tab": {},
+        "truth_pair_source_precursor_type_cross_tab": {},
     }
     (workdir / "library.msp").write_text(
         "".join(fmt_msp(r, f"LIB_{i:06d}") for i, r in enumerate(lib_records))
@@ -351,6 +383,7 @@ def build_real_benchmark(
     blocks: list[str] = []
     selected_records: list[dict[str, Any]] = []
     truth_pair_mode_counts: Counter[str] = Counter()
+    truth_pair_type_counts: Counter[str] = Counter()
 
     for qf in query_files:
         qpath = corpus / qf
@@ -395,9 +428,13 @@ def build_real_benchmark(
                 .strip()
                 .upper()
             )
-            source_precursor_type = rec["meta"].get("precursortype")
-            source_adduct = rec["meta"].get("adduct") or rec["meta"].get(
-                "adductionname"
+            source_precursor_type = rec["meta"].get("precursor_type") or rec[
+                "meta"
+            ].get("precursortype")
+            source_adduct = (
+                rec["meta"].get("adduct")
+                or rec["meta"].get("adductionname")
+                or source_precursor_type
             )
             stats["selected_source_metadata"][qid] = {
                 "source": qf,
@@ -432,7 +469,22 @@ def build_real_benchmark(
                     .strip()
                     .upper()
                 )
+                library_precursor_type = (
+                    (
+                        library_meta.get("precursor_type")
+                        or library_meta.get("precursortype")
+                        or "unknown"
+                    )
+                    .strip()
+                    .upper()
+                )
+                query_precursor_type = (
+                    (source_precursor_type or "unknown").strip().upper()
+                )
                 truth_pair_mode_counts[f"{source_ion_mode}/{library_ion_mode}"] += 1
+                truth_pair_type_counts[
+                    f"{query_precursor_type}/{library_precursor_type}"
+                ] += 1
             labels[qid] = {
                 "inchikey": ik,
                 "connectivity": ik[:14],
@@ -453,6 +505,9 @@ def build_real_benchmark(
 
     stats["truth_pair_source_ion_mode_cross_tab"] = dict(
         sorted(truth_pair_mode_counts.items())
+    )
+    stats["truth_pair_source_precursor_type_cross_tab"] = dict(
+        sorted(truth_pair_type_counts.items())
     )
     (workdir / "queries.mgf").write_text("\n".join(blocks) + "\n")
     stats["queries_write_check"] = verify_written_spectra(
@@ -1049,8 +1104,14 @@ def main(argv: Optional[list[str]] = None) -> int:
             "raw_query_charge_counts_by_source": _metadata_counts_by_source(
                 s.get("selected_source_metadata", {}), "charge"
             ),
+            "reference_source_metadata_counts": s.get(
+                "library_source_metadata_counts", {}
+            ),
             "truth_pair_raw_ion_mode_cross_tab": s.get(
                 "truth_pair_source_ion_mode_cross_tab", {}
+            ),
+            "truth_pair_raw_precursor_type_cross_tab": s.get(
+                "truth_pair_source_precursor_type_cross_tab", {}
             ),
             "selected_query_metadata": s.get("selected_source_metadata", {}),
             "interpretation": (
