@@ -93,6 +93,7 @@ def evaluate_query_retrieval(
     score_column = _column(rows, "score")
     matched_peaks_column = _column(rows, "matched_peaks")
     q_value_column = _column(rows, "q_value")
+    identity_column = _column(rows, "inchikey", "connectivity")
     if rows and query_column is None:
         raise ValueError("results are missing a query_id column")
 
@@ -168,10 +169,17 @@ def evaluate_query_retrieval(
                 q_value = _to_float(
                     raw_q_value, field_name="q_value", query_id=query_id
                 )
+            raw_identity = row.get(identity_column) if identity_column else None
+            identity = (
+                str(raw_identity).split("-")[0]
+                if raw_identity not in (None, "")
+                else str(reference_name)
+            )
             candidate_rows.append(
                 {
                     "query_id": query_id,
                     "reference_name": str(reference_name),
+                    "identity": identity,
                     "score": score,
                     "matched_peaks": matched_peaks,
                     "q_value": q_value,
@@ -184,7 +192,13 @@ def evaluate_query_retrieval(
             hits_by_query[candidate["query_id"]].append(candidate)
 
     for query_hits in hits_by_query.values():
-        query_hits.sort(key=lambda candidate: -candidate["score"])
+        query_hits.sort(
+            key=lambda candidate: (
+                -candidate["score"],
+                candidate["identity"],
+                candidate["reference_name"],
+            )
+        )
 
     threshold_hits: dict[str, list[dict[str, Any]]] = {}
     for query_id in searched_ids:
@@ -213,11 +227,20 @@ def evaluate_query_retrieval(
         true_compound_in_candidates = 0
         for query_id in group_with_candidate:
             true_references = set(labels[query_id]["true_lib_records"])
+            truth_connectivity = str(labels[query_id].get("connectivity", ""))
             query_hits = threshold_hits[query_id]
-            if query_hits[0]["reference_name"] in true_references:
-                correct_top1 += 1
-            if any(hit["reference_name"] in true_references for hit in query_hits):
-                true_compound_in_candidates += 1
+            if identity_column is not None and truth_connectivity:
+                top_matches_truth = query_hits[0]["identity"] == truth_connectivity
+                any_matches_truth = any(
+                    hit["identity"] == truth_connectivity for hit in query_hits
+                )
+            else:
+                top_matches_truth = query_hits[0]["reference_name"] in true_references
+                any_matches_truth = any(
+                    hit["reference_name"] in true_references for hit in query_hits
+                )
+            correct_top1 += int(top_matches_truth)
+            true_compound_in_candidates += int(any_matches_truth)
         call_count = len(group_with_candidate)
         selected_count = len(group_ids)
         searched_count = len(group_searched)
@@ -323,6 +346,22 @@ def compare_benchmark_reports(
         if baseline_runtime.get(field) != current_runtime.get(field)
     )
 
+    def optional_seconds(run: Mapping[str, Any], run_name: str) -> float | None:
+        value = run.get("wall_time_seconds")
+        if value is None:
+            return None
+        if isinstance(value, str) and not value.strip():
+            return None
+        try:
+            parsed = float(value)
+        except (TypeError, ValueError) as error:
+            raise ValueError(
+                f"run {run_name!r} has an invalid wall_time_seconds"
+            ) from error
+        if not math.isfinite(parsed):
+            raise ValueError(f"run {run_name!r} has a nonfinite wall_time_seconds")
+        return parsed
+
     compared: dict[str, Any] = {}
     for run_name, baseline_run in baseline_runs.items():
         current_run = current_runs[run_name]
@@ -332,8 +371,8 @@ def compare_benchmark_reports(
             raise ValueError(f"run {run_name!r} must be a mapping")
         baseline_rows = int(baseline_run["candidate_rows_exported"])
         current_rows = int(current_run["candidate_rows_exported"])
-        baseline_time = float(baseline_run["wall_time_seconds"])
-        current_time = float(current_run["wall_time_seconds"])
+        baseline_time = optional_seconds(baseline_run, str(run_name))
+        current_time = optional_seconds(current_run, str(run_name))
         baseline_configuration = baseline_run.get("configuration", {})
         current_configuration = current_run.get("configuration", {})
         if not isinstance(baseline_configuration, Mapping) or not isinstance(
@@ -368,7 +407,9 @@ def compare_benchmark_reports(
             "current_wall_time_seconds": current_time,
             "wall_time_change_percent": (
                 (current_time - baseline_time) / baseline_time * 100
-                if baseline_time
+                if baseline_time is not None
+                and current_time is not None
+                and baseline_time
                 else None
             ),
             "changed_configuration_fields": changed_fields,
@@ -525,6 +566,37 @@ def attribute_truth_candidates(
                 "attribute_truth_candidates requires config or config_path"
             )
         config = MassFlowConfig.from_yaml(str(Path(config_path).resolve()))
+    if identity_endpoint not in {"inchikey", "connectivity"}:
+        raise ValueError("identity_endpoint must be inchikey or connectivity")
+    algorithm = str(config.similarity.algorithm)
+    if algorithm not in {"cosine", "modified_cosine"}:
+        reason = (
+            "truth replay requires classical cosine or modified_cosine pair-stage "
+            f"diagnostics; algorithm {algorithm!r} is unsupported"
+        )
+        return {
+            "schema_version": 1,
+            "status": "unavailable",
+            "reason": reason,
+            "truth_labels_used_only_for_benchmark_attribution": True,
+            "identity_endpoint": identity_endpoint,
+            "query_count": len(labels),
+            "classification_counts": {
+                "truth_replay_unavailable_for_algorithm": len(labels)
+            },
+            "by_query": {
+                str(query_id): {
+                    "source": label.get("source"),
+                    "identity_endpoint": identity_endpoint,
+                    "truth_identity": str(label.get(identity_endpoint) or "") or None,
+                    "truth_reference_count": len(label.get("true_lib_records", [])),
+                    "truth_reference_ids_missing_after_preparation": [],
+                    "truth_pair_stages": {},
+                    "attribution": "truth_replay_unavailable_for_algorithm",
+                }
+                for query_id, label in sorted(labels.items())
+            },
+        }
     prepared_library_path = str(Path(prepared_library_path).resolve())
     query_iterator = io.load_spectra(Path(config.input.input_path))
     processed_queries = list(
@@ -583,8 +655,6 @@ def attribute_truth_candidates(
     per_query: dict[str, Any] = {}
     classifications: dict[str, int] = {}
     for query_id, label in sorted(labels.items()):
-        if identity_endpoint not in {"inchikey", "connectivity"}:
-            raise ValueError("identity_endpoint must be inchikey or connectivity")
         truth_identity = str(label.get(identity_endpoint) or "")
         truth_reference_ids = [str(item) for item in label.get("true_lib_records", [])]
         missing_reference_ids = [

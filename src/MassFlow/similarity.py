@@ -466,6 +466,48 @@ def _summarize_search_queries(
     }
 
 
+def _merge_query_diagnostic_counts(
+    queries: dict[str, dict[str, Any]],
+    chunk_queries: dict[str, dict[str, Any]],
+) -> None:
+    """Merge one chunk's query counts into the running per-query totals."""
+    for query_id, query in chunk_queries.items():
+        if query_id not in queries:
+            queries[query_id] = {
+                "query_id": query.get("query_id", query_id),
+                "target": _empty_search_pair_counts(0),
+                "decoy": _empty_search_pair_counts(0),
+            }
+        for kind in ("target", "decoy"):
+            destination = queries[query_id][kind]
+            source = query[kind]
+            for field_name in _SEARCH_PAIR_COUNT_FIELDS:
+                destination[field_name] += int(source[field_name])
+            _merge_score_distributions(
+                destination["score_distribution"],
+                source["score_distribution"],
+            )
+
+
+def _finalize_search_diagnostics(
+    algorithm: str,
+    generation: str,
+    queries: dict[str, dict[str, Any]],
+    final_results: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Reconcile returned counts and summarize the running chunk totals."""
+    final_by_query: dict[str, dict[str, int]] = {}
+    for result in final_results:
+        query_id = str(result["query_id"])
+        counts = final_by_query.setdefault(query_id, {"target": 0, "decoy": 0})
+        counts["decoy" if result.get("is_decoy", False) else "target"] += 1
+    for query_id, query in queries.items():
+        final_counts = final_by_query.get(query_id, {"target": 0, "decoy": 0})
+        for kind in ("target", "decoy"):
+            query[kind]["returned_by_search"] = final_counts[kind]
+    return _summarize_search_queries(algorithm, generation, queries)
+
+
 def _merge_search_diagnostics(
     per_chunk: list[dict[str, Any]],
     *,
@@ -478,38 +520,8 @@ def _merge_search_diagnostics(
     algorithm = str(per_chunk[0].get("algorithm", "unknown"))
     queries: dict[str, dict[str, Any]] = {}
     for chunk in per_chunk:
-        for query_id, query in chunk.get("queries", {}).items():
-            if query_id not in queries:
-                queries[query_id] = {
-                    "query_id": query.get("query_id", query_id),
-                    "target": _empty_search_pair_counts(0),
-                    "decoy": _empty_search_pair_counts(0),
-                }
-            for kind in ("target", "decoy"):
-                destination = queries[query_id][kind]
-                source = query[kind]
-                for field_name in _SEARCH_PAIR_COUNT_FIELDS:
-                    destination[field_name] += int(source[field_name])
-                _merge_score_distributions(
-                    destination["score_distribution"],
-                    source["score_distribution"],
-                )
-
-    final_by_query: dict[str, dict[str, int]] = {}
-    for result in final_results:
-        query_id = str(result["query_id"])
-        counts = final_by_query.setdefault(query_id, {"target": 0, "decoy": 0})
-        counts["decoy" if result.get("is_decoy", False) else "target"] += 1
-    for query_id, query in queries.items():
-        final_counts = final_by_query.get(query_id, {"target": 0, "decoy": 0})
-        for kind in ("target", "decoy"):
-            counts = query[kind]
-            counts["returned_by_search"] = final_counts[kind]
-            _finish_search_pair_counts(counts)
-        query["terminal_outcome"] = _search_terminal_outcome(
-            generation, query["target"]
-        )
-    return _summarize_search_queries(algorithm, generation, queries)
+        _merge_query_diagnostic_counts(queries, chunk.get("queries", {}))
+    return _finalize_search_diagnostics(algorithm, generation, queries, final_results)
 
 
 def _handle_lazy_reference_spectra(func):
@@ -529,7 +541,9 @@ def _handle_lazy_reference_spectra(func):
             all_results = []
             processed_count = 0
             chunk_diagnostics: list[dict[str, Any]] = []
-            chunk_search_diagnostics: list[dict[str, Any]] = []
+            merged_queries: dict[str, dict[str, Any]] = {}
+            merged_generation = "unknown"
+            merged_algorithm = "unknown"
             chunk_flags: list[str] = []
             if hasattr(self, "_retrieval_diagnostics"):
                 self._retrieval_diagnostics = {}
@@ -571,7 +585,19 @@ def _handle_lazy_reference_spectra(func):
                 )
                 current_search_diagnostics = getattr(self, "retrieval_diagnostics", {})
                 if current_search_diagnostics:
-                    chunk_search_diagnostics.append(current_search_diagnostics)
+                    if not merged_queries:
+                        merged_generation = str(
+                            current_search_diagnostics.get(
+                                "candidate_generation", "unknown"
+                            )
+                        )
+                        merged_algorithm = str(
+                            current_search_diagnostics.get("algorithm", "unknown")
+                        )
+                    _merge_query_diagnostic_counts(
+                        merged_queries,
+                        current_search_diagnostics.get("queries", {}),
+                    )
                 if include_decoys:
                     chunk_diagnostics.append(
                         dict(getattr(self, "decoy_diagnostics", {}) or {})
@@ -601,10 +627,12 @@ def _handle_lazy_reference_spectra(func):
             else:
                 final_res = all_results
 
-            if chunk_search_diagnostics:
-                self._retrieval_diagnostics = _merge_search_diagnostics(
-                    chunk_search_diagnostics,
-                    final_results=final_res,
+            if merged_queries:
+                self._retrieval_diagnostics = _finalize_search_diagnostics(
+                    merged_algorithm,
+                    merged_generation,
+                    merged_queries,
+                    final_res,
                 )
             return final_res
         return func(

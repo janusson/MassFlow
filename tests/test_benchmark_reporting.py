@@ -3,8 +3,10 @@ from __future__ import annotations
 import pytest
 
 from scripts.benchmark_reporting import (
+    REPORT_SCHEMA_VERSION,
     _distinct_truth_identity_rank,
     _truth_pair_terminal_reason,
+    attribute_truth_candidates,
     compare_benchmark_reports,
     compare_result_rows,
     evaluate_query_retrieval,
@@ -106,6 +108,38 @@ def test_retrieval_metrics_use_explicit_query_denominators(
     }
     assert result["by_source"]["QTOF"]["query_counts"]["selected"] == 2
     assert result["by_source"]["LTQ"]["query_counts"]["preprocessing_rejected"] == 1
+
+
+def test_retrieval_metrics_tie_break_by_connectivity_not_accession() -> None:
+    labels = {
+        "q1": {
+            "connectivity": "AAAABCDEFGHIJK",
+            "true_lib_records": ["ref-z"],
+            "source": "QTOF",
+            "peak_count": 3,
+        }
+    }
+    rows = [
+        {
+            "query_id": "q1",
+            "reference_name": "ref-a",
+            "inchikey": "ZZZABCDEFGHIJK-ABCDEFGHIJ-N",
+            "score": "0.9",
+            "matched_peaks": "3",
+        },
+        {
+            "query_id": "q1",
+            "reference_name": "ref-z",
+            "inchikey": "AAAABCDEFGHIJK-ABCDEFGHIJ-N",
+            "score": "0.9",
+            "matched_peaks": "3",
+        },
+    ]
+
+    result = evaluate_query_retrieval(labels, rows, min_query_peaks=3)
+
+    assert result["query_counts"]["correct_top1"] == 1
+    assert result["query_counts"]["true_compound_in_candidates"] == 1
 
 
 def test_retrieval_metrics_keep_undefined_rates_null_when_denominator_is_zero() -> None:
@@ -272,6 +306,86 @@ def test_result_comparison_reports_query_changes_and_keeps_null_distinct_from_ze
     ]
     assert comparison["by_query"]["q2"]["candidate_ids_added"] == ["ref-new"]
     assert comparison["by_query"]["q2"]["candidate_ids_removed"] == ["ref-old"]
+
+
+def test_report_comparison_preserves_unavailable_wall_time() -> None:
+    baseline = {
+        "schema_version": REPORT_SCHEMA_VERSION,
+        "dataset_fingerprint": "same",
+        "runtime": {},
+        "runs": {
+            "cosine": {
+                "candidate_rows_exported": 10,
+                "wall_time_seconds": None,
+                "configuration": {},
+            }
+        },
+    }
+    current = {
+        "schema_version": REPORT_SCHEMA_VERSION,
+        "dataset_fingerprint": "same",
+        "runtime": {},
+        "runs": {
+            "cosine": {
+                "candidate_rows_exported": 12,
+                "wall_time_seconds": 3.0,
+                "configuration": {},
+            }
+        },
+    }
+
+    comparison = compare_benchmark_reports(baseline, current)
+
+    run = comparison["runs"]["cosine"]
+    assert run["baseline_wall_time_seconds"] is None
+    assert run["current_wall_time_seconds"] == 3.0
+    assert run["wall_time_change_percent"] is None
+    assert run["candidate_row_ratio"] == 1.2
+
+
+def test_truth_attribution_marks_nonclassical_engine_unavailable() -> None:
+    from pathlib import Path
+
+    from MassFlow.config import (
+        InputConfig,
+        MassFlowConfig,
+        ProjectConfig,
+        SimilarityConfig,
+    )
+
+    config = MassFlowConfig(
+        project=ProjectConfig(output_directory=Path("/unused")),
+        input=InputConfig(
+            input_path=Path("/unused/query.mgf"),
+            library_path=Path("/unused/library.msp"),
+        ),
+        similarity=SimilarityConfig(algorithm="consensus"),
+    )
+    labels = {
+        "q1": {
+            "connectivity": "AAAABCDEFGHIJK",
+            "inchikey": "AAAABCDEFGHIJK-ABCDEFGHIJ-N",
+            "true_lib_records": ["ref-z"],
+            "source": "QTOF",
+            "peak_count": 3,
+        }
+    }
+
+    result = attribute_truth_candidates(
+        labels,
+        [],
+        config=config,
+        prepared_library_path="/unused",
+    )
+
+    assert result["status"] == "unavailable"
+    assert result["classification_counts"] == {
+        "truth_replay_unavailable_for_algorithm": 1
+    }
+    assert (
+        result["by_query"]["q1"]["attribution"]
+        == "truth_replay_unavailable_for_algorithm"
+    )
 
 
 def test_result_comparison_requires_identical_query_denominators() -> None:
