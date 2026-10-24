@@ -410,19 +410,29 @@ def _distinct_truth_identity_rank(
     reference_column: str | None,
     identity_column: str | None,
     truth_identity: str,
+    truth_reference_ids: set[str],
     identity_endpoint: str,
 ) -> int | None:
     """Rank a truth identity after collapsing repeated acquisition records."""
     observed_identities: set[str] = set()
     for row in hits:
-        raw_identity = row.get(identity_column) if identity_column else None
-        if raw_identity in (None, ""):
-            raw_identity = row.get(reference_column) if reference_column else None
-        if raw_identity in (None, ""):
-            continue
-        identity = str(raw_identity)
-        if identity_endpoint == "connectivity" and "-" in identity:
-            identity = identity.split("-", 1)[0]
+        raw_reference_id = (
+            row.get(reference_column) if reference_column is not None else None
+        )
+        if (
+            raw_reference_id not in (None, "")
+            and str(raw_reference_id) in truth_reference_ids
+        ):
+            identity = truth_identity
+        else:
+            raw_identity = row.get(identity_column) if identity_column else None
+            if raw_identity in (None, ""):
+                raw_identity = raw_reference_id
+            if raw_identity in (None, ""):
+                continue
+            identity = str(raw_identity)
+            if identity_endpoint == "connectivity" and "-" in identity:
+                identity = identity.split("-", 1)[0]
         if identity in observed_identities:
             continue
         observed_identities.add(identity)
@@ -591,6 +601,7 @@ def attribute_truth_candidates(
                     reference_column=reference_id_column,
                     identity_column=identity_column,
                     truth_identity=truth_identity,
+                    truth_reference_ids=set(truth_reference_ids),
                     identity_endpoint=identity_endpoint,
                 )
             else:

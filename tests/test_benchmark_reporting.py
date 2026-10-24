@@ -437,6 +437,7 @@ def test_truth_ranking_uses_the_declared_identity_endpoint() -> None:
         reference_column="reference_id",
         identity_column="inchikey",
         truth_identity="ABCABCDEFGHIJK",
+        truth_reference_ids={"stereo-a", "stereo-b"},
         identity_endpoint="connectivity",
     )
     exact_rank = _distinct_truth_identity_rank(
@@ -444,6 +445,7 @@ def test_truth_ranking_uses_the_declared_identity_endpoint() -> None:
         reference_column="reference_id",
         identity_column="inchikey",
         truth_identity="ABCABCDEFGHIJK-ABCDEFGHIJ-B",
+        truth_reference_ids={"stereo-b"},
         identity_endpoint="inchikey",
     )
 
