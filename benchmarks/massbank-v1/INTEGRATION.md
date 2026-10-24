@@ -1,6 +1,6 @@
 # Integrated candidate MassBank rerun — 2026-10-23
 
-**Application candidate:** `3fb7718a8f069aeae69548020e6ee8af7f0c006c` (clean worktree)
+**Application candidate:** `dd418131c87d26eb84c69d1b3733c764d8ee14ff` (clean worktree)
 
 This reruns PR #111's frozen diagnostic harness after integrating PRs #101, #103–#107,
 #110 and the restricted-scope contract in #112. It uses the original MassBank-data
@@ -12,7 +12,7 @@ No selection, corpus, threshold, scoring, or denominator changes were made.
 
 The run was executed with the frozen command in [`README.md`](README.md), using a new
 output path under
-`/Users/ericjanusson/.cache/massflow-validation/runs/ae-v1-final-3fb7718`. All four
+`/Users/ericjanusson/.cache/massflow-validation/runs/ae-v1-final-dd41813`. All four
 run provenance records identify the same clean candidate SHA. The baseline output
 hashes were checked against the committed `measured-2026-10-22/artifacts.json` index.
 
@@ -63,7 +63,7 @@ From a clean checkout of the candidate SHA with Python 3.13 and the committed lo
 ```sh
 uv run python -m scripts.validation_benchmark.runner run \
   --cache /Users/ericjanusson/.cache/massflow-validation \
-  --output /Users/ericjanusson/.cache/massflow-validation/runs/ae-v1-final-3fb7718 \
+  --output /Users/ericjanusson/.cache/massflow-validation/runs/ae-v1-final-dd41813 \
   --manifest benchmarks/massbank-v1/manifest.json \
   --manifest-sha256 66e27364488feb3e4dc74a452d964d0240d2763e1d1dd40c94ff33c400410b49 \
   --parameters benchmarks/massbank-v1/parameters.json \
