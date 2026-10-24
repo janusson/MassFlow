@@ -1,6 +1,6 @@
 # Frozen MassBank retrieval-funnel diagnostic rerun
 
-**Candidate SHA:** `2865c16d31fafdfbf5f7a07c7480a85d741581c1` (clean run)
+**Candidate SHA:** `d66719f7b28350369afbe9da0f99e0020c9bb85c` (clean run)
 **Frozen source:** MassBank-data commit `705afb7bccc3b2c42410a744eef73674716a60ef`, archive SHA-256 `cb30a4aab9d06dc5978c08e73397106a104955f1c31a57671ee5c15025985529`
 **Manifest SHA-256:** `66e27364488feb3e4dc74a452d964d0240d2763e1d1dd40c94ff33c400410b49`
 **Parameters SHA-256:** `096a6ea137ec010d28c5b657a7225bf57c274cc15fa0e3125166b0b5dd446738`
@@ -84,7 +84,7 @@ experiment does not exercise its approximate-pruning behavior.
 ```sh
 uv run python -m scripts.validation_benchmark.runner run \
   --cache /Users/ericjanusson/.cache/massflow-validation \
-  --output /tmp/massflow-massbank-retrieval-diagnostics-2865c16 \
+  --output /tmp/massflow-massbank-retrieval-diagnostics-d66719f \
   --manifest benchmarks/massbank-v1/manifest.json \
   --manifest-sha256 66e27364488feb3e4dc74a452d964d0240d2763e1d1dd40c94ff33c400410b49 \
   --parameters benchmarks/massbank-v1/parameters.json \
