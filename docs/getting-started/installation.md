@@ -25,15 +25,33 @@ uv sync
 
 This will automatically create a `.venv` directory, resolve the locked dependencies, and install MassFlow as an editable CLI tool.
 
-### Optional Features
+### Core installation contract
 
-MassFlow keeps the core dependency set lightweight. Heavier external dependencies (PyTorch, RDKit, hnswlib, Textual, …) are available as **optional extras** that you opt into explicitly:
+The core install is **not** RDKit-free. The locked `matchms` dependency requires
+`rdkit>=2024.3.5`, so `uv sync` or `pip install massflow` installs RDKit
+transitively even when no extra is selected. The `chem` extra declares MassFlow's
+own direct RDKit requirement; it does not add or remove RDKit from the transitive
+core resolution.
+
+MassFlow retains guarded fallbacks when RDKit is unavailable, but that is not the
+supported core installation contract with the current lockfile. A genuinely
+RDKit-free core installation is not claimed.
+
+The locally tested contract is Python 3.13 on macOS arm64 and Linux. A clean
+no-extra wheel install was verified to import MassFlow from `site-packages`,
+expose the CLI, and install RDKit transitively. Windows is not qualified.
+
+### Optional features
+
+PyTorch/gensim/spec2vec/ms2deepscore (`ml`), hnswlib (`hnsw`), watchfiles
+(`watch`), Textual (`tui`), and MassFlow's direct chemistry APIs (`chem`) are
+available as explicit extras:
 
 ```shell
 # Machine-learning engines (Spec2Vec, MS2DeepScore, torch, gensim)
 uv sync --extra ml
 
-# Chemistry tools (RDKit-based structural validation)
+# MassFlow direct chemistry APIs (RDKit is already present transitively in core)
 uv sync --extra chem
 
 # HNSW approximate candidate retrieval (hnswlib)

@@ -92,17 +92,30 @@ MassFlow is designed for high-performance "on-site" use.
 
 ## Installation Details
 
-MassFlow requires **Python 3.13+**.
+MassFlow supports **Python >=3.13,<3.14**.
+
+### Core installation contract
+
+A core installation is **not** RDKit-free. The locked `matchms` dependency requires
+`rdkit>=2024.3.5`, so `uv sync` or `pip install massflow` installs RDKit transitively
+even without the `chem` extra. The `chem` extra declares MassFlow's own direct
+RDKit requirement for its cheminformatics APIs; it does not control whether RDKit
+is present.
+
+MassFlow's core annotation path retains guarded fallbacks when RDKit is
+unavailable, but that fallback-only environment is not the supported core
+installation contract. A genuinely RDKit-free core installation is not claimed
+with the current locked `matchms`.
 
 ```shell
 # The recommended path is to run `setup.sh`, which automates environment pinning and dependency sync. You can also perform these steps manually:
 uv python pin 3.13 && uv sync
 
 # Optional extras
-# Install the TUI extra (or use --all-extras for everything)
 uv sync --extra tui    # Interactive console
 uv sync --extra ml     # ML scoring engines
 uv sync --extra hnsw   # Sub-linear search acceleration
+uv sync --extra chem   # MassFlow direct chemistry APIs (RDKit is already transitive in core)
 ```
 
 ## License

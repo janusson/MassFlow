@@ -51,6 +51,55 @@ jobs:
       - name: Run quickstart (smoke)
         run: uv run massflow annotate --config tutorial/tutorial_config.yaml
 
+  installed-wheel-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.13
+      - name: Install uv
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
+      - name: Build wheel
+        run: uv build
+      - name: Install wheel without extras
+        run: |
+          uv venv --python 3.13 /tmp/massflow-core
+          uv pip install --python /tmp/massflow-core/bin/python dist/*.whl
+      - name: Assert installed dependency contract
+        run: |
+          /tmp/massflow-core/bin/python - <<'PY'
+          from importlib.metadata import metadata, requires, version
+
+          import rdkit
+          from MassFlow.cheminformatics import _HAS_RDKIT
+
+          massflow_requires = metadata("massflow").get_all("Requires-Dist") or []
+          core_requires = [item for item in massflow_requires if "extra ==" not in item]
+          if any(item.lower().startswith("rdkit") for item in core_requires):
+              raise SystemExit("unexpected direct core RDKit requirement")
+          if not any(item.lower().startswith("matchms") for item in core_requires):
+              raise SystemExit("matchms must remain a core requirement")
+          matchms_requires = requires("matchms") or []
+          if not any("rdkit" in item.lower() for item in matchms_requires):
+              raise SystemExit("expected matchms to require rdkit transitively")
+          if not _HAS_RDKIT:
+              raise SystemExit("expected RDKit to import in the supported core installation")
+          print("MassFlow", version("massflow"))
+          print("RDKit", version("rdkit"))
+          print(
+              "matchms RDKit requirement",
+              [item for item in matchms_requires if "rdkit" in item.lower()],
+          )
+          PY
+      - name: Installed CLI smoke
+        run: |
+          /tmp/massflow-core/bin/massflow --help
+          /tmp/massflow-core/bin/massflow init --output /tmp/massflow-core-config.yaml
+          test -s /tmp/massflow-core-config.yaml
+
   test:
     needs: [lockfile-and-lint, smoke]
     strategy:
