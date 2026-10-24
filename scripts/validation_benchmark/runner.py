@@ -404,7 +404,13 @@ def run_arm(
         "provenance": provenance,
         "error": error,
         "file_status": results[0].status if results else "failed",
-        "fatal_errors": results[0].fatal_errors if results else [error],
+        "fatal_errors": (
+            results[0].fatal_errors
+            if results
+            else [error]
+            if error is not None
+            else ["No per-file result was returned."]
+        ),
         "warnings": results[0].warnings if results else [],
         "candidate_rows": len(captured),
         "reference_records_after_processing": len(

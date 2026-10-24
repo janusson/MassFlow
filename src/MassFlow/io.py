@@ -336,7 +336,8 @@ def _assign_library_record_ids(
             continue
         original_id = spectrum.get("id")
         record_id = str(original_id) if original_id is not None else ""
-        if not record_id.strip() or record_id in seen_ids:
+        missing_id = record_id.strip().lower() in {"", "none", "null", "nan"}
+        if missing_id or record_id in seen_ids:
             record_id = f"massflow:sha256:{source_sha256}:spectrum:{source_index}"
         if record_id in seen_ids:
             raise ValueError(

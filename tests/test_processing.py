@@ -148,10 +148,10 @@ def test_batch_precursor_coercion_rejects_overflow_and_non_scalar_values():
     assert np.isnan(processing._coerce_batch_precursor_mz([]))
 
 
-def test_process_spectra_batch_mz_filter_excludes_missing_precursor(
+def test_process_spectra_batch_fragment_window_does_not_require_precursor(
     processing_config,
 ):
-    """The opt-in precursor window excludes unknown masses, not valid spectra."""
+    """The fragment window must not become a precursor eligibility gate."""
     spectra = [
         Spectrum(
             mz=np.array([100.0], dtype=np.float64),
@@ -159,21 +159,24 @@ def test_process_spectra_batch_mz_filter_excludes_missing_precursor(
             metadata={"id": "missing", "precursor_mz": None},
         ),
         Spectrum(
-            mz=np.array([200.0], dtype=np.float64),
-            intensities=np.array([200.0], dtype=np.float64),
+            mz=np.array([120.0], dtype=np.float64),
+            intensities=np.array([120.0], dtype=np.float64),
             metadata={"id": "valid", "precursor_mz": 250.123456789},
         ),
     ]
     processing_config.filter_by_mz = True
     processing_config.mz_min = 0.0
-    processing_config.mz_max = 500.0
+    processing_config.mz_max = 150.0
     processing_config.filter_min_peaks = False
     processing_config.noise_threshold = 0.0
 
     results = processing.process_spectra_batch(spectra, processing_config)
 
-    assert [result.get("id") for result in results] == ["valid"]
-    assert results[0].get("precursor_mz") == 250.123456789
+    assert [result.get("id") for result in results] == ["missing", "valid"]
+    missing_precursor = results[0].get("precursor_mz")
+    assert missing_precursor is None or np.isnan(float(missing_precursor))
+    assert results[1].get("precursor_mz") == 250.123456789
+    assert all(np.all(result.peaks.mz <= 150.0) for result in results)
 
 
 @pytest.fixture

@@ -188,7 +188,7 @@ SQLite-backed stores additionally persist a library-provenance history (`store_m
   - `save(path: Path) -> None`
   - `load(path: Path, ...) -> 'HNSWSpectralIndex'`
 
-hnswlib-backed two-channel candidate index (`[binned exact m/z, binned neutral losses]`) used by `CascadeEngine` for sub-linear approximate candidate retrieval. Requires the `hnsw` extra.
+Experimental hnswlib-backed two-channel candidate index (`[binned exact m/z, binned neutral losses]`) used by `CascadeEngine` for approximate retrieval; no general recall or sub-linear performance guarantee. Requires the `hnsw` extra.
 
 ## `MassFlow.io`
 

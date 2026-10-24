@@ -71,16 +71,17 @@ def assert_csv_rows_equivalent(actual_path: Path, expected_path: Path) -> None:
         expected_fieldnames = expected_reader.fieldnames
         expected_rows = list(expected_reader)
 
-    confidence_columns = {
+    additive_columns = {
+        "reference_metadata",
         "confidence_state",
         "confidence_q_value",
         "confidence_method",
         "confidence_scope",
         "confidence_limitations",
     }
-    assert confidence_columns.issubset(set(actual_fieldnames or []))
+    assert additive_columns.issubset(set(actual_fieldnames or []))
     legacy_fieldnames = [
-        name for name in (actual_fieldnames or []) if name not in confidence_columns
+        name for name in (actual_fieldnames or []) if name not in additive_columns
     ]
     assert legacy_fieldnames == expected_fieldnames, (
         f"Result CSV columns changed: {actual_fieldnames} != {expected_fieldnames}"

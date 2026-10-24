@@ -134,10 +134,12 @@ algorithm change alters processing even if the configuration stays identical;
 it is independent of package versions and Git SHAs. It is also recorded in
 library-build provenance.
 
-Revision 2 applies fragment-only windows. Old config-only fingerprints and
-revision-1 fingerprints invalidate MassFlow-managed prepared SQLite, Zarr and
-hybrid caches built from raw files. The existing staged replacement rebuilds
-without mixing old/new rows, then reuses the unchanged rebuilt cache.
+The integrated candidate uses processing-semantics revision 4. It covers
+missing-precursor normalization, fragment-only m/z windows, charge/adduct
+consistency and per-acquisition source identity. Earlier config-only and
+standalone revisions invalidate managed SQLite, Zarr and hybrid caches built
+from raw files. Staged replacement rebuilds without mixing old/new rows, then
+reuses a compatible rebuilt cache.
 
 Explicit `.db`, `.sqlite` and `.zarr` input libraries are opened directly and
 are **not** rebuilt or rewritten automatically. Previously generated persistent
@@ -145,6 +147,5 @@ stores may retain rows discarded or altered under old processing. Rebuild from
 raw source into a **new destination** when corrected processing is required;
 appending to an existing store does not remove its old rows.
 
-The separate charge/adduct fix in PR #103 also revises processing semantics.
-Combining that fix with this one requires a new revision identifying the combined
-behavior; do not silently downgrade or reuse a fingerprint for different data.
+Do not reuse the standalone revision numbers described in individual PR
+evidence reports; the combined revision is the cache contract for this candidate.

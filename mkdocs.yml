@@ -100,7 +100,7 @@ nav:
           - Scientific Validation: user-guide/validation.md
           - Golden Test Suite: user-guide/scientific_validation.md
           - Classical Similarity: user-guide/similarity.md
-          - Result Export & FDR: user-guide/results.md
+          - Result Export & Confidence: user-guide/results.md
           - Usage Reference: user-guide/usage.md
       - Data & Math:
           - Data Requirements: user-guide/data-requirements.md

@@ -429,6 +429,7 @@ class TestNumericalParityScaffolding:
             "confidence_method",
             "confidence_scope",
             "confidence_limitations",
+            "reference_metadata",
         }
         required_keys = set(hints) - optional_keys
         expected_keys = {

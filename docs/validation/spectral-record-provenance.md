@@ -1,5 +1,8 @@
 # Spectral-record provenance review
 
+> **Integration note:** this report documents standalone processing-semantics revision 3. The combined candidate uses revision 4 for all processing-affecting corrections; the historical standalone revision is not the current managed-cache contract.
+
+
 ## What was reproduced
 
 Reviewed main `ffef50bff913fcf400cb3de72595dab50e4f3fd8`, active worktrees,

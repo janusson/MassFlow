@@ -89,8 +89,8 @@ dev = [
 [tool.mypy]
 ignore_missing_imports = true
 plugins = ["pydantic.mypy"]
-# Exclude root-level scratch scripts
-exclude = ["repro_isotope\\.py"]
+# Exclude root-level scratch scripts and generated MkDocs output
+exclude = ["repro_isotope\\.py", "^site/"]
 
 [tool.ruff]
 # Generated protobuf/gRPC stubs are not linted.

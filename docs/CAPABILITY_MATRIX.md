@@ -12,29 +12,29 @@
 
 ## 1. Authoritative product scope (the contract)
 
-**MassFlow v0.1 is a local-first, config-driven MS/MS annotation engine for
-small-molecule / metabolomics-style spectral libraries.** It ingests open-format
-spectral files, processes spectra with `matchms`, searches them against local
-reference libraries with classical spectral similarity, calibrates confidence
-with target-decoy FDR, and exports tabular results with provenance sidecars.
+**The proposed restricted MassFlow 1.0 scope is local MS/MS candidate retrieval and review**
+for small-molecule spectral libraries. It ingests open-format spectra, applies
+transparent `matchms` processing, ranks local-library candidates with classical
+similarity scores, and exports source-linked tabular evidence. Numerical
+target/decoy estimates are explicitly uncalibrated; this software does not
+establish chemical identity or controlled FDR.
 
-The stable product surface (must not regress; all `@pytest.mark.core`-eligible
-paths are expected to pass):
+The proposed supported candidate-release surface (subject to the evidence gates below):
 
 | Surface | Detail |
 | --- | --- |
-| CLI commands | `massflow init`, `tutorial`, `annotate`, `convert`, `db build`, `db inspect`, `db merge` |
+| CLI commands | `massflow init`, `annotate`, `db build`, `db inspect`, `db merge` |
 | Configuration | YAML → `MassFlowConfig` (`project`, `input`, `processing`, `similarity`, `export`) |
 | Ingestion | `mzML`, `mzXML`, `MGF`, `MSP`, MassFlow SQLite (`.db`/`.sqlite`); vendor raw formats rejected with `UnsupportedVendorFormatError` |
 | Processing | `matchms`-based metadata cleaning, RT extraction, intensity/m/z filters, top-N reduction, normalization |
 | Similarity | `cosine`, `modified_cosine` (always available) |
-| Confidence | Pooled per-query target/decoy maxima, numerical q estimates and diagnostic empirical p-values; empirical calibration and incorrect-match representativeness are unvalidated (see the [FDR statistical contract](user-guide/scoring_logic.md)) |
-| Storage | SQLite libraries (`massflow db build/inspect/merge`) with persisted build lineage (input files, config hash, processing parameters, timestamps); optional hybrid SQLite+Zarr backend; BLOB→Zarr migration scripts |
-| Exports | Per-input CSV and mzTab-M result tables, YAML provenance sidecar with per-file status/spectra counts/degradation flags (`<input_stem>_results.<ext>` + `.report.yaml`), explicit `<stem>_failed.report.yaml` for failed files (never an empty CSV), MSP/MGF spectrum export |
-| Scientific integrity | 5 ppm precursor validation and theoretical isotopic envelopes in the `MassFlow.models` / `MassFlow.cheminformatics` layer; **enforced as a processing gate** on spectra with declared structural claims in the classical `annotate`/`db build` paths and in the streaming ingestion gate (**D-8 executed**, 2026-09-06) |
+| Confidence | Pooled per-query target/decoy numerical diagnostics with explicit estimated_uncalibrated/unavailable/invalid states; no calibrated-FDR claim (see the [confidence contract](user-guide/confidence-semantics.md)) |
+| Storage | SQLite libraries (`massflow db build/inspect/merge`) with persisted build lineage; Zarr/hybrid and migration utilities are experimental |
+| Exports | Per-input CSV and mzTab-M tables with YAML provenance and source-record metadata; mzTab-M standards conformance is not independently qualified |
+| Metadata checks | Fixed 5 ppm precursor and registered charge/adduct consistency checks when declared structural context is sufficient; these checks do not confirm an identity or establish universal instrument/adduct validity |
 | Python API | `MassFlow.config`, `io`, `processing`, `similarity`, `database`, `storage`, `zarr_store`, `workflow`, `models`, `cheminformatics`, `protocols`, `ml_client` |
 
-**What is NOT in the v0.1 contract:**
+**Excluded from the proposed 1.0 support promise:**
 
 - Peptide/proteomics search of any kind (see §6).
 - TIIP indexing, O(1) peptide retrieval, BIN/BEST consensus spectra (see §6).
@@ -49,7 +49,7 @@ paths are expected to pass):
 
 ## 2. Capability matrix
 
-Status legend: **✅ Stable** (implemented, tested, part of the v0.1 contract) ·
+Status legend: **✅ Stable** (implemented and tested within the supported candidate scope) ·
 **🧪 Experimental** (implemented and tested, outside the support promise) ·
 **🟡 Partial** (implemented for a subset of the documented surface) ·
 **📕 Missing** (documented somewhere in-repo, no code) · **📋 Planned** (roadmap/research only).
@@ -66,7 +66,7 @@ Status legend: **✅ Stable** (implemented, tested, part of the v0.1 contract) �
 | `matchms` processing pipeline | `processing.py` | `test_processing.py` |
 | `cosine`, `modified_cosine` scoring | `similarity.py` | `test_mathematical_proof.py`, `test_similarity.py`, `test_ms1_prefilter.py` |
 | MS1 prefilter (Da and ppm modes) | `similarity.py` | `test_ms1_prefilter.py` |
-| Precursor-preserving synthetic decoys + pooled query-maxima q estimates + diagnostic p-values | `similarity.py` (`generate_decoys`, `calculate_fdr`, `calibrate_query_level_fdr`), `workflow.py` | `test_decoy_generation.py`, `test_fdr.py`, `test_fdr_statistics.py` (contract tests) |
+| Precursor-preserving synthetic decoys + uncalibrated pooled query-maxima diagnostics + diagnostic p-values | `similarity.py` (`generate_decoys`, `calculate_fdr`, `calibrate_query_level_fdr`), `workflow.py` | `test_decoy_generation.py`, `test_fdr.py`, `test_fdr_statistics.py` (contract tests) |
 | SQLite library build / inspect / merge (incl. lineage: `db inspect` reports build history, processing parameters & target-decoy configuration; annotation sidecars link to the exact build row) | `database.py`, `cli.py`, `library.py`, `workflow.py` | `test_database.py`, `test_cli_db.py`, `test_db_lineage.py` |
 | CSV, mzTab-M, YAML report, MSP/MGF export | `io.py`, `workflow.py` | `test_io.py`, `test_workflow.py`, `test_cli.py` |
 | 5 ppm precursor validation + isotopic envelopes (model layer and annotate-path gate) | `models.py`, `cheminformatics.py`, `processing.py` (`physical_integrity_reason`, `process_spectra[_batch]` gate), `library.py` (`prepare_library` strict raw-library abort), `workflow.py` | `test_precursor_physics.py`, `test_scientific_boundaries.py`, `test_cheminformatics.py`, `test_isotopic_distribution.py`, `test_adduct_validation.py`, `test_adduct_registry.py`, `test_physics_gate.py` |
@@ -75,7 +75,7 @@ Status legend: **✅ Stable** (implemented, tested, part of the v0.1 contract) �
 
 | Capability | Where | Notes |
 | --- | --- | --- |
-| Numba peak/neutral-loss prefilter for `modified_cosine` | `acceleration.py` | Default-on (`enable_numba_prefilter: true`) but numerically identical to full scoring; pure-NumPy fallback. Treat as an optimization, not a science change |
+| Numba peak/neutral-loss prefilter for `modified_cosine` | `acceleration.py` | Experimental, opt-in (`enable_numba_prefilter: false` by default); full scoring is the supported default. No general candidate-recall guarantee |
 | HNSW two-channel candidate index (`[binned m/z, binned neutral losses]`) | `hnsw.py` | Requires `[hnsw]` extra (`hnswlib`); opt-in via `hnsw_enabled` (default **false**) |
 | `cascade` meta-engine (HNSW → prefilter → exact rescoring) | `similarity.py` | Experimental; `[ml]`-free classical stages work, full mode needs extras |
 | `consensus` meta-engine | `similarity.py` | Experimental; classical sub-engines always available |

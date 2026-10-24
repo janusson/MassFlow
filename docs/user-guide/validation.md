@@ -1,6 +1,6 @@
 # Scientific Validation & Data Integrity
 
-MassFlow v0.1 enforces strict physical and chemical boundaries at the point of ingestion. Unlike many pipelines that silently propagate low-quality or chemically impossible matches, MassFlow uses `Pydantic`-backed validation to ensure that every spectrum and molecule in your pipeline is mathematically and scientifically sound.
+MassFlow applies explicit checks to declared molecular metadata and reports processing rejections. These checks can detect inconsistencies under the registered chemistry and fixed tolerances; they do not prove a structure or establish universal instrument, matrix, or adduct validity.
 
 ---
 
@@ -18,7 +18,7 @@ When the `MassFlow.models` layer processes a candidate structure (via a chemical
 4. Computes the **theoretical m/z**: $(ExactMass + AdductOffset) / |Charge|$.
 5. Compares this to your experimental `precursor_mz`.
 
-If the deviation is greater than **5.0 ppm**, the record is flagged `is_physically_valid = False` by `MolecularStructure` / `SpectrumMetadata`. This prevents "lucky" MS2 matches from being reported if the parent mass doesn't physically support the identification.
+If the deviation is greater than **5.0 ppm**, the declared metadata fails this fixed software check. This prevents a candidate row from passing on contradictory declared precursor/structure metadata; it does not confirm candidates that pass.
 
 ### Where the check is enforced
 
@@ -26,14 +26,14 @@ If the deviation is greater than **5.0 ppm**, the record is flagged `is_physical
 * **Streaming ingestion gate** (experimental `stream-server`) — incoming packets that violate the contracts are rejected with a structured `StreamingValidationError` before scoring.
 * **Classical `annotate` / `db build` processing gate** — during metadata processing (`MassFlow.processing`), every spectrum that declares a structural claim (formula, SMILES, or InChI) is checked after `matchms` harmonization:
   * a *query* spectrum that fails the gate (malformed claim, unsupported adduct with a complete context, or a **>5 ppm** precursor deviation) is **rejected and counted** (`spectra_rejected`) with a human-readable reason in the quarantine log; a file whose spectra are all rejected is an explicit `failed` result with the reasons in `<stem>_failed.report.yaml`;
-  * a *raw reference library* entry that fails the gate **aborts the annotate run** with a `PhysicalIntegrityError` listing the offending spectra, because a silently shrunk target pool would change every query's FDR calibration. `massflow db build` is the curation workflow: it quarantines such entries (they are never stored) and reports the stored count.
+  * a *raw reference library* entry that fails the gate **aborts the annotate run** with a `PhysicalIntegrityError` listing the offending spectra, because silently changing the candidate library would change every query's search results and legacy numerical estimates. `massflow db build` is the curation workflow: it quarantines such entries (they are never stored) and reports the stored count.
   * spectra **without** structural claims are exempt — the check only applies to declared chemistry, so raw experimental files (which carry no formula/SMILES) pass through at no measurable cost.
 
 An adduct is required for the precursor-mass comparison: it may be declared explicitly or imputed from `ionmode` (`positive` → `[M+H]+`, `negative` → `[M-H]-`). When no adduct and no ion mode are available, or when the charge is unknown, the strict comparison is skipped for that spectrum exactly as documented for `SpectrumMetadata`.
 
 ### Applying validation changes to stored libraries
 
-Prepared caches managed by MassFlow are fingerprinted using canonical processing configuration plus an explicit processing-semantics revision. Revision 1 introduces charge/adduct consistency validation; older caches rebuild once from their raw sources, using the existing staged replacement mechanism. A raw library with contradictory entries aborts preparation with the offending charge/adduct in the rejection reason.
+Managed prepared caches are fingerprinted with canonical processing configuration plus processing-semantics revision 4, which covers missing-precursor normalization, fragment-only m/z windows, charge/adduct consistency, and source-record identity. Older managed caches rebuild once from raw sources using staged replacement. A raw library with contradictory structural metadata aborts preparation with the rejection reason.
 
 User-supplied `.db`, `.sqlite`, and `.zarr` libraries are used directly and are not revalidated or rewritten automatically. Rebuild from the original raw sources with `massflow db build` into a **new output path that does not already exist**: the command appends to an existing store, so reusing the old output preserves invalid entries. Inspect the new store and review quarantine messages/counts, then update `input.library_path` to the new store. See the [charge/adduct experiment](../validation/2026-10-17-charge-adduct-consistency.md) for evidence and limitations.
 

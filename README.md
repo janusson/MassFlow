@@ -94,8 +94,8 @@ uv run massflow tui
 - **Diagnostics:** Get plain-English fixes for data problems.
 
 ### Library Management
-SQLite is the supported library baseline. Zarr/hybrid backends are experimental; performance depends on the library, query set and hardware.
-- **Build:** `uv run massflow db build` converts raw libraries into optimized stores.
+SQLite is the supported library baseline. Zarr/hybrid backends are experimental.
+- **Build:** `uv run massflow db build` prepares raw libraries as inspectable local stores.
 - **Inspect:** `uv run massflow db inspect` views the lineage and history of your library.
 
 ### Input preparation
@@ -107,9 +107,9 @@ and excluded from the supported 1.0 launch path.
 
 ## ⚙️ Technical Architecture (For Power Users)
 
-MassFlow is designed for high-performance "on-site" use.
+MassFlow is intended for transparent local candidate retrieval and review.
 
-- **Hybrid Storage:** Combines SQLite metadata with compressed Zarr arrays for lock-free, parallel reads.
+- **Hybrid Storage (experimental):** Combines SQLite metadata with compressed Zarr arrays.
 - **Approximate Search (experimental):** Optional HNSW candidate indexing requires separate recall measurements and stays off the supported launch path.
 - **ML Boundary (experimental):** Optional learned scoring and remote services have separate model/training and confidence limitations.
 - **Numba Acceleration (experimental):** Keep disabled until candidate-recall equivalence is qualified on the selected release version.
@@ -119,14 +119,14 @@ MassFlow is designed for high-performance "on-site" use.
 The inspected package supports **Python 3.13** (`>=3.13,<3.14`). Python 3.14 is not qualified. The locked matchms dependency also requires RDKit transitively; the project-level chem extra does not imply an RDKit-free core installation.
 
 ```shell
-# The recommended path is to run `setup.sh`, which automates environment pinning and dependency sync. You can also perform these steps manually:
-uv python pin 3.13 && uv sync
+# Install the committed environment from the lockfile
+uv python pin 3.13 && uv sync --locked
 
 # Optional extras
 # Install the TUI extra (or use --all-extras for everything)
 uv sync --extra tui    # Interactive console
 uv sync --extra ml     # ML scoring engines
-uv sync --extra hnsw   # Sub-linear search acceleration
+uv sync --extra hnsw   # Experimental approximate candidate indexing
 ```
 
 ## Proposed 1.0 scope

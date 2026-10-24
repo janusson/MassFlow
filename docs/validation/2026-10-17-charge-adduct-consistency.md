@@ -1,5 +1,8 @@
 # Scientific red-team experiment: charge/adduct contradictions
 
+> **Integration note:** this report documents standalone processing-semantics revision 1. The combined candidate uses revision 4 for missing-precursor normalization, fragment-only windows, charge/adduct consistency, and acquisition-record identity; the historical standalone revision is not the current managed-cache contract.
+
+
 Run date: 2026-10-17 (America/Vancouver). Baseline: `5b847c0c45af32f2a2286371b4893c2af5481903`.
 
 ## Finding

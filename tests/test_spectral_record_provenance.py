@@ -201,6 +201,39 @@ def test_library_record_identity_roundtrip(
                         )
                     )
                 assert {row["reference_id"] for row in rows} == set(expected_ids)
+                metadata_by_id = {
+                    str(spectrum.get("id")): spectrum.metadata for spectrum in restored
+                }
+                for row in rows:
+                    exported_metadata = json.loads(row["reference_metadata"])
+                    source_metadata = metadata_by_id[row["reference_id"]]
+                    assert (
+                        exported_metadata["massflow_source_sha256"]
+                        == source_metadata["massflow_source_sha256"]
+                    )
+                    assert (
+                        exported_metadata["massflow_source_index"]
+                        == source_metadata["massflow_source_index"]
+                    )
+                    assert (
+                        exported_metadata["massflow_source_path"]
+                        == source_metadata["massflow_source_path"]
+                    )
+                    assert exported_metadata.get(
+                        "massflow_original_id"
+                    ) == source_metadata.get("massflow_original_id")
+                    assert exported_metadata["id"] == row["reference_id"]
+                    assert (
+                        exported_metadata["spectrum_id"]
+                        == source_metadata["spectrum_id"]
+                    )
+                    assert (
+                        exported_metadata["collision_energy"]
+                        == source_metadata["collision_energy"]
+                    )
+                    assert (
+                        exported_metadata["instrument"] == source_metadata["instrument"]
+                    )
     finally:
         store.close()
 
@@ -348,3 +381,66 @@ def test_legacy_managed_cache_rebuilds_once(tmp_path: Path, backend: str) -> Non
     modification_time = sidecar.stat().st_mtime_ns
     assert prepare_library(config, prepared) == (spec, 2)
     assert sidecar.stat().st_mtime_ns == modification_time
+
+
+@pytest.mark.parametrize("identifier", [None, "", "None", "null", "nan"])
+def test_classical_search_rejects_missing_reference_ids(identifier: str | None) -> None:
+    """Classical results must not identify multiple acquisitions as None/empty."""
+    references = _records((identifier, "record-B"))
+    engine = SimilarityEngine(
+        SimilarityConfig(algorithm="modified_cosine", min_score=0.0)
+    )
+    with pytest.raises(ValueError, match="non-empty unique record id"):
+        engine.search([references[1]], references, include_decoys=False)
+
+
+def test_classical_search_rejects_duplicate_reference_ids() -> None:
+    """Two acquisitions cannot silently share one search-result identifier."""
+    references = _records(("duplicate", "duplicate"))
+    engine = SimilarityEngine(
+        SimilarityConfig(algorithm="modified_cosine", min_score=0.0)
+    )
+    with pytest.raises(ValueError, match="unique record id"):
+        engine.search([references[0]], references, include_decoys=False)
+
+
+def test_classical_search_rejects_generated_decoy_id_collision() -> None:
+    """A target identifier cannot collide with another target's generated decoy."""
+    references = _records(("x", "x_decoy"))
+    engine = SimilarityEngine(
+        SimilarityConfig(algorithm="modified_cosine", min_score=0.0)
+    )
+    with pytest.raises(ValueError, match="generated decoy id"):
+        engine.search([references[0]], references, include_decoys=True)
+
+
+def test_tied_search_results_have_order_independent_record_order() -> None:
+    """Equal scores use acquisition IDs rather than input/store iteration order."""
+    references = _records(("record-z", "record-a"))
+    query = references[0].clone()
+    query.set("id", "query")
+    engine = SimilarityEngine(
+        SimilarityConfig(algorithm="modified_cosine", min_score=0.0)
+    )
+
+    forward = engine.search([query], references, include_decoys=False)
+    reverse = engine.search([query], list(reversed(references)), include_decoys=False)
+
+    assert [hit["reference_id"] for hit in forward] == ["record-a", "record-z"]
+    assert [hit["reference_id"] for hit in reverse] == ["record-a", "record-z"]
+
+
+def test_textual_missing_library_ids_receive_source_record_ids(tmp_path: Path) -> None:
+    """Textual null sentinels cannot become apparently stable record IDs."""
+    source = tmp_path / "library.msp"
+    _write_library(source, ("None", "null"))
+
+    records = list(io.load_spectra(source, assign_record_ids=True))
+
+    assert len(records) == 2
+    assert all(record.get("id") for record in records)
+    assert len({record.get("id") for record in records}) == 2
+    assert [record.get("massflow_original_id") for record in records] == [
+        "None",
+        "null",
+    ]

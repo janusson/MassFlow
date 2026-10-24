@@ -123,11 +123,13 @@ def test_mixed_frames_survive_prefilter(
 @pytest.mark.parametrize("shifted_peak_count", [0, 1, 2, 3])
 @pytest.mark.parametrize("reverse", [False, True])
 def test_search_preserves_three_matches(shifted_peak_count: int, reverse: bool) -> None:
-    """Default acceleration must return the same score and peaks as full scoring."""
+    """Opt-in acceleration preserves this demonstrated mixed-frame case."""
     reference, query = _analogue_pair(shifted_peak_count)
     if reverse:
         reference, query = query, reference
-    config = SimilarityConfig(algorithm="modified_cosine", min_score=0.7)
+    config = SimilarityConfig(
+        algorithm="modified_cosine", min_score=0.7, enable_numba_prefilter=True
+    )
     assert config.min_matched_peaks == 3
     assert config.enable_numba_prefilter
     unfiltered_config = config.model_copy(update={"enable_numba_prefilter": False})

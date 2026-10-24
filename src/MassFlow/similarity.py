@@ -119,32 +119,68 @@ if not _HAS_ML:
 
 
 def _require_reference_record_ids(
-    references: Sequence[Spectrum], *, include_decoys: bool
+    references: Sequence[Spectrum],
+    *,
+    include_decoys: bool,
+    seen_ids: set[str] | None = None,
 ) -> None:
-    """Reject ambiguous record keys before meta-engine aggregation or routing."""
-    # Metadata extraction is per Spectrum, not a loop over spectral arrays.
+    """Reject missing, duplicate, or target/decoy-colliding record IDs."""
     identifiers = [reference.get("id") for reference in references]
     if any(
-        identifier is None or not str(identifier).strip() for identifier in identifiers
+        identifier is None
+        or str(identifier).strip().lower() in {"", "none", "null", "nan"}
+        for identifier in identifiers
     ):
         raise ValueError(
-            "Meta-engine references require non-empty unique spectrum id values; "
-            "load raw libraries with assign_record_ids=True or rebuild the store."
+            "Reference spectra require non-empty unique record id values; load raw libraries "
+            "with assign_record_ids=True or rebuild the store."
         )
-    record_ids = {str(identifier) for identifier in identifiers}
-    if len(record_ids) != len(identifiers):
+    current_ids = [str(identifier) for identifier in identifiers]
+    prior_ids = seen_ids if seen_ids is not None else set()
+    if len(set(current_ids)) != len(current_ids) or any(
+        identifier in prior_ids for identifier in current_ids
+    ):
         raise ValueError(
-            "Meta-engine references require unique spectrum id values; "
-            "chemical identity is not spectral-record identity. Rebuild the library "
-            "from raw sources with assign_record_ids=True."
+            "Reference spectra require unique record id values; chemical identity is not "
+            "spectral-record identity. Rebuild the library from raw sources."
         )
+    all_ids = prior_ids | set(current_ids)
     if include_decoys and any(
-        f"{identifier}_decoy" in record_ids for identifier in record_ids
+        f"{identifier}_decoy" in all_ids for identifier in all_ids
     ):
         raise ValueError(
-            "Meta-engine references require unique target and generated decoy id "
-            "values; rename colliding source IDs before rebuilding the library."
+            "Reference record IDs collide with generated decoy id values; rename source "
+            "IDs before rebuilding the library."
         )
+    if seen_ids is not None:
+        seen_ids.update(current_ids)
+
+
+def _json_safe_metadata_value(value: Any) -> Any:
+    """Convert one Spectrum metadata value to deterministic JSON data."""
+    if isinstance(value, np.ndarray):
+        return [_json_safe_metadata_value(item) for item in value.tolist()]
+    if isinstance(value, np.generic):
+        return _json_safe_metadata_value(value.item())
+    if isinstance(value, float) and not np.isfinite(value):
+        return None
+    if isinstance(value, dict):
+        return {
+            str(key): _json_safe_metadata_value(item) for key, item in value.items()
+        }
+    if isinstance(value, (list, tuple)):
+        return [_json_safe_metadata_value(item) for item in value]
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    return str(value)
+
+
+def _reference_metadata(reference: Spectrum) -> dict[str, Any]:
+    """Return the complete source/acquisition metadata as JSON-safe values."""
+    return {
+        str(key): _json_safe_metadata_value(value)
+        for key, value in reference.metadata.items()
+    }
 
 
 def calculate_mass_error_ppm(query_mz: float, ref_mz: float) -> float:
@@ -252,10 +288,16 @@ def _handle_lazy_reference_spectra(func):
                 if k not in ("ref_precursor_mzs", "ref_is_decoy")
             }
 
+            seen_reference_ids: set[str] = set()
             for chunk in yield_fixed_chunks(reference_spectra, chunk_size=10000):
                 if not chunk:
                     continue
 
+                _require_reference_record_ids(
+                    chunk,
+                    include_decoys=include_decoys,
+                    seen_ids=seen_reference_ids,
+                )
                 processed_count += len(chunk)
                 logger.debug(
                     f"Streaming library... scored against {processed_count} reference spectra so far."
@@ -296,7 +338,7 @@ def _handle_lazy_reference_spectra(func):
 
                 final_res = []
                 for q_id, hits in grouped.items():
-                    hits.sort(key=lambda x: x["score"], reverse=True)
+                    hits.sort(key=lambda hit: (-hit["score"], hit["reference_id"]))
                     final_res.extend(hits[:top_n])
                 return final_res
             return all_results
@@ -337,6 +379,7 @@ class SearchResult(TypedDict):
     confidence_method: NotRequired[str]
     confidence_scope: NotRequired[str]
     confidence_limitations: NotRequired[list[str]]
+    reference_metadata: NotRequired[dict[str, Any]]
 
 
 def _is_missing(val):
@@ -1273,8 +1316,10 @@ class SimilarityEngine:
 
         cutoff = min_score if min_score is not None else self.config.min_score
 
+        ref_list = list(reference_spectra)
+        _require_reference_record_ids(ref_list, include_decoys=include_decoys)
+
         if include_decoys:
-            ref_list = list(reference_spectra)
             effective_decoy_shift = (
                 decoy_mz_shift_da
                 if decoy_mz_shift_da is not None
@@ -1307,7 +1352,7 @@ class SimilarityEngine:
             all_references = ref_list + decoy_spectra
             n_targets = len(ref_list)
         else:
-            all_references = list(reference_spectra)
+            all_references = ref_list
             n_targets = len(all_references)
 
         n_queries = len(query_spectra)
@@ -1498,9 +1543,12 @@ class SimilarityEngine:
                 continue
 
             valid_scores = query_scores[valid_indices]
+            valid_reference_ids = np.array(
+                [str(all_references[index].get("id")) for index in valid_indices]
+            )
 
-            # Sort descending by score
-            sorted_idx_rel = np.argsort(valid_scores)[::-1]
+            # Stable tie-break by acquisition record ID, independent of store order.
+            sorted_idx_rel = np.lexsort((valid_reference_ids, -valid_scores))
 
             final_indices = valid_indices[sorted_idx_rel]
             query_results: List[SearchResult] = []
@@ -1553,6 +1601,7 @@ class SimilarityEngine:
                         "inchikey": str(ref.get("inchikey"))
                         if ref.get("inchikey")
                         else None,
+                        "reference_metadata": _reference_metadata(ref),
                         "is_decoy": is_decoy,
                         "q_value": 1.0,  # Will be updated by FDR calculation
                         "p_value": None,  # Will be updated by empirical p-value calculation
@@ -2199,9 +2248,7 @@ class ConsensusEngine(_MLEngineBase):
                 key = (res["query_id"], res["reference_id"])
                 if key not in buckets:
                     buckets[key] = {"scores": {}, "template": res}
-                # Reference libraries can contain duplicate (or missing) ids;
-                # keep the best per-algorithm score for the bucket rather
-                # than letting later results overwrite earlier ones.
+                # Reference IDs have already been validated as acquisition keys.
                 buckets[key]["scores"].setdefault(algo, []).append(res["score"])
 
         # ------------------------------------------------------------------
@@ -2253,6 +2300,7 @@ class ConsensusEngine(_MLEngineBase):
                     score_breakdown={
                         algo: max(scores) for algo, scores in scores_by_algo.items()
                     },
+                    reference_metadata=template.get("reference_metadata"),
                 )
             )
 
