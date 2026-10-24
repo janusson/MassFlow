@@ -21,7 +21,8 @@ dependencies = [
     "pydantic>=2.12.5",
     "pyteomics",
     "PyYAML",
-    # rdkit moved to optional "chem" extra
+    # RDKit is not a direct core requirement, but locked matchms requires it
+    # transitively; the chem extra declares MassFlow's direct cheminformatics use.
     "rich>=15.0.0",
     "scikit-learn>=1.8.0",
     # scipy 1.15.x resolves to a macOS wheel that will not load on newer macOS

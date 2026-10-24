@@ -116,7 +116,13 @@ MassFlow is intended for transparent local candidate retrieval and review.
 
 ## Installation Details
 
-The inspected package supports **Python 3.13** (`>=3.13,<3.14`). Python 3.14 is not qualified. The locked matchms dependency also requires RDKit transitively; the project-level chem extra does not imply an RDKit-free core installation.
+MassFlow supports **Python >=3.13,<3.14**. Python 3.14 is not qualified.
+
+### Core installation contract
+
+A core installation is **not** RDKit-free. The locked `matchms` dependency requires `rdkit>=2024.3.5`, so `uv sync` or a package install pulls RDKit transitively even without the `chem` extra. The `chem` extra declares MassFlow’s own direct RDKit requirement for its cheminformatics APIs; it does not control whether RDKit is present.
+
+MassFlow’s core annotation path retains guarded fallbacks when RDKit is unavailable, but that fallback-only environment is not the supported core installation contract. A genuinely RDKit-free core installation is not claimed with the current locked `matchms`.
 
 ```shell
 # Install the committed environment from the lockfile
@@ -127,6 +133,7 @@ uv python pin 3.13 && uv sync --locked
 uv sync --extra tui    # Interactive console
 uv sync --extra ml     # ML scoring engines
 uv sync --extra hnsw   # Experimental approximate candidate indexing
+uv sync --extra chem   # MassFlow direct chemistry APIs (RDKit is already transitive in core)
 ```
 
 ## Proposed 1.0 scope
