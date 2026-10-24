@@ -376,7 +376,7 @@ def run_arm(
         "method": "actual_production_pooled_query_maxima",
         "limitations": [
             "source_standard_labels_not_independently_authenticated",
-            "unmerged_correctness_fixes",
+            "no_independent_deployment_validation",
             "decoy_exchangeability_unvalidated",
             "query_q_not_candidate_specific",
         ],

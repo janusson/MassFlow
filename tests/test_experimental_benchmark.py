@@ -178,6 +178,10 @@ def test_real_record_pipeline_present_and_absent(tmp_path: Path) -> None:
     assert (tmp_path / "present/native/query_results.report.yaml").exists()
     assert present["calibration"]["empirical_calibration"] == "pending"
     assert (
+        "no_independent_deployment_validation" in present["calibration"]["limitations"]
+    )
+    assert "unmerged_correctness_fixes" not in present["calibration"]["limitations"]
+    assert (
         hashlib.sha256((tmp_path / "present/query.mgf").read_bytes()).hexdigest()
         == present["provenance"]["query_sha256"]
     )
