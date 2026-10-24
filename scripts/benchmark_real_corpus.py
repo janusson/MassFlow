@@ -752,6 +752,7 @@ def evaluate_real(
     ref_col = _col(rows, "reference_name")
     query_col = _col(rows, "query_id", "query")
     score_col = _col(rows, "score")
+    identity_col = _col(rows, "inchikey", "connectivity")
     if not query_col:
         raise RuntimeError("results are missing the query_id column")
     if not rows:
@@ -776,14 +777,21 @@ def evaluate_real(
                 "candidate rows require reference_name and score columns"
             )
         query_id = str(row[query_col])
+        raw_identity = row.get(identity_col) if identity_col else None
+        identity = (
+            str(raw_identity).split("-")[0]
+            if raw_identity not in (None, "")
+            else str(row[ref_col])
+        )
         hits_by_query.setdefault(query_id, []).append(
             {
                 "ref": str(row[ref_col]),
+                "identity": identity,
                 "score": float(row[score_col]) if score_col else 0.0,
             }
         )
     for hit_list in hits_by_query.values():
-        hit_list.sort(key=lambda hit: -hit["score"])
+        hit_list.sort(key=lambda hit: (-hit["score"], hit["identity"], hit["ref"]))
 
     out: dict[str, Any] = {
         **base_metrics,
@@ -831,8 +839,14 @@ def evaluate_real(
         if not hits:
             continue
         funnel["with_any_candidate"] += 1
+        truth_connectivity = str(labels[qid].get("connectivity", ""))
         for rank, h in enumerate(hits, start=1):
-            if h["ref"] in lib_of[qid]:
+            matches = (
+                h["identity"] == truth_connectivity
+                if identity_col is not None and truth_connectivity
+                else h["ref"] in lib_of[qid]
+            )
+            if matches:
                 true_ranks.append(rank)
                 funnel["true_compound_among_candidates"] += 1
                 if rank == 1:

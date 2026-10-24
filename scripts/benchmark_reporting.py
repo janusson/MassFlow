@@ -109,7 +109,17 @@ def evaluate_query_retrieval(
             peak_count = int(label["peak_count"])
         except (TypeError, ValueError) as error:
             raise ValueError(f"query {query_id!r} has an invalid peak_count") from error
-        if peak_count < min_query_peaks:
+        missing_precursor = False
+        if "precursor_mz" in label:
+            precursor = label["precursor_mz"]
+            if precursor in (None, ""):
+                missing_precursor = True
+            else:
+                try:
+                    missing_precursor = not math.isfinite(float(precursor))
+                except (TypeError, ValueError):
+                    missing_precursor = True
+        if peak_count < min_query_peaks or missing_precursor:
             rejected_ids.add(str(query_id))
 
     observed_ids = {
@@ -608,19 +618,23 @@ def attribute_truth_candidates(
         if query.get("id") is not None
     }
 
+    needed_reference_ids = {
+        str(reference_id)
+        for label in labels.values()
+        for reference_id in label.get("true_lib_records", [])
+    }
+    prepared_by_id: dict[str, Any] = {}
     library_backend = open_library(
         LibrarySpec(path=Path(prepared_library_path), kind="store"),
         config.processing,
     )
     try:
-        prepared_references = list(library_backend.iter_spectra())
+        for reference in library_backend.iter_spectra():
+            reference_id = reference.get("id")
+            if reference_id is not None and str(reference_id) in needed_reference_ids:
+                prepared_by_id[str(reference_id)] = reference
     finally:
         library_backend.close()
-    prepared_by_id = {
-        str(reference.get("id")): reference
-        for reference in prepared_references
-        if reference.get("id") is not None
-    }
 
     query_column = _column(result_rows, "query_id", "query")
     reference_id_column = _column(result_rows, "reference_id")

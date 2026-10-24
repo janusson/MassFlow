@@ -142,6 +142,58 @@ def test_retrieval_metrics_tie_break_by_connectivity_not_accession() -> None:
     assert result["query_counts"]["true_compound_in_candidates"] == 1
 
 
+def test_retrieval_metrics_account_for_missing_precursor_rejection() -> None:
+    labels = {
+        "q1": {
+            "connectivity": "AAAABCDEFGHIJK",
+            "true_lib_records": ["ref-z"],
+            "source": "QTOF",
+            "peak_count": 5,
+            "precursor_mz": None,
+        }
+    }
+
+    result = evaluate_query_retrieval(labels, [], min_query_peaks=3)
+
+    assert result["query_counts"]["preprocessing_rejected"] == 1
+    assert result["query_counts"]["searched"] == 0
+
+
+def test_real_corpus_ranking_funnel_uses_connectivity_tie_break() -> None:
+    labels = {
+        "q1": {
+            "connectivity": "AAAABCDEFGHIJK",
+            "true_lib_records": ["ref-z"],
+            "source": "QTOF",
+            "peak_count": 3,
+            "precursor_mz": 100.0,
+        }
+    }
+    rows = [
+        {
+            "query_id": "q1",
+            "reference_name": "ref-a",
+            "inchikey": "ZZZABCDEFGHIJK-ABCDEFGHIJ-N",
+            "score": "0.8",
+            "matched_peaks": "3",
+            "q_value": "1.0",
+        },
+        {
+            "query_id": "q1",
+            "reference_name": "ref-z",
+            "inchikey": "AAAABCDEFGHIJK-ABCDEFGHIJ-N",
+            "score": "0.8",
+            "matched_peaks": "3",
+            "q_value": "1.0",
+        },
+    ]
+
+    result = evaluate_real(rows, labels)
+
+    assert result["query_counts"]["correct_top1"] == 1
+    assert result["ranking_funnel"]["true_compound_ranked_first"] == 1
+
+
 def test_retrieval_metrics_keep_undefined_rates_null_when_denominator_is_zero() -> None:
     labels = {
         "q1": {
