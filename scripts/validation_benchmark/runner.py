@@ -23,6 +23,7 @@ from MassFlow import io, processing, workflow
 from MassFlow.config import MassFlowConfig
 from MassFlow.similarity import SimilarityEngine
 from scripts.validation_benchmark import dataset, metrics
+from scripts.benchmark_reporting import attribute_truth_candidates
 
 
 def _scalar(value: Any) -> Any:
@@ -449,6 +450,37 @@ def run_arm(
             key: value for key, value in reasons.items() if key in reference_map
         },
     }
+    truth_labels = {
+        f"query_{query_index:04d}": {
+            "inchikey": record.inchikey,
+            "connectivity": record.connectivity,
+            "source": str(record.metadata.get("instrument_type", "unknown")),
+            "peak_count": int(record.mz.size),
+            "true_lib_records": [
+                reference.accession
+                for reference in library
+                if reference.inchikey == record.inchikey
+            ],
+        }
+        for query_index, record in enumerate(queries)
+    }
+    truth_attribution = attribute_truth_candidates(
+        truth_labels,
+        results[0].results if results else [],
+        config_path=str(output / "effective_config.json"),
+        prepared_library_path=str(output / "native" / "library_library.db"),
+        run_diagnostics=(results[0].retrieval_diagnostics if results else None),
+    )
+    for query_attribution in truth_attribution.get("by_query", {}).values():
+        query_attribution["truth_identity_endpoint"] = "full InChIKey"
+        query_attribution["truth_reference_preparation_rejections"] = {
+            reference_id: payload["reference_rejection_reasons"].get(reference_id, [])
+            for reference_id in query_attribution.get(
+                "truth_reference_ids_missing_after_preparation", []
+            )
+        }
+    payload["truth_attribution"] = truth_attribution
+
     for name, values in [
         ("queries", accounting),
         ("candidates", captured),
