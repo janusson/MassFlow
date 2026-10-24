@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from scripts.benchmark_reporting import (
+    _distinct_truth_identity_rank,
     _truth_pair_terminal_reason,
     compare_benchmark_reports,
     compare_result_rows,
@@ -422,3 +423,29 @@ def test_truth_pair_attribution_uses_last_surviving_stage() -> None:
         )
         == "insufficient_fragment_matches"
     )
+
+
+def test_truth_ranking_uses_the_declared_identity_endpoint() -> None:
+    hits = [
+        {"reference_id": "other", "inchikey": "XYZABCDEFGHIJK-ABCDEFGHIJ-A"},
+        {"reference_id": "stereo-a", "inchikey": "ABCABCDEFGHIJK-ABCDEFGHIJ-A"},
+        {"reference_id": "stereo-b", "inchikey": "ABCABCDEFGHIJK-ABCDEFGHIJ-B"},
+    ]
+
+    connectivity_rank = _distinct_truth_identity_rank(
+        hits,
+        reference_column="reference_id",
+        identity_column="inchikey",
+        truth_identity="ABCABCDEFGHIJK",
+        identity_endpoint="connectivity",
+    )
+    exact_rank = _distinct_truth_identity_rank(
+        hits,
+        reference_column="reference_id",
+        identity_column="inchikey",
+        truth_identity="ABCABCDEFGHIJK-ABCDEFGHIJ-B",
+        identity_endpoint="inchikey",
+    )
+
+    assert connectivity_rank == 2
+    assert exact_rank == 3

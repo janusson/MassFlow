@@ -470,6 +470,7 @@ def run_arm(
         config_path=str(output / "effective_config.json"),
         prepared_library_path=str(output / "native" / "library_library.db"),
         run_diagnostics=(results[0].retrieval_diagnostics if results else None),
+        identity_endpoint="inchikey",
     )
     accounting_by_id = {row["query_id"]: row for row in accounting}
     eligible_attributions: Counter[str] = Counter()

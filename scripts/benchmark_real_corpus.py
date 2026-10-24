@@ -1200,6 +1200,7 @@ def main(argv: Optional[list[str]] = None) -> int:
                     config_path=str(run_config_path),
                     prepared_library_path=str(prepared_library_path),
                     run_diagnostics=diagnostics_payload,
+                    identity_endpoint="connectivity",
                 )
                 for query_id, query_attribution in truth_attribution.get(
                     "by_query", {}

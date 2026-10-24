@@ -404,6 +404,33 @@ def _truth_pair_terminal_reason(
     return DiagnosticReason.NO_ELIGIBLE_CANDIDATE.value
 
 
+def _distinct_truth_identity_rank(
+    hits: Sequence[Mapping[str, Any]],
+    *,
+    reference_column: str | None,
+    identity_column: str | None,
+    truth_identity: str,
+    identity_endpoint: str,
+) -> int | None:
+    """Rank a truth identity after collapsing repeated acquisition records."""
+    observed_identities: set[str] = set()
+    for row in hits:
+        raw_identity = row.get(identity_column) if identity_column else None
+        if raw_identity in (None, ""):
+            raw_identity = row.get(reference_column) if reference_column else None
+        if raw_identity in (None, ""):
+            continue
+        identity = str(raw_identity)
+        if identity_endpoint == "connectivity" and "-" in identity:
+            identity = identity.split("-", 1)[0]
+        if identity in observed_identities:
+            continue
+        observed_identities.add(identity)
+        if identity == truth_identity:
+            return len(observed_identities)
+    return None
+
+
 def attribute_truth_candidates(
     labels: Mapping[str, Mapping[str, Any]],
     result_rows: Sequence[Mapping[str, Any]],
@@ -411,6 +438,7 @@ def attribute_truth_candidates(
     config_path: str,
     prepared_library_path: str,
     run_diagnostics: Mapping[str, Any] | None = None,
+    identity_endpoint: str = "inchikey",
 ) -> dict[str, Any]:
     """Attribute benchmark truth-record losses using the configured search gates.
 
@@ -429,6 +457,8 @@ def attribute_truth_candidates(
         Effective YAML configuration used for the annotation run.
     prepared_library_path : str
         Read-only prepared store used by that run.
+    identity_endpoint : str, default="inchikey"
+        Benchmark truth identity: exact full InChIKey or connectivity block.
     run_diagnostics : Mapping[str, Any] or None
         Production funnel artifact used to determine whether a candidate was
         removed by post-scoring confidence filtering.
@@ -475,6 +505,7 @@ def attribute_truth_candidates(
 
     query_column = _column(result_rows, "query_id", "query")
     reference_id_column = _column(result_rows, "reference_id")
+    identity_column = _column(result_rows, "inchikey")
     score_column = _column(result_rows, "score")
     if result_rows and query_column is None:
         raise ValueError("results are missing a query_id column")
@@ -505,6 +536,9 @@ def attribute_truth_candidates(
     per_query: dict[str, Any] = {}
     classifications: dict[str, int] = {}
     for query_id, label in sorted(labels.items()):
+        if identity_endpoint not in {"inchikey", "connectivity"}:
+            raise ValueError("identity_endpoint must be inchikey or connectivity")
+        truth_identity = str(label.get(identity_endpoint) or "")
         truth_reference_ids = [str(item) for item in label.get("true_lib_records", [])]
         missing_reference_ids = [
             reference_id
@@ -551,15 +585,24 @@ def attribute_truth_candidates(
                 for row in rows_by_query.get(str(query_id), [])
                 if row.get(reference_id_column or "") not in (None, "")
             ]
-            true_ids = set(truth_reference_ids)
-            best_truth_rank = next(
-                (
-                    rank
-                    for rank, row in enumerate(hits, start=1)
-                    if str(row.get(reference_id_column or "")) in true_ids
-                ),
-                None,
-            )
+            if truth_identity:
+                best_truth_rank = _distinct_truth_identity_rank(
+                    hits,
+                    reference_column=reference_id_column,
+                    identity_column=identity_column,
+                    truth_identity=truth_identity,
+                    identity_endpoint=identity_endpoint,
+                )
+            else:
+                true_ids = set(truth_reference_ids)
+                best_truth_rank = next(
+                    (
+                        rank
+                        for rank, row in enumerate(hits, start=1)
+                        if str(row.get(reference_id_column or "")) in true_ids
+                    ),
+                    None,
+                )
             if best_truth_rank is not None:
                 if best_truth_rank == 1:
                     attribution = "correct_top1"
@@ -582,6 +625,8 @@ def attribute_truth_candidates(
         classifications[attribution] = classifications.get(attribution, 0) + 1
         per_query[str(query_id)] = {
             "source": label.get("source"),
+            "identity_endpoint": identity_endpoint,
+            "truth_identity": truth_identity or None,
             "truth_reference_count": len(truth_reference_ids),
             "prepared_truth_reference_count": len(prepared_truth_references),
             "truth_reference_ids_missing_after_preparation": missing_reference_ids,
@@ -592,6 +637,7 @@ def attribute_truth_candidates(
     return {
         "schema_version": 1,
         "truth_labels_used_only_for_benchmark_attribution": True,
+        "identity_endpoint": identity_endpoint,
         "query_count": len(labels),
         "classification_counts": dict(sorted(classifications.items())),
         "by_query": per_query,
