@@ -16,12 +16,12 @@ When you execute this command, MassFlow orchestrates the following pipeline:
 
 1.  **Configuration Parsing (`config.py`):** The YAML file is loaded and strictly validated against Pydantic schemas. If a path doesn't exist, or an invalid tolerance is provided, the pipeline fails fast before consuming heavy resources.
 2.  **Library Loading (`io.py`, `database.py`):** MassFlow reads your reference library (e.g., `library.msp` or an optimized SQLite `library.db`).
-3.  **Reference Processing (`processing.py`):** Every spectrum in the library is passed through the configured metadata harmonization and peak-filtering pipeline. If the processed library is statistically too small to support robust False Discovery Rate (FDR) calculations, MassFlow will log a critical scientific warning.
+3.  **Reference Processing (`processing.py`):** Every spectrum in the library is passed through the configured metadata harmonization and peak-filtering pipeline. Small libraries may trigger a configured-count warning. This is a diagnostic heuristic, not a validated minimum library size or evidence that a target/decoy estimate is calibrated.
 4.  **Experimental Input Discovery (`workflow.py`):** The pipeline looks for your experimental data in the configured `input_path`. If it's a directory, MassFlow recursively discovers all supported open formats (`mzML`, `MGF`, etc.).
 5.  **Per-File Multiprocessing (`workflow.py`):** Each experimental file is handed off to a separate worker process. MassFlow utilizes a Zero-I/O shared memory architecture, loading the reference library into RAM once, preventing redundant parsing across CPU cores.
 6.  **Query Processing (`processing.py`):** The experimental queries are cleaned and filtered using the exact same configured pipeline as the reference library, ensuring parity for scoring.
 7.  **Chunked Searching (`similarity.py`):** To avoid memory exhaustion, the worker searches the processed queries against the reference library in chunks using the configured engine (e.g., `cosine`).
-8.  **FDR Calculation (`similarity.py`):** Decoy spectra are generated from the references, scored, and used to calculate *q*-values. Hits failing the `fdr_threshold` or the `min_score` are discarded.
+8.  **Confidence diagnostics (`similarity.py`):** Decoys are scored and query-level numerical estimates are reported with `estimated_uncalibrated`, `unavailable`, or `invalid` states. The legacy `fdr_threshold` still filters candidates, but it does not provide calibrated FDR control.
 9.  **Reporting (`io.py`):** Finally, MassFlow exports a clean result table for *each* experimental file, accompanied by a YAML sidecar file detailing the exact provenance of that run.
 
 ### Pre-flight validation (fail fast, before anything expensive)

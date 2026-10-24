@@ -14,6 +14,7 @@ harmonization is deferred to :mod:`MassFlow.processing` after import.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -322,10 +323,43 @@ def _validate_spectra_iterator(
             )
 
 
+def _assign_library_record_ids(
+    spectra: Iterable[Spectrum], source_path: Path
+) -> Iterator[Spectrum]:
+    """Clone library records with source locators and unambiguous per-file IDs."""
+    with source_path.open("rb") as handle:
+        source_sha256 = hashlib.file_digest(handle, "sha256").hexdigest()
+    seen_ids: set[str] = set()
+    # Source ordinals precede validation/filtering; chemistry never keys records.
+    for source_index, spectrum in enumerate(spectra):
+        if spectrum is None:
+            continue
+        original_id = spectrum.get("id")
+        record_id = str(original_id) if original_id is not None else ""
+        missing_id = record_id.strip().lower() in {"", "none", "null", "nan"}
+        if missing_id or record_id in seen_ids:
+            record_id = f"massflow:sha256:{source_sha256}:spectrum:{source_index}"
+        if record_id in seen_ids:
+            raise ValueError(
+                f"Library record ID collides with generated ID: {record_id}"
+            )
+        seen_ids.add(record_id)
+        # Spectrum is mutable: clone before adding record provenance.
+        record = spectrum.clone()
+        record.set("id", record_id)
+        record.set("massflow_original_id", original_id)
+        record.set("massflow_source_path", str(source_path.resolve()))
+        record.set("massflow_source_sha256", source_sha256)
+        record.set("massflow_source_index", source_index)
+        yield record
+
+
 def load_spectra(
     file_path: Path,
     file_format: Optional[str] = None,
     rejection_reporter: Optional[Callable[[str], None]] = None,
+    *,
+    assign_record_ids: bool = False,
 ) -> Iterator[Spectrum]:
     """
     Load spectra from an open spectral file or a MassFlow-native store.
@@ -349,6 +383,12 @@ def load_spectra(
         Optional callback invoked with the rejection reason for every
         spectrum dropped by the validation layer (see
         :func:`_validate_spectra_iterator`).
+    assign_record_ids : bool
+        For raw library ingestion, clone each loader record with its source
+        SHA-256 and zero-based loader ordinal. Preserve the first occurrence of
+        an existing ID; missing or repeated IDs receive a content/ordinal ID.
+        Original IDs remain in ``massflow_original_id``. Chemical identifiers
+        are never used as record keys. Native stores are read without changes.
 
     Yields
     ------
@@ -410,6 +450,11 @@ def load_spectra(
     else:
         raise ValueError(f"Format '{fmt}' is not supported by MassFlow.")
 
+    # Assign library identity before validation, so rejected records cannot
+    # renumber later source records. Query loading keeps its existing contract.
+    if assign_record_ids and fmt not in {"db", "sqlite", "zarr"}:
+        loader = _assign_library_record_ids(loader, path)
+
     # Step 3: Yield spectra through the validation layer
     yield from _validate_spectra_iterator(loader, path, rejection_reporter)
 
@@ -448,7 +493,7 @@ def _build_results_dataframe(
     consistent data shaping, merging, and status labeling.
 
     ``uncalibrated`` marks rows produced by a run whose decoy null was empty:
-    the q-values are then the conservative ``1/N`` rank bound, not a
+    the q-values are then the legacy ``1/N`` rank diagnostic, not a
     target-decoy FDR estimate, so no row may read as confident. Rows of such a
     run carry ``Annotation_Status = "Uncalibrated"`` (queries without any hit
     keep ``"Unknown"``).
@@ -464,7 +509,7 @@ def _build_results_dataframe(
     for r in results:
         clean_r = {}
         for key, value in r.items():
-            if isinstance(value, dict):
+            if isinstance(value, (dict, list, tuple)):
                 clean_r[key] = json.dumps(value, sort_keys=True, separators=(",", ":"))
             elif hasattr(value, "item"):
                 clean_r[key] = value.item()
@@ -509,6 +554,24 @@ def _build_results_dataframe(
             return None
         df = pl.DataFrame(clean_results)
 
+    if not clean_results:
+        df = df.with_columns(
+            pl.lit("unavailable").alias("confidence_state"),
+            pl.lit(None, dtype=pl.Float64).alias("confidence_q_value"),
+            pl.lit("pooled_query_maxima_plus_one_v1").alias("confidence_method"),
+            pl.lit("query_best_target").alias("confidence_scope"),
+            pl.lit('["no_target_observations"]').alias("confidence_limitations"),
+        )
+    if "confidence_state" in df.columns:
+        df = df.with_columns(pl.col("confidence_state").fill_null("unavailable"))
+    unvalidated_confidence = (
+        pl.col("confidence_state").is_in(
+            ["estimated_uncalibrated", "unavailable", "invalid"]
+        )
+        if "confidence_state" in df.columns
+        else pl.lit(False)
+    )
+
     # Add Annotation_Status. A run without decoy evidence cannot support an
     # FDR claim, so its hits are labeled "Uncalibrated" instead of
     # "Matched"/"Putative" (queries without a hit stay "Unknown").
@@ -516,7 +579,7 @@ def _build_results_dataframe(
         status = (
             pl.when(pl.col("score").is_null())
             .then(pl.lit("Unknown"))
-            .when(pl.lit(uncalibrated))
+            .when(pl.lit(uncalibrated) | unvalidated_confidence)
             .then(pl.lit("Uncalibrated"))
             .when(pl.col("score") >= 0.9)
             .then(pl.lit("Matched"))
@@ -562,7 +625,7 @@ def save_match_results(
         are still represented in the CSV output.
     uncalibrated : bool
         True when the run's decoy null was empty and the q-values are the
-        conservative ``1/N`` rank bound (no FDR claim is supported).
+        legacy ``1/N`` rank diagnostic (no FDR claim is supported).
 
     Returns
     -------
@@ -704,7 +767,7 @@ def save_match_results_to_mztab(
         Full set of experimental query spectra.
     uncalibrated : bool
         True when the run's decoy null was empty and the q-values are the
-        conservative ``1/N`` rank bound (no FDR claim is supported); matched
+        legacy ``1/N`` rank diagnostic (no FDR claim is supported); matched
         rows are then labeled ``Uncalibrated``.
     """
     df = _build_results_dataframe(results, query_spectra, uncalibrated=uncalibrated)

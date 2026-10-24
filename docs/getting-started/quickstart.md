@@ -1,6 +1,6 @@
 # Quickstart Guide
 
-This guide walks you through your first end-to-end tandem mass spectrometry (MS/MS) annotation run using MassFlow's stable CLI workflow.
+This guide walks through local MS/MS candidate retrieval and review using MassFlow's CLI workflow.
 
 ---
 
@@ -13,21 +13,22 @@ graph LR
     Library[Reference Library] --> CLI
     CLI --> Processed[Processed Spectra]
     Processed --> Sim[Similarity Search]
-    Sim --> Filter[FDR Filtering]
+    Sim --> Filter[Candidate and Numeric-Estimate Filtering]
     Filter --> Out[CSV + YAML Report]
 ```
 
 ---
 
-## 0. Try It Instantly with Tutorial Data
+## Optional synthetic example
 
-If you want to evaluate MassFlow right now without hunting down MS/MS files, use the built-in tutorial generator:
+For an optional synthetic example (not a substitute for measured-data validation), use the tutorial generator:
 
 ```shell
 uv run massflow tutorial
 ```
 
-This creates a `tutorial/` directory with everything you need: a reference library, experimental queries, and a pre-configured YAML config. Then follow the printed next-steps commands to build the database and run an annotation — all in under a minute.
+This creates a `tutorial/` directory with a reference library, example queries, and a YAML config. Review the synthetic inputs and configuration before running the candidate workflow.
+The generator is a repository development aid and is not bundled as a wheel resource; the installed-package workflow starts with `massflow init`.
 
 For a complete walkthrough, see the [Usage Guide](../user-guide/usage.md).
 
@@ -119,7 +120,7 @@ MassFlow will:
 2. Ingest and process the reference library through the defined metadata and peak filters.
 3. Discover your experimental queries and process them identically.
 4. Score queries against chunked reference libraries.
-5. Compute a Target-Decoy False Discovery Rate (FDR).
+5. Report numerical target/decoy confidence diagnostics with explicit evidence states; empirical calibration is not established.
 6. Keep retained matches and export the results.
 
 ---
@@ -145,10 +146,10 @@ If your input file was named `experiment.mzML`, expect two outputs:
 2. `results/standard_analysis/experiment_results.report.yaml`
 
 ### The CSV Result Table
-The CSV contains the actual annotation hits, including the computed `score`, `matched_peaks`, and an automated `Annotation_Status` tag (e.g., `Matched`, `Putative`, or `Unknown`).
+The CSV contains retained candidate rows with a similarity `score`, `matched_peaks`, source-record metadata, and an `Annotation_Status` category. Scores do not confirm chemical identity.
 
 !!! note "Unmatched Queries"
-    The CSV includes matched *and* unmatched query spectra. If a query spectrum has no retained hit after score and FDR filtering, the row is still exported, but the reference-specific columns are left blank. This allows you to confirm that the input was successfully processed.
+    The CSV includes matched and unmatched query spectra. A query with no retained candidate still has a row with reference-specific fields blank. Historical q-value filtering can affect retention, but it is not validated FDR control.
 
 ```csv title="experiment_results.csv (Simplified No-Match Example)"
 query_id,query_precursor_mz,reference_id,reference_name,score,Annotation_Status

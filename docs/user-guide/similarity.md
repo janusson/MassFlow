@@ -1,8 +1,8 @@
 # Classical Similarity Scoring
 
-MassFlow v0.1 establishes a robust, stable contract around classical spectral similarity engines. The primary supported algorithms are the foundational `cosine` and `modified_cosine` implementations from the `matchms` library.
+The restricted candidate-retrieval scope centers on `cosine` and `modified_cosine` from `matchms`. These engines score spectra under configured peak and precursor domains; their outputs do not confirm identities.
 
-These engines compare the mass-to-charge (m/z) and intensity arrays of an experimental query spectrum against a reference library to identify candidate compounds.
+These engines compare experimental and reference m/z/intensity arrays to retrieve and rank candidate library records. Similarity alone does not confirm chemical identity.
 
 ---
 
@@ -39,13 +39,17 @@ similarity:
   fdr_threshold: 0.05
 ```
 
-**When to use:** Ideal for identifying structural analogs, derivatives, or modified metabolites (e.g., a hydroxylated version of a known reference compound).
+**When to use:** Search for spectra with precursor-shifted fragment patterns, such as possible structural analogues. A modified-cosine match alone does not confirm an analogue or molecular identity.
 
 ---
 
 ## Configuration Parameters
 
-The `similarity` section of your YAML configuration enforces strict chemical and physical constraints on what MassFlow considers a valid "hit."
+The legacy `fdr_threshold` is a numerical candidate filter, not a calibrated
+false-discovery guarantee. Consult [confidence semantics](confidence-semantics.md)
+before interpreting q-like values.
+
+The `similarity` section controls candidate scoring and retention. Structural metadata checks are described separately; a retained candidate is not a validated identification.
 
 ### `ms1_tolerance`
 *   **Type:** `float`
@@ -66,7 +70,7 @@ The `similarity` section of your YAML configuration enforces strict chemical and
 ### `min_score`
 *   **Type:** `float`
 *   **Default:** `0.6`
-*   **Description:** The absolute minimum similarity score (0.0 to 1.0) required to retain a match before FDR filtering is applied.
+*   **Description:** The absolute minimum similarity score (0.0 to 1.0) required to retain a candidate before configured confidence filtering.
 
 ### `min_matched_peaks`
 *   **Type:** `int`
@@ -76,7 +80,7 @@ The `similarity` section of your YAML configuration enforces strict chemical and
 ### `fdr_threshold`
 *   **Type:** `float`
 *   **Default:** `0.05`
-*   **Description:** The target False Discovery Rate (e.g., `0.05` for 5%). See the [Result Export & FDR](results.md) guide for details on how MassFlow computes this using target-decoy approaches.
+*   **Description:** Legacy threshold applied to the numerical query-level target/decoy estimate. Estimates are explicitly uncalibrated; changing this value changes candidate selection, not the evidence for FDR control. See [confidence semantics](confidence-semantics.md).
 
 ---
 

@@ -80,7 +80,7 @@ similarity:
 *   `ms2_tolerance`: Fragment mass tolerance (typically in `Da`).
 *   `min_score`: The absolute minimum score required to keep a hit.
 *   `min_matched_peaks`: Minimum number of matched fragment peaks.
-*   `fdr_threshold`: The target False Discovery Rate (e.g., `0.05` for 5%).
+*   `fdr_threshold`: Legacy cutoff for numerical query-level target/decoy estimates. Those estimates are uncalibrated; the cutoff is not a controlled FDR guarantee.
 
 Advanced `similarity` keys include `analog_search`, the `consensus_*` / `cascade_*` engine settings, the `hnsw_*` approximate-candidate retrieval knobs (requires the `hnsw` extra), and `ml_endpoints` for routing Spec2Vec/MS2DeepScore scoring to a remote REST/gRPC service with automatic fallback to the classical engines.
 

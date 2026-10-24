@@ -573,13 +573,11 @@ class SimilarityConfig(MassFlowBaseModel):
 
     # --- Numba peak pre-filter (used with algorithm='modified_cosine') ---
     enable_numba_prefilter: bool = Field(
-        default=True,
+        default=False,
         description=(
-            "When True, modified_cosine scoring uses the Numba-accelerated "
-            "peak/neutral-loss matching prefilter to skip query-reference "
-            "pairs that cannot reach min_matched_peaks before exact scoring. "
-            "Produces identical results to full scoring and falls back "
-            "automatically when numba is not installed."
+            "Opt in to the experimental Numba peak/neutral-loss candidate "
+            "prefilter for modified_cosine. Full scoring is the default; no "
+            "general candidate-recall guarantee is made for the prefilter."
         ),
     )
 

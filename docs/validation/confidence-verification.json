@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "base": "ffef50bff913fcf400cb3de72595dab50e4f3fd8",
+  "full_suite": {
+    "command": "uv run pytest --cov=src/MassFlow --cov-report=xml --cov-fail-under=80 -v",
+    "passed": 1393,
+    "skipped": 7,
+    "deselected": 35,
+    "warnings": 83,
+    "coverage_percent": 82.53,
+    "exit_code": 0
+  },
+  "targeted_passed": 98,
+  "new_test_cases": 37,
+  "oracle_vector_pairs": 1156,
+  "golden_reporting_cells_changed": 45,
+  "golden_numerical_cells_changed": 0,
+  "independent_review": "Partial independent review found complete-tie undercount, no-hit columns and unsupported warnings; reviewer exhausted quota before final complete review. Findings reproduced and corrected with red/green tests.",
+  "invalidated_intermediate_run": "Source documentation changed while coverage was running; that measurement failed coverage and is excluded. Frozen final rerun passes.",
+  "experimental_calibration": "pending",
+  "logs": {
+    "full": {
+      "sha256": "0e721ab41458956f007a7fd4f2a85e8a87062380b5587362e521c503537d7380",
+      "log": "/tmp/massflow-confidence-frozen-full.log"
+    },
+    "targeted": {
+      "sha256": "0fd655d0de51c04760094928c661c6af50f5e8e33118b52bbf9fffded36aca1f",
+      "log": "/tmp/massflow-confidence-final-targeted.log"
+    },
+    "mypy": {
+      "sha256": "08be5df65df817316c7db432cf723ab566c9c8cd54cfb1edc1a8e351e8da4c2f",
+      "log": "/tmp/massflow-confidence-final-mypy.log"
+    },
+    "ruff": {
+      "sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18",
+      "log": "/tmp/massflow-confidence-final-lint.log"
+    },
+    "docs": {
+      "log": "/tmp/massflow-confidence-final-docs.log",
+      "sha256": "bfe1a003515c5288d11d9a7b281cb705931e94599503130f3183b945ee6fdedd"
+    },
+    "build": {
+      "log": "/tmp/massflow-confidence-qualified-build.log",
+      "sha256": "c41476e6ea296fe915629b85ded95566c0554c633960765885f65b004f7e7d8a"
+    },
+    "ties_red": {
+      "sha256": "57f478bc304bdb6211109ee120ea0880da409655f1c6414ac986d95a580e0d96",
+      "log": "/tmp/massflow-confidence-ties-red.log"
+    },
+    "review_red": {
+      "sha256": "528978b4d5a2faa2520352a4bc8e8dd84fd6315fa7d9980549ca82e4bc96fb41",
+      "log": "/tmp/massflow-confidence-review-red.log"
+    }
+  },
+  "verified_source_commit": "78fcddc"
+}

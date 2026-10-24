@@ -10,6 +10,8 @@ deriving formulas), strict physical-integrity validation of declared chemistry
 It is designed to fail fast on invalid data while logging detailed diagnostics.
 """
 
+from __future__ import annotations
+
 import logging
 from typing import Any, Callable, Iterable, Iterator, List, Optional, Tuple
 
@@ -120,10 +122,10 @@ def physical_integrity_reason(spectrum: Spectrum) -> Optional[str]:
     human-readable rejection reason when the spectrum must not enter the
     search pool.
 
-    The check activates **only** for spectra that declare a structural claim
-    (``formula``, ``smiles``, or ``inchi``). Spectra without such a claim are
-    exempt (``None``) and pay no construction cost. Within a claim, the
-    verdicts follow the model contracts exactly:
+    A recognized explicit adduct/charge contradiction is rejected whenever
+    both are declared, even without a precursor or molecular structure. The
+    strict 5 ppm mass check additionally requires a structural claim
+    (``formula``, ``smiles``, or ``inchi``) and sufficient precursor context.
 
     * an unparseable SMILES/InChI claim is rejected;
     * a declared ``exact_mass`` conflicting with the formula-derived mass by
@@ -132,6 +134,8 @@ def physical_integrity_reason(spectrum: Spectrum) -> Optional[str]:
       or imputed from ``ionmode``), a precursor m/z deviating from the
       theoretical m/z by more than 5 ppm is rejected;
     * a non-registry adduct with an otherwise complete context is rejected;
+    * a charge contradicting the registered adduct's signed charge is rejected
+      whenever both are declared, even if precursor m/z is missing;
     * malformed structural metadata (e.g. an unparseable formula) is
       rejected with the underlying error.
 
@@ -156,6 +160,51 @@ def physical_integrity_reason(spectrum: Spectrum) -> Optional[str]:
     # stay out of the import graph for environments without the [chem] extra.
     from MassFlow.models import MolecularStructure, SpectrumMetadata
 
+    spec_id = _spectrum_identifier(spectrum)
+
+    # A declared, supported adduct defines a signed charge independently of
+    # precursor availability or structural metadata. Reject contradictions
+    # before the missing-precursor fast path so they cannot enter direct batch
+    # processing as apparently valid spectra.
+    charge_raw = spectrum.get("charge")
+    if isinstance(charge_raw, (list, tuple)) and len(charge_raw) > 0:
+        charge_raw = charge_raw[0]
+    elif hasattr(charge_raw, "__iter__") and not isinstance(charge_raw, (str, bytes)):
+        try:
+            charge_raw = next(iter(charge_raw))
+        except (StopIteration, TypeError):
+            charge_raw = None
+
+    adduct = _clean_optional_str(spectrum.get("adduct"))
+    charge: Optional[int] = None
+    if charge_raw not in (None, ""):
+        try:
+            numeric_charge = float(charge_raw)
+        except (TypeError, ValueError, OverflowError):
+            if adduct is not None:
+                return (
+                    f"spectrum {spec_id}: charge {charge_raw!r} is not numeric "
+                    f"for declared adduct {adduct!r}"
+                )
+        else:
+            if not np.isfinite(numeric_charge) or not numeric_charge.is_integer():
+                return (
+                    f"spectrum {spec_id}: charge {charge_raw!r} is not a finite "
+                    "integer charge state"
+                )
+            parsed_charge = int(numeric_charge)
+            if adduct is not None:
+                from MassFlow.cheminformatics import adduct_charge
+
+                expected_charge = adduct_charge(adduct)
+                if expected_charge is not None and parsed_charge != expected_charge:
+                    return (
+                        f"spectrum {spec_id}: charge {parsed_charge} contradicts "
+                        f"adduct {adduct!r}, which requires charge {expected_charge}"
+                    )
+            if parsed_charge != 0:
+                charge = parsed_charge
+
     precursor_raw = spectrum.get("precursor_mz")
     if precursor_raw is None:
         return None
@@ -173,8 +222,6 @@ def physical_integrity_reason(spectrum: Spectrum) -> Optional[str]:
         # Fast path: no structural claim -> nothing to verify. This is the
         # dominant case for raw experimental query files.
         return None
-
-    spec_id = _spectrum_identifier(spectrum)
 
     # exact_mass is only meaningful alongside a structural claim; keep it
     # None when absent so the models auto-fill it from the formula. Note:
@@ -196,25 +243,6 @@ def physical_integrity_reason(spectrum: Spectrum) -> Optional[str]:
                 f"({exact_mass_raw!r}) is not a finite number"
             )
 
-    # Charge: 0 / missing is treated as unknown (mirroring the streaming
-    # gate), which disables the strict mass check per the model contract.
-    # Normalize container-style charge values (mzML/MGF loaders can produce
-    # lists/iterables) the same way the batch metadata extraction does.
-    charge_raw = spectrum.get("charge")
-    if isinstance(charge_raw, (list, tuple)) and len(charge_raw) > 0:
-        charge_raw = charge_raw[0]
-    elif hasattr(charge_raw, "__iter__") and not isinstance(charge_raw, (str, bytes)):
-        try:
-            charge_raw = next(iter(charge_raw))
-        except (StopIteration, TypeError):
-            charge_raw = None
-    charge: Optional[int] = None
-    if charge_raw not in (None, 0, "", "0"):
-        try:
-            charge = int(charge_raw)
-        except (TypeError, ValueError):
-            charge = None
-
     # ionmode participates in the model via adduct imputation and the strict
     # positive/negative/neutral literal. An unparseable value means "unknown
     # ion mode": pass None so the model does not impute an adduct.
@@ -222,8 +250,6 @@ def physical_integrity_reason(spectrum: Spectrum) -> Optional[str]:
     ionmode_raw = _clean_optional_str(spectrum.get("ionmode"))
     if ionmode_raw in ("positive", "negative", "neutral"):
         ion_mode = ionmode_raw
-
-    adduct = _clean_optional_str(spectrum.get("adduct"))
 
     try:
         molecule = MolecularStructure(
@@ -283,9 +309,9 @@ def physical_integrity_reason(spectrum: Spectrum) -> Optional[str]:
         return None
 
     # The molecule is valid, so an invalid spectrum verdict is either an
-    # unsupported adduct or a >5 ppm precursor deviation. Recompute the
-    # display values (identical arithmetic to the model validator).
-    from MassFlow.cheminformatics import compute_adduct_offset
+    # unsupported adduct, contradictory charge, or >5 ppm precursor deviation.
+    # Recompute the display values (identical arithmetic to the model validator).
+    from MassFlow.cheminformatics import adduct_charge, compute_adduct_offset
 
     effective_adduct = metadata.adduct
     offset = compute_adduct_offset(effective_adduct) if effective_adduct else None
@@ -294,6 +320,12 @@ def physical_integrity_reason(spectrum: Spectrum) -> Optional[str]:
             f"spectrum {spec_id}: adduct {effective_adduct!r} is not supported "
             "by the MassFlow adduct registry; strict precursor validation "
             "cannot confirm the declared structure"
+        )
+    expected_charge = adduct_charge(effective_adduct)
+    if metadata.charge != expected_charge:
+        return (
+            f"spectrum {spec_id}: charge {metadata.charge} contradicts "
+            f"adduct {effective_adduct!r}, which requires charge {expected_charge}"
         )
     if metadata.charge and molecule.exact_mass is not None:
         theoretical_mz = (molecule.exact_mass + offset) / abs(metadata.charge)
@@ -374,7 +406,14 @@ def metadata_processing(
         # matchms filters return a new spectrum or None
         from matchms.filtering import repair_inchi_inchikey_smiles
 
-        s = repair_inchi_inchikey_smiles(s)
+        # The repair filter accepts absent strings, but explicit None values
+        # otherwise raise in SpeciesString and discard the entire acquisition.
+        # Normalize missing chemistry on a clone; never borrow another record.
+        s = s.clone()
+        for structural_field in ("inchi", "inchikey", "smiles"):
+            if s.get(structural_field) is None:
+                s.set(structural_field, "")
+        s = repair_inchi_inchikey_smiles(s, clone=False)
         if s is None:
             return None
         s = harmonize_undefined_smiles(s)
@@ -482,6 +521,18 @@ def peak_processing(
     return s
 
 
+def _coerce_batch_precursor_mz(value: object) -> np.float64:
+    """Convert a batch precursor m/z to float64, using NaN when invalid."""
+    if not np.isscalar(value):
+        return np.float64(np.nan)
+    scalar_value: Any = value
+    try:
+        precursor_mz = float(scalar_value)
+    except (TypeError, ValueError, OverflowError):
+        return np.float64(np.nan)
+    return np.float64(precursor_mz) if np.isfinite(precursor_mz) else np.float64(np.nan)
+
+
 def process_spectra_batch(
     spectra: List[Spectrum],
     config: ProcessingConfig,
@@ -533,18 +584,13 @@ def process_spectra_batch(
         except (ValueError, TypeError):
             rt = 0.0
 
-        try:
-            pmz = float(s.get("precursor_mz", 0.0))
-            if np.isnan(pmz):
-                pmz = 0.0
-        except (ValueError, TypeError):
-            pmz = 0.0
+        precursor_mz = _coerce_batch_precursor_mz(s.get("precursor_mz"))
 
         metadata_rows.append(
             {
                 "batch_index": i,
                 "id": s.get("id"),
-                "precursor_mz": pmz,
+                "precursor_mz": precursor_mz,
                 "retention_time": rt,
                 "charge": charge,
                 "ionmode": s.get("ionmode"),
@@ -555,22 +601,10 @@ def process_spectra_batch(
     # Use LazyFrame to prepare filters without immediate execution
     lf = pl.LazyFrame(metadata_rows)
 
-    # Apply batch-level metadata filters, gated on the same documented
-    # toggles as the per-spectrum path (peak_processing):
-    #   - filter_min_peaks controls the minimum-peak-count rejection;
-    #   - filter_by_mz controls the precursor m/z window.
-    # Without this gating, the batch path silently dropped spectra even when
-    # the toggles were disabled (a configuration that said "do not filter"
-    # filtered anyway).
-    mz_min = getattr(config, "mz_min", 0.0)
-    mz_max = getattr(config, "mz_max", 1000.0)
+    # Batch eligibility uses peak count only. filter_by_mz truncates fragment
+    # peaks later in peak_processing; precursor candidacy belongs to scoring.
     min_peaks = getattr(config, "min_peaks", 1)
-
     batch_filters = []
-    if getattr(config, "filter_by_mz", False):
-        batch_filters.append(
-            (pl.col("precursor_mz") >= mz_min) & (pl.col("precursor_mz") <= mz_max)
-        )
     if getattr(config, "filter_min_peaks", False):
         batch_filters.append(pl.col("peak_count") >= min_peaks)
 

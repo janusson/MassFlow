@@ -26,6 +26,7 @@ from typing import (
     Optional,
     Sequence,
     TypedDict,
+    NotRequired,
 )
 
 import numpy as np
@@ -115,6 +116,71 @@ if not _HAS_ML:
         "Install ML engines with: pip install massflow[ml]",
         ", ".join(missing),
     )
+
+
+def _require_reference_record_ids(
+    references: Sequence[Spectrum],
+    *,
+    include_decoys: bool,
+    seen_ids: set[str] | None = None,
+) -> None:
+    """Reject missing, duplicate, or target/decoy-colliding record IDs."""
+    identifiers = [reference.get("id") for reference in references]
+    if any(
+        identifier is None
+        or str(identifier).strip().lower() in {"", "none", "null", "nan"}
+        for identifier in identifiers
+    ):
+        raise ValueError(
+            "Reference spectra require non-empty unique record id values; load raw libraries "
+            "with assign_record_ids=True or rebuild the store."
+        )
+    current_ids = [str(identifier) for identifier in identifiers]
+    prior_ids = seen_ids if seen_ids is not None else set()
+    if len(set(current_ids)) != len(current_ids) or any(
+        identifier in prior_ids for identifier in current_ids
+    ):
+        raise ValueError(
+            "Reference spectra require unique record id values; chemical identity is not "
+            "spectral-record identity. Rebuild the library from raw sources."
+        )
+    all_ids = prior_ids | set(current_ids)
+    if include_decoys and any(
+        f"{identifier}_decoy" in all_ids for identifier in all_ids
+    ):
+        raise ValueError(
+            "Reference record IDs collide with generated decoy id values; rename source "
+            "IDs before rebuilding the library."
+        )
+    if seen_ids is not None:
+        seen_ids.update(current_ids)
+
+
+def _json_safe_metadata_value(value: Any) -> Any:
+    """Convert one Spectrum metadata value to deterministic JSON data."""
+    if isinstance(value, np.ndarray):
+        return [_json_safe_metadata_value(item) for item in value.tolist()]
+    if isinstance(value, np.generic):
+        return _json_safe_metadata_value(value.item())
+    if isinstance(value, float) and not np.isfinite(value):
+        return None
+    if isinstance(value, dict):
+        return {
+            str(key): _json_safe_metadata_value(item) for key, item in value.items()
+        }
+    if isinstance(value, (list, tuple)):
+        return [_json_safe_metadata_value(item) for item in value]
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    return str(value)
+
+
+def _reference_metadata(reference: Spectrum) -> dict[str, Any]:
+    """Return the complete source/acquisition metadata as JSON-safe values."""
+    return {
+        str(key): _json_safe_metadata_value(value)
+        for key, value in reference.metadata.items()
+    }
 
 
 def calculate_mass_error_ppm(query_mz: float, ref_mz: float) -> float:
@@ -222,10 +288,16 @@ def _handle_lazy_reference_spectra(func):
                 if k not in ("ref_precursor_mzs", "ref_is_decoy")
             }
 
+            seen_reference_ids: set[str] = set()
             for chunk in yield_fixed_chunks(reference_spectra, chunk_size=10000):
                 if not chunk:
                     continue
 
+                _require_reference_record_ids(
+                    chunk,
+                    include_decoys=include_decoys,
+                    seen_ids=seen_reference_ids,
+                )
                 processed_count += len(chunk)
                 logger.debug(
                     f"Streaming library... scored against {processed_count} reference spectra so far."
@@ -266,7 +338,7 @@ def _handle_lazy_reference_spectra(func):
 
                 final_res = []
                 for q_id, hits in grouped.items():
-                    hits.sort(key=lambda x: x["score"], reverse=True)
+                    hits.sort(key=lambda hit: (-hit["score"], hit["reference_id"]))
                     final_res.extend(hits[:top_n])
                 return final_res
             return all_results
@@ -302,6 +374,12 @@ class SearchResult(TypedDict):
     structural_similarity: float | None
     mass_error_ppm: float | None
     score_breakdown: dict[str, float] | None
+    confidence_state: NotRequired[str]
+    confidence_q_value: NotRequired[float | None]
+    confidence_method: NotRequired[str]
+    confidence_scope: NotRequired[str]
+    confidence_limitations: NotRequired[list[str]]
+    reference_metadata: NotRequired[dict[str, Any]]
 
 
 def _is_missing(val):
@@ -658,49 +736,14 @@ def generate_decoys(
     """Generate entropy-preserving decoy spectra for target-decoy FDR.
 
     Naive fragment shuffling is replaced with entropy-based decoy generation.
-    Each decoy:
-
-    1. **Preserves the precursor m/z** of its source spectrum.
-    2. **Preserves the spectral entropy** — the information content computed
-       with the spectral-entropy weighting (``I**0.5``) after a strict
-       baseline filter (peaks below ``min_relative_intensity`` × the base
-       peak are removed) — exactly, up to floating-point rounding. The decoy
-       also keeps its source's **complete peak list** (count and m/z density):
-       the baseline filter only decides which intensities are permuted, never
-       which peaks survive. A decoy must be as matchable as the library
-       spectrum it stands in for.
-    3. **Randomizes the fragmentation pathways**: intensities are reassigned
-       across the baseline-filtered peaks (random permutation of the filtered
-       intensity profile) and fragment positions are jittered by
-       ``±mz_shift_da``, so decoys share no fragment positions with their
-       source at scoring tolerance.
-
-    ``mz_shift_da`` scale matters and is the reason decoys rarely reach
-    production score gates: peak matching is positional within the configured
-    MS2 tolerance (0.02 Da by default), so a displacement of at least one
-    scoring tolerance is required for the decoy to *not* be a near-copy of its
-    source (a near-copy would let the true match's own decoy compete with the
-    true match and inflate the FDR). The flip side is that a displaced decoy
-    cannot share fragments with a query either, so decoy hits are scarce —
-    and at production thresholds (``min_score`` 0.6–0.7, ``min_matched_peaks``
-    3) they are typically absent entirely, which the engine reports as the
-    ``decoy_null_empty`` diagnostic and the workflow as ``fdr_uncalibrated``
-    (q-values are then the conservative ``1/N`` rank bound, not an
-    FDR estimate). Decoys are still fully scored and they do enter
-    target-decoy competition whenever a decoy hit passes the configured
-    gates.
-
-    Because the filtered intensity profile is permuted (not resampled), the
-    weighted intensity distribution — and therefore the spectral entropy —
-    is preserved exactly. This prevents the systematic entropy divergence
-    between targets and decoys that biases naive permutation-based FDR
-    calibration; raw chemical noise is excluded by the base-peak filter
-    before the information content is computed.
-
-    Degenerate spectra with fewer than two distinct filtered intensities are
-    tapered (random 0.5–1.0 multipliers) so the decoy is never identical to
-    its source; this can only occur for synthetic/uniform spectra and slightly
-    perturbs entropy for those cases.
+    Each decoy preserves precursor metadata and the full peak count, permutes
+    selected intensities and jitters fragment positions uniformly within
+    +/-mz_shift_da. Some displacements remain inside scoring tolerance; no
+    guarantee of fragment separation or credible incorrect-match chemistry follows.
+    Permutation preserves the selected intensity multiset. Degenerate intensities
+    may be tapered, changing entropy; that case is possible in measured spectra too.
+    Recorded source entropy alone does not validate target/decoy exchangeability.
+    Empty surviving nulls are explicitly diagnosed and have no statistical estimate.
 
     Parameters
     ----------
@@ -821,9 +864,8 @@ def generate_decoys(
                 permutation = np.roll(permutation, 1)
             decoy_intensities[keep_mask] = filtered_intensities[permutation]
 
-        # Jitter fragment positions so decoys share no fragment positions
-        # with their source at scoring tolerance; keep positions positive and
-        # ascending (MassFlow spectra are always m/z-sorted).
+        # Uniform fragment jitter can leave peaks within scoring tolerance.
+        # Keep positions positive and sorted; exchangeability is unvalidated.
         position_jitter = rng.uniform(-mz_shift_da, mz_shift_da, size=n_peaks)
         decoy_mz = np.maximum(mz_array + position_jitter, 0.01)
         sort_order = np.argsort(decoy_mz)
@@ -837,6 +879,22 @@ def generate_decoys(
         )
 
     return decoys
+
+
+def _validated_confidence_scores(values: np.ndarray) -> np.ndarray:
+    """Reject nonfinite/non-real/non-vector inputs before ranking confidence."""
+    array = np.asarray(values)
+    if array.ndim != 1 or array.dtype.kind in {"b", "c"}:
+        raise ValueError("Confidence score inputs must be one-dimensional real arrays.")
+    try:
+        array = np.asarray(values, dtype=np.float64)
+    except (TypeError, ValueError) as error:
+        raise ValueError(
+            "Confidence score inputs must be numerical real arrays."
+        ) from error
+    if not np.all(np.isfinite(array)):
+        raise ValueError("Confidence score inputs must contain only finite values.")
+    return array
 
 
 def calculate_empirical_p_values(
@@ -877,6 +935,8 @@ def calculate_empirical_p_values(
         Empirical p-values for each target score, same order as
         ``target_scores``.
     """
+    target_scores = _validated_confidence_scores(target_scores)
+    decoy_scores = _validated_confidence_scores(decoy_scores)
     if len(decoy_scores) == 0:
         return np.ones_like(target_scores)
 
@@ -909,22 +969,20 @@ def calculate_fdr(
 
         FDR(t) = (1 + #{decoy scores >= t}) / #{target scores >= t}
 
-    clipped to [0, 1] (conservative +1 pseudo-count prevents optimistic
-    0.0 values, particularly for small libraries). The q-value of a target
-    score ``s`` is the monotone closure min_{t <= s} FDR(t); it estimates
-    the expected fraction of false positives among all accepted queries
-    whose best target score is at least ``s``.
+    clipped to [0, 1]. The +1 pseudo-count prevents numerical zero. The q-value of a target
+    score ``s`` is the monotone closure min_{t <= s} FDR(t). Interpreting
+    this output as an error-rate estimate requires empirically unvalidated
+    assumptions about incorrect target matches and the decoy population.
 
-    TIES are handled conservatively: on equal scores, decoys are ranked
-    BEFORE targets, so a tied decoy is always counted against the target.
+    TIES are evaluated as complete score thresholds: all targets and decoys
+    at an equal score enter the counts together before monotone closure.
 
-    HETEROGENEOUS ENGINES: because each query's target hit and decoy hit
-    are scored by the same engine (classical, consensus, cascade, or the
-    router-assigned engine for that query), both the numerator and the
-    denominator are per-query counts on the same score scale. Pooling
-    across engines at the query level is therefore valid: a false-positive
-    query's best target score is exchangeable with its best decoy score
-    under the null, regardless of which engine scored it.
+    This is a pooled query-maxima estimator, not a paired winner-take-all
+    competition. A query can contribute to both score arrays. Null
+    exchangeability, including across routed engines and score gates, is an
+    empirical assumption, not established by using the same engine on each side.
+    The +1 pseudo-count prevents numerical zeros; it does not prove error control.
+    Empty-null outputs are historical rank diagnostics, not statistical bounds.
 
     Parameters
     ----------
@@ -942,13 +1000,15 @@ def calculate_fdr(
         - q_values: q-values corresponding to each sorted score. Shape: (N+M,).
         - is_target: Boolean mask; True for target scores, False for decoys.
     """
+    target_scores = _validated_confidence_scores(target_scores)
+    decoy_scores = _validated_confidence_scores(decoy_scores)
     if len(target_scores) == 0 and len(decoy_scores) == 0:
         return np.array([]), np.array([]), np.array([], dtype=bool)
 
     if len(decoy_scores) == 0:
         # No null evidence: no calibration is possible. q = 1/cum_targets
-        # (monotone-closed) is the conservative bound that every accepted
-        # query shares when the null is empty.
+        # (monotone-closed) is a legacy diagnostic shared by target queries;
+        # no statistical error bound is established by an empty null.
         sort_idx = np.argsort(target_scores)[::-1]
         sorted_scores = target_scores[sort_idx]
         cum_targets = np.arange(1, len(sorted_scores) + 1)
@@ -983,11 +1043,18 @@ def calculate_fdr(
     cum_targets = np.cumsum(sorted_is_target)
     cum_decoys = np.cumsum(~sorted_is_target)
 
+    # A threshold includes the ENTIRE equal-score block. Partial ranks inside
+    # a tie are not attainable score thresholds and can undercount decoys.
+    block_ends = np.flatnonzero(np.r_[sorted_scores[1:] != sorted_scores[:-1], True])
+    complete_indices = np.repeat(block_ends, np.diff(np.r_[-1, block_ends]))
+    complete_targets = cum_targets[complete_indices]
+    complete_decoys = cum_decoys[complete_indices]
+
     # Conservative pseudo-count formula: FDR = (cum_decoys + 1) / cum_targets.
     # Leading decoy ranks have cum_targets == 0; their FDR is defined as 1.0.
     with np.errstate(divide="ignore", invalid="ignore"):
-        fdr_raw = (cum_decoys + 1.0) / cum_targets
-    fdr = np.where(cum_targets > 0, fdr_raw, 1.0)
+        fdr_raw = (complete_decoys + 1.0) / complete_targets
+    fdr = np.where(complete_targets > 0, fdr_raw, 1.0)
     fdr = np.minimum(fdr, 1.0)
 
     # q-values: minimum FDR over all lower-scoring ranks (monotone closure).
@@ -1031,6 +1098,8 @@ def calibrate_query_level_fdr(
         if query_id is None:
             continue
         score = float(res["score"])
+        if not np.isfinite(score):
+            raise ValueError("Confidence candidates require finite scores.")
         if res.get("is_decoy", False):
             if score > best_decoy.get(query_id, -np.inf):
                 best_decoy[query_id] = score
@@ -1062,9 +1131,8 @@ def calibrate_query_level_fdr(
         ascending_scores = sorted_scores[::-1]
         ascending_q = q_values[::-1]
 
-        # Conservative per-score lookup: identical scores share the q-value
-        # of their LAST (lowest-ranked) occurrence, which is the largest
-        # q-value within the tie block.
+        # calculate_fdr assigns the complete-threshold q to the entire tie
+        # block; selecting any equal-score position now gives the same value.
         q_by_score: dict[float, float] = {}
         for score in np.unique(finite_targets):
             index = int(np.searchsorted(ascending_scores, score, side="right")) - 1
@@ -1145,7 +1213,7 @@ class SimilarityEngine:
         # pairs were scored, how good the best decoy hit was, and whether any
         # decoy hit reached the configured gates. This is what distinguishes
         # "decoys were scored and none qualified" (an empty decoy null: the
-        # q-values are the 1/N rank bound) from "decoys were never scored"
+        # q-values are legacy 1/N rank diagnostics) from "decoys were never scored"
         # (a plumbing failure).
         self._decoy_diagnostics: dict[str, Any] = {}
 
@@ -1207,8 +1275,8 @@ class SimilarityEngine:
             value from the initial configuration is used.
         top_n : int or None, optional
             An optional override for the maximum number of results to return per
-            query spectrum. If None, all matches exceeding the thresholds are
-            returned.
+            query spectrum after score, matched-peak, adduct-mode, and retention-
+            time filtering. If None, all eligible matches are returned.
         include_decoys : bool, optional
             If True, generate and search against decoy spectra for FDR calculation.
             If False, search only against the provided reference_spectra. Default
@@ -1248,8 +1316,10 @@ class SimilarityEngine:
 
         cutoff = min_score if min_score is not None else self.config.min_score
 
+        ref_list = list(reference_spectra)
+        _require_reference_record_ids(ref_list, include_decoys=include_decoys)
+
         if include_decoys:
-            ref_list = list(reference_spectra)
             effective_decoy_shift = (
                 decoy_mz_shift_da
                 if decoy_mz_shift_da is not None
@@ -1282,7 +1352,7 @@ class SimilarityEngine:
             all_references = ref_list + decoy_spectra
             n_targets = len(ref_list)
         else:
-            all_references = list(reference_spectra)
+            all_references = ref_list
             n_targets = len(all_references)
 
         n_queries = len(query_spectra)
@@ -1473,15 +1543,15 @@ class SimilarityEngine:
                 continue
 
             valid_scores = query_scores[valid_indices]
+            valid_reference_ids = np.array(
+                [str(all_references[index].get("id")) for index in valid_indices]
+            )
 
-            # Sort descending by score
-            sorted_idx_rel = np.argsort(valid_scores)[::-1]
-
-            # Apply Top N
-            if top_n is not None:
-                sorted_idx_rel = sorted_idx_rel[:top_n]
+            # Stable tie-break by acquisition record ID, independent of store order.
+            sorted_idx_rel = np.lexsort((valid_reference_ids, -valid_scores))
 
             final_indices = valid_indices[sorted_idx_rel]
+            query_results: List[SearchResult] = []
 
             # Extract Metadata
             q = query_spectra[i]
@@ -1516,7 +1586,7 @@ class SimilarityEngine:
                 if ref_is_decoy is not None and idx < len(ref_is_decoy):
                     is_decoy = bool(ref_is_decoy[idx])
 
-                results.append(
+                query_results.append(
                     {
                         "query_id": q_id,
                         "query_precursor_mz": q_mz_val,
@@ -1531,6 +1601,7 @@ class SimilarityEngine:
                         "inchikey": str(ref.get("inchikey"))
                         if ref.get("inchikey")
                         else None,
+                        "reference_metadata": _reference_metadata(ref),
                         "is_decoy": is_decoy,
                         "q_value": 1.0,  # Will be updated by FDR calculation
                         "p_value": None,  # Will be updated by empirical p-value calculation
@@ -1540,6 +1611,9 @@ class SimilarityEngine:
                         "score_breakdown": None,
                     }
                 )
+
+            # Ineligible high-scoring references must not consume result slots.
+            results.extend(query_results[:top_n])
 
         if include_decoys:
             self._record_decoy_diagnostics(
@@ -1565,7 +1639,7 @@ class SimilarityEngine:
         The decoy side is scored exactly like the target side and then passes
         through the same score / matched-peak / adduct / RT gates. When none of
         those gates is reached, the target-decoy competition has an empty null:
-        q-values fall back to the documented ``1/N`` rank bound and the run is
+        q-values fall back to the legacy ``1/N`` rank diagnostic and the run is
         reported as degraded (``decoy_null_empty`` here, ``fdr_uncalibrated``
         in the workflow). Recording *why* — decoys scored but below the gates,
         versus decoys never scored — is what makes the zero-decoy-hit report
@@ -1605,7 +1679,7 @@ class SimilarityEngine:
                 "Empty decoy null: %d decoy pairs scored, best decoy score "
                 "%.4f (score gate %.4f, matched-peak gate %d), no decoy hit "
                 "entered target-decoy competition. q-values are the "
-                "conservative 1/N rank bound, not an FDR estimate.",
+                "legacy 1/N rank diagnostic, not an FDR estimate.",
                 diagnostics["n_decoy_pairs_scored"],
                 diagnostics["best_decoy_score"],
                 cutoff,
@@ -2086,6 +2160,7 @@ class ConsensusEngine(_MLEngineBase):
             return []
 
         ref_list = list(reference_spectra)
+        _require_reference_record_ids(ref_list, include_decoys=include_decoys)
         cutoff = min_score if min_score is not None else self.config.min_score
         min_engines = self.config.consensus_min_engines
 
@@ -2173,9 +2248,7 @@ class ConsensusEngine(_MLEngineBase):
                 key = (res["query_id"], res["reference_id"])
                 if key not in buckets:
                     buckets[key] = {"scores": {}, "template": res}
-                # Reference libraries can contain duplicate (or missing) ids;
-                # keep the best per-algorithm score for the bucket rather
-                # than letting later results overwrite earlier ones.
+                # Reference IDs have already been validated as acquisition keys.
                 buckets[key]["scores"].setdefault(algo, []).append(res["score"])
 
         # ------------------------------------------------------------------
@@ -2227,6 +2300,7 @@ class ConsensusEngine(_MLEngineBase):
                     score_breakdown={
                         algo: max(scores) for algo, scores in scores_by_algo.items()
                     },
+                    reference_metadata=template.get("reference_metadata"),
                 )
             )
 
@@ -2590,6 +2664,7 @@ class CascadeEngine(_MLEngineBase):
             return []
 
         ref_list = list(reference_spectra)
+        _require_reference_record_ids(ref_list, include_decoys=include_decoys)
         lower_bound = self.config.cascade_lower_bound
         upper_bound = (
             min_score if min_score is not None else self.config.cascade_upper_bound
