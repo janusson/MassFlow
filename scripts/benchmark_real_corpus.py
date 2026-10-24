@@ -60,6 +60,7 @@ from scripts.benchmark_reporting import (  # noqa: E402
     compare_benchmark_reports,
     compare_result_rows,
     evaluate_query_retrieval,
+    summarize_diagnostics_by_source,
 )
 
 DEFAULT_CORPUS = Path.home() / "Projects/MassFlow/assets/spectral-libraries/msp"
@@ -993,6 +994,11 @@ def main(argv: Optional[list[str]] = None) -> int:
                         "selected_source_metadata", {}
                     ).get(query_id)
         metrics["retrieval_diagnostics"] = diagnostics_payload
+        metrics["retrieval_diagnostics_by_source"] = summarize_diagnostics_by_source(
+            labels,
+            diagnostics_payload,
+            min_query_peaks=args.min_query_peaks,
+        )
         metrics["truth_attribution"] = truth_attribution
         if args.compare_results_to is not None:
             with args.compare_results_to.open(newline="") as baseline_file:

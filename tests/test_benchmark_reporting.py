@@ -6,6 +6,7 @@ from scripts.benchmark_reporting import (
     compare_benchmark_reports,
     compare_result_rows,
     evaluate_query_retrieval,
+    summarize_diagnostics_by_source,
 )
 from scripts.benchmark_real_corpus import evaluate_real
 
@@ -274,3 +275,70 @@ def test_result_comparison_requires_identical_query_denominators() -> None:
             [{"query_id": "q1"}],
             [{"query_id": "q2"}],
         )
+
+
+def test_diagnostic_summary_by_source_keeps_preprocessing_and_search_denominators_separate() -> (
+    None
+):
+    labels = {
+        "ltq_rejected": {"source": "LTQ", "peak_count": 2},
+        "ltq_searched": {"source": "LTQ", "peak_count": 4},
+        "qtof_called": {"source": "QTOF", "peak_count": 4},
+    }
+    empty_distribution = {
+        "bin_edges": [index / 10 for index in range(11)],
+        "counts": [0] * 10,
+        "below_range": 0,
+        "above_range": 0,
+        "nonfinite": 0,
+    }
+    one_pair = {
+        "reference_pairs_total": 1,
+        "prefilter_pairs": 1,
+        "scored_pairs": 1,
+        "score_threshold_pass_pairs": 0,
+        "matched_peak_pass_pairs": 0,
+        "polarity_compatible_pairs": 0,
+        "rt_eligible_pairs": 0,
+        "eligible_before_top_n": 0,
+        "returned_by_search": 0,
+        "unattributable_pairs": 0,
+        "rejection_counts": {"score_below_threshold": 1},
+        "score_distribution": empty_distribution,
+    }
+    called_pair = {
+        **one_pair,
+        "score_threshold_pass_pairs": 1,
+        "matched_peak_pass_pairs": 1,
+        "polarity_compatible_pairs": 1,
+        "rt_eligible_pairs": 1,
+        "eligible_before_top_n": 1,
+        "returned_by_search": 1,
+        "rejection_counts": {},
+    }
+    diagnostics = {
+        "search": {
+            "queries": {
+                "ltq_searched": {
+                    "terminal_outcome": "score_below_threshold",
+                    "target": one_pair,
+                    "decoy": {**one_pair, "reference_pairs_total": 0},
+                },
+                "qtof_called": {
+                    "terminal_outcome": "candidate_returned",
+                    "confidence_state": "unavailable",
+                    "target": called_pair,
+                    "decoy": {**one_pair, "reference_pairs_total": 0},
+                },
+            }
+        }
+    }
+
+    result = summarize_diagnostics_by_source(labels, diagnostics, min_query_peaks=3)
+
+    assert result["by_source"]["LTQ"]["selected"] == 2
+    assert result["by_source"]["LTQ"]["preprocessing_rejected"] == 1
+    assert result["by_source"]["LTQ"]["searched"] == 1
+    assert result["by_source"]["LTQ"]["searched_without_candidate"] == 1
+    assert result["by_source"]["QTOF"]["with_candidate"] == 1
+    assert result["by_source"]["QTOF"]["confidence_state_counts"] == {"unavailable": 1}

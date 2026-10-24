@@ -791,3 +791,142 @@ def compare_result_rows(
         ),
         "by_query": per_query,
     }
+
+
+def summarize_diagnostics_by_source(
+    labels: Mapping[str, Mapping[str, Any]],
+    diagnostics: Mapping[str, Any],
+    *,
+    min_query_peaks: int,
+) -> dict[str, Any]:
+    """Aggregate production funnel evidence by benchmark query source.
+
+    Query selection and truth labels are used only to stratify benchmark
+    accounting. Reference-pair counts come from MassFlow's production funnel.
+
+    Parameters
+    ----------
+    labels : Mapping[str, Mapping[str, Any]]
+        Benchmark labels with ``source`` and ``peak_count`` fields.
+    diagnostics : Mapping[str, Any]
+        Versioned production retrieval-diagnostics artifact.
+    min_query_peaks : int
+        Effective preprocessing minimum-peak threshold.
+
+    Returns
+    -------
+    dict[str, Any]
+        Source-stratified terminal outcomes, pair-stage counts, and score
+        histograms. Missing query-stage observations remain unattributed.
+    """
+    search = diagnostics.get("search", {})
+    search_queries = search.get("queries", {}) if isinstance(search, Mapping) else {}
+    if not isinstance(search_queries, Mapping):
+        return {"status": "unavailable", "reason": "search queries were not reported"}
+
+    count_fields = (
+        "reference_pairs_total",
+        "prefilter_pairs",
+        "scored_pairs",
+        "score_threshold_pass_pairs",
+        "matched_peak_pass_pairs",
+        "polarity_compatible_pairs",
+        "rt_eligible_pairs",
+        "eligible_before_top_n",
+        "returned_by_search",
+        "unattributable_pairs",
+    )
+    source_ids: dict[str, set[str]] = defaultdict(set)
+    for query_id, label in labels.items():
+        source_ids[str(label.get("source", "unknown"))].add(str(query_id))
+
+    by_source: dict[str, Any] = {}
+    for source, selected_ids in sorted(source_ids.items()):
+        queries = {
+            query_id: search_queries[query_id]
+            for query_id in selected_ids
+            if query_id in search_queries
+        }
+        expected_preprocessing_rejections = {
+            query_id
+            for query_id in selected_ids
+            if int(labels[query_id].get("peak_count", min_query_peaks))
+            < min_query_peaks
+        }
+        unobserved_ids = selected_ids - set(queries)
+        unknown_ids = unobserved_ids - expected_preprocessing_rejections
+        terminal_counts: dict[str, int] = defaultdict(int)
+        terminal_counts["preprocessing_rejected"] = len(unobserved_ids - unknown_ids)
+        terminal_counts["unknown"] = len(unknown_ids)
+        confidence_counts: dict[str, int] = defaultdict(int)
+        pair_totals: dict[str, dict[str, Any]] = {}
+        for kind in ("target", "decoy"):
+            pair_totals[kind] = {
+                **{field: 0 for field in count_fields},
+                "rejection_counts": {},
+                "score_distribution": _empty_distribution_payload(),
+            }
+        for query in queries.values():
+            outcome = str(query.get("terminal_outcome", "unknown"))
+            terminal_counts[outcome] += 1
+            confidence_state = query.get("confidence_state")
+            if confidence_state not in (None, ""):
+                confidence_counts[str(confidence_state)] += 1
+            for kind in ("target", "decoy"):
+                source_counts = query.get(kind, {})
+                destination = pair_totals[kind]
+                for field in count_fields:
+                    destination[field] += int(source_counts.get(field, 0))
+                for reason, count in source_counts.get("rejection_counts", {}).items():
+                    destination["rejection_counts"][reason] = destination[
+                        "rejection_counts"
+                    ].get(reason, 0) + int(count)
+                _merge_distribution_payload(
+                    destination["score_distribution"],
+                    source_counts.get(
+                        "score_distribution", _empty_distribution_payload()
+                    ),
+                )
+        searched = len(queries)
+        called = terminal_counts.get("candidate_returned", 0)
+        by_source[source] = {
+            "selected": len(selected_ids),
+            "preprocessing_rejected": terminal_counts["preprocessing_rejected"],
+            "searched": searched,
+            "searched_without_candidate": searched - called,
+            "with_candidate": called,
+            "unknown_or_unattributable": terminal_counts["unknown"],
+            "terminal_query_outcomes": dict(sorted(terminal_counts.items())),
+            "confidence_state_counts": dict(sorted(confidence_counts.items())),
+            "pair_stages": pair_totals,
+        }
+    return {"status": "collected", "by_source": by_source}
+
+
+def _empty_distribution_payload() -> dict[str, Any]:
+    """Create a zeroed score histogram compatible with core diagnostics."""
+    return {
+        "bin_edges": [index / 10 for index in range(11)],
+        "counts": [0] * 10,
+        "below_range": 0,
+        "above_range": 0,
+        "nonfinite": 0,
+    }
+
+
+def _merge_distribution_payload(
+    destination: dict[str, Any], source: Mapping[str, Any]
+) -> None:
+    """Add one fixed-bin score histogram into a source-level histogram."""
+    source_edges = source.get("bin_edges", [])
+    if len(destination["bin_edges"]) != len(source_edges) or any(
+        abs(float(left) - float(right)) > 1e-15
+        for left, right in zip(destination["bin_edges"], source_edges)
+    ):
+        raise ValueError("cannot merge score histograms with different bin edges")
+    destination["counts"] = [
+        int(left) + int(right)
+        for left, right in zip(destination["counts"], source.get("counts", []))
+    ]
+    for field in ("below_range", "above_range", "nonfinite"):
+        destination[field] += int(source.get(field, 0))
