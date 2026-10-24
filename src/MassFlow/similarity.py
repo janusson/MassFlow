@@ -451,8 +451,8 @@ def _ms1_prefilter_arrays(
         ]
     )
 
-    # References with mz <= 0 are treated as missing.
-    ref_missing = ref_mzs <= 0.0
+    # References with mz <= 0 or np.nan are treated as missing.
+    ref_missing = np.isnan(ref_mzs) | (ref_mzs <= 0.0)
     ref_mzs_safe = np.where(ref_missing, 0.0, ref_mzs)
 
     query_mzs_indexed = list(enumerate(query_mzs))

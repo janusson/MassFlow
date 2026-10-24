@@ -7,7 +7,7 @@ missing precursor_mz values bypass the filter (i.e., entries are included).
 import numpy as np
 from matchms import Spectrum
 
-from MassFlow.similarity import _ms1_prefilter
+from MassFlow.similarity import _ms1_prefilter, _ms1_prefilter_arrays
 
 
 def make_mock_spectrum(spectrum_id: str, precursor_mz: float) -> Spectrum:
@@ -95,6 +95,26 @@ def test_ms1_prefilter_missing_precursor_bypass():
     ]
 
     rows, cols = _ms1_prefilter(refs, queries, ms1_tolerance=0.1, resolution_ppm=None)
+    pairs = list(zip(rows.tolist(), cols.tolist()))
+
+    # q1 (100.0) should match r1 (100.0) and r2 (np.nan, which bypasses the filter)
+    q1_rows = {r for r, c in pairs if c == 0}
+    assert q1_rows == {0, 1}
+
+    # q2 (np.nan) should bypass the filter and match both r1 and r2
+    q2_rows = {r for r, c in pairs if c == 1}
+    assert q2_rows == {0, 1}
+
+
+def test_ms1_prefilter_arrays_missing_precursor_bypass():
+    # Similar to test_ms1_prefilter_missing_precursor_bypass but for the array version
+    ref_mzs = np.array([100.0, np.nan], dtype=np.float64)
+    queries = [
+        make_mock_spectrum("q1", 100.0),
+        make_mock_spectrum("q2", np.nan),
+    ]
+
+    rows, cols = _ms1_prefilter_arrays(ref_mzs, queries, ms1_tolerance=0.1, resolution_ppm=None)
     pairs = list(zip(rows.tolist(), cols.tolist()))
 
     # q1 (100.0) should match r1 (100.0) and r2 (np.nan, which bypasses the filter)
