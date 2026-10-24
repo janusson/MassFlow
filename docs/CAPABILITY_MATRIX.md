@@ -31,7 +31,7 @@ The proposed supported candidate-release surface (subject to the evidence gates 
 | Confidence | Pooled per-query target/decoy numerical diagnostics with explicit estimated_uncalibrated/unavailable/invalid states; no calibrated-FDR claim (see the [confidence contract](user-guide/confidence-semantics.md)) |
 | Storage | SQLite libraries (`massflow db build/inspect/merge`) with persisted build lineage; Zarr/hybrid and migration utilities are experimental |
 | Exports | Per-input CSV and mzTab-M tables with YAML provenance and source-record metadata; mzTab-M standards conformance is not independently qualified |
-| Metadata checks | Fixed 5 ppm precursor and registered charge/adduct consistency checks when declared structural context is sufficient; these checks do not confirm an identity or establish universal instrument/adduct validity |
+| Metadata checks | Recognized declared adduct/charge pairs must agree in signed charge; fixed 5 ppm precursor checks require structural and precursor context. These checks do not confirm identity or establish universal instrument/adduct validity |
 | Python API | `MassFlow.config`, `io`, `processing`, `similarity`, `database`, `storage`, `zarr_store`, `workflow`, `models`, `cheminformatics`, `protocols`, `ml_client` |
 
 **Excluded from the proposed 1.0 support promise:**

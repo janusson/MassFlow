@@ -24,12 +24,12 @@ If the deviation is greater than **5.0 ppm**, the declared metadata fails this f
 
 * **Model layer** — the two Pydantic contracts above always compute the verdict (`is_physically_valid`); this is the stable core implementation, and both streaming and classical paths consume it.
 * **Streaming ingestion gate** (experimental `stream-server`) — incoming packets that violate the contracts are rejected with a structured `StreamingValidationError` before scoring.
-* **Classical `annotate` / `db build` processing gate** — during metadata processing (`MassFlow.processing`), every spectrum that declares a structural claim (formula, SMILES, or InChI) is checked after `matchms` harmonization:
+* **Classical `annotate` / `db build` processing gate** — during metadata processing (`MassFlow.processing`), explicitly declared recognized adduct/charge pairs are checked after `matchms` harmonization; spectra with structural claims also receive structural and 5 ppm mass checks:
   * a *query* spectrum that fails the gate (malformed claim, unsupported adduct with a complete context, or a **>5 ppm** precursor deviation) is **rejected and counted** (`spectra_rejected`) with a human-readable reason in the quarantine log; a file whose spectra are all rejected is an explicit `failed` result with the reasons in `<stem>_failed.report.yaml`;
   * a *raw reference library* entry that fails the gate **aborts the annotate run** with a `PhysicalIntegrityError` listing the offending spectra, because silently changing the candidate library would change every query's search results and legacy numerical estimates. `massflow db build` is the curation workflow: it quarantines such entries (they are never stored) and reports the stored count.
-  * spectra **without** structural claims are exempt — the check only applies to declared chemistry, so raw experimental files (which carry no formula/SMILES) pass through at no measurable cost.
+  * spectra **without** structural claims skip the structural/5 ppm mass checks, but an explicitly declared supported adduct/charge pair is still validated.
 
-An adduct is required for the precursor-mass comparison: it may be declared explicitly or imputed from `ionmode` (`positive` → `[M+H]+`, `negative` → `[M-H]-`). When no adduct and no ion mode are available, or when the charge is unknown, the strict comparison is skipped for that spectrum exactly as documented for `SpectrumMetadata`.
+An adduct is required for the precursor-mass comparison: it may be declared explicitly or imputed from `ionmode` (`positive` → `[M+H]+`, `negative` → `[M-H]-`). When a recognized adduct and charge are both explicitly declared, their signed-charge consistency is checked independently of precursor availability. The 5 ppm mass comparison still requires a structural claim and usable precursor mass. Missing adduct/charge context skips the corresponding check.
 
 ### Applying validation changes to stored libraries
 

@@ -122,10 +122,10 @@ def physical_integrity_reason(spectrum: Spectrum) -> Optional[str]:
     human-readable rejection reason when the spectrum must not enter the
     search pool.
 
-    The check activates **only** for spectra that declare a structural claim
-    (``formula``, ``smiles``, or ``inchi``). Spectra without such a claim are
-    exempt (``None``) and pay no construction cost. Within a claim, the
-    verdicts follow the model contracts exactly:
+    A recognized explicit adduct/charge contradiction is rejected whenever
+    both are declared, even without a precursor or molecular structure. The
+    strict 5 ppm mass check additionally requires a structural claim
+    (``formula``, ``smiles``, or ``inchi``) and sufficient precursor context.
 
     * an unparseable SMILES/InChI claim is rejected;
     * a declared ``exact_mass`` conflicting with the formula-derived mass by
@@ -134,7 +134,8 @@ def physical_integrity_reason(spectrum: Spectrum) -> Optional[str]:
       or imputed from ``ionmode``), a precursor m/z deviating from the
       theoretical m/z by more than 5 ppm is rejected;
     * a non-registry adduct with an otherwise complete context is rejected;
-    * a charge contradicting the registered adduct's signed charge is rejected;
+    * a charge contradicting the registered adduct's signed charge is rejected
+      whenever both are declared, even if precursor m/z is missing;
     * malformed structural metadata (e.g. an unparseable formula) is
       rejected with the underlying error.
 
@@ -159,6 +160,51 @@ def physical_integrity_reason(spectrum: Spectrum) -> Optional[str]:
     # stay out of the import graph for environments without the [chem] extra.
     from MassFlow.models import MolecularStructure, SpectrumMetadata
 
+    spec_id = _spectrum_identifier(spectrum)
+
+    # A declared, supported adduct defines a signed charge independently of
+    # precursor availability or structural metadata. Reject contradictions
+    # before the missing-precursor fast path so they cannot enter direct batch
+    # processing as apparently valid spectra.
+    charge_raw = spectrum.get("charge")
+    if isinstance(charge_raw, (list, tuple)) and len(charge_raw) > 0:
+        charge_raw = charge_raw[0]
+    elif hasattr(charge_raw, "__iter__") and not isinstance(charge_raw, (str, bytes)):
+        try:
+            charge_raw = next(iter(charge_raw))
+        except (StopIteration, TypeError):
+            charge_raw = None
+
+    adduct = _clean_optional_str(spectrum.get("adduct"))
+    charge: Optional[int] = None
+    if charge_raw not in (None, ""):
+        try:
+            numeric_charge = float(charge_raw)
+        except (TypeError, ValueError, OverflowError):
+            if adduct is not None:
+                return (
+                    f"spectrum {spec_id}: charge {charge_raw!r} is not numeric "
+                    f"for declared adduct {adduct!r}"
+                )
+        else:
+            if not np.isfinite(numeric_charge) or not numeric_charge.is_integer():
+                return (
+                    f"spectrum {spec_id}: charge {charge_raw!r} is not a finite "
+                    "integer charge state"
+                )
+            parsed_charge = int(numeric_charge)
+            if adduct is not None:
+                from MassFlow.cheminformatics import adduct_charge
+
+                expected_charge = adduct_charge(adduct)
+                if expected_charge is not None and parsed_charge != expected_charge:
+                    return (
+                        f"spectrum {spec_id}: charge {parsed_charge} contradicts "
+                        f"adduct {adduct!r}, which requires charge {expected_charge}"
+                    )
+            if parsed_charge != 0:
+                charge = parsed_charge
+
     precursor_raw = spectrum.get("precursor_mz")
     if precursor_raw is None:
         return None
@@ -176,8 +222,6 @@ def physical_integrity_reason(spectrum: Spectrum) -> Optional[str]:
         # Fast path: no structural claim -> nothing to verify. This is the
         # dominant case for raw experimental query files.
         return None
-
-    spec_id = _spectrum_identifier(spectrum)
 
     # exact_mass is only meaningful alongside a structural claim; keep it
     # None when absent so the models auto-fill it from the formula. Note:
@@ -199,25 +243,6 @@ def physical_integrity_reason(spectrum: Spectrum) -> Optional[str]:
                 f"({exact_mass_raw!r}) is not a finite number"
             )
 
-    # Charge: 0 / missing is treated as unknown (mirroring the streaming
-    # gate), which disables the strict mass check per the model contract.
-    # Normalize container-style charge values (mzML/MGF loaders can produce
-    # lists/iterables) the same way the batch metadata extraction does.
-    charge_raw = spectrum.get("charge")
-    if isinstance(charge_raw, (list, tuple)) and len(charge_raw) > 0:
-        charge_raw = charge_raw[0]
-    elif hasattr(charge_raw, "__iter__") and not isinstance(charge_raw, (str, bytes)):
-        try:
-            charge_raw = next(iter(charge_raw))
-        except (StopIteration, TypeError):
-            charge_raw = None
-    charge: Optional[int] = None
-    if charge_raw not in (None, 0, "", "0"):
-        try:
-            charge = int(charge_raw)
-        except (TypeError, ValueError):
-            charge = None
-
     # ionmode participates in the model via adduct imputation and the strict
     # positive/negative/neutral literal. An unparseable value means "unknown
     # ion mode": pass None so the model does not impute an adduct.
@@ -225,8 +250,6 @@ def physical_integrity_reason(spectrum: Spectrum) -> Optional[str]:
     ionmode_raw = _clean_optional_str(spectrum.get("ionmode"))
     if ionmode_raw in ("positive", "negative", "neutral"):
         ion_mode = ionmode_raw
-
-    adduct = _clean_optional_str(spectrum.get("adduct"))
 
     try:
         molecule = MolecularStructure(

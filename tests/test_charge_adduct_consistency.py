@@ -170,6 +170,53 @@ def test_batch_quarantines_contradictory_charge(
 
 
 @pytest.mark.parametrize(
+    ("adduct", "charge", "expected_retained"),
+    [
+        ("[M+2H]2+", 1, False),
+        ("[M-H]-", 1, False),
+        ("[M+H]+", 1.5, False),
+        ("[M+2H]2+", 2, True),
+    ],
+)
+def test_explicit_adduct_charge_is_checked_without_precursor(
+    adduct: str, charge: float, expected_retained: bool
+) -> None:
+    """Missing precursor data cannot bypass a known charge/adduct mismatch."""
+    spectrum = Spectrum(
+        mz=np.array([100.0], dtype=np.float64),
+        intensities=np.array([1.0], dtype=np.float64),
+        metadata={
+            "id": "adduct-charge-record",
+            "precursor_mz": None,
+            "adduct": adduct,
+            "charge": charge,
+        },
+        metadata_harmonization=False,
+    )
+    reasons: list[str] = []
+    retained = process_spectra_batch(
+        [spectrum],
+        ProcessingConfig(
+            min_peaks=1,
+            filter_min_peaks=False,
+            filter_by_intensity=False,
+            filter_by_mz=False,
+            normalize_intensity=False,
+        ),
+        rejection_reporter=reasons.append,
+    )
+
+    assert bool(retained) is expected_retained
+    if expected_retained:
+        assert retained[0].get("precursor_mz") is None
+        assert reasons == []
+    else:
+        assert retained == []
+        assert len(reasons) == 1
+        assert "charge" in reasons[0].lower()
+
+
+@pytest.mark.parametrize(
     ("charge", "precursor_mz"),
     [(1, 2 * DOUBLY_PROTONATED_MZ), (2, DOUBLY_PROTONATED_MZ)],
 )
