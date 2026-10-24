@@ -381,6 +381,29 @@ def compare_benchmark_reports(
     }
 
 
+def _truth_pair_terminal_reason(
+    pair_stages: Mapping[str, Any], candidate_generation: str
+) -> str:
+    """Return the first observed gate that removes every remaining truth pair."""
+    from MassFlow.diagnostics import DiagnosticReason
+
+    if int(pair_stages.get("prefilter_pairs", 0)) == 0:
+        if candidate_generation == "ms1_precursor_window":
+            return DiagnosticReason.NO_PRECURSOR_CANDIDATES.value
+        if candidate_generation == "modified_cosine_pair_prefilter":
+            return DiagnosticReason.PREFILTER_REJECTED.value
+        return DiagnosticReason.NO_ELIGIBLE_CANDIDATE.value
+    if int(pair_stages.get("score_threshold_pass_pairs", 0)) == 0:
+        return DiagnosticReason.SCORE_BELOW_THRESHOLD.value
+    if int(pair_stages.get("matched_peak_pass_pairs", 0)) == 0:
+        return DiagnosticReason.INSUFFICIENT_FRAGMENT_MATCHES.value
+    if int(pair_stages.get("polarity_compatible_pairs", 0)) == 0:
+        return DiagnosticReason.POLARITY_INCOMPATIBLE.value
+    if int(pair_stages.get("rt_eligible_pairs", 0)) == 0:
+        return DiagnosticReason.RT_OUTSIDE_TOLERANCE.value
+    return DiagnosticReason.NO_ELIGIBLE_CANDIDATE.value
+
+
 def attribute_truth_candidates(
     labels: Mapping[str, Mapping[str, Any]],
     result_rows: Sequence[Mapping[str, Any]],
@@ -551,21 +574,10 @@ def attribute_truth_candidates(
                 else:
                     attribution = "truth_pair_eligible_but_not_in_export_unknown"
             else:
-                rejection_counts = truth_pair_counts.get("rejection_counts", {})
-                observed_reasons = [
-                    reason
-                    for reason, count in rejection_counts.items()
-                    if int(count) > 0
-                ]
-                if observed_reasons:
-                    attribution = observed_reasons[0]
-                else:
-                    attribution = str(
-                        query_diagnostics.get(
-                            "terminal_outcome",
-                            DiagnosticReason.NO_ELIGIBLE_CANDIDATE.value,
-                        )
-                    )
+                attribution = _truth_pair_terminal_reason(
+                    truth_pair_counts,
+                    str(truth_diagnostics.get("candidate_generation", "unknown")),
+                )
 
         classifications[attribution] = classifications.get(attribution, 0) + 1
         per_query[str(query_id)] = {

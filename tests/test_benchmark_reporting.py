@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from scripts.benchmark_reporting import (
+    _truth_pair_terminal_reason,
     compare_benchmark_reports,
     compare_result_rows,
     evaluate_query_retrieval,
@@ -392,4 +393,32 @@ def test_truth_precursor_audit_uses_serialized_values_and_explicit_denominators(
     )
     assert (
         source["tolerances"]["0.02_Da"]["searched_true_reference_pairs_in_window"] == 1
+    )
+
+
+def test_truth_pair_attribution_uses_last_surviving_stage() -> None:
+    mixed_truth_pairs = {
+        "prefilter_pairs": 1,
+        "score_threshold_pass_pairs": 0,
+        "matched_peak_pass_pairs": 0,
+        "polarity_compatible_pairs": 0,
+        "rt_eligible_pairs": 0,
+    }
+    assert (
+        _truth_pair_terminal_reason(mixed_truth_pairs, "ms1_precursor_window")
+        == "score_below_threshold"
+    )
+    assert (
+        _truth_pair_terminal_reason(
+            {**mixed_truth_pairs, "prefilter_pairs": 0},
+            "ms1_precursor_window",
+        )
+        == "no_precursor_candidates"
+    )
+    assert (
+        _truth_pair_terminal_reason(
+            {**mixed_truth_pairs, "score_threshold_pass_pairs": 1},
+            "ms1_precursor_window",
+        )
+        == "insufficient_fragment_matches"
     )
