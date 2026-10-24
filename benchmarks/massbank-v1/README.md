@@ -1,6 +1,6 @@
 # Frozen measured-spectrum diagnostic benchmark
 
-See [measured results and limitations](RESULTS.md) for the completed clean run.
+See [measured results and limitations](RESULTS.md) for the original clean baseline and [the integrated candidate rerun](INTEGRATION.md) for before/after results on the stabilization SHA.
 
 This is an executable, small **diagnostic**, not a validated identification method
 or FDR-control certificate. Production algorithms are unchanged on main
