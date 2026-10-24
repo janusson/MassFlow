@@ -471,14 +471,26 @@ def run_arm(
         prepared_library_path=str(output / "native" / "library_library.db"),
         run_diagnostics=(results[0].retrieval_diagnostics if results else None),
     )
-    for query_attribution in truth_attribution.get("by_query", {}).values():
+    accounting_by_id = {row["query_id"]: row for row in accounting}
+    eligible_attributions: Counter[str] = Counter()
+    for query_id, query_attribution in truth_attribution.get("by_query", {}).items():
+        query_accounting = accounting_by_id[query_id]
         query_attribution["truth_identity_endpoint"] = "full InChIKey"
+        query_attribution["benchmark_eligible"] = query_accounting["eligible"]
+        query_attribution["truth_library_present_by_connectivity"] = query_accounting[
+            "present"
+        ]
         query_attribution["truth_reference_preparation_rejections"] = {
             reference_id: payload["reference_rejection_reasons"].get(reference_id, [])
             for reference_id in query_attribution.get(
                 "truth_reference_ids_missing_after_preparation", []
             )
         }
+        if query_accounting["eligible"]:
+            eligible_attributions[str(query_attribution["attribution"])] += 1
+    truth_attribution["primary_eligible_classification_counts"] = dict(
+        sorted(eligible_attributions.items())
+    )
     payload["truth_attribution"] = truth_attribution
 
     for name, values in [
