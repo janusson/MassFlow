@@ -352,6 +352,77 @@ def _adduct_modes_compatible(ref_adduct: str | None, query_adduct: str | None) -
     return ref_sign == query_sign
 
 
+def _ms1_reference_missing_mask(ref_mzs: np.ndarray, missing: np.ndarray) -> np.ndarray:
+    """Preserve the legacy non-positive reference sentinel as missing.
+
+    Missing references are ``None``/``NaN`` or a finite non-positive sentinel.
+    Infinite values are not missing: they are invalid masses and generate no
+    window candidates.
+    """
+    return missing | (np.isfinite(ref_mzs) & (ref_mzs <= 0.0))
+
+
+def _ms1_prefilter_pairs(
+    ref_mzs: np.ndarray,
+    ref_missing: np.ndarray,
+    query_mzs: np.ndarray,
+    query_missing: np.ndarray,
+    ms1_tolerance: float,
+    resolution_ppm: Optional[float],
+) -> tuple[np.ndarray, np.ndarray]:
+    """Generate unique MS1 candidate pairs for both prefilter implementations.
+
+    A missing reference (``None``/``NaN`` or finite non-positive sentinel) or a
+    missing query (``None``/``NaN``) bypasses the window. Infinite masses are
+    invalid and generate no window pairs. A pair whose reference and query are
+    both missing is emitted exactly once. Bypassing this candidate-generation
+    filter is not identification evidence; the normal score, matched-peak, and
+    physical-integrity gates still apply.
+    """
+    ref_valid = ~ref_missing & np.isfinite(ref_mzs) & (ref_mzs > 0.0)
+    query_valid = ~query_missing & np.isfinite(query_mzs) & (query_mzs > 0.0)
+
+    ref_valid_indices = np.flatnonzero(ref_valid)
+    order = np.argsort(ref_mzs[ref_valid_indices], kind="stable")
+    ref_sorted_indices = ref_valid_indices[order]
+    ref_sorted_mzs = ref_mzs[ref_sorted_indices]
+
+    # Use binary search for O(Q * log(R)) complexity, avoiding O(R * Q) dense
+    # arrays. Both Da and PPM paths share this logic, differing only in the
+    # half-window size computed per query.
+    rows: List[int] = []
+    cols: List[int] = []
+    for query_idx in np.flatnonzero(query_valid):
+        query_mz = float(query_mzs[query_idx])
+        if resolution_ppm is not None:
+            # Use the query m/z as the reference for the ppm -> Da conversion.
+            half_window = resolution_ppm * query_mz / 1e6
+        else:
+            half_window = ms1_tolerance
+
+        start_idx = np.searchsorted(ref_sorted_mzs, query_mz - half_window, side="left")
+        end_idx = np.searchsorted(ref_sorted_mzs, query_mz + half_window, side="right")
+        candidates = ref_sorted_indices[start_idx:end_idx]
+        rows.extend(int(index) for index in candidates)
+        cols.extend([int(query_idx)] * len(candidates))
+
+    n_queries = int(query_mzs.size)
+    n_references = int(ref_mzs.size)
+    for reference_idx in np.flatnonzero(ref_missing):
+        rows.extend([int(reference_idx)] * n_queries)
+        cols.extend(range(n_queries))
+    for query_idx in np.flatnonzero(query_missing):
+        rows.extend(range(n_references))
+        cols.extend([int(query_idx)] * n_references)
+
+    if np.any(ref_missing) and np.any(query_missing):
+        unique_pairs = sorted(set(zip(rows, cols)))
+        rows = [row for row, _ in unique_pairs]
+        cols = [column for _, column in unique_pairs]
+
+    return np.array(rows, dtype=np.intp), np.array(cols, dtype=np.intp)
+
+
 def _ms1_prefilter(
     all_references: List[Spectrum],
     query_spectra: List[Spectrum],
@@ -370,10 +441,8 @@ def _ms1_prefilter(
         q.get("precursor_mz") for q in query_spectra
     ]  # type: ignore[assignment]
 
-    # Track missing precursors to allow them to bypass the MS1 filter
     ref_missing = np.array([_is_missing(r) for r in ref_mzs_raw], dtype=bool)
     query_missing = np.array([_is_missing(q) for q in query_mzs_raw], dtype=bool)
-
     ref_mzs = np.array(
         [float(r) if r is not None and not _is_missing(r) else 0.0 for r in ref_mzs_raw]
     )
@@ -383,44 +452,15 @@ def _ms1_prefilter(
             for q in query_mzs_raw
         ]
     )
-
-    # Use binary search for O(Q * log(R)) complexity, avoiding O(R * Q) dense arrays.
-    # Both Da and PPM tolerance paths share the same logic, differing only in the
-    # half-window size computed per query.
-    query_mzs_indexed = list(enumerate(query_mzs))
-    ref_mzs_sorted_indices = np.argsort(ref_mzs)
-    ref_mzs_sorted = ref_mzs[ref_mzs_sorted_indices]
-
-    rows: List[int] = []
-    cols: List[int] = []
-    for query_idx, query_mz in query_mzs_indexed:
-        if query_mz > 0:
-            if resolution_ppm is not None:
-                # Use the query m/z as the reference for the ppm → Da conversion
-                # (see docstring note on denominator convention).
-                half_window = resolution_ppm * query_mz / 1e6
-            else:
-                half_window = ms1_tolerance
-
-            min_mz = query_mz - half_window
-            max_mz = query_mz + half_window
-
-            start_idx = np.searchsorted(ref_mzs_sorted, min_mz, side="left")
-            end_idx = np.searchsorted(ref_mzs_sorted, max_mz, side="right")
-
-            original_indices = ref_mzs_sorted_indices[start_idx:end_idx]
-            rows.extend(original_indices)
-            cols.extend([query_idx] * len(original_indices))
-
-    # Also include spectra with missing precursors, as they bypass the filter
-    for i in np.where(ref_missing)[0]:
-        rows.extend([i] * len(query_mzs))
-        cols.extend(range(len(query_mzs)))
-    for i in np.where(query_missing)[0]:
-        rows.extend(range(len(ref_mzs)))
-        cols.extend([i] * len(ref_mzs))
-
-    return np.array(rows), np.array(cols)
+    ref_missing = _ms1_reference_missing_mask(ref_mzs, ref_missing)
+    return _ms1_prefilter_pairs(
+        ref_mzs,
+        ref_missing,
+        query_mzs,
+        query_missing,
+        ms1_tolerance,
+        resolution_ppm,
+    )
 
 
 def _ms1_prefilter_arrays(
@@ -450,43 +490,16 @@ def _ms1_prefilter_arrays(
             for q in query_mzs_raw
         ]
     )
-
-    # References with mz <= 0 or np.nan are treated as missing.
-    ref_missing = np.isnan(ref_mzs) | (ref_mzs <= 0.0)
-    ref_mzs_safe = np.where(ref_missing, 0.0, ref_mzs)
-
-    query_mzs_indexed = list(enumerate(query_mzs))
-    ref_mzs_sorted_indices = np.argsort(ref_mzs_safe)
-    ref_mzs_sorted = ref_mzs_safe[ref_mzs_sorted_indices]
-
-    rows: List[int] = []
-    cols: List[int] = []
-    for query_idx, query_mz in query_mzs_indexed:
-        if query_mz > 0:
-            if resolution_ppm is not None:
-                half_window = resolution_ppm * query_mz / 1e6
-            else:
-                half_window = ms1_tolerance
-
-            min_mz = query_mz - half_window
-            max_mz = query_mz + half_window
-
-            start_idx = np.searchsorted(ref_mzs_sorted, min_mz, side="left")
-            end_idx = np.searchsorted(ref_mzs_sorted, max_mz, side="right")
-
-            original_indices = ref_mzs_sorted_indices[start_idx:end_idx]
-            rows.extend(original_indices)
-            cols.extend([query_idx] * len(original_indices))
-
-    # Include spectra with missing precursors (bypass filter)
-    for i in np.where(ref_missing)[0]:
-        rows.extend([i] * len(query_mzs))
-        cols.extend(range(len(query_mzs)))
-    for i in np.where(query_missing)[0]:
-        rows.extend(range(len(ref_mzs)))
-        cols.extend([i] * len(ref_mzs))
-
-    return np.array(rows), np.array(cols)
+    ref_mzs_array = np.asarray(ref_mzs, dtype=np.float64)
+    ref_missing = _ms1_reference_missing_mask(ref_mzs_array, np.isnan(ref_mzs_array))
+    return _ms1_prefilter_pairs(
+        ref_mzs_array,
+        ref_missing,
+        query_mzs,
+        query_missing,
+        ms1_tolerance,
+        resolution_ppm,
+    )
 
 
 # ---------------------------------------------------------------------------
