@@ -1,6 +1,6 @@
 # Retrieval-funnel investigation (candidate retrieval, not identification)
 
-**Candidate code:** `2f72911d297a186b94791c9f97ceee64f3ccace6`
+**Candidate code:** `69c60c18d529b4bd75c242407242d04ebd9d2cee`
 **Environment:** macOS arm64, Python 3.13.12, `uv 0.10.2`
 **Machine-readable evidence:** [`cross-instrument-report.json`](cross-instrument-report.json)
 
