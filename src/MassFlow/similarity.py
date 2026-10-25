@@ -46,6 +46,7 @@ except ImportError:
 from MassFlow.cheminformatics import adduct_charge
 from MassFlow.config import SimilarityConfig
 from MassFlow.models import TriageProfile
+from MassFlow.retention import get_retention_time_seconds
 from MassFlow.protocols import MLEngineProtocol
 
 logger = logging.getLogger(__name__)
@@ -1499,11 +1500,21 @@ class SimilarityEngine:
                     continue
 
                 # --- Retention time filtering ---
-                if self.config.rt_tolerance is not None:
-                    q_rt = q.get("retention_time")
-                    ref_rt = ref.get("retention_time")
-                    if not _is_missing(q_rt) and not _is_missing(ref_rt):
-                        if abs(float(q_rt) - float(ref_rt)) > self.config.rt_tolerance:
+                tolerance_seconds = self.config.rt_tolerance_seconds
+                if tolerance_seconds is not None:
+                    query_retention_time_seconds = get_retention_time_seconds(q)
+                    reference_retention_time_seconds = get_retention_time_seconds(ref)
+                    if (
+                        query_retention_time_seconds is not None
+                        and reference_retention_time_seconds is not None
+                    ):
+                        if (
+                            abs(
+                                query_retention_time_seconds
+                                - reference_retention_time_seconds
+                            )
+                            > tolerance_seconds
+                        ):
                             continue
 
                 score_val = float(numeric_scores[idx, i])
@@ -1707,6 +1718,7 @@ def _sub_engine_config(
         min_score=parent.min_score,
         min_matched_peaks=parent.min_matched_peaks,
         rt_tolerance=parent.rt_tolerance,
+        rt_tolerance_unit=parent.rt_tolerance_unit,
         ml_endpoints=parent.ml_endpoints,
         ml_request_timeout_seconds=parent.ml_request_timeout_seconds,
         ml_circuit_breaker_threshold=parent.ml_circuit_breaker_threshold,

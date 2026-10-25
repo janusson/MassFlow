@@ -71,14 +71,30 @@ def assert_csv_rows_equivalent(actual_path: Path, expected_path: Path) -> None:
         expected_fieldnames = expected_reader.fieldnames
         expected_rows = list(expected_reader)
 
-    assert actual_fieldnames == expected_fieldnames, (
-        f"Result CSV columns changed: {actual_fieldnames} != {expected_fieldnames}"
+    # Historical goldens retain their exact scoring values. The seconds contract
+    # adds explicit unit/provenance columns beside the retained legacy time column.
+    assert expected_fieldnames is not None
+    expected_fieldnames = list(expected_fieldnames)
+    time_index = expected_fieldnames.index("query_retention_time") + 1
+    expected_current_fields = (
+        expected_fieldnames[:time_index]
+        + [
+            "query_retention_time_seconds",
+            "query_retention_time_unit",
+            "query_retention_time_source",
+        ]
+        + expected_fieldnames[time_index:]
+    )
+    assert actual_fieldnames == expected_current_fields, (
+        f"Result CSV columns changed: {actual_fieldnames} != {expected_current_fields}"
     )
     assert len(actual_rows) == len(expected_rows), (
         f"{len(actual_rows)} rows exported, {len(expected_rows)} expected"
     )
 
     for index, (actual, expected) in enumerate(zip(actual_rows, expected_rows)):
+        assert actual["query_retention_time_seconds"] == actual["query_retention_time"]
+        assert actual["query_retention_time_unit"] == "seconds"
         for column, expected_value in expected.items():
             actual_value = actual[column]
             actual_number = _as_float(actual_value)

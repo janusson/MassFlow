@@ -54,6 +54,14 @@ The CSV contains the actual annotation hits, including the computed `score`, `ma
 !!! note "Unmatched Queries"
     The CSV includes matched *and* unmatched query spectra. If a query spectrum has no retained hit after score and FDR filtering, the row is still exported, but the reference-specific columns are left blank. This allows you to confirm that the input was successfully processed even when no annotation was found.
 
+The retained `query_retention_time` column is in seconds. New
+`query_retention_time_seconds` and `query_retention_time_unit` columns make this
+explicit; `query_retention_time_source` contains JSON with the original input
+field, value, unit, and normalization status. A missing time is a blank numeric
+cell, never a fabricated zero. These additive fields are also emitted by the
+current mzTab-shaped exporter; they do not establish mzTab-M conformance (see
+[issue #123](https://github.com/janusson/MassFlow/issues/123)).
+
 ### The Provenance Sidecar Report
 
 The sidecar report (`.report.yaml`) acts as a hard link between your CSV results and the run conditions that produced it. It captures:

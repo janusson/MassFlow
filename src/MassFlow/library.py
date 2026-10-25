@@ -287,12 +287,20 @@ def open_library(
 def processing_fingerprint(processing_config: ProcessingConfig) -> str:
     """Stable fingerprint of the processing pipeline (cache invalidation).
 
-    SHA-256 over the canonical JSON of the processing configuration. This is
+    SHA-256 over canonical processing JSON and retention-time semantics. Old
+    caches without canonical seconds must rebuild from their raw source. This is
     the same fingerprint recorded in library-build provenance rows so that
     ``db inspect`` history can be correlated with the annotated-store cache.
     """
     return hashlib.sha256(
-        processing_config.model_dump_json().encode("utf-8")
+        json.dumps(
+            {
+                "processing": processing_config.model_dump(),
+                "retention_time_semantics": 1,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
     ).hexdigest()
 
 

@@ -553,6 +553,7 @@ def _build_classical_fallback_engine(
         min_score=similarity_config.min_score,
         min_matched_peaks=similarity_config.min_matched_peaks,
         rt_tolerance=similarity_config.rt_tolerance,
+        rt_tolerance_unit=similarity_config.rt_tolerance_unit,
     )
     return SimilarityEngine(fallback_config)
 
@@ -1021,6 +1022,12 @@ def _write_analysis_report(
         "processing": config.processing.model_dump(mode="json"),
         "similarity": config.similarity.model_dump(mode="json"),
         "workflow": config.workflow.model_dump(mode="json"),
+        "retention_time": {
+            "unit": "seconds",
+            "tolerance_value": config.similarity.rt_tolerance,
+            "tolerance_unit": config.similarity.rt_tolerance_unit,
+            "tolerance_seconds": config.similarity.rt_tolerance_seconds,
+        },
         # Normalized configuration representation (schema version, source
         # config file, full effective config with resolved paths, digest).
         "config": config.normalized_config(),
