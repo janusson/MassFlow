@@ -238,7 +238,7 @@ def _validate_spectra_iterator(
     quarantine log and skipped, never reaching the downstream processing engine.
 
     Checks:
-    1. Precursor MZ must exist, be numeric, and be positive.
+    1. Precursor MZ must exist, be numeric, finite, and positive.
     2. Peak arrays must not be empty.
     3. M/Z and intensity arrays must have matching lengths.
     4. All intensity values must be positive.
@@ -294,7 +294,11 @@ def _validate_spectra_iterator(
             diagnostic_reason = DiagnosticReason.PRECURSOR_MISSING
         else:
             try:
-                if float(precursor_mz) <= 0:
+                precursor_value = float(precursor_mz)
+                if not np.isfinite(precursor_value):
+                    is_valid = False
+                    rejection_reason = f"Non-finite precursor_mz: {precursor_mz}"
+                elif precursor_value <= 0:
                     is_valid = False
                     rejection_reason = f"Non-positive precursor_mz: {precursor_mz}"
             except (ValueError, TypeError):
