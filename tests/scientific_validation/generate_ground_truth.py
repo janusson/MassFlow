@@ -125,7 +125,7 @@ LIBRARY_SPECTRA: list[dict[str, Any]] = [
         "peaks": CAFFEINE_PEAKS,
     },
     {
-        # Same fragments, RT 18 min away: excluded only when rt_tolerance
+        # Same fragments, RT 18 seconds away: excluded only when rt_tolerance
         # is configured.
         "id": "REF_CAFFEINE_RT_VIOLATION",
         "name": "REF_CAFFEINE_RT_VIOLATION",
