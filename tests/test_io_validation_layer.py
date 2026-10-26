@@ -1,9 +1,15 @@
 import logging
 from pathlib import Path
 
+import numpy as np
 import pytest
+from matchms import Spectrum
 
-from MassFlow.io import UnsupportedVendorFormatError, load_spectra
+from MassFlow.io import (
+    UnsupportedVendorFormatError,
+    _validate_spectra_iterator,
+    load_spectra,
+)
 from MassFlow.log_config import setup_structured_logging
 
 MALFORMED_MGF_CONTENT = """
@@ -112,6 +118,32 @@ def test_unsupported_vendor_format_raises_error(tmp_path):
     raw_file.touch()
     with pytest.raises(UnsupportedVendorFormatError):
         list(load_spectra(raw_file))
+
+
+@pytest.mark.parametrize(
+    "precursor_mz",
+    [
+        pytest.param(float("nan"), id="nan"),
+        pytest.param(float("inf"), id="positive-infinity"),
+        pytest.param(float("-inf"), id="negative-infinity"),
+    ],
+)
+def test_validation_quarantines_nonfinite_precursor_and_reports_reason(
+    tmp_path: Path, precursor_mz: float
+) -> None:
+    source = tmp_path / "nonfinite.mgf"
+    source.touch()
+    spectrum = Spectrum(
+        mz=np.array([100.0], dtype=np.float64),
+        intensities=np.array([1.0], dtype=np.float64),
+        metadata={"id": "nonfinite", "precursor_mz": precursor_mz},
+    )
+    rejected: list[str] = []
+
+    accepted = list(_validate_spectra_iterator([spectrum], source, rejected.append))
+
+    assert accepted == []
+    assert rejected == [f"Non-finite precursor_mz: {precursor_mz}"]
 
 
 def test_load_spectra_file_not_found():
