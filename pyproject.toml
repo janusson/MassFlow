@@ -18,6 +18,9 @@ dependencies = [
     "numpy>=1.26.4",
     "packaging>=26.0",
     "polars>=0.20.0",
+    # The shipped MassFlow.streaming protobuf stubs were generated with
+    # protobuf 7.35 and validate the runtime version on import.
+    "protobuf>=7.35.0,<8",
     "pydantic>=2.12.5",
     "pyteomics",
     "PyYAML",

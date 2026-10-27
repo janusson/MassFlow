@@ -93,6 +93,14 @@ jobs:
               "matchms RDKit requirement",
               [item for item in matchms_requires if "rdkit" in item.lower()],
           )
+
+          # The wheel ships generated gRPC/protobuf modules; importing them must
+          # work in a clean no-extra core installation.
+          import MassFlow.generated
+          import MassFlow.streaming
+          import MassFlow.streaming.generated.massflow.v1.streaming_pb2 as streaming_pb2
+
+          print("streaming protobuf package resources OK", streaming_pb2.__name__)
           PY
       - name: Installed CLI smoke
         run: |
