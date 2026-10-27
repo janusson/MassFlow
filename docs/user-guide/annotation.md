@@ -52,7 +52,7 @@ Warnings (never errors) are emitted for optional extras whose absence
 *degrades* results instead of aborting them — `consensus`/`cascade` without
 `[ml]` (classical sub-engines only) and `cascade` + `hnsw_enabled: true`
 without `[hnsw]` (exact scoring instead of HNSW candidate retrieval) — each
-carrying its `pip install massflow[...]` fix. The CLI prints these before
+carrying its `pip install massflow-msms[...]` fix. The CLI prints these before
 the run starts and prints a `fix:` hint line for every pre-flight failure
 (via `MassFlow.tui.diagnostics`), never a raw traceback.
 

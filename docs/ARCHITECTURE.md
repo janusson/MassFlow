@@ -222,7 +222,7 @@ The CLI loads the config and calls `run_annotation_pipeline()`.
    - Before any library store is built or any file is searched,
      `preflight_annotation_run()` validates: (a) the configured similarity
      surface is constructible with the installed optional extras (a pure ML
-     engine without `massflow[ml]` aborts with the install instruction
+     engine without `massflow-msms[ml]` aborts with the install instruction
      instead of crashing workers later); (b) the reference library is
      configured, exists, and is a loadable open-format/store input (vendor
      raw and unknown formats abort with zero artifacts); (c) the query

@@ -123,21 +123,21 @@ class TestSuggestFix:
         hint = suggest_fix(
             RuntimeError(
                 "This scoring engine requires the machine-learning extras. "
-                "Install them with: pip install massflow[ml]"
+                "Install them with: pip install massflow-msms[ml]"
             )
         )
         assert hint is not None
-        assert "massflow[ml]" in hint
+        assert "massflow-msms[ml]" in hint
 
     def test_hnsw_missing(self):
         hint = suggest_fix(
             RuntimeError(
                 "HNSW-accelerated candidate retrieval requires hnswlib. "
-                "Install it with: pip install massflow[hnsw]"
+                "Install it with: pip install massflow-msms[hnsw]"
             )
         )
         assert hint is not None
-        assert "massflow[hnsw]" in hint
+        assert "massflow-msms[hnsw]" in hint
 
     def test_hnsw_missing_engine_message(self):
         """The cascade-without-hnsw hint must match the engine's own message."""
@@ -146,11 +146,11 @@ class TestSuggestFix:
                 "Cascade is configured with hnsw_enabled: true but the "
                 "optional 'hnsw' extra (hnswlib) is not installed: candidate "
                 "retrieval falls back to exact cascade scoring. Install it "
-                "with: pip install massflow[hnsw]"
+                "with: pip install massflow-msms[hnsw]"
             )
         )
         assert hint is not None
-        assert "pip install massflow[hnsw]" in hint
+        assert "pip install massflow-msms[hnsw]" in hint
 
     def test_import_error(self):
         assert suggest_fix(ImportError("No module named 'torch'")) is not None

@@ -27,7 +27,7 @@ from MassFlow.log_config import setup_structured_logging
 from MassFlow.tui.diagnostics import suggest_fix
 
 app = typer.Typer(
-    help="MassFlow: A robust, config-first Python toolkit for local tandem mass spectrometry (MS/MS) annotation.",
+    help="MassFlow: config-first MS/MS reference-library candidate retrieval and annotation-evidence toolkit.",
     no_args_is_help=True,
     add_completion=False,
 )
@@ -124,7 +124,7 @@ def main_callback(
     ),
 ):
     """
-    MassFlow: A robust, config-first Python toolkit for local tandem mass spectrometry (MS/MS) annotation.
+    MassFlow: config-first MS/MS reference-library candidate retrieval and annotation-evidence toolkit.
     """
     setup_logging()
 
@@ -347,7 +347,7 @@ def run_annotate(
             )
 
         # Optional-extras warnings (e.g. a meta-engine configured without
-        # massflow[ml], or cascade + hnsw_enabled without massflow[hnsw])
+        # massflow-msms[ml], or cascade + hnsw_enabled without massflow-msms[hnsw])
         # print the plain-English install fix before the run starts. The
         # pipeline's own pre-flight then validates files/engine availability
         # and fails fast with the same style of message.
@@ -1169,7 +1169,7 @@ def run_watch(
     Outputs high-tech Rich tables that gracefully handle pane resizing in Tmux/Zellij.
 
     EXPERIMENTAL: interactive live-reloading loop, requires the optional
-    'watch' extra (pip install massflow[watch]). Outside the stable product
+    'watch' extra (pip install massflow-msms[watch]). Outside the stable product
     contract (docs/CAPABILITY_MATRIX.md).
     """
     try:
@@ -1177,7 +1177,7 @@ def run_watch(
     except ImportError:
         console.print(
             "[bold red]Error:[/bold red] The watch command requires the optional 'watchfiles' package.\n"
-            "Install it with: pip install massflow[watch]"
+            "Install it with: pip install massflow-msms[watch]"
         )
         raise typer.Exit(1)
 
@@ -1314,7 +1314,7 @@ def run_tui(
     Launch the interactive MassFlow terminal console.
 
     EXPERIMENTAL: interactive console requiring the optional 'tui' extra
-    (pip install massflow[tui]); outside the stable product contract
+    (pip install massflow-msms[tui]); outside the stable product contract
     (docs/CAPABILITY_MATRIX.md).
 
     Find, upload, view, and identify MS/MS data without leaving the terminal:
@@ -1322,7 +1322,7 @@ def run_tui(
     target-decoy similarity search tab with mirror plots, and a diagnostics
     tab with plain-English fixes plus the quarantine log.
 
-    Requires the optional TUI extra: pip install massflow[tui]
+    Requires the optional TUI extra: pip install massflow-msms[tui]
     """
     try:
         from MassFlow.tui.app import MassFlowApp
@@ -1330,7 +1330,7 @@ def run_tui(
         console.print(
             "[bold red]Error:[/bold red] The interactive console requires the "
             "optional 'textual' package.\n"
-            "Install it with: pip install massflow\\[tui]"
+            "Install it with: pip install massflow-msms\\[tui]"
         )
         raise typer.Exit(1) from e
 

@@ -64,7 +64,7 @@ logger = logging.getLogger(__name__)
 
 _ML_INSTALL_MSG = (
     "This scoring engine requires the machine-learning extras. "
-    "Install them with: pip install massflow[ml]"
+    "Install them with: pip install massflow-msms[ml]"
 )
 
 _HAS_TORCH = False
@@ -116,7 +116,7 @@ if not _HAS_ML:
     logger.info(
         "Machine-learning extras not fully available (missing: %s). "
         "Classical cosine / modified_cosine scoring remains fully functional. "
-        "Install ML engines with: pip install massflow[ml]",
+        "Install ML engines with: pip install massflow-msms[ml]",
         ", ".join(missing),
     )
 
@@ -2228,7 +2228,7 @@ class SimilarityEngine:
 # identically whether the ml extra is installed or not.
 #
 # When called without the required libraries, each engine raises a clear
-# ``RuntimeError`` directing the user to install ``massflow[ml]``.
+# ``RuntimeError`` directing the user to install ``massflow-msms[ml]``.
 
 
 def _sub_engine_config(
@@ -2362,7 +2362,7 @@ class Spec2VecEngine(_MLEngineBase):
     Uses Gensim Word2Vec models trained on mass spectral peaks to compute
     spectrum-level embeddings and cosine similarity between embedded vectors.
 
-    Requires: ``pip install massflow[ml]``
+    Requires: ``pip install massflow-msms[ml]``
     """
 
     def _build_model(self) -> None:
@@ -2426,7 +2426,7 @@ class MS2DeepScoreEngine(_MLEngineBase):
     Uses a Siamese neural network (PyTorch) trained on binned mass spectra to
     predict Tanimoto-like similarity scores directly from spectral pairs.
 
-    Requires: ``pip install massflow[ml]``
+    Requires: ``pip install massflow-msms[ml]``
     """
 
     def _build_model(self) -> None:
@@ -2484,7 +2484,7 @@ class ConsensusEngine(_MLEngineBase):
     ms2deepscore) and produces a weighted consensus score. This is designed to
     improve annotation confidence by leveraging orthogonal scoring approaches.
 
-    Requires: ``pip install massflow[ml]``
+    Requires: ``pip install massflow-msms[ml]``
     """
 
     def _check_dependencies(self) -> None:
@@ -2846,7 +2846,7 @@ class CascadeEngine(_MLEngineBase):
     slow/precise, to efficiently narrow the candidate set before running
     expensive deep learning models.
 
-    Requires: ``pip install massflow[ml]``
+    Requires: ``pip install massflow-msms[ml]``
     """
 
     def _check_dependencies(self) -> None:

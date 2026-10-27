@@ -449,7 +449,7 @@ class SimilarityConfig(MassFlowBaseModel):
         - ``cosine``: CosineGreedy via matchms
         - ``modified_cosine``: ModifiedCosine via matchms
 
-    Machine-learning algorithms (require ``pip install massflow[ml]``):
+    Machine-learning algorithms (require ``pip install massflow-msms[ml]``):
         - ``spec2vec``: Spec2Vec embeddings via Gensim
         - ``ms2deepscore``: MS2DeepScore via PyTorch
         - ``consensus``: Consensus scoring combining multiple engines
@@ -470,7 +470,7 @@ class SimilarityConfig(MassFlowBaseModel):
         description=(
             "Similarity algorithm: 'cosine', 'modified_cosine' (always available), "
             "'spec2vec', 'ms2deepscore', 'consensus', or 'cascade' "
-            "(require massflow[ml])."
+            "(require massflow-msms[ml])."
         ),
     )
 

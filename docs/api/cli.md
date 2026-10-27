@@ -57,7 +57,7 @@ inputs before any library store is built or any file is searched: required
 files must exist, the reference library must be a loadable open-format/store
 input (vendor raw formats and unknown extensions abort with zero output
 artifacts). For normal annotation, the similarity engine must be constructible
-with the installed optional extras (missing `massflow[ml]` aborts with the install fix instead
+with the installed optional extras (missing `massflow-msms[ml]` aborts with the install fix instead
 of a late worker crash), and optional-extras degradations
 (`consensus`/`cascade` without `[ml]`, `cascade` + `hnsw_enabled` without
 `[hnsw]`) are warned about up-front. Failures print a plain-English `fix:`

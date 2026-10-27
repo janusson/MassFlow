@@ -211,7 +211,7 @@ def optional_extra_warnings(config: MassFlowConfig) -> list[str]:
         warnings.append(
             f"Algorithm '{algorithm}' is configured without the machine-learning "
             f"extras: scoring will run with classical sub-engines only. "
-            f"Install the full engines with: pip install massflow[ml]"
+            f"Install the full engines with: pip install massflow-msms[ml]"
         )
     if (
         algorithm == "cascade"
@@ -222,7 +222,7 @@ def optional_extra_warnings(config: MassFlowConfig) -> list[str]:
             "Cascade is configured with hnsw_enabled: true but the optional "
             "'hnsw' extra (hnswlib) is not installed: candidate retrieval "
             "falls back to exact cascade scoring. Install it with: "
-            "pip install massflow[hnsw]"
+            "pip install massflow-msms[hnsw]"
         )
     return warnings
 
@@ -281,7 +281,7 @@ def preflight_annotation_run(config: MassFlowConfig) -> list[str]:
 
     1. The configured similarity surface can be constructed with the
        installed optional extras (raises ``RuntimeError`` with an install
-       hint when, e.g., ``spec2vec`` is requested without ``massflow[ml]``).
+       hint when, e.g., ``spec2vec`` is requested without ``massflow-msms[ml]``).
     2. The reference library is configured, exists, is not a vendor raw
        format, and has a format the loader can dispatch.
     3. The query input path exists; a single-file input must be loadable
@@ -1608,7 +1608,7 @@ def run_annotation_pipeline(
         raw format; pre-flight, before any library store is built.
     RuntimeError
         If the configured similarity engine requires missing optional extras
-        (e.g. ``spec2vec`` without ``massflow[ml]``); pre-flight.
+        (e.g. ``spec2vec`` without ``massflow-msms[ml]``); pre-flight.
 
     Notes
     -----

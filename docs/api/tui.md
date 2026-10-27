@@ -6,7 +6,7 @@ identifying MS/MS data — no browser, no GUI toolkit, just your terminal
 (Ghostty, iTerm2, Kitty, Alacritty, …).
 
 ```bash
-pip install massflow[tui]
+pip install massflow-msms[tui]
 massflow tui --input experiments/run_01.mzML --library libraries/ALL_GNPS.msp
 ```
 
@@ -55,7 +55,7 @@ The console never dumps raw tracebacks over the interface. Every failure is
 captured as a `Problem` with a **stage** (`load-query`, `load-library`,
 `search`, …), the exception message, and — when the failure mode is known — a
 **hint**: vendor formats point at `massflow convert`, missing ML extras point
-at `pip install massflow[ml]`, locked SQLite files tell you to close other
+at `pip install massflow-msms[ml]`, locked SQLite files tell you to close other
 runs, small libraries may trigger a count-based diagnostic warning; this is not a calibration guarantee. The
 full traceback is preserved in the problem record for when you do need it.
 
