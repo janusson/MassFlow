@@ -36,27 +36,20 @@ no `push` trigger.
    benchmark result if the candidate changes scoring, preprocessing, retrieval,
    ranking, confidence, or reported metrics. The evidence must be reachable at
    an `https://` URL or a committed `docs/` path.
-4. Create and push an **annotated** tag only when the candidate is ready for
-   qualification:
-   ```bash
-   git tag -a v0.1.0 <candidate_sha> -m "MassFlow 0.1.0 candidate"
-   git push origin v0.1.0
-   ```
-   Pushing the tag does not run the release workflow.
-5. Run the workflow in `qualify` mode (UI or CLI):
+4. Run the workflow in `qualify` mode before creating a version tag (UI or CLI):
    ```bash
    gh workflow run release.yml --ref main \
      -f action=qualify \
      -f candidate_sha=<candidate_sha> \
      -f version=0.1.0 \
-     -f tag=v0.1.0 \
      -f evidence_url=https://example.invalid/massflow-0.1.0-qualification
    ```
    `qualify` does not publish. It checks out the exact SHA, verifies the input
    agreements, runs the lockfile/lint/type/full-coverage/scientific/core gates,
    builds the wheel and sdist, installs the wheel in a clean environment, runs a
    CLI/init/annotation smoke, records SHA-256 hashes and provenance, and uploads
-   the qualified artifacts.
+   the qualified artifacts. The tag input is optional for qualification; omit
+   it for this first, non-publishing run.
 
 ## 2. Review before publication
 
@@ -89,6 +82,17 @@ notes, and an explicit "approve publication" statement. Use that URL as the
 `evidence_url`. This is auditable but is **not independent review**; the release
 notes and readiness report must say so. Option B is an owner decision, not an
 automatic bypass.
+
+After the qualification evidence is reviewed and accepted, and the owner
+approves proceeding, create and push an **annotated** tag on that exact SHA:
+
+```bash
+git tag -a v0.1.0 <candidate_sha> -m "MassFlow 0.1.0 candidate"
+git push origin v0.1.0
+```
+
+Pushing the tag does not run the release workflow. If the candidate SHA or
+version changes, qualify and review that new candidate before creating its tag.
 
 ## 3. Publish
 
