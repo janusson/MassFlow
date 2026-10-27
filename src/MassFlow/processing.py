@@ -39,6 +39,7 @@ from matchms.filtering import (
 from MassFlow.cheminformatics import normalize_adduct
 from MassFlow.config import ProcessingConfig
 from MassFlow.diagnostics import DiagnosticReason, DiagnosticStage, RejectionEvent
+from MassFlow.retention import normalize_retention_time
 
 # Neutral monoisotopic mass of water (H2O), computed once at import time from
 # pyteomics to guarantee SSOT consistency across the codebase.
@@ -380,7 +381,10 @@ def metadata_processing(
     if spectrum is None:
         return None
 
-    s: Spectrum = spectrum
+    # Clone before metadata repairs: preserve the caller's raw time and unit evidence.
+    s: Spectrum = normalize_retention_time(
+        spectrum, extract_aliases=config is None or config.add_retention_time
+    )
 
     # Pre-emptively fix ionmode to prevent matchms default_filters from raising AssertionError
     ionmode = s.get("ionmode")
@@ -394,13 +398,6 @@ def metadata_processing(
         if s_opt is None:
             return None
         s = s_opt
-
-    # Skip matchms add_retention_time because we manually parse it safely in the batch extraction
-    # and matchms's internal regexes throw extremely slow WARNING logs for 'CCS:' strings.
-    # if config is None or getattr(config, "add_retention_time", True):
-    #     s = add_retention_time(s)
-    #     if s is None:
-    #         return None
 
     # Metadata repairs and derivations
     if config is None or getattr(config, "repair_inchi_inchikey_smiles", True):

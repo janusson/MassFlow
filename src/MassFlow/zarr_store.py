@@ -1692,7 +1692,11 @@ class ZarrSpectralStore(SpectralStore):
             metadata["adduct"] = entry["adduct"]
 
         mz_arr, intensity_arr = self._peak_slice(index)
-        return Spectrum(mz=mz_arr, intensities=intensity_arr, metadata=metadata)
+        spectrum = Spectrum(mz=mz_arr, intensities=intensity_arr, metadata=metadata)
+        # Preserve canonical time after matchms interprets retained source aliases.
+        if "retention_time_source" in metadata:
+            spectrum.set("retention_time", metadata.get("retention_time"))
+        return spectrum
 
     def get_spectra(
         self,

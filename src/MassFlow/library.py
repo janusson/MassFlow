@@ -53,10 +53,11 @@ from MassFlow.storage import SpectralStore, create_spectral_store
 
 logger = logging.getLogger(__name__)
 
-# Revision 4 covers missing-precursor normalization, fragment-only m/z
-# windows, charge/adduct consistency, and acquisition-record identity.
-# Keep one revision so caches cannot mix records built under older contracts.
-PROCESSING_SEMANTICS_REVISION = 4
+# Revision 5 adds canonical retention-time seconds and source-unit evidence
+# to revision 4 (missing precursors, fragment-only m/z windows, charge/adduct
+# consistency, and acquisition-record identity). This union invalidates caches
+# from both the stabilization and standalone retention-time predecessors.
+PROCESSING_SEMANTICS_REVISION = 5
 
 # Extension of MassFlow-native stores (opened directly by workers).
 _STORE_EXTENSIONS = {".db", ".sqlite", ".zarr"}

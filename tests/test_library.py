@@ -72,6 +72,9 @@ def assert_csv_rows_equivalent(actual_path: Path, expected_path: Path) -> None:
         expected_rows = list(expected_reader)
 
     additive_columns = {
+        "query_retention_time_seconds",
+        "query_retention_time_unit",
+        "query_retention_time_source",
         "reference_metadata",
         "confidence_state",
         "confidence_q_value",
@@ -91,6 +94,8 @@ def assert_csv_rows_equivalent(actual_path: Path, expected_path: Path) -> None:
     )
 
     for index, (actual, expected) in enumerate(zip(actual_rows, expected_rows)):
+        assert actual["query_retention_time_seconds"] == actual["query_retention_time"]
+        assert actual["query_retention_time_unit"] == "seconds"
         for column, expected_value in expected.items():
             actual_value = actual[column]
             if column == "Annotation_Status" and expected_value in {
