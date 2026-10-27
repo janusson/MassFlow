@@ -188,17 +188,30 @@ jobs:
           sha256sum * > SHA256SUMS
           cat SHA256SUMS
 
+      - name: Export locked runtime requirements
+        run: |
+          uv export --frozen --no-dev --no-emit-project \
+            --format requirements.txt \
+            --output-file /tmp/massflow-release-requirements.txt
+
       - name: Installed-wheel smoke
         run: |
           uv venv --python 3.13 /tmp/massflow-release-venv
-          uv pip install --python /tmp/massflow-release-venv/bin/python dist/*.whl
+          uv pip install --python /tmp/massflow-release-venv/bin/python \
+            -r /tmp/massflow-release-requirements.txt
+          uv pip install --python /tmp/massflow-release-venv/bin/python --no-deps dist/*.whl
+          uv pip check --python /tmp/massflow-release-venv/bin/python
           /tmp/massflow-release-venv/bin/python - <<'PY'
+          from importlib.metadata import version
           from pathlib import Path
           import MassFlow
+          import MassFlow.streaming
+          import MassFlow.streaming.generated.massflow.v1.streaming_pb2
           path = Path(MassFlow.__file__).resolve()
           if "site-packages" not in path.parts:
               raise SystemExit(f"MassFlow imported from outside site-packages: {path}")
           print(path)
+          print("distribution version", version("massflow-msms"))
           PY
           /tmp/massflow-release-venv/bin/massflow --help
           /tmp/massflow-release-venv/bin/massflow init --output /tmp/massflow-release-config.yaml

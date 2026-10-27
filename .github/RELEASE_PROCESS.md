@@ -62,8 +62,9 @@ artifact. Confirm:
 - The candidate SHA and version match the intended release.
 - The full suite and scientific tests passed.
 - The wheel and sdist hashes in `dist/SHA256SUMS` match the provenance file.
-- The installed-package smoke resolved MassFlow from `site-packages` and wrote
-  a result CSV.
+- The installed-package smoke used the lock-exported runtime requirements,
+  resolved MassFlow from `site-packages`, imported the shipped streaming
+  protobuf resources, passed `uv pip check`, and wrote a result CSV.
 - The evidence URL is complete and does not rely on an uncommitted local run.
 
 The `release` environment currently requires a reviewer. **Independent review
