@@ -271,7 +271,9 @@ jobs:
           MIGRATION_NOTES: ${{ inputs.migration_notes }}
           ROLLBACK_NOTES: ${{ inputs.rollback_notes }}
         run: |
-          python - <<'PY'
+          # Use the project environment so provenance records the qualified
+          # Python version, not the runner's system interpreter.
+          uv run python - <<'PY'
           import hashlib
           import json
           import os
@@ -281,11 +283,22 @@ jobs:
           def digest(path: Path) -> str:
               return hashlib.sha256(path.read_bytes()).hexdigest()
 
-          artifacts = {
-              path.name: digest(path)
-              for path in sorted(Path("dist").iterdir())
-              if path.is_file()
+          version = os.environ["VERSION"]
+          dist = Path("dist")
+          expected_names = {
+              f"massflow_msms-{version}-py3-none-any.whl",
+              f"massflow_msms-{version}.tar.gz",
+              "SHA256SUMS",
           }
+          artifacts = {
+              name: digest(dist / name)
+              for name in sorted(expected_names)
+              if (dist / name).is_file()
+          }
+          if not expected_names.issubset(artifacts):
+              raise SystemExit(
+                  f"qualified artifact set incomplete: {sorted(artifacts)}"
+              )
           payload = {
               "schema_version": 1,
               "repository": os.environ["GITHUB_REPOSITORY"],
