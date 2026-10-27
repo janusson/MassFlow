@@ -17,8 +17,21 @@ To successfully pass the `SpectrumMetadata` and `MolecularStructure` validation 
 | :--- | :--- | :--- |
 | `precursor_mz` | The measured *m/z* of the precursor ion. | Float (e.g., `195.088`) |
 | `charge` | The integer charge state of the ion. | Integer (e.g., `1`, `2`, `-1`). *Note: If missing, MassFlow will attempt to impute it.* |
-| `mz_array` | Array of fragment *m/z* values. | List of floats. Must be monotonically increasing. |
+| `mz_array` | Array of fragment *m/z* values. | List of floats. Must be strictly increasing, with no exact duplicate fragment *m/z* values. |
 | `intensity_array` | Array of fragment intensities. | List of floats. Must match the length of `mz_array`. |
+
+The reader quarantines spectra containing exact duplicate fragment *m/z* rows
+and reports `Duplicate fragment m/z values`. Repeating a row adds no distinct ion
+evidence, but could otherwise satisfy the row-based `min_matched_peaks` gate.
+MassFlow does not merge these rows or infer a centroiding tolerance; resolve the
+source representation before importing it. Distinct masses remain separate even
+when they are closer than the scoring tolerance.
+
+Managed caches built from raw libraries are rebuilt under this validation policy.
+Explicitly supplied native stores and spectra passed directly to the scoring API
+remain caller-managed; rebuild or check them for duplicate fragment rows before
+interpreting matched-peak counts as distinct ion evidence. This check does not
+establish fragment identity, identification specificity, or calibrated FDR.
 
 ### Charge Imputation
 If the `charge` is missing, the `matchms` filtering sequence (`make_charge_int`) will attempt to derive it. If the charge cannot be determined, the strict 5 ppm mass comparison is skipped for that spectrum (an unknown charge disables the check per the `SpectrumMetadata` contract); the spectrum remains analyzable through classical cosine scoring.

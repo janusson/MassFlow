@@ -287,13 +287,17 @@ def open_library(
 def processing_fingerprint(processing_config: ProcessingConfig) -> str:
     """Stable fingerprint of the processing pipeline (cache invalidation).
 
-    SHA-256 over the canonical JSON of the processing configuration. This is
-    the same fingerprint recorded in library-build provenance rows so that
-    ``db inspect`` history can be correlated with the annotated-store cache.
+    SHA-256 over the processing configuration and raw-spectrum validation
+    revision. A stricter reader must not reuse spectra accepted by an older
+    ingestion policy. The fingerprint is also recorded in library-build
+    provenance so ``db inspect`` can be correlated with the prepared cache.
     """
-    return hashlib.sha256(
-        processing_config.model_dump_json().encode("utf-8")
-    ).hexdigest()
+    payload = {
+        "processing": processing_config.model_dump(mode="json"),
+        "spectrum_validation_revision": io.SPECTRUM_VALIDATION_REVISION,
+    }
+    canonical_json = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical_json.encode("utf-8")).hexdigest()
 
 
 # Backward-compatible alias for the pre-provenance private helper name.
