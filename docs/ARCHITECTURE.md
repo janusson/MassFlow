@@ -32,7 +32,7 @@ The proposed restricted 1.0 candidate scope centers on:
 - open-format ingestion for `mzML`, `mzXML`, `MGF`, and `MSP`
 - transparent `matchms` processing
 - `cosine` and `modified_cosine` candidate ranking
-- CSV and mzTab-M output with source-record metadata
+- CSV (stable) and experimental mzTab-shaped output with source-record metadata
 
 Numerical confidence diagnostics are not calibrated FDR or confirmed identities.
 Tutorial, conversion, ML, networking, streaming and other experimental utilities
@@ -50,7 +50,7 @@ graph LR
     CLI --> Processed[Processed Spectra]
     Processed --> Sim[Similarity Search]
     Sim --> Filter[Candidate and Numeric-Estimate Filtering]
-    Filter --> Out[CSV / mzTab + YAML Report]
+    Filter --> Out[CSV / experimental mzTab-shaped + YAML Report]
 ```
 
 ---
@@ -109,7 +109,7 @@ graph LR
 - `src/MassFlow/io.py`
   - Loads spectra from supported open formats and SQLite libraries.
   - Rejects vendor raw formats instead of converting them implicitly.
-  - Writes match results to CSV and mzTab-M formats, and can export spectra
+  - Writes match results to CSV (stable) and an experimental mzTab-shaped format, and can export spectra
     as MGF or MSP.
 
 - `src/MassFlow/database.py`
@@ -353,12 +353,14 @@ running the annotation workflow.
 
 ### Standard outputs
 
-The stable output formats are:
+The stable output format is CSV. An experimental mzTab-shaped table is also
+available, but it is not mzTab-M standards-conformant and is outside the stable
+export contract.
 
-- CSV or mzTab-M result files written per experimental input
+- CSV (stable) or experimental mzTab-shaped result files written per experimental input
 
-The export format is selected via `export.format` in the config (supported
-values: `csv` or `mztab`).
+The export format is selected via `export.format` in the config (`csv` is the
+stable value; `mztab` is experimental and non-conformant).
 
 ---
 
@@ -375,7 +377,7 @@ These are the features the docs should treat as the main supported path:
 - `matchms`-based metadata and peak processing
 - `cosine` and `modified_cosine`
 - legacy query-level numerical confidence filtering (uncalibrated)
-- per-file CSV and mzTab-M result export
+- per-file CSV (stable) and experimental mzTab-shaped result export
 - `massflow db build`, `inspect`, and `merge`
 
 ## Experimental or less-stable surfaces

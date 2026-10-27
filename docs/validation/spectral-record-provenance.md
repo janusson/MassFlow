@@ -73,7 +73,7 @@ strings are normalized on a clone before repair, without supplying chemistry.
 
 Annotations retain the existing `reference_id` column. Its value can be used
 to retrieve the complete stored acquisition record, then its source digest and
-ordinal. CSV and mzTab-M do not add collision-energy or instrument columns;
+ordinal. CSV and the experimental mzTab-shaped output do not add collision-energy or instrument columns;
 those fields remain in the referenced native-store record. MSP/MGF spectrum
 exports retain the acquisition fields and IDs as well.
 
@@ -128,7 +128,7 @@ Coverage includes duplicate structures, absent/empty/repeated IDs (including
 InChIKey strings misused as record IDs), conflicting and missing acquisition
 fields, reversed input order, exact source ordinals after quarantine, generated
 ID stability, SQLite/Zarr/hybrid reopen and individual lookup, MSP/MGF spectrum
-round-trips, both classical scorers, CSV/mzTab-M reference traceability, legacy
+round-trips, both classical scorers, CSV and experimental mzTab-shaped reference traceability, legacy
 cache replacement/reuse, experimental meta-engine ambiguity rejection, and
 target/generated-decoy ID collisions.
 Consensus/cascade tests are not marked `core`.

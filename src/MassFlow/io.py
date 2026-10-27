@@ -866,11 +866,14 @@ def save_match_results_to_mztab(
     uncalibrated: bool = False,
 ) -> None:
     """
-    Save annotation results in a minimal mzTab-M format.
+    Save annotation results in an experimental mzTab-shaped tab-separated format.
 
-    This exporter produces a tab-separated file with MTD (metadata) and
-    SML (small molecule list) sections compatible with GNPS and other
-    metabolomics tools.
+    This exporter is **not** mzTab-M standards-conformant. It writes MTD, SMH and
+    SML sections with MassFlow-specific columns, but it does not write the
+    mandatory mzTab-M controlled vocabulary, required table structure, or
+    ``null`` missing-value encoding. CSV is the stable supported export. This
+    function remains available for backward-compatible diagnostic interchange
+    only.
 
     Parameters
     ----------
@@ -893,9 +896,13 @@ def save_match_results_to_mztab(
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     with open(output_path, "w") as f:
-        # 1. Metadata Section (MTD)
-        f.write("MTD\tmzTab-version\t2.0.0-M\n")
-        f.write("MTD\tmzTab-ID\tMassFlow_Export\n")
+        # 1. Metadata Section (MTD). Deliberately do not emit mzTab-version:
+        # this file is mzTab-shaped, not mzTab-M standards-conformant.
+        f.write(
+            "MTD\tcomment\tMassFlow experimental tabular export; "
+            "NOT mzTab-M standards-conformant\n"
+        )
+        f.write("MTD\tmassflow-export-id\tMassFlow_Export\n")
         f.write(
             f"MTD\ttitle\tMassFlow Annotation Results - {datetime.now().isoformat()}\n"
         )
@@ -911,4 +918,8 @@ def save_match_results_to_mztab(
             row_vals = [str(v) if v is not None else "" for v in row]
             f.write("SML\t" + "\t".join(row_vals) + "\n")
 
-    logger.info(f"mzTab-M results saved to {output_path}")
+    logger.warning(
+        "Experimental mzTab-shaped export written to %s; this file is NOT "
+        "mzTab-M standards-conformant. Use CSV for the supported export.",
+        output_path,
+    )

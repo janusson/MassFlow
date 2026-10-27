@@ -75,20 +75,24 @@ def _git(*arguments: str) -> str:
 def _environment() -> dict[str, Any]:
     """Resolve distribution names correctly instead of looking up requirement strings."""
     versions: dict[str, str | None] = {}
-    for name in (
-        "massflow",
-        "matchms",
-        "numpy",
-        "scipy",
-        "polars",
-        "pyteomics",
-        "pydantic",
-        "rdkit",
-    ):
+    # ``massflow`` is the public/provenance key; the installable distribution is
+    # ``massflow-msms`` because the PyPI name ``massflow`` is owned by an
+    # unrelated project.
+    distributions = {
+        "massflow": "massflow-msms",
+        "matchms": "matchms",
+        "numpy": "numpy",
+        "scipy": "scipy",
+        "polars": "polars",
+        "pyteomics": "pyteomics",
+        "pydantic": "pydantic",
+        "rdkit": "rdkit",
+    }
+    for key, name in distributions.items():
         try:
-            versions[name] = importlib.metadata.version(name)
+            versions[key] = importlib.metadata.version(name)
         except importlib.metadata.PackageNotFoundError:
-            versions[name] = None
+            versions[key] = None
     source_root = Path(__file__).resolve().parents[2]
     return {
         "application_commit": _git("rev-parse", "HEAD"),

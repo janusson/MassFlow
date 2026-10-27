@@ -1254,9 +1254,11 @@ def _dependency_versions() -> dict[str, str]:
     """Resolved versions of the direct dependencies (importlib.metadata)."""
     import importlib.metadata as metadata
 
+    from . import __distribution_name__
+
     versions: dict[str, str] = {}
     try:
-        dist = metadata.distribution("massflow")
+        dist = metadata.distribution(__distribution_name__)
         for requirement in dist.requires or []:
             name = requirement.split("[", 1)[0].split(";", 1)[0].strip().split(" ")[0]
             if not name:
@@ -1268,7 +1270,7 @@ def _dependency_versions() -> dict[str, str]:
     except metadata.PackageNotFoundError:
         pass
     try:
-        versions["massflow"] = metadata.version("massflow")
+        versions["massflow"] = metadata.version(__distribution_name__)
     except metadata.PackageNotFoundError:
         versions["massflow"] = "<not installed>"
     return versions

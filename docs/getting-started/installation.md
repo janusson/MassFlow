@@ -1,6 +1,6 @@
 # Installation
 
-MassFlow requires **Python 3.13+**. It relies heavily on standard scientific Python libraries (like `numpy`, `polars`, and `matchms`) and is explicitly designed to remain lightweight and dependency-minimal.
+MassFlow requires **Python 3.13** (`>=3.13,<3.14`); Python 3.14 is not qualified. It relies heavily on standard scientific Python libraries (like `numpy`, `polars`, and `matchms`) and is explicitly designed to remain lightweight and dependency-minimal.
 
 ---
 
@@ -17,7 +17,7 @@ If you haven't already, install [uv](https://github.com/astral-sh/uv).
 Then, clone the repository and sync the environment:
 
 ```shell
-git clone https://github.com/yourusername/MassFlow.git
+git clone https://github.com/janusson/MassFlow.git
 cd MassFlow
 uv python pin 3.13
 uv sync
@@ -28,7 +28,7 @@ This will automatically create a `.venv` directory, resolve the locked dependenc
 ### Core installation contract
 
 The core install is **not** RDKit-free. The locked `matchms` dependency requires
-`rdkit>=2024.3.5`, so `uv sync` or `pip install massflow` installs RDKit
+`rdkit>=2024.3.5`, so `uv sync` or `pip install massflow-msms` installs RDKit
 transitively even when no extra is selected. The `chem` extra declares MassFlow's
 own direct RDKit requirement; it does not add or remove RDKit from the transitive
 core resolution.
@@ -36,6 +36,8 @@ core resolution.
 MassFlow retains guarded fallbacks when RDKit is unavailable, but that is not the
 supported core installation contract with the current lockfile. A genuinely
 RDKit-free core installation is not claimed.
+
+The PyPI distribution name is `massflow-msms`. The installed import package is `MassFlow` and the command-line entry point is `massflow`; neither public interface is renamed by the distribution name.
 
 The locally tested contract is Python 3.13 on macOS arm64 and Linux. A clean
 no-extra wheel install was verified to import MassFlow from `site-packages`,
@@ -81,7 +83,7 @@ uv run massflow --help
 If you cannot use `uv`, you can install MassFlow directly using standard `pip` within a virtual environment. However, you will not benefit from the strict dependency locking provided by `uv.lock`.
 
 ```shell
-git clone https://github.com/yourusername/MassFlow.git
+git clone https://github.com/janusson/MassFlow.git
 cd MassFlow
 
 # Create a virtual environment

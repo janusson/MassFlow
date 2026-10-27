@@ -1,6 +1,6 @@
 # Result Export & Confidence States
 
-MassFlow writes per-file candidate-search results in CSV or mzTab-M with YAML provenance reports. Scores and confidence states are evidence for review, not confirmed identities or calibrated error bounds.
+MassFlow writes per-file candidate-search results in CSV with YAML provenance reports. CSV is the stable supported export. The `mztab` option writes an experimental, non-conformant mzTab-shaped table (see below). Scores and confidence states are evidence for review, not confirmed identities or calibrated error bounds.
 
 !!! warning "GNPS FBMN export is not shipped"
     The `fbmn` export format and `consensus_spectra.mgf` are documented in
@@ -19,9 +19,9 @@ The simplest and most common format.
 1.  **`experiment_results.csv`**: The main tabular annotation report.
 2.  **`experiment_results.report.yaml`**: The provenance sidecar containing the runtime context.
 
-### mzTab-M Export (`mztab`)
-A structured plain-text interchange format. Full mzTab-M standards conformance has not been independently qualified for this release scope.
-1.  **`experiment_results.mztab`**: Contains both the experimental metadata (MTD section) and the feature/annotation lists (SML/SME sections) in a tightly controlled schema.
+### Experimental mzTab-shaped Export (`mztab`)
+This option is **not** mzTab-M and is **not** standards-conformant. It is retained only for backward-compatible diagnostic interchange. It writes MassFlow-specific MTD/SMH/SML sections, omits the mandatory mzTab-M controlled vocabulary and table structure, and does not use the required `null` missing-value encoding. The file deliberately omits `mzTab-version`, because emitting it would assert conformance. Use CSV for the supported release export.
+1.  **`experiment_results.mztab`**: Contains MassFlow experimental metadata (MTD) and MassFlow-specific SMH/SML rows in an experimental schema.
 2.  **`experiment_results.report.yaml`**: The provenance sidecar.
 
 ### GNPS FBMN Export (`fbmn`) — not shipped

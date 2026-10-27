@@ -32,7 +32,8 @@ We prioritize stability, predictability, and correct data handling over cutting-
 | Open-format ingestion (`mzML`, `mzXML`, `MGF`, `MSP`) | **Stable** | Vendor raw formats rejected with an actionable error; `massflow convert` (experimental wrapper) can convert them externally |
 | SQLite library workflows (`massflow db ...`) | **Stable** | Recommended for reusable local libraries. `db inspect` reports build lineage: input files, config hash, processing parameters, target-decoy configuration, and exact build timestamps (records written by `db build`, `db merge`, and annotate library-store builds) |
 | `cosine` and `modified_cosine` | **Stable** | Best-supported classical scoring paths |
-| CSV and mzTab-M export | **Stable** | Main reporting surfaces (w/ YAML provenance reports). FBMN export is **not shipped** |
+| CSV export | **Stable** | Main reporting surface, with YAML provenance reports. FBMN export is **not shipped** |
+| mzTab-shaped export (`format: mztab`) | *Experimental* | Not mzTab-M standards-conformant: it uses MassFlow-specific SMH/SML columns and omits mandatory mzTab-M structure and `null` encoding. Retained for diagnostic interchange only; do not treat it as mzTab-M |
 | Chemical metadata checks (fixed 5 ppm policy, theoretical isotopic envelopes) | **Stable** | Implemented in `MassFlow.models`/`cheminformatics`; enforced as a processing gate on spectra with declared structural claims in the classical `annotate`/`db build` paths (query rejections counted per file; raw reference-library violations abort `annotate`), plus the streaming ingestion gate. Spectra without structural claims are exempt. These software checks do not establish identification accuracy or a universal instrument tolerance |
 | `massflow watch --config ...` | *Experimental* | Interactive live-reloading workflow (`[watch]` extra) |
 | `massflow stream-server` | *Experimental* | Real-time gRPC streaming (loopback default, TLS/auth required for remote) |

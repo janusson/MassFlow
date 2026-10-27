@@ -1,7 +1,7 @@
 [project]
-name = "massflow"
+name = "massflow-msms"
 version = "0.1.0"
-description = "A scientific Python package for mass spectrometry processing and analysis."
+description = "Reproducible MS/MS reference-library candidate retrieval and annotation-evidence toolkit."
 readme = "README.md"
 license = {text = "MIT"}
 classifiers = [

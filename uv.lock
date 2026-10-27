@@ -665,7 +665,7 @@ wheels = [
 ]
 
 [[package]]
-name = "massflow"
+name = "massflow-msms"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [

@@ -38,7 +38,7 @@ Start the analysis using the reviewed configuration file:
 ```shell
 uv run massflow annotate --config massflow_config.yaml
 ```
-*Your results will be saved as CSV or mzTab files in your output directory, accompanied by a provenance report for every file.*
+*Your results are saved as CSV files in your output directory, accompanied by a provenance report for every file. The `mztab` export is an experimental, non-conformant mzTab-shaped table; it is not the supported release export.*
 
 ---
 
@@ -116,7 +116,7 @@ MassFlow is intended for transparent local candidate retrieval and review.
 
 ## Installation Details
 
-MassFlow supports **Python >=3.13,<3.14**. Python 3.14 is not qualified.
+MassFlow supports **Python >=3.13,<3.14**. Python 3.14 is not qualified. The distribution name is `massflow-msms`; the import package remains `MassFlow` and the CLI remains `massflow`.
 
 ### Core installation contract
 

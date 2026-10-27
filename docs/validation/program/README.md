@@ -180,7 +180,7 @@ query/reference pair. Compare in-memory, freshly built SQLite, warm managed cach
 iterator/chunk and single/multiple-worker paths. Require identical eligible
 candidate identities, matched counts, rankings and q-values within declared float64
 roundoff; numerical tolerance must never excuse changed threshold decisions.
-Inspect CSV/mzTab-M joins and failed/rejected-query accounting. Legacy stores must
+Inspect CSV and experimental mzTab-shaped joins and failed/rejected-query accounting. Legacy stores must
 be rebuilt into new paths; their lineage must identify the processing semantics.
 
 ### P1 — Closed-set acquisition-independent retrieval

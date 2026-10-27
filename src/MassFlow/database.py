@@ -621,11 +621,13 @@ def _stream_file_sha256(path: Path) -> str:
 
 
 def _installed_massflow_version() -> Optional[str]:
-    """Resolved massflow package version, or None when not installed."""
+    """Resolved MassFlow distribution version, or None when not installed."""
     import importlib.metadata as metadata
 
+    from . import __distribution_name__
+
     try:
-        return metadata.version("massflow")
+        return metadata.version(__distribution_name__)
     except metadata.PackageNotFoundError:
         return None
 

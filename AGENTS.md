@@ -179,7 +179,7 @@ The 5-ppm tolerance is **physically mandated** and **not configurable**:
 
 - **Supported direct inputs**: mzML, mzXML, MGF, MSP, SQLite (`.db`, `.sqlite`).
 - **Explicitly rejected**: vendor raw formats (`.raw`, `.d`, `.wiff`, `.lcd`, `.t2d`, `.baf`). Do not add internal conversion logic.
-- **Stable outputs**: CSV, mzTab-M, and FBMN consensus_spectra.mgf + CSV pair.
+- **Stable outputs**: CSV with YAML provenance. The `mztab` option is an experimental, non-conformant mzTab-shaped table and is not a stable mzTab-M claim. FBMN `consensus_spectra.mgf` is **not implemented** and must not be described as a shipped output.
 
 ---
 

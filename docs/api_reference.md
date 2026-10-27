@@ -124,7 +124,7 @@ Numba-accelerated peak/neutral-loss prefilter used by `SimilarityEngine` to skip
 - **`class WorkflowConfig`**
   - (no active fields; reserved for future pipeline stages)
 - **`class ExportConfig`**
-  - `format: Literal['csv', 'mztab']` (only these two are wired into the workflow)
+  - `format: Literal['csv', 'mztab']`. `csv` is the stable export. `mztab` writes an experimental, non-conformant mzTab-shaped table and does not claim mzTab-M standards conformance.
 - **`class MassFlowConfig`**
   - `project: ProjectConfig`
   - `input: InputConfig`
@@ -202,7 +202,7 @@ Experimental hnswlib-backed two-channel candidate index (`[binned exact m/z, bin
 - `save_spectra_to_msp(spectra: Iterable[Spectrum], export_path: Path) -> None`
 - `save_spectra_to_pickle(spectra: Iterable[Spectrum], export_path: Path) -> None`
 - `save_spectra_to_mgf(spectra: Iterable[Spectrum], export_path: Path) -> None`
-- `save_match_results_to_mztab(results: list[dict[str, Any]], output_path: Path, query_spectra: Optional[Iterable[Spectrum]]) -> None`
+- `save_match_results_to_mztab(results: list[dict[str, Any]], output_path: Path, query_spectra: Optional[Iterable[Spectrum]]) -> None` — experimental, non-conformant mzTab-shaped output; use `save_match_results` (CSV) for the stable export.
 
 ## `MassFlow.library`
 

@@ -30,7 +30,7 @@ The proposed supported candidate-release surface (subject to the evidence gates 
 | Similarity | `cosine`, `modified_cosine` (always available) |
 | Confidence | Pooled per-query target/decoy numerical diagnostics with explicit estimated_uncalibrated/unavailable/invalid states; no calibrated-FDR claim (see the [confidence contract](user-guide/confidence-semantics.md)) |
 | Storage | SQLite libraries (`massflow db build/inspect/merge`) with persisted build lineage; Zarr/hybrid and migration utilities are experimental |
-| Exports | Per-input CSV and mzTab-M tables with YAML provenance and source-record metadata; mzTab-M standards conformance is not independently qualified |
+| Exports | Per-input CSV tables (stable) and experimental mzTab-shaped tables, with YAML provenance and source-record metadata. The `mztab` format is not mzTab-M standards-conformant; its stable conformance claim is withdrawn |
 | Metadata checks | Recognized declared adduct/charge pairs must agree in signed charge; fixed 5 ppm precursor checks require structural and precursor context. These checks do not confirm identity or establish universal instrument/adduct validity |
 | Python API | `MassFlow.config`, `io`, `processing`, `similarity`, `database`, `storage`, `zarr_store`, `workflow`, `models`, `cheminformatics`, `protocols`, `ml_client` |
 
@@ -69,7 +69,7 @@ Status legend: **✅ Stable** (implemented and tested within the supported candi
 | MS1 prefilter (Da and ppm modes) | `similarity.py` | `test_ms1_prefilter.py` |
 | Precursor-preserving synthetic decoys + uncalibrated pooled query-maxima diagnostics + diagnostic p-values | `similarity.py` (`generate_decoys`, `calculate_fdr`, `calibrate_query_level_fdr`), `workflow.py` | `test_decoy_generation.py`, `test_fdr.py`, `test_fdr_statistics.py` (contract tests) |
 | SQLite library build / inspect / merge (incl. lineage: `db inspect` reports build history, processing parameters & target-decoy configuration; annotation sidecars link to the exact build row) | `database.py`, `cli.py`, `library.py`, `workflow.py` | `test_database.py`, `test_cli_db.py`, `test_db_lineage.py` |
-| CSV, mzTab-M, YAML report, MSP/MGF export | `io.py`, `workflow.py` | `test_io.py`, `test_workflow.py`, `test_cli.py` |
+| CSV, experimental mzTab-shaped, YAML report, MSP/MGF export | `io.py`, `workflow.py` | `test_io.py`, `test_workflow.py`, `test_cli.py` |
 | 5 ppm precursor validation + isotopic envelopes (model layer and annotate-path gate) | `models.py`, `cheminformatics.py`, `processing.py` (`physical_integrity_reason`, `process_spectra[_batch]` gate), `library.py` (`prepare_library` strict raw-library abort), `workflow.py` | `test_precursor_physics.py`, `test_scientific_boundaries.py`, `test_cheminformatics.py`, `test_isotopic_distribution.py`, `test_adduct_validation.py`, `test_adduct_registry.py`, `test_physics_gate.py` |
 
 ### 2.2 Implemented and tested — experimental (🧪)
@@ -106,7 +106,7 @@ Status legend: **✅ Stable** (implemented and tested within the supported candi
 
 | Capability | Claimed in | Reality |
 | --- | --- | --- |
-| FBMN export (`consensus_spectra.mgf` + CSV pair) | `AGENTS.md` §5.4 (stable output), `docs/index.md` (Stable), `docs/user-guide/results.md`, `.github/copilot-instructions.md` | **No code anywhere in `src/`** (grep for `FBMN`/`consensus_spectra` returns zero matches in source). Export surface is CSV/mzTab-M only |
+| FBMN export (`consensus_spectra.mgf` + CSV pair) | `AGENTS.md` §5.4 (stable output), `docs/index.md` (Stable), `docs/user-guide/results.md`, `.github/copilot-instructions.md` | **No code anywhere in `src/`** (grep for `FBMN`/`consensus_spectra` returns zero matches in source). Export surface is CSV plus an experimental, non-conformant mzTab-shaped table only |
 | GraphML molecular networking + `massflow visualize` + `viz` extra | `docs/user-guide/annotation.md` (§Network Visualization), `docs/index.md` (Experimental), `AGENTS.md` §6.1 | **No `visualize` command in `cli.py`, no graphml code in `src/`, no `viz` extra in `pyproject.toml`** |
 | LSP language server | `docs/index.md` (Experimental: "Language Server (LSP)") | Removed; `docs/api/server.md` documents the removal. The stale row in `docs/index.md` is the only live reference |
 | `core`-marked stable test suite as the CI gate | `AGENTS.md` §2.5/§6.1 | Core selection is implemented across stable paths; full coverage and scientific groups remain separate gates |
@@ -211,7 +211,7 @@ describing a substantially different architecture:
 
 | Tier | Contents | Change discipline |
 | --- | --- | --- |
-| **Core (v0.1 contract, §1)** | `annotate`/`init`/`tutorial`/`db *`/`convert` CLI; YAML config; mzML/mzXML/MGF/MSP/SQLite ingestion; `matchms` processing; `cosine`/`modified_cosine`; entropy decoys + FDR + empirical p-values; CSV/mzTab-M + YAML exports; 5 ppm/isotopic validation enforced on the classical annotate/db-build processing path (structural claims only) + streaming gate; SQLite + optional hybrid Zarr storage | Must not regress; full test suite + coverage gate; extra scrutiny on changes |
+| **Core (v0.1 contract, §1)** | `annotate`/`init`/`tutorial`/`db *`/`convert` CLI; YAML config; mzML/mzXML/MGF/MSP/SQLite ingestion; `matchms` processing; `cosine`/`modified_cosine`; entropy decoys + explicit uncalibrated/unavailable target-decoy diagnostics (no calibrated-FDR claim); CSV + YAML exports (experimental mzTab-shaped output is outside the stable core); 5 ppm/isotopic validation enforced on the classical annotate/db-build processing path (structural claims only) + streaming gate; SQLite + optional hybrid Zarr storage | Must not regress; full test suite + coverage gate; extra scrutiny on changes |
 | **Experimental (§2.2)** | HNSW, cascade, consensus, spec2vec/ms2deepscore, remote ML boundary + satellite, MLRouter, streaming server, TUI, `watch`, Numba prefilter, hybrid/Zarr storage, `convert` | May evolve freely; must not break the core; guards and fallbacks required |
 | **Future research** | Generative spectral augmentation, PINNs (in-repo roadmap); TIIP peptide indexing, O(1) peptide retrieval, BIN/BEST consensus, SIRIUS/MS-GF+/MaRaCluster interop, proteomics peptide search (external spec) | Do not implement as v0.x requirements; requires a new contract first |
 

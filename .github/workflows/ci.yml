@@ -76,7 +76,7 @@ jobs:
           import rdkit
           from MassFlow.cheminformatics import _HAS_RDKIT
 
-          massflow_requires = metadata("massflow").get_all("Requires-Dist") or []
+          massflow_requires = metadata("massflow-msms").get_all("Requires-Dist") or []
           core_requires = [item for item in massflow_requires if "extra ==" not in item]
           if any(item.lower().startswith("rdkit") for item in core_requires):
               raise SystemExit("unexpected direct core RDKit requirement")
@@ -87,7 +87,7 @@ jobs:
               raise SystemExit("expected matchms to require rdkit transitively")
           if not _HAS_RDKIT:
               raise SystemExit("expected RDKit to import in the supported core installation")
-          print("MassFlow", version("massflow"))
+          print("MassFlow", version("massflow-msms"))
           print("RDKit", version("rdkit"))
           print(
               "matchms RDKit requirement",

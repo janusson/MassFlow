@@ -4,6 +4,15 @@ All notable changes to MassFlow will be documented in this file.
 
 ## [Unreleased]
 
+### Changed — release packaging and export claims
+
+- Adopt the owned PyPI distribution name `massflow-msms` while keeping the
+  `MassFlow` import package and `massflow` command unchanged. The previous
+  `massflow` name on PyPI belongs to an unrelated project.
+- Withdraw the stable mzTab-M conformance claim. `format: mztab` now writes an
+  explicit experimental, non-conformant mzTab-shaped table and omits the
+  `mzTab-version` header. CSV remains the stable supported export.
+
 ### Fixed — fragment filtering and cache semantics (#95)
 
 - Apply `filter_by_mz` to fragment peaks only; retain spectra whose precursor
