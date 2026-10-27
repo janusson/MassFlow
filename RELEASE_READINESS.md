@@ -195,7 +195,7 @@ Dependency contract confirmed:
 6. **Legacy persistent stores.** Externally supplied SQLite/Zarr/hybrid stores are not rewritten automatically. Rebuild from raw sources into a new destination and review IDs/metadata before switching paths.
 7. **Installed `massflow tutorial`.** As above, it fails outside a source checkout. Either package the generator or remove/hide the command before publication.
 8. **Optional extras are not release-qualified.** `[ml]` still resolves `filelock 3.29.7` with a high-severity advisory (only reachable through the optional Torch path); `setuptools 83.0.0` has a low-severity build/dev advisory. The core runtime audit is clean. Review #115/#113 before claiming optional-ML support.
-9. **Default-branch alert dashboard.** GitHub reported 5 critical, 24 high, 13 medium, and 3 low open pip alerts at inspection. The candidate upgrades Pillow and certifi, and the core runtime audit is clean; the dashboard will only re-evaluate after merge. Confirm the remaining alert set is dev/optional-only after merge.
+9. **Default-branch alert dashboard.** GitHub reported 5 critical, 24 high, 13 medium, and 3 low open pip alerts via the API at inspection; the push banner reported 6 critical, 24 high, 13 medium, and 3 low at the same session. The candidate upgrades Pillow and certifi, and the core runtime audit is clean; the dashboard will only re-evaluate after merge. Confirm the remaining alert set is dev/optional-only after merge.
 
 ---
 
