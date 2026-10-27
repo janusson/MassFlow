@@ -247,3 +247,20 @@ license = {text = "MIT"}
 - optional-ML dependency advisories that are outside the stable scope but still visible.
 
 Publication can proceed after §5 blockers 1–3 and 7–9 are closed, the final merged SHA passes the guarded qualification workflow, and the maintainer explicitly approves the bounded claims above. Do not convert this candidate into a validated unknown-identification or calibrated-FDR product.
+
+---
+
+## 9. Post-report verification addendum (2026-10-26)
+
+After this report was first committed, GitHub Actions ran on the code-identical PR head and passed:
+
+- CodeQL (actions and python)
+- `smoke`
+- `lockfile-and-lint`
+- `installed-wheel-contract`
+- `test (ubuntu-latest, 3.13)`
+- `test (macos-latest, 3.13)`
+
+PR: https://github.com/janusson/MassFlow/pull/134
+
+This supersedes the "pending" statement in §4.1 and removes hosted Linux/macOS CI from the open blockers. Windows remains unqualified and is not claimed. The qualified code/artifact SHA remains `97014ba54e16cf2e495e32116888fe532e4aae2b`; the PR head differs only by release documentation.
