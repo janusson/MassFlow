@@ -157,7 +157,10 @@ jobs:
         run: uv lock --check
 
       - name: Install locked dependencies
-        run: uv sync --all-extras --frozen
+        # Core qualification: optional extras are experimental and are not part
+        # of the supported distribution. The installed-wheel smoke below uses
+        # the lock-exported runtime requirements without extras.
+        run: uv sync --frozen
 
       - name: Formatting
         run: uv run ruff format --check .
@@ -346,6 +349,8 @@ jobs:
     permissions:
       contents: write
       actions: read
+      # PyPI Trusted Publishing uses GitHub OIDC; no API token is stored.
+      id-token: write
     steps:
       - name: Download qualified artifacts
         uses: actions/download-artifact@v4
@@ -462,6 +467,61 @@ jobs:
             --title "MassFlow $VERSION" \
             --notes-file release-notes.md
 
+      - name: Verify and stage qualified distributions for PyPI
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          import shutil
+          from pathlib import Path
+
+          version = os.environ["VERSION"]
+          dist = Path("release/dist")
+          provenance = json.loads(Path("release/release-provenance.json").read_text())
+          if provenance.get("version") != version:
+              raise SystemExit("provenance version mismatch")
+          expected = provenance.get("artifacts", {})
+          wheel = f"massflow_msms-{version}-py3-none-any.whl"
+          sdist = f"massflow_msms-{version}.tar.gz"
+          names = {wheel, sdist}
+          if not names.issubset(expected):
+              raise SystemExit(
+                  f"qualified wheel/sdist missing from provenance: {sorted(expected)}"
+              )
+          for name in sorted(names):
+              path = dist / name
+              if not path.is_file():
+                  raise SystemExit(f"missing qualified artifact: {path}")
+              actual = hashlib.sha256(path.read_bytes()).hexdigest()
+              if actual != expected[name]:
+                  raise SystemExit(f"hash mismatch for {name}: {actual} != {expected[name]}")
+          upload = Path("pypi-dist")
+          if upload.exists():
+              shutil.rmtree(upload)
+          upload.mkdir()
+          for name in sorted(names):
+              shutil.copy2(dist / name, upload / name)
+          print("staged exact qualified artifacts for PyPI:", ", ".join(sorted(names)))
+          PY
+          cd release/dist
+          sha256sum -c SHA256SUMS
+          cd ../..
+          sha256sum pypi-dist/*
+
+      - name: Publish to PyPI (Trusted Publishing / OIDC)
+        # No API token or password is used. This job uploads only the exact
+        # artifacts produced and verified by the qualification job; it never
+        # rebuilds a distribution.
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: pypi-dist
+          attestations: true
+          print-hash: true
+          verbose: true
+
       - name: Publication summary
         env:
           TAG: ${{ inputs.tag }}
@@ -472,5 +532,7 @@ jobs:
             printf '%s\n\n' "### Published MassFlow ${VERSION}"
             printf '%s\n\n' "Tag: \`${TAG}\`"
             printf '%s\n\n' "Candidate SHA: \`${CANDIDATE_SHA}\`"
+            printf '%s\n' "PyPI: https://pypi.org/project/massflow-msms/${VERSION}/"
+            printf '%s\n\n' "GitHub release and PyPI received the same qualified artifacts."
             cat release/dist/SHA256SUMS
           } >> "$GITHUB_STEP_SUMMARY"

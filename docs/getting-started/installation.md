@@ -68,6 +68,10 @@ uv sync --extra tui
 
 (Zarr needs no extra: it is always installed as a core dependency.)
 
+Only the default/core install is release-qualified. Optional extras are
+experimental/optional and are not exercised by the 0.1.0 release qualification;
+`ml` and `hnsw` in particular are unqualified backends.
+
 Extras can be combined, e.g. `uv sync --extra ml --extra hnsw`. The equivalent `pip` syntax is `pip install -e ".[ml,hnsw]"`.
 
 You can now run MassFlow commands natively via `uv run`:
@@ -108,6 +112,7 @@ If you intend to contribute to MassFlow or run the automated test gate, you need
 
 Using `uv` (recommended):
 ```shell
+# Developer convenience only; this does not qualify optional extras.
 uv sync --all-groups --all-extras
 uv run pytest
 ```

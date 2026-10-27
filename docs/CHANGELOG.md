@@ -2,7 +2,25 @@
 
 All notable changes to MassFlow will be documented in this file.
 
+Historical entries may describe surfaces later removed or reclassified; the
+Unreleased section and current documentation take precedence.
+
 ## [Unreleased]
+
+### Removed
+
+- Removed the unsupported `massflow tutorial` CLI command. The synthetic generator
+  remains a source-checkout-only repository script
+  (`scripts/generate_tutorial_data.py`); it is not packaged in the wheel or sdist.
+- Release qualification now installs only the default/core dependency set.
+  Optional extras (`ml`, `hnsw`, `watch`, `tui`, `chem`) remain experimental and
+  unqualified.
+
+### Changed — release publication
+
+- The guarded release workflow can upload the exact qualified wheel and sdist to
+  PyPI with GitHub Actions OIDC Trusted Publishing. It uses no long-lived API
+  token and does not rebuild distributions in the publish job.
 
 ### Changed — release packaging and export claims
 

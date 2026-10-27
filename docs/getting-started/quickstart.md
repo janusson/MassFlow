@@ -24,11 +24,11 @@ graph LR
 For an optional synthetic example (not a substitute for measured-data validation), use the tutorial generator:
 
 ```shell
-uv run massflow tutorial
+uv run python scripts/generate_tutorial_data.py
 ```
 
 This creates a `tutorial/` directory with a reference library, example queries, and a YAML config. Review the synthetic inputs and configuration before running the candidate workflow.
-The generator is a repository development aid and is not bundled as a wheel resource; the installed-package workflow starts with `massflow init`.
+The generator is a source-checkout-only repository development aid and is not bundled as a wheel resource; the installed-package workflow starts with `massflow init`. The unsupported `massflow tutorial` CLI command was removed.
 
 For a complete walkthrough, see the [Usage Guide](../user-guide/usage.md).
 

@@ -9,12 +9,12 @@ This guide walks you through a complete, self-contained MassFlow workflow — fr
 Before running any annotation commands, generate a synthetic dataset that includes a reference library, experimental queries, and a pre-configured YAML config file.
 
 ```bash
-# Using the dedicated CLI command (recommended):
-uv run massflow tutorial
-
-# Or, if you prefer to run the underlying script directly:
+# Source checkout only: the synthetic generator is a repository script,
+# not an installed CLI command.
 uv run python scripts/generate_tutorial_data.py
 ```
+
+The generator is not bundled in the wheel or sdist. Installed users should start with `massflow init` and their own data.
 
 This creates a `tutorial/` directory containing:
 

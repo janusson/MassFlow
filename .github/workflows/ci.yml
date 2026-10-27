@@ -133,6 +133,8 @@ jobs:
         run: curl -LsSf https://astral.sh/uv/install.sh | sh
 
       - name: Install dependencies from lockfile
+        # Optional extras are installed here only to exercise optional test
+        # coverage; this is not a support or release-qualification claim.
         run: uv sync --all-extras --frozen
 
       - name: Release suite — unit + core integration tests (with coverage)

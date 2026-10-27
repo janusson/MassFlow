@@ -62,7 +62,6 @@ graph LR
 - `src/MassFlow/cli.py`
   - Defines the CLI commands:
     - `init`
-    - `tutorial`
     - `annotate`
     - `convert`
     - `db build`

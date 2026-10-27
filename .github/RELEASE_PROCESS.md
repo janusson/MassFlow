@@ -18,6 +18,10 @@ The release workflow (`/.github/workflows/release.yml`) is started only by
 6. The protected `release` GitHub Environment approval.
 7. The exact confirmation phrase `PUBLISH <version>`.
 8. Non-empty migration and rollback notes.
+9. PyPI publication through GitHub OIDC Trusted Publishing from the same
+   protected publish job. No long-lived API token or password is used.
+10. The publish job uploads only the exact wheel and sdist built and verified by
+    qualification. It never rebuilds a distribution for upload.
 
 A tag alone cannot publish, and a branch push cannot publish. The workflow has
 no `push` trigger.
@@ -35,8 +39,8 @@ no `push` trigger.
 4. Create and push an **annotated** tag only when the candidate is ready for
    qualification:
    ```bash
-   git tag -a v1.0.0 <candidate_sha> -m "MassFlow 1.0.0 candidate"
-   git push origin v1.0.0
+   git tag -a v0.1.0 <candidate_sha> -m "MassFlow 0.1.0 candidate"
+   git push origin v0.1.0
    ```
    Pushing the tag does not run the release workflow.
 5. Run the workflow in `qualify` mode (UI or CLI):
@@ -44,9 +48,9 @@ no `push` trigger.
    gh workflow run release.yml --ref main \
      -f action=qualify \
      -f candidate_sha=<candidate_sha> \
-     -f version=1.0.0 \
-     -f tag=v1.0.0 \
-     -f evidence_url=https://example.invalid/massflow-1.0.0-qualification
+     -f version=0.1.0 \
+     -f tag=v0.1.0 \
+     -f evidence_url=https://example.invalid/massflow-0.1.0-qualification
    ```
    `qualify` does not publish. It checks out the exact SHA, verifies the input
    agreements, runs the lockfile/lint/type/full-coverage/scientific/core gates,
@@ -65,13 +69,26 @@ artifact. Confirm:
 - The installed-package smoke used the lock-exported runtime requirements,
   resolved MassFlow from `site-packages`, imported the shipped streaming
   protobuf resources, passed `uv pip check`, and wrote a result CSV.
+- The exact qualified wheel and sdist hashes in `SHA256SUMS` match
+  `release-provenance.json`; only those two files are staged for PyPI.
 - The evidence URL is complete and does not rely on an uncommitted local run.
 
-The `release` environment currently requires a reviewer. **Independent review
-is not yet available in this repository because there is only one collaborator.**
-Before an official release, a repository administrator should add a second
-reviewer and set `prevent_self_review: true` on the environment. Until then, the
-environment gate is a deliberate human action but is not independent approval.
+The `release` environment requires a reviewer. The owner must choose one of two
+auditable approval models before publication:
+
+**Option A — independent reviewer (preferred).** Add a second maintainer as a
+required reviewer and enable `prevent_self_review: true`. This is the strongest
+separation of duties.
+
+**Option B — solo-maintainer auditable approval.** Keep the required-reviewer
+environment but allow owner self-approval. Before running `publish`, record an
+approval in a GitHub issue/PR comment or a committed
+`docs/release/approvals/<version>.md` containing: candidate SHA, version, tag,
+qualification run URL, artifact SHA-256 values, evidence URL, migration/rollback
+notes, and an explicit "approve publication" statement. Use that URL as the
+`evidence_url`. This is auditable but is **not independent review**; the release
+notes and readiness report must say so. Option B is an owner decision, not an
+automatic bypass.
 
 ## 3. Publish
 
@@ -82,18 +99,22 @@ Only after the qualification and review are accepted, run the workflow again in
 gh workflow run release.yml --ref main \
   -f action=publish \
   -f candidate_sha=<candidate_sha> \
-  -f version=1.0.0 \
-  -f tag=v1.0.0 \
-  -f confirmation="PUBLISH 1.0.0" \
-  -f evidence_url=https://example.invalid/massflow-1.0.0-qualification \
+  -f version=0.1.0 \
+  -f tag=v0.1.0 \
+  -f confirmation="PUBLISH 0.1.0" \
+  -f evidence_url=https://example.invalid/massflow-0.1.0-qualification \
   -f migration_notes="<migration notes>" \
   -f rollback_notes="<rollback procedure>"
 ```
 
 The `publish` job re-runs qualification from scratch on the same SHA, waits for
 the `release` environment approval, re-verifies every artifact hash and the
-annotated tag, and only then creates a GitHub release. It attaches the wheel,
-sdist, `SHA256SUMS`, and `release-provenance.json`. It does not publish to PyPI.
+annotated tag, and then creates a GitHub release. It attaches the wheel, sdist,
+`SHA256SUMS`, and `release-provenance.json`. In the same protected job it stages
+only the verified wheel and sdist and uploads them to PyPI using OIDC Trusted
+Publishing. It never rebuilds or substitutes an artifact. If the GitHub release
+succeeds but the PyPI upload fails, retry only the publish workflow after
+verifying that the qualified artifact hashes are unchanged; do not rebuild.
 
 ## Provenance and rollback
 
@@ -105,9 +126,11 @@ Keep it with the release.
 Rollback procedure:
 
 1. Delete the faulty GitHub release. Do not move or reuse the published tag.
-2. Restore the previous qualified release as the supported version.
-3. Fix forward with a new patch version and a new annotated tag.
-4. Re-run qualification and publication through this workflow.
+2. Yank the affected files on PyPI (do not delete/reuse the version); keep the
+   GitHub release notes pointing to the yank reason.
+3. Restore the previous qualified release as the supported version.
+4. Fix forward with a new patch version and a new annotated tag.
+5. Re-run qualification and publication through this workflow.
 
 If the defect is a security or data-integrity issue, publish a concise advisory
 and state which versions are affected. Do not claim that a successful workflow
@@ -115,8 +138,12 @@ proves a vulnerability was unreachable.
 
 ## Human prerequisites before first use
 
-- Add an independent reviewer to the `release` environment and enable
-  `prevent_self_review`.
+- Create the PyPI **pending publisher** for `massflow-msms`: owner
+  `janusson`, repository `MassFlow`, workflow `release.yml`, environment
+  `release`. See [`PYPI_TRUSTED_PUBLISHING.md`](PYPI_TRUSTED_PUBLISHING.md).
+- Create/confirm the `release` GitHub Environment with a required reviewer.
+  Choose Option A (independent reviewer + `prevent_self_review`) or Option B
+  (solo-maintainer auditable approval) above.
 - Confirm branch protection prevents direct unreviewed pushes to `main`.
 - Confirm tag protection prevents rewriting release tags.
 - Confirm the qualification evidence is committed or hosted durably.

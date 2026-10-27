@@ -38,7 +38,7 @@ The proposed supported candidate-release surface (subject to the evidence gates 
 
 - Peptide/proteomics search of any kind (see §6).
 - TIIP indexing, O(1) peptide retrieval, BIN/BEST consensus spectra (see §6).
-- The synthetic `massflow tutorial` generator is a repository-script convenience, not an installed-wheel support promise.
+- The synthetic tutorial generator is a source-checkout-only repository script; the unsupported `massflow tutorial` CLI command has been removed and is not part of the installed wheel/sdist support promise.
 - SIRIUS / MS-GF+ / MaRaCluster / FragPipe interoperability (see §6).
 - FBMN export, GraphML molecular networking, `massflow visualize` — documented
   in places but **not implemented** (§4.4). Treat as aspirational until shipped.
@@ -61,7 +61,7 @@ Status legend: **✅ Stable** (implemented and tested within the supported candi
 | --- | --- | --- |
 | `massflow annotate` config-driven pipeline | `cli.py`, `workflow.py` (`FileExecutionResult` per-file failure model) | `test_workflow.py`, `test_cli.py`, `test_end_to_end_mvp.py`, `test_pipeline_integrity.py`, `test_annotation_coverage.py`, `test_failure_model.py` |
 | Pre-flight validation: `annotate`/`db build`/`db merge` fail fast with actionable errors before any library-store build or search (missing files, vendor raw / unsupported inputs, similarity engines whose optional extras are absent; plain-English `fix:` hints at the CLI; optional-extras degradations warned up-front) | `workflow.py` (`preflight_annotation_run`, `optional_extra_warnings`), `cli.py`, `io.py` (`is_vendor_raw`/`is_loadable_spectral_input`/`is_store_input`), `tui/diagnostics.py` | `test_preflight.py`, `test_cli_db.py`, `test_cli.py`, `test_failure_model.py`, `test_tui_diagnostics.py` |
-| `massflow init` / `massflow tutorial` | `cli.py`, `scripts/generate_tutorial_data.py` | `test_cli.py` |
+| `massflow init` (the synthetic tutorial generator is a source-checkout-only script, not a CLI command) | `cli.py`, `scripts/generate_tutorial_data.py` | `test_cli.py` |
 | YAML config schema + validation with line numbers | `config.py` | `test_config.py`, `test_core_edge_cases.py` |
 | mzML / mzXML / MGF / MSP ingestion; vendor rejection; quarantine log | `io.py` | `test_io.py`, `test_io_validation_layer.py`, `test_validation_scenarios.py` |
 | `matchms` processing pipeline | `processing.py` | `test_processing.py` |
@@ -211,7 +211,7 @@ describing a substantially different architecture:
 
 | Tier | Contents | Change discipline |
 | --- | --- | --- |
-| **Core (v0.1 contract, §1)** | `annotate`/`init`/`tutorial`/`db *`/`convert` CLI; YAML config; mzML/mzXML/MGF/MSP/SQLite ingestion; `matchms` processing; `cosine`/`modified_cosine`; entropy decoys + explicit uncalibrated/unavailable target-decoy diagnostics (no calibrated-FDR claim); CSV + YAML exports (experimental mzTab-shaped output is outside the stable core); 5 ppm/isotopic validation enforced on the classical annotate/db-build processing path (structural claims only) + streaming gate; SQLite + optional hybrid Zarr storage | Must not regress; full test suite + coverage gate; extra scrutiny on changes |
+| **Core (v0.1 contract, §1)** | `annotate`/`init`/`db *`/`convert` CLI; YAML config; mzML/mzXML/MGF/MSP/SQLite ingestion; `matchms` processing; `cosine`/`modified_cosine`; entropy decoys + explicit uncalibrated/unavailable target-decoy diagnostics (no calibrated-FDR claim); CSV + YAML exports (experimental mzTab-shaped output is outside the stable core); 5 ppm/isotopic validation enforced on the classical annotate/db-build processing path (structural claims only) + streaming gate; SQLite + optional hybrid Zarr storage | Must not regress; full test suite + coverage gate; extra scrutiny on changes |
 | **Experimental (§2.2)** | HNSW, cascade, consensus, spec2vec/ms2deepscore, remote ML boundary + satellite, MLRouter, streaming server, TUI, `watch`, Numba prefilter, hybrid/Zarr storage, `convert` | May evolve freely; must not break the core; guards and fallbacks required |
 | **Future research** | Generative spectral augmentation, PINNs (in-repo roadmap); TIIP peptide indexing, O(1) peptide retrieval, BIN/BEST consensus, SIRIUS/MS-GF+/MaRaCluster interop, proteomics peptide search (external spec) | Do not implement as v0.x requirements; requires a new contract first |
 

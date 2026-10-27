@@ -49,7 +49,7 @@
 
 | Command | Tier | Notes |
 | --- | --- | --- |
-| `init`, `tutorial`, `annotate` | **Required** | Stable product entry points |
+| `init`, `annotate` | **Required** | Stable product entry points |
 | `db build` / `db inspect` / `db merge` | **Required** | SQLite library workflows |
 | `convert` | **Experimental** | External-tool wrapper (help text marked) |
 | `stream-server` | **Experimental** | gRPC streaming (help text marked) |
@@ -76,7 +76,7 @@ or remote-ML endpoints — an experimental run is never silent.
 
 | Path | Tier | Notes |
 | --- | --- | --- |
-| `scripts/generate_tutorial_data.py` | **Required** | Backs `massflow tutorial` |
+| `scripts/generate_tutorial_data.py` | **Dev tooling** | Source-checkout-only synthetic generator; the unsupported `massflow tutorial` CLI command was removed |
 | `scripts/migrations/0001_peaks_to_arrays.py`, `0002_blobs_to_zarr.py` | **Deprecated tooling** | One-shot migration utilities for legacy (pre-array-schema / BLOB-only) databases; new databases never need them |
 | `scripts/benchmark_*.py`, `scripts/measure_baseline.py` | **Dev tooling** | Opt-in benchmarks; never run by pytest |
 | `scripts/experiments/` | **Research prototypes** | Scratch/exploratory tests; never collected by pytest (`testpaths=["tests"]`) |

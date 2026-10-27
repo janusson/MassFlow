@@ -217,69 +217,6 @@ export:
         raise typer.Exit(1)
 
 
-@app.command("tutorial")
-def run_tutorial(
-    clean: bool = typer.Option(
-        False,
-        "--clean",
-        help="Delete any existing tutorial/ directory before regenerating.",
-    ),
-):
-    """Generate synthetic tutorial data for evaluating MassFlow locally.
-
-    Creates a self-contained ``tutorial/`` directory with:
-    - ``tutorial_library.msp`` – reference steroid spectra
-    - ``tutorial_experimental.mgf`` – experimental queries with matches,
-      analogues, and noise
-    - ``tutorial_config.yaml`` – pre-configured analysis parameters
-
-    After generation, follow the printed next-steps commands to build the
-    SQLite database and run the annotation pipeline.
-    """
-    import importlib.util
-    import sys
-
-    from rich.panel import Panel
-
-    try:
-        # Import the tutorial generator script as a module.
-        script_path = (
-            Path(__file__).resolve().parent.parent.parent
-            / "scripts"
-            / "generate_tutorial_data.py"
-        )
-        spec = importlib.util.spec_from_file_location(
-            "generate_tutorial_data", str(script_path)
-        )
-        if spec is None or spec.loader is None:
-            logger.error(f"Could not load tutorial generator from {script_path}")
-            raise typer.Exit(1)
-
-        module = importlib.util.module_from_spec(spec)
-        sys.modules["generate_tutorial_data"] = module
-        spec.loader.exec_module(module)
-
-        paths = module.main(clean_first=clean)
-        module._print_next_steps(
-            library_path=paths["library"],
-            experimental_path=paths["experimental"],
-            config_path=paths["config"],
-        )
-
-        console.print(
-            Panel.fit(
-                "[bold green]Tutorial data is ready![/bold green]\n"
-                "Follow the printed commands above to build the database "
-                "and run the annotation pipeline.",
-                title="MassFlow Tutorial",
-                border_style="green",
-            )
-        )
-    except Exception as e:
-        logger.error(f"Tutorial generation failed: {e}")
-        raise typer.Exit(1)
-
-
 @app.command("annotate")
 def run_annotate(
     config: str = typer.Option(

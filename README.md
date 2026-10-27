@@ -9,8 +9,10 @@
 
 It produces spectral similarity scores, ranked candidate annotations, and
 query-level numerical target/decoy estimates with provenance. These outputs are
-not experimentally confirmed identities. Empirical identification accuracy and
-FDR control remain unvalidated for a declared deployment domain.
+not experimentally confirmed identities. Version 0.1.0 does not claim independent
+identification validation or calibrated FDR. Those are deferred scientific
+research goals, not prerequisites for publishing this exploratory
+candidate-retrieval toolkit.
 
 ---
 
@@ -84,7 +86,7 @@ curation or rebuilding; sidecars cannot reconstruct provenance already lost.
 ### Interactive Console (TUI, experimental)
 Prefer a visual interface over the command line? Launch the MassFlow TUI to explore your data interactively:
 ```shell
-# Install the TUI extra (or use --all-extras for everything)
+# Install the TUI extra (optional; experimental and not release-qualified)
 uv sync --extra tui
 uv run massflow tui
 ```
@@ -128,13 +130,15 @@ MassFlow’s core annotation path retains guarded fallbacks when RDKit is unavai
 # Install the committed environment from the lockfile
 uv python pin 3.13 && uv sync --locked
 
-# Optional extras
-# Install the TUI extra (or use --all-extras for everything)
+# Optional extras (experimental; not part of the release qualification)
+# Use individual extras rather than treating --all-extras as a support claim.
 uv sync --extra tui    # Interactive console
 uv sync --extra ml     # ML scoring engines
 uv sync --extra hnsw   # Experimental approximate candidate indexing
 uv sync --extra chem   # MassFlow direct chemistry APIs (RDKit is already transitive in core)
 ```
+
+Only the core install is release-qualified. Optional extras (`ml`, `hnsw`, `watch`, `tui`, `chem`) are experimental/optional and are not exercised by the 0.1.0 release qualification. `uv sync --all-extras` is a developer convenience, not a support claim.
 
 ## Proposed 1.0 scope
 

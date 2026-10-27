@@ -25,7 +25,6 @@ Numba-accelerated peak/neutral-loss prefilter used by `SimilarityEngine` to skip
 - `version_callback(value: bool) -> Any`
 - `main_callback(version: Optional[bool]) -> Any`
 - `run_init(output: str, force: bool) -> Any`
-- `run_tutorial(output: str, force: bool) -> Any`
 - `run_annotate(config: str) -> Any`
 - `run_convert(input: str, output: str) -> Any`
 - `run_db_build(input: str, output: str, config: str, category: str, backend: str) -> Any`
