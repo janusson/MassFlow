@@ -37,6 +37,9 @@ from matchms.importing import (
 
 logger = logging.getLogger(__name__)
 
+# Managed raw-library caches must be rebuilt when ingestion policy changes.
+SPECTRUM_VALIDATION_REVISION: int = 1
+
 
 @contextmanager
 def temporary_directory(parent: Path, prefix: str) -> Iterator[Path]:
@@ -236,7 +239,7 @@ def _validate_spectra_iterator(
     2. Peak arrays must not be empty.
     3. M/Z and intensity arrays must have matching lengths.
     4. All intensity values must be positive.
-    5. M/Z values must be monotonically increasing.
+    5. M/Z values must be strictly increasing (no exact duplicate fragments).
 
     Parameters
     ----------
@@ -307,6 +310,12 @@ def _validate_spectra_iterator(
             elif not np.all(np.diff(spectrum.peaks.mz) >= 0):
                 is_valid = False
                 rejection_reason = "M/Z values are not monotonically increasing"
+            elif np.any(np.diff(spectrum.peaks.mz) == 0):
+                # Row-based peak assignment would count repeated copies of one
+                # ion as separate evidence toward min_matched_peaks. Reject the
+                # ambiguous input rather than invent an intensity-merge policy.
+                is_valid = False
+                rejection_reason = "Duplicate fragment m/z values"
             elif not np.all(spectrum.peaks.intensities > 0):
                 is_valid = False
                 rejection_reason = "Contains non-positive intensity values"
