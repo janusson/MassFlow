@@ -17,6 +17,7 @@ import difflib
 import hashlib
 import json
 import logging
+import math
 import os
 from pathlib import Path
 from typing import Any, List, Literal, Optional, Union, get_args
@@ -532,11 +533,50 @@ class SimilarityConfig(MassFlowBaseModel):
     min_score: float = 0.6
     analog_search: bool = False
     min_matched_peaks: int = 3
+    collect_retrieval_diagnostics: bool = Field(
+        default=False,
+        description=(
+            "Collect bounded, machine-readable spectrum and candidate-stage "
+            "diagnostics without changing scoring."
+        ),
+    )
     fdr_threshold: float = 0.01
     rt_tolerance: Optional[float] = Field(
         default=None,
-        description="Optional: Retention time tolerance in minutes. When set, query-reference pairs with an RT difference exceeding this value are rejected.",
+        description="Retention-time tolerance in rt_tolerance_unit. Legacy configurations without a unit retain seconds with a migration warning.",
     )
+
+    rt_tolerance_unit: Literal["seconds", "minutes"] = Field(
+        default="seconds",
+        description="Unit of rt_tolerance; spectra use canonical seconds.",
+    )
+
+    @property
+    def rt_tolerance_seconds(self) -> Optional[float]:
+        """Return the configured tolerance converted to canonical seconds."""
+        if self.rt_tolerance is None:
+            return None
+        return self.rt_tolerance * (
+            60.0 if self.rt_tolerance_unit == "minutes" else 1.0
+        )
+
+    @model_validator(mode="after")
+    def warn_legacy_retention_tolerance(self) -> "SimilarityConfig":
+        """Keep the actual legacy seconds behavior visible during migration."""
+        if (
+            self.rt_tolerance is not None
+            and "rt_tolerance_unit" not in self.model_fields_set
+        ):
+            logger.warning(
+                "rt_tolerance without rt_tolerance_unit retains legacy seconds. "
+                "Set rt_tolerance_unit explicitly to 'seconds' or 'minutes'; "
+                "older documentation incorrectly described an automatic minutes conversion."
+            )
+        if self.rt_tolerance_seconds is not None and not math.isfinite(
+            self.rt_tolerance_seconds
+        ):
+            raise ValueError("Converted retention-time tolerance must be finite.")
+        return self
 
     # --- Consensus engine settings (used when algorithm='consensus') ---
     consensus_weights: dict[str, float] = Field(
@@ -835,6 +875,8 @@ class SimilarityConfig(MassFlowBaseModel):
         """Ensure rt_tolerance is not negative."""
         if v is not None and v < 0:
             raise ValueError(f"{info.field_name} cannot be negative. Received: {v}")
+        if v is not None and not math.isfinite(v):
+            raise ValueError(f"{info.field_name} must be finite. Received: {v}")
         return v
 
     @field_validator("ms1_tolerance", "ms2_tolerance")

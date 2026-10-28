@@ -108,6 +108,7 @@ nav:
           - Confidence Semantics: user-guide/confidence-semantics.md
           - Scientific Validation Program: validation/program/README.md
           - Experimental Benchmark: validation/experimental-benchmark.md
+          - Cross-instrument Benchmarking: user-guide/benchmarking.md
           - Multiprocessing & Memory Model: multiprocessing.md
   - Architecture: ARCHITECTURE.md
   - Product Contract & Capability Matrix: CAPABILITY_MATRIX.md

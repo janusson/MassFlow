@@ -23,6 +23,7 @@ from MassFlow import io, processing, workflow
 from MassFlow.config import MassFlowConfig
 from MassFlow.similarity import SimilarityEngine
 from scripts.validation_benchmark import dataset, metrics
+from scripts.benchmark_reporting import attribute_truth_candidates
 
 
 def _scalar(value: Any) -> Any:
@@ -147,6 +148,7 @@ def run_arm(
     --------
     >>> # run_arm(queries, references, settings, Path('new-run'), absent=set())
     """
+    output = output.resolve()
     if output.exists():
         raise ValueError(f"Refusing to overwrite benchmark run: {output}")
     output.mkdir(parents=True)
@@ -172,7 +174,10 @@ def run_arm(
                 "min_peaks": 3,
                 "repair_inchi_inchikey_smiles": False,
             },
-            "similarity": settings,
+            "similarity": {
+                **settings,
+                "collect_retrieval_diagnostics": True,
+            },
             "export": {"format": "csv"},
         }
     )
@@ -396,6 +401,9 @@ def run_arm(
                 "interpretation": "descriptive_observed_FDP_only_not_error_control",
             }
         )
+    reference_rejection_reasons: dict[str, list[str]] = {
+        key: value for key, value in reasons.items() if key in reference_map
+    }
     payload = {
         "schema_version": 1,
         "metrics": metrics.evaluate(accounting, captured),
@@ -413,6 +421,9 @@ def run_arm(
         ),
         "warnings": results[0].warnings if results else [],
         "candidate_rows": len(captured),
+        "retrieval_diagnostics": (
+            results[0].retrieval_diagnostics if results else None
+        ),
         "reference_records_after_processing": len(
             seen["processed"] & set(reference_map)
         ),
@@ -439,10 +450,52 @@ def run_arm(
             ],
             "limitation": "Search exports qualified hits only. Empty candidate sets cannot distinguish precursor, score and peak-gate losses; no per-gate counts are inferred.",
         },
-        "reference_rejection_reasons": {
-            key: value for key, value in reasons.items() if key in reference_map
-        },
+        "reference_rejection_reasons": reference_rejection_reasons,
     }
+    truth_labels = {
+        f"query_{query_index:04d}": {
+            "inchikey": record.inchikey,
+            "connectivity": record.connectivity,
+            "source": str(record.metadata.get("instrument_type", "unknown")),
+            "peak_count": int(record.mz.size),
+            "true_lib_records": [
+                reference.accession
+                for reference in library
+                if reference.inchikey == record.inchikey
+            ],
+        }
+        for query_index, record in enumerate(queries)
+    }
+    truth_attribution = attribute_truth_candidates(
+        truth_labels,
+        results[0].results if results else [],
+        config=config,
+        prepared_library_path=str(output / "native" / "library_library.db"),
+        run_diagnostics=(results[0].retrieval_diagnostics if results else None),
+        identity_endpoint="inchikey",
+    )
+    accounting_by_id = {row["query_id"]: row for row in accounting}
+    eligible_attributions: Counter[str] = Counter()
+    for query_id, query_attribution in truth_attribution.get("by_query", {}).items():
+        query_accounting = accounting_by_id[query_id]
+        query_attribution["truth_identity_endpoint"] = "full InChIKey"
+        query_attribution["benchmark_eligible"] = query_accounting["eligible"]
+        query_attribution["truth_library_present_by_connectivity"] = query_accounting[
+            "present"
+        ]
+        query_attribution["truth_reference_preparation_rejections"] = {
+            reference_id: reference_rejection_reasons.get(reference_id, [])
+            for reference_id in query_attribution.get(
+                "truth_reference_ids_missing_after_preparation", []
+            )
+        }
+        if query_accounting["eligible"]:
+            eligible_attributions[str(query_attribution["attribution"])] += 1
+    truth_attribution["primary_eligible_classification_counts"] = dict(
+        sorted(eligible_attributions.items())
+    )
+    payload["truth_attribution"] = truth_attribution
+
     for name, values in [
         ("queries", accounting),
         ("candidates", captured),

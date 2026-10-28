@@ -28,6 +28,7 @@ from typing import Any, Callable, Iterable, Iterator, Optional, Sequence
 import numpy as np
 import polars as pl
 import yaml
+from lxml import etree
 from matchms import Spectrum
 from matchms.importing import (
     load_from_mgf,
@@ -35,6 +36,9 @@ from matchms.importing import (
     load_from_mzml,
     load_from_mzxml,
 )
+
+from MassFlow.diagnostics import DiagnosticReason, DiagnosticStage, RejectionEvent
+from MassFlow.retention import normalize_retention_time
 
 logger = logging.getLogger(__name__)
 
@@ -224,6 +228,7 @@ def _validate_spectra_iterator(
     spectra: Iterable[Spectrum],
     source_path: Path,
     rejection_reporter: Optional[Callable[[str], None]] = None,
+    diagnostic_reporter: Optional[Callable[[RejectionEvent], None]] = None,
 ) -> Iterator[Spectrum]:
     """
     A high-performance validation layer for spectrum iterators.
@@ -279,12 +284,14 @@ def _validate_spectra_iterator(
 
         is_valid = True
         rejection_reason = ""
+        diagnostic_reason = DiagnosticReason.INPUT_INVALID
 
         # 1. Precursor Check
         precursor_mz = spectrum.get("precursor_mz")
         if precursor_mz is None:
             is_valid = False
             rejection_reason = "Missing precursor_mz"
+            diagnostic_reason = DiagnosticReason.PRECURSOR_MISSING
         else:
             try:
                 if float(precursor_mz) <= 0:
@@ -317,6 +324,18 @@ def _validate_spectra_iterator(
         else:
             if rejection_reporter is not None:
                 rejection_reporter(rejection_reason)
+            if diagnostic_reporter is not None:
+                diagnostic_reporter(
+                    RejectionEvent(
+                        stage=DiagnosticStage.INPUT_VALIDATION,
+                        reason=diagnostic_reason,
+                        detail=rejection_reason,
+                        spectrum_id=(
+                            str(spectrum.get("id") or spectrum.get("spectrum_id") or "")
+                            or None
+                        ),
+                    )
+                )
             quarantine_logger.warning(
                 f"Quarantined Spectrum | Source: {source_path.name} | "
                 f"ID: {spec_id} | Reason: {rejection_reason}"
@@ -354,20 +373,72 @@ def _assign_library_record_ids(
         yield record
 
 
+def _mzxml_original_times(path: Path) -> dict[str, str]:
+    """Read original MS2 duration attributes before pyteomics converts them.
+
+    Only scan IDs and duration strings are retained. Peak elements are cleared
+    during this metadata pass, so binary peak payloads do not accumulate.
+    """
+    original_times: dict[str, str] = {}
+    with path.open("rb") as handle:
+        for event, element in etree.iterparse(handle, events=("start", "end")):
+            if event == "start":
+                if (
+                    etree.QName(element).localname == "scan"
+                    and element.get("msLevel") == "2"
+                ):
+                    scan_number = element.get("num")
+                    duration = element.get("retentionTime")
+                    if scan_number is not None and duration is not None:
+                        original_times[scan_number] = duration
+            else:
+                element.clear()
+                parent = element.getparent()
+                if parent is not None:
+                    while element.getprevious() is not None:
+                        del parent[0]
+    return original_times
+
+
+def _mzxml_spectra_with_original_time(path: Path) -> Iterator[Spectrum]:
+    """Attach raw duration text by scan ID while retaining matchms peak decoding."""
+    original_times: Optional[dict[str, str]] = None
+    for spectrum in load_from_mzxml(str(path), metadata_harmonization=False):
+        scan_number = spectrum.get("scan_number")
+        if scan_number is not None:
+            if original_times is None:
+                original_times = _mzxml_original_times(path)
+            duration = original_times.get(str(scan_number))
+            if duration is not None:
+                spectrum.set(
+                    "retention_time_original",
+                    {
+                        "field": "retentionTime",
+                        "value": duration,
+                        "unit": "ISO8601 duration",
+                        "format": "mzXML",
+                        "scan_number": str(scan_number),
+                    },
+                )
+        yield spectrum
+
+
 def load_spectra(
     file_path: Path,
     file_format: Optional[str] = None,
     rejection_reporter: Optional[Callable[[str], None]] = None,
     *,
     assign_record_ids: bool = False,
+    diagnostic_reporter: Optional[Callable[[RejectionEvent], None]] = None,
 ) -> Iterator[Spectrum]:
     """
     Load spectra from an open spectral file or a MassFlow-native store.
 
     The loader infers the format from ``file_path`` unless ``file_format`` is
     provided explicitly. Supported formats are mzML, mzXML, MGF, MSP, and SQLite
-    (``db``/``sqlite``). Imported spectra are yielded exactly as the backend
-    loader returns them; MassFlow's metadata cleaning and peak filtering happen
+    (``db``/``sqlite``). Peak decoding is delegated to the backend loader.
+    mzXML spectra also retain the original duration text by scan ID, before
+    importer unit conversion. Metadata normalization and peak filtering happen
     later in :func:`MassFlow.processing.process_spectra`.
 
     Parameters
@@ -389,6 +460,8 @@ def load_spectra(
         an existing ID; missing or repeated IDs receive a content/ordinal ID.
         Original IDs remain in ``massflow_original_id``. Chemical identifiers
         are never used as record keys. Native stores are read without changes.
+    diagnostic_reporter : Callable[[RejectionEvent], None] or None
+        Optional typed observer for bounded failure-attribution diagnostics.
 
     Yields
     ------
@@ -430,7 +503,7 @@ def load_spectra(
     elif fmt == "mgf":
         loader = load_from_mgf(str(path), metadata_harmonization=False)
     elif fmt == "mzxml":
-        loader = load_from_mzxml(str(path), metadata_harmonization=False)
+        loader = _mzxml_spectra_with_original_time(path)
     elif fmt in ["db", "sqlite"]:
         from MassFlow.storage import create_spectral_store
 
@@ -456,7 +529,9 @@ def load_spectra(
         loader = _assign_library_record_ids(loader, path)
 
     # Step 3: Yield spectra through the validation layer
-    yield from _validate_spectra_iterator(loader, path, rejection_reporter)
+    yield from _validate_spectra_iterator(
+        loader, path, rejection_reporter, diagnostic_reporter
+    )
 
 
 def _optional_float(value: Any) -> Optional[float]:
@@ -518,22 +593,36 @@ def _build_results_dataframe(
         clean_results.append(clean_r)
 
     if query_spectra is not None:
-        q_ids, q_mzs, q_rts = [], [], []
+        q_ids, q_mzs, query_times_seconds, query_time_sources = [], [], [], []
         for q in query_spectra:
             q_ids.append(str(q.get("id")))
             q_mzs.append(_optional_float(q.get("precursor_mz")))
-            q_rts.append(_optional_float(q.get("retention_time")))
+            normalized_time = normalize_retention_time(q)
+            query_times_seconds.append(normalized_time.get("retention_time"))
+            query_time_sources.append(
+                json.dumps(
+                    normalized_time.get("retention_time_source"),
+                    sort_keys=True,
+                    separators=(",", ":"),
+                )
+            )
 
         base_df = pl.DataFrame(
             {
                 "query_id": q_ids,
                 "query_precursor_mz": q_mzs,
-                "query_retention_time": q_rts,
+                "query_retention_time": query_times_seconds,
+                "query_retention_time_seconds": query_times_seconds,
+                "query_retention_time_unit": ["seconds"] * len(q_ids),
+                "query_retention_time_source": query_time_sources,
             },
             schema={
                 "query_id": pl.Utf8,
                 "query_precursor_mz": pl.Float64,
                 "query_retention_time": pl.Float64,
+                "query_retention_time_seconds": pl.Float64,
+                "query_retention_time_unit": pl.Utf8,
+                "query_retention_time_source": pl.Utf8,
             },
         )
 
@@ -697,6 +786,28 @@ def save_analysis_report(
         )
 
     logger.info(f"Analysis report saved to {output_path}")
+
+
+def save_retrieval_diagnostics_json(
+    output_path: Path, diagnostics: dict[str, Any]
+) -> None:
+    """Write a compact machine-readable retrieval-funnel sidecar.
+
+    Parameters
+    ----------
+    output_path : Path
+        Destination JSON path.
+    diagnostics : dict[str, Any]
+        Versioned, JSON-safe diagnostic payload.
+
+    Returns
+    -------
+    None
+    """
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open("w", encoding="utf-8") as output_file:
+        json.dump(diagnostics, output_file, indent=2, sort_keys=True, allow_nan=False)
+        output_file.write("\n")
 
 
 def save_spectra_to_msp(spectra: Iterable[Spectrum], export_path: Path) -> None:

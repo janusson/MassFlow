@@ -31,6 +31,10 @@ from typing import Any, Dict, List, Literal, Optional, cast
 from matchms import Spectrum
 
 from MassFlow import io, processing, similarity as similarity_module
+from MassFlow.diagnostics import (
+    DiagnosticReason,
+    RejectionSummary,
+)
 from MassFlow.config import MassFlowConfig, SimilarityConfig
 from MassFlow.library import LibrarySpec, open_library, prepare_library
 from MassFlow.storage import SpectralStore
@@ -113,6 +117,7 @@ class FileExecutionResult:
     fdr_summary: dict[str, int] | None = field(default=None, repr=False)
     confidence_summary: dict[str, Any] | None = field(default=None, repr=False)
     library_provenance: dict[str, Any] | None = field(default=None, repr=False)
+    retrieval_diagnostics: dict[str, Any] | None = field(default=None, repr=False)
 
 
 _worker_engine: SimilarityEngine | _MLEngineBase | MLEngineProtocol | None = None
@@ -545,6 +550,7 @@ def _build_classical_fallback_engine(
         min_score=similarity_config.min_score,
         min_matched_peaks=similarity_config.min_matched_peaks,
         rt_tolerance=similarity_config.rt_tolerance,
+        rt_tolerance_unit=similarity_config.rt_tolerance_unit,
     )
     return SimilarityEngine(fallback_config)
 
@@ -602,6 +608,24 @@ def _process_single_file(
         spectra and filtered results are carried on the result for export.
     """
     result = FileExecutionResult(status="success", input_path=query_file)
+    collect_diagnostics = config.similarity.collect_retrieval_diagnostics
+    rejection_summary = RejectionSummary() if collect_diagnostics else None
+    diagnostic_reporter = rejection_summary.record if rejection_summary else None
+    if collect_diagnostics:
+        run_sha, run_tree_dirty = _git_sha()
+        result.retrieval_diagnostics = {
+            "schema_version": 1,
+            "run_sha": run_sha,
+            "run_tree_dirty": run_tree_dirty,
+            "query_file": str(query_file),
+            "effective_configuration": config.normalized_config(),
+            "spectrum_counts": {},
+            "rejections": {},
+            "search": {"status": "not_started"},
+            "confidence": {"state": "unavailable"},
+            "terminal_query_outcomes": {},
+            "unknown_or_unattributable": 0,
+        }
     try:
         # ------------------------------------------------------------------
         # 1. Load, validate, and process query spectra
@@ -610,22 +634,29 @@ def _process_single_file(
         # collected so spectrum-level issues are observable and recorded in
         # provenance instead of vanishing into the quarantine log alone.
         rejection_collector = _RejectionCollector()
-        query_gen = io.load_spectra(
-            query_file,
-            file_format=config.input.format,
-            rejection_reporter=rejection_collector,
-        )
+        load_kwargs: dict[str, Any] = {
+            "file_format": config.input.format,
+            "rejection_reporter": rejection_collector,
+        }
+        if diagnostic_reporter is not None:
+            load_kwargs["diagnostic_reporter"] = diagnostic_reporter
+        query_gen = io.load_spectra(query_file, **load_kwargs)
         validated_queries = _CountingIterator(query_gen)
         # Rejections from the strict 5 ppm physical-integrity gate in
         # processing are collected separately so their reasons surface in the
         # file-level failure message (the drop itself is counted through the
         # usual processing length-delta accounting below).
         physics_collector = _RejectionCollector()
+        processing_kwargs: dict[str, Any] = {
+            "rejection_reporter": physics_collector,
+        }
+        if diagnostic_reporter is not None:
+            processing_kwargs["diagnostic_reporter"] = diagnostic_reporter
         query_spectra = list(
             processing.process_spectra(
                 validated_queries,
                 config.processing,
-                rejection_reporter=physics_collector,
+                **processing_kwargs,
             )
         )
 
@@ -633,6 +664,23 @@ def _process_single_file(
         n_processing_drops = max(n_validated - len(query_spectra), 0)
         result.spectra_loaded = n_validated
         result.spectra_rejected = rejection_collector.count + n_processing_drops
+        if result.retrieval_diagnostics is not None and rejection_summary is not None:
+            known_processing_rejections = sum(
+                count
+                for stage, count in rejection_summary.stage_counts.items()
+                if stage != "input_validation"
+            )
+            result.retrieval_diagnostics["spectrum_counts"] = {
+                "input_rejected": rejection_collector.count,
+                "validated_before_processing": n_validated,
+                "processing_rejected": n_processing_drops,
+                "processed": len(query_spectra),
+                "observed_by_pipeline": rejection_collector.count + n_validated,
+            }
+            result.retrieval_diagnostics["rejections"] = rejection_summary.as_dict()
+            result.retrieval_diagnostics["unknown_or_unattributable"] = max(
+                n_processing_drops - known_processing_rejections, 0
+            )
 
         if not query_spectra:
             # The file yielded no analyzable spectra: its data were NOT
@@ -645,6 +693,11 @@ def _process_single_file(
                     f" ({physics_collector.count} failed the strict 5 ppm "
                     f"physical-integrity validation: {physics_reasons})"
                 )
+            if result.retrieval_diagnostics is not None:
+                rejected = rejection_collector.count + n_processing_drops
+                result.retrieval_diagnostics["terminal_query_outcomes"] = {
+                    "preprocessing_rejected": rejected,
+                }
             result.status = "failed"
             result.fatal_errors.append(
                 f"No analyzable spectra: {rejection_collector.count} rejected "
@@ -778,6 +831,18 @@ def _process_single_file(
         decoy_diagnostics: dict[str, Any] = dict(
             getattr(active_engine, "decoy_diagnostics", {}) or {}
         )
+        search_diagnostics = dict(
+            getattr(active_engine, "retrieval_diagnostics", {}) or {}
+        )
+        if result.retrieval_diagnostics is not None:
+            result.retrieval_diagnostics["search"] = (
+                search_diagnostics
+                if search_diagnostics
+                else {
+                    "status": "unavailable",
+                    "reason": "active engine does not expose classical pair-stage counts",
+                }
+            )
 
         # Per-query target-decoy competition (TDC): the competition unit is the
         # query spectrum. Each query contributes its best target hit and its
@@ -878,6 +943,71 @@ def _process_single_file(
 
         # Sort results descending by score
         fdr_filtered_results.sort(key=lambda x: x["score"], reverse=True)
+        if result.retrieval_diagnostics is not None:
+            result.retrieval_diagnostics["confidence"] = {
+                "state": assessment.state,
+                "limitations": list(assessment.limitations),
+                "legacy_q_values_are_calibrated": False,
+            }
+            terminal_outcomes: dict[str, int] = {
+                "preprocessing_rejected": rejection_collector.count + n_processing_drops
+            }
+            unknown_count = int(
+                result.retrieval_diagnostics.get("unknown_or_unattributable", 0)
+            )
+            search_queries = search_diagnostics.get("queries", {})
+            if not isinstance(search_queries, dict):
+                search_queries = {}
+            processed_query_count = len(query_spectra)
+            confidence_state_counts: dict[str, int] = {}
+            if search_queries:
+                exported_query_ids = {
+                    str(row.get("query_id")) for row in fdr_filtered_results
+                }
+                for query_id, query_diagnostic in search_queries.items():
+                    query_diagnostic["confidence_state"] = assessment.state
+                    confidence_state_counts[assessment.state] = (
+                        confidence_state_counts.get(assessment.state, 0) + 1
+                    )
+                    target_diagnostic = query_diagnostic.get("target", {})
+                    if target_diagnostic.get("returned_by_search", 0) > 0:
+                        outcome = (
+                            DiagnosticReason.CANDIDATE_RETURNED.value
+                            if str(query_id) in exported_query_ids
+                            else DiagnosticReason.CONFIDENCE_FILTER_REJECTED.value
+                        )
+                        query_diagnostic["terminal_outcome"] = outcome
+                    outcome = str(query_diagnostic.get("terminal_outcome", "unknown"))
+                    terminal_outcomes[outcome] = terminal_outcomes.get(outcome, 0) + 1
+                    if outcome == DiagnosticReason.UNKNOWN.value:
+                        unknown_count += 1
+                missing_query_count = max(
+                    processed_query_count - len(search_queries), 0
+                )
+                if missing_query_count:
+                    unknown_outcome = DiagnosticReason.UNKNOWN.value
+                    terminal_outcomes[unknown_outcome] = (
+                        terminal_outcomes.get(unknown_outcome, 0) + missing_query_count
+                    )
+                    unknown_count += missing_query_count
+                    confidence_state_counts[assessment.state] = (
+                        confidence_state_counts.get(assessment.state, 0)
+                        + missing_query_count
+                    )
+            else:
+                unknown_outcome = DiagnosticReason.UNKNOWN.value
+                terminal_outcomes[unknown_outcome] = (
+                    terminal_outcomes.get(unknown_outcome, 0) + processed_query_count
+                )
+                unknown_count += processed_query_count
+                confidence_state_counts[assessment.state] = processed_query_count
+            result.retrieval_diagnostics["confidence_state_counts"] = dict(
+                sorted(confidence_state_counts.items())
+            )
+            result.retrieval_diagnostics["terminal_query_outcomes"] = dict(
+                sorted(terminal_outcomes.items())
+            )
+            result.retrieval_diagnostics["unknown_or_unattributable"] = unknown_count
 
         result.hits_produced = len(fdr_filtered_results)
         result.query_spectra = query_spectra
@@ -1017,6 +1147,12 @@ def _write_analysis_report(
         "processing": config.processing.model_dump(mode="json"),
         "similarity": config.similarity.model_dump(mode="json"),
         "workflow": config.workflow.model_dump(mode="json"),
+        "retention_time": {
+            "unit": "seconds",
+            "tolerance_value": config.similarity.rt_tolerance,
+            "tolerance_unit": config.similarity.rt_tolerance_unit,
+            "tolerance_seconds": config.similarity.rt_tolerance_seconds,
+        },
         # Normalized configuration representation (schema version, source
         # config file, full effective config with resolved paths, digest).
         "config": config.normalized_config(),
@@ -1041,6 +1177,22 @@ def _write_analysis_report(
     if result.library_provenance is not None:
         report_payload["library"] = result.library_provenance
 
+    if result.retrieval_diagnostics is not None:
+        diagnostic_path = report_path.with_name(
+            report_path.name.replace(".report.yaml", ".diagnostics.json")
+        )
+        fingerprints: dict[str, Any] = {}
+        if result.input_path.is_file():
+            fingerprints["query_file_sha256"] = _file_sha256(result.input_path)
+        if config.input.library_path is not None:
+            library_path = Path(config.input.library_path)
+            if library_path.exists() and library_path.is_file():
+                fingerprints["library_file_sha256"] = _file_sha256(library_path)
+        result.retrieval_diagnostics["fingerprints"] = fingerprints
+        report_payload["retrieval_diagnostics_json"] = str(diagnostic_path)
+        io.save_retrieval_diagnostics_json(
+            diagnostic_path, result.retrieval_diagnostics
+        )
     # Delegate to IO layer for file writing so tests can patch io.save_analysis_report
     io.save_analysis_report(report_path, report_payload)
 

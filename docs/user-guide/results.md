@@ -60,6 +60,14 @@ This acquisition identity is distinct from chemical identity such as InChIKey.
 !!! note "Unmatched Queries"
     The CSV includes matched *and* unmatched query spectra. A query with no retained candidate still has a row with reference-specific columns left blank. Historical q-value filtering may affect candidate retention, but it is not validated FDR control.
 
+The retained `query_retention_time` column is in seconds. New
+`query_retention_time_seconds` and `query_retention_time_unit` columns make this
+explicit; `query_retention_time_source` contains JSON with the original input
+field, value, unit, and normalization status. A missing time is a blank numeric
+cell, never a fabricated zero. These additive fields are also emitted by the
+current mzTab-shaped exporter; they do not establish mzTab-M conformance (see
+[issue #123](https://github.com/janusson/MassFlow/issues/123)).
+
 ### The Provenance Sidecar Report
 
 The sidecar report (`.report.yaml`) acts as a hard link between your CSV results and the run conditions that produced it. It captures:

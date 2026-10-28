@@ -23,7 +23,7 @@ processing:
 ```
 
 *   `clean_metadata`: Applies the `default_filters` from `matchms` to correct common metadata formatting issues (e.g., stripping whitespace, harmonizing keys).
-*   `add_retention_time`: Attempts to extract and format retention time data from the raw file into a standardized numeric format.
+*   `add_retention_time`: Extracts supported retention-time aliases into canonical seconds, preserving the original value and unit in `retention_time_source`. Explicit minute/second MGF fields, unit-bearing MSP values, and mzML/mzXML unit metadata are converted before storage. Disabling alias extraction still normalizes an existing canonical `retention_time` field. Unlabelled canonical/MSP numeric times follow the seconds contract; an unlabelled mzML scan time is left missing. Conflicting alias values are left missing. Metadata repairs operate on a clone of the source spectrum.
 *   `repair_inchi_inchikey_smiles`: Attempts to fix broken or malformed structural identifiers. Crucial if you plan to use structure-aware experimental engines later.
 *   `derive_adduct_from_name` & `derive_formula_from_name`: Parses the compound name string to extract adduct and chemical formula information if it is not explicitly provided in the metadata fields.
 *   `clean_compound_name`: Standardizes compound names for consistent downstream reporting.
