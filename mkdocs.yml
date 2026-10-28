@@ -100,11 +100,15 @@ nav:
           - Scientific Validation: user-guide/validation.md
           - Golden Test Suite: user-guide/scientific_validation.md
           - Classical Similarity: user-guide/similarity.md
-          - Result Export & FDR: user-guide/results.md
+          - Result Export & Confidence: user-guide/results.md
           - Usage Reference: user-guide/usage.md
       - Data & Math:
           - Data Requirements: user-guide/data-requirements.md
           - Scoring Logic: user-guide/scoring_logic.md
+          - Confidence Semantics: user-guide/confidence-semantics.md
+          - Scientific Validation Program: validation/program/README.md
+          - Experimental Benchmark: validation/experimental-benchmark.md
+          - Cross-instrument Benchmarking: user-guide/benchmarking.md
           - Multiprocessing & Memory Model: multiprocessing.md
   - Architecture: ARCHITECTURE.md
   - Product Contract & Capability Matrix: CAPABILITY_MATRIX.md
@@ -128,5 +132,6 @@ nav:
       - Cheminformatics: api/cheminformatics.md
       - Consensus: api/consensus.md
       - Server: api/server.md
+  - 1.0 Release Readiness: release/1.0-readiness.md
   - Roadmap: post-v0.1-roadmap.md
   - Changelog: CHANGELOG.md

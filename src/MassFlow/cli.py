@@ -492,7 +492,7 @@ def run_db_build(
         store = create_spectral_store(Path(output), backend=effective_backend)
 
         logger.info(f"Streaming and processing spectra from {input}")
-        raw_spectra = io.load_spectra(Path(input))
+        raw_spectra = io.load_spectra(Path(input), assign_record_ids=True)
         cleaned_spectra = processing.process_spectra(raw_spectra, cfg.processing)
 
         added = store.add_spectra(cleaned_spectra, category=category)

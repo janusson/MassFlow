@@ -37,7 +37,7 @@
 | `protocols.py` | 134 | **Experimental** | `MLEngineProtocol` — contract for the ML satellite boundary | Only consumed by ML engines |
 | `ml_client.py` | 573 | **Experimental** | Remote ML engines (REST/gRPC) + circuit breaker | Only active when `similarity.ml_endpoints` is configured (flagged) |
 | `hnsw.py` | 585 | **Experimental** | HNSW two-channel candidate index (`[hnsw]` extra) | Only active inside `cascade` with `hnsw_enabled=true` (config-validated); flagged |
-| `acceleration.py` | 521 | **Experimental** (as a whole) with a **supported** default-on part | Numba peak/neutral-loss prefilter: default-on for `modified_cosine` but **numerically identical** to the pure-NumPy fallback (identity-tested end-to-end, incl. decoys) — an optimization, not a science change. HNSW spectral binning: experimental | Prefilter falls back to NumPy when numba is absent |
+| `acceleration.py` | 521 | **Experimental** | Numba peak/neutral-loss prefilter: opt-in for `modified_cosine`; disabled by default until exact candidate-domain equivalence is qualified. HNSW spectral binning: experimental approximate retrieval with no recall guarantee | Full scoring is the default; prefilter remains an explicitly experimental path |
 | `convert.py` | 104 | **Experimental** | Thin wrapper around external ProteoWizard `msconvert`; the annotate pipeline rejects vendor formats | CLI help marks it EXPERIMENTAL |
 | `log_config.py` | 103 | **Required** | Structured logging setup | — |
 | `streaming/` (server 1189, engine 734, queue 542) | 2465 | **Experimental** | gRPC streaming server (loopback default, TLS/auth, bounded queue); `stream-server` CLI command | CLI help marks it EXPERIMENTAL; safe-by-default binds/auth |
@@ -118,7 +118,7 @@ or remote-ML endpoints — an experimental run is never silent.
 3. **HNSW**: `hnsw_enabled` defaults `false`, and config validation rejects `hnsw_enabled` with any engine other than `cascade`.
 4. **Storage**: `storage_backend` defaults `sqlite`; `zarr`/`hybrid` are explicit choices with contract tests.
 5. **Streaming**: loopback bind by default; TLS/`--admin-token`/`--allow-remote-control` required for remote/control-plane use.
-6. **Numba prefilter**: default-on, but numerically identical to the pure-NumPy fallback (identity-tested with decoys); it is an optimization, not a science change.
+6. **Numba prefilter**: opt-in and disabled by default in the restricted candidate-retrieval scope; full scoring is used unless a caller explicitly enables the experimental pruning path.
 7. **Pytest**: default selection runs unit + integration + scientific-validation; `benchmark`/`slow`/`optional` are opt-in; `scripts/experiments/` is never collected.
 
 ### 3.2 Added in this pass
