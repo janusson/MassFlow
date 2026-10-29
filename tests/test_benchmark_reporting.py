@@ -611,6 +611,41 @@ def test_truth_precursor_audit_uses_serialized_values_and_explicit_denominators(
     )
 
 
+def test_truth_precursor_audit_keeps_missing_precursors_in_query_denominators() -> None:
+    labels = {
+        "q_missing_precursor": {
+            "source": "LTQ",
+            "peak_count": 4,
+            "true_lib_records": ["ref-a"],
+        }
+    }
+    stats = {
+        "selected_source_metadata": {
+            "q_missing_precursor": {"search_precursor_mz": None}
+        },
+        "selected_truth_reference_precursor_mz": {"ref-a": 200.0},
+    }
+
+    result = audit_truth_precursor_eligibility(
+        labels,
+        stats,
+        min_query_peaks=3,
+    )
+
+    source = result["by_source"]["LTQ"]
+    assert source["selected_queries"] == 1
+    assert source["searched_queries"] == 1
+    assert source["missing_query_precursor_count"] == 1
+    assert source["selected_truth_pairs"]["pair_count"] == 0
+    assert source["searched_truth_pairs"]["pair_count"] == 0
+    assert (
+        source["tolerances"]["0.01_Da"][
+            "selected_queries_with_any_truth_pair_in_window"
+        ]
+        == 0
+    )
+
+
 def test_truth_pair_attribution_uses_last_surviving_stage() -> None:
     mixed_truth_pairs = {
         "prefilter_pairs": 1,

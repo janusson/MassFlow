@@ -546,7 +546,7 @@ def audit_truth_precursor_eligibility(
     """
     source_metadata = stats.get("selected_source_metadata", {})
     reference_precursors = stats.get("selected_truth_reference_precursor_mz", {})
-    by_source: dict[str, list[tuple[str, float, list[float]]]] = {}
+    by_source: dict[str, list[tuple[str, float | None, list[float]]]] = {}
     missing_query_precursors: dict[str, int] = {}
     missing_reference_precursors: dict[str, int] = {}
     for query_id, label in labels.items():
@@ -557,20 +557,24 @@ def audit_truth_precursor_eligibility(
             missing_query_precursors[source] = (
                 missing_query_precursors.get(source, 0) + 1
             )
-            continue
         differences: list[float] = []
-        for reference_id in label.get("true_lib_records", []):
-            reference_precursor_mz = reference_precursors.get(str(reference_id))
-            if reference_precursor_mz is None:
-                missing_reference_precursors[source] = (
-                    missing_reference_precursors.get(source, 0) + 1
+        if query_precursor_mz is not None:
+            for reference_id in label.get("true_lib_records", []):
+                reference_precursor_mz = reference_precursors.get(str(reference_id))
+                if reference_precursor_mz is None:
+                    missing_reference_precursors[source] = (
+                        missing_reference_precursors.get(source, 0) + 1
+                    )
+                    continue
+                differences.append(
+                    abs(float(query_precursor_mz) - float(reference_precursor_mz))
                 )
-                continue
-            differences.append(
-                abs(float(query_precursor_mz) - float(reference_precursor_mz))
-            )
         by_source.setdefault(source, []).append(
-            (str(query_id), float(query_precursor_mz), differences)
+            (
+                str(query_id),
+                (float(query_precursor_mz) if query_precursor_mz is not None else None),
+                differences,
+            )
         )
 
     report: dict[str, Any] = {
