@@ -12,14 +12,19 @@ complementary frames:
   modified-cosine scoring, whose precursor-aligned matching is equivalent to
   matching in neutral-loss space).
 
-A query--reference pair is a *candidate* only when the match count in either
-frame reaches ``min_matches``. Because the two-pointer merge count is an upper
-bound on the greedy matched-peak count that matchms computes (every greedily
-matched peak pair is one of the counted tolerance matches), skipping pairs
-below the threshold is **conservative**: it can never remove a pair that the
-subsequent exact scoring would have kept. Pairs where either spectrum lacks a
-``precursor_mz`` bypass the gate entirely, preserving recall for spectra
-without precursor information.
+For cosine, a pair is a *candidate* when the exact-frame match count reaches
+``min_matches``. For modified cosine, the SUM of both frame counts must reach
+that threshold: full scoring can combine unshifted and shifted matches.
+Each two-pointer count is a maximum-cardinality matching in its frame, hence
+an upper bound on the subset of greedy matches assigned in that frame, assuming
+the counter and scorer recognize the same tolerance-compatible peak pairs.
+Their sum bounds the combined greedy count. Peaks shared between frames may be
+counted twice, making this bound permissive; full scoring still enforces
+one-to-one peak use and the final threshold. This corrects the mixed-frame
+counting gate; floating-point differences between counter and scorer at
+tolerance boundaries are outside this bound's guarantee. Pairs where either
+spectrum lacks a ``precursor_mz`` bypass the gate entirely, preserving recall
+for spectra without precursor information.
 
 Two implementations are provided and are numerically identical:
 
@@ -153,9 +158,8 @@ if _HAS_NUMBA:
     ) -> int:
         """Count tolerance matches between two ascending float64 arrays.
 
-        Two-pointer merge: with both arrays ascending, every tolerance match
-        pair is encountered exactly once. The count is an upper bound on the
-        greedy matched-peak count used by matchms scoring.
+        The sorted two-pointer merge gives a maximum-cardinality one-to-one
+        matching in this frame, bounding any greedy matching in this frame.
         """
         count = 0
         index_a = 0
@@ -218,24 +222,16 @@ if _HAS_NUMBA:
                 query_mz_view = query_mz_flat[query_start:query_end]
                 query_nl_view = query_nl_flat[query_start:query_end]
 
-                passes = False
+                match_count_bound = 0
                 if check_mz:
-                    if (
-                        _count_tolerance_matches_numba(
-                            ref_mz_view, query_mz_view, tolerance
-                        )
-                        >= min_matches
-                    ):
-                        passes = True
-                if not passes and check_nl:
-                    if (
-                        _count_tolerance_matches_numba(
-                            ref_nl_view, query_nl_view, tolerance
-                        )
-                        >= min_matches
-                    ):
-                        passes = True
-                if passes:
+                    match_count_bound = _count_tolerance_matches_numba(
+                        ref_mz_view, query_mz_view, tolerance
+                    )
+                if match_count_bound < min_matches and check_nl:
+                    match_count_bound += _count_tolerance_matches_numba(
+                        ref_nl_view, query_nl_view, tolerance
+                    )
+                if match_count_bound >= min_matches:
                     counts[ref_index] += 1
 
         total = counts.sum()
@@ -264,24 +260,16 @@ if _HAS_NUMBA:
                 query_mz_view = query_mz_flat[query_start:query_end]
                 query_nl_view = query_nl_flat[query_start:query_end]
 
-                passes = False
+                match_count_bound = 0
                 if check_mz:
-                    if (
-                        _count_tolerance_matches_numba(
-                            ref_mz_view, query_mz_view, tolerance
-                        )
-                        >= min_matches
-                    ):
-                        passes = True
-                if not passes and check_nl:
-                    if (
-                        _count_tolerance_matches_numba(
-                            ref_nl_view, query_nl_view, tolerance
-                        )
-                        >= min_matches
-                    ):
-                        passes = True
-                if passes:
+                    match_count_bound = _count_tolerance_matches_numba(
+                        ref_mz_view, query_mz_view, tolerance
+                    )
+                if match_count_bound < min_matches and check_nl:
+                    match_count_bound += _count_tolerance_matches_numba(
+                        ref_nl_view, query_nl_view, tolerance
+                    )
+                if match_count_bound >= min_matches:
                     rows[position] = ref_index
                     cols[position] = query_index
                     position += 1
@@ -360,24 +348,16 @@ def _prefilter_pairs_python(
             query_mz_view = query_mz_flat[query_start:query_end]
             query_nl_view = query_nl_flat[query_start:query_end]
 
-            passes = False
+            match_count_bound = 0
             if check_mz:
-                if (
-                    _count_tolerance_matches_python(
-                        ref_mz_view, query_mz_view, tolerance
-                    )
-                    >= min_matches
-                ):
-                    passes = True
-            if not passes and check_nl:
-                if (
-                    _count_tolerance_matches_python(
-                        ref_nl_view, query_nl_view, tolerance
-                    )
-                    >= min_matches
-                ):
-                    passes = True
-            if passes:
+                match_count_bound = _count_tolerance_matches_python(
+                    ref_mz_view, query_mz_view, tolerance
+                )
+            if match_count_bound < min_matches and check_nl:
+                match_count_bound += _count_tolerance_matches_python(
+                    ref_nl_view, query_nl_view, tolerance
+                )
+            if match_count_bound >= min_matches:
                 counts[ref_index] += 1
 
     total = int(counts.sum())
@@ -406,24 +386,16 @@ def _prefilter_pairs_python(
             query_mz_view = query_mz_flat[query_start:query_end]
             query_nl_view = query_nl_flat[query_start:query_end]
 
-            passes = False
+            match_count_bound = 0
             if check_mz:
-                if (
-                    _count_tolerance_matches_python(
-                        ref_mz_view, query_mz_view, tolerance
-                    )
-                    >= min_matches
-                ):
-                    passes = True
-            if not passes and check_nl:
-                if (
-                    _count_tolerance_matches_python(
-                        ref_nl_view, query_nl_view, tolerance
-                    )
-                    >= min_matches
-                ):
-                    passes = True
-            if passes:
+                match_count_bound = _count_tolerance_matches_python(
+                    ref_mz_view, query_mz_view, tolerance
+                )
+            if match_count_bound < min_matches and check_nl:
+                match_count_bound += _count_tolerance_matches_python(
+                    ref_nl_view, query_nl_view, tolerance
+                )
+            if match_count_bound >= min_matches:
                 rows[position] = ref_index
                 cols[position] = query_index
                 position += 1
@@ -443,7 +415,7 @@ def prefilter_candidate_pairs(
     min_matches: int,
     algorithm: str = "modified_cosine",
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Return candidate ``(ref_index, query_index)`` pairs for exact scoring.
+    """Return candidate ``(ref_index, query_index)`` pairs for full greedy scoring.
 
     Parameters
     ----------
@@ -459,8 +431,9 @@ def prefilter_candidate_pairs(
         ``min_matches <= 0`` every pair is returned (no prefiltering).
     algorithm : str, optional
         ``"cosine"`` gates on exact m/z matches only; ``"modified_cosine"``
-        (default) gates on m/z **or** neutral-loss matches, matching the
-        shifted-alignment semantics of modified cosine.
+        (default) gates on the sum of the per-frame m/z and neutral-loss
+        counts, an upper bound on the combined shifted/unshifted matching.
+        Full greedy scoring resolves any peak use shared between frames.
 
     Returns
     -------

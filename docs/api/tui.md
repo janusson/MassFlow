@@ -6,7 +6,7 @@ identifying MS/MS data — no browser, no GUI toolkit, just your terminal
 (Ghostty, iTerm2, Kitty, Alacritty, …).
 
 ```bash
-pip install massflow[tui]
+pip install massflow-msms[tui]
 massflow tui --input experiments/run_01.mzML --library libraries/ALL_GNPS.msp
 ```
 
@@ -33,7 +33,7 @@ runs headlessly.
 | --- | --- | --- |
 | **Browser** | find · upload | Recursive discovery of spectral files (`.mzml`, `.mzxml`, `.mgf`, `.msp`, `.db`, `.zarr`), vendor files flagged with a conversion hint, upload = collision-safe copy into a local workspace, plus a library inspector (backend, spectra count, categories, precursor range). |
 | **Viewer** | view | Spectrum-by-spectrum inspection: interactive centroid stick plot (zoom, precursor marker), metadata panel (precursor m/z, RT, charge, adduct, base peak, TIC, spectral entropy). |
-| **Identify** | identify | Target-decoy similarity search against the selected library with q-value / p-value calibration; ranked hits with score gauges and a mirror plot (query up, reference down, matched peaks joined). |
+| **Identify** | identify | Experimental candidate search against the selected library with numerical confidence states; ranked hits and mirror plots do not confirm chemical identity or establish calibrated FDR. |
 | **Diagnostics** | diagnose | Every problem the console has seen, each with a plain-English fix, plus the tail of `massflow_quarantine.log` — every spectrum the validation layer rejected and why. |
 
 ## Key bindings
@@ -55,8 +55,8 @@ The console never dumps raw tracebacks over the interface. Every failure is
 captured as a `Problem` with a **stage** (`load-query`, `load-library`,
 `search`, …), the exception message, and — when the failure mode is known — a
 **hint**: vendor formats point at `massflow convert`, missing ML extras point
-at `pip install massflow[ml]`, locked SQLite files tell you to close other
-runs, small libraries warn that target-decoy FDR is statistically weak. The
+at `pip install massflow-msms[ml]`, locked SQLite files tell you to close other
+runs, small libraries may trigger a count-based diagnostic warning; this is not a calibration guarantee. The
 full traceback is preserved in the problem record for when you do need it.
 
 Heavy work (file scans, loads, library censuses, searches) runs in worker

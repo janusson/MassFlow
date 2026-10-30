@@ -27,7 +27,7 @@ from MassFlow.log_config import setup_structured_logging
 from MassFlow.tui.diagnostics import suggest_fix
 
 app = typer.Typer(
-    help="MassFlow: A robust, config-first Python toolkit for local tandem mass spectrometry (MS/MS) annotation.",
+    help="MassFlow: config-first MS/MS reference-library candidate retrieval and annotation-evidence toolkit.",
     no_args_is_help=True,
     add_completion=False,
 )
@@ -124,7 +124,7 @@ def main_callback(
     ),
 ):
     """
-    MassFlow: A robust, config-first Python toolkit for local tandem mass spectrometry (MS/MS) annotation.
+    MassFlow: config-first MS/MS reference-library candidate retrieval and annotation-evidence toolkit.
     """
     setup_logging()
 
@@ -217,69 +217,6 @@ export:
         raise typer.Exit(1)
 
 
-@app.command("tutorial")
-def run_tutorial(
-    clean: bool = typer.Option(
-        False,
-        "--clean",
-        help="Delete any existing tutorial/ directory before regenerating.",
-    ),
-):
-    """Generate synthetic tutorial data for evaluating MassFlow locally.
-
-    Creates a self-contained ``tutorial/`` directory with:
-    - ``tutorial_library.msp`` – reference steroid spectra
-    - ``tutorial_experimental.mgf`` – experimental queries with matches,
-      analogues, and noise
-    - ``tutorial_config.yaml`` – pre-configured analysis parameters
-
-    After generation, follow the printed next-steps commands to build the
-    SQLite database and run the annotation pipeline.
-    """
-    import importlib.util
-    import sys
-
-    from rich.panel import Panel
-
-    try:
-        # Import the tutorial generator script as a module.
-        script_path = (
-            Path(__file__).resolve().parent.parent.parent
-            / "scripts"
-            / "generate_tutorial_data.py"
-        )
-        spec = importlib.util.spec_from_file_location(
-            "generate_tutorial_data", str(script_path)
-        )
-        if spec is None or spec.loader is None:
-            logger.error(f"Could not load tutorial generator from {script_path}")
-            raise typer.Exit(1)
-
-        module = importlib.util.module_from_spec(spec)
-        sys.modules["generate_tutorial_data"] = module
-        spec.loader.exec_module(module)
-
-        paths = module.main(clean_first=clean)
-        module._print_next_steps(
-            library_path=paths["library"],
-            experimental_path=paths["experimental"],
-            config_path=paths["config"],
-        )
-
-        console.print(
-            Panel.fit(
-                "[bold green]Tutorial data is ready![/bold green]\n"
-                "Follow the printed commands above to build the database "
-                "and run the annotation pipeline.",
-                title="MassFlow Tutorial",
-                border_style="green",
-            )
-        )
-    except Exception as e:
-        logger.error(f"Tutorial generation failed: {e}")
-        raise typer.Exit(1)
-
-
 @app.command("annotate")
 def run_annotate(
     config: str = typer.Option(
@@ -347,7 +284,7 @@ def run_annotate(
             )
 
         # Optional-extras warnings (e.g. a meta-engine configured without
-        # massflow[ml], or cascade + hnsw_enabled without massflow[hnsw])
+        # massflow-msms[ml], or cascade + hnsw_enabled without massflow-msms[hnsw])
         # print the plain-English install fix before the run starts. The
         # pipeline's own pre-flight then validates files/engine availability
         # and fails fast with the same style of message.
@@ -492,7 +429,7 @@ def run_db_build(
         store = create_spectral_store(Path(output), backend=effective_backend)
 
         logger.info(f"Streaming and processing spectra from {input}")
-        raw_spectra = io.load_spectra(Path(input))
+        raw_spectra = io.load_spectra(Path(input), assign_record_ids=True)
         cleaned_spectra = processing.process_spectra(raw_spectra, cfg.processing)
 
         added = store.add_spectra(cleaned_spectra, category=category)
@@ -1169,7 +1106,7 @@ def run_watch(
     Outputs high-tech Rich tables that gracefully handle pane resizing in Tmux/Zellij.
 
     EXPERIMENTAL: interactive live-reloading loop, requires the optional
-    'watch' extra (pip install massflow[watch]). Outside the stable product
+    'watch' extra (pip install massflow-msms[watch]). Outside the stable product
     contract (docs/CAPABILITY_MATRIX.md).
     """
     try:
@@ -1177,7 +1114,7 @@ def run_watch(
     except ImportError:
         console.print(
             "[bold red]Error:[/bold red] The watch command requires the optional 'watchfiles' package.\n"
-            "Install it with: pip install massflow[watch]"
+            "Install it with: pip install massflow-msms[watch]"
         )
         raise typer.Exit(1)
 
@@ -1314,7 +1251,7 @@ def run_tui(
     Launch the interactive MassFlow terminal console.
 
     EXPERIMENTAL: interactive console requiring the optional 'tui' extra
-    (pip install massflow[tui]); outside the stable product contract
+    (pip install massflow-msms[tui]); outside the stable product contract
     (docs/CAPABILITY_MATRIX.md).
 
     Find, upload, view, and identify MS/MS data without leaving the terminal:
@@ -1322,7 +1259,7 @@ def run_tui(
     target-decoy similarity search tab with mirror plots, and a diagnostics
     tab with plain-English fixes plus the quarantine log.
 
-    Requires the optional TUI extra: pip install massflow[tui]
+    Requires the optional TUI extra: pip install massflow-msms[tui]
     """
     try:
         from MassFlow.tui.app import MassFlowApp
@@ -1330,7 +1267,7 @@ def run_tui(
         console.print(
             "[bold red]Error:[/bold red] The interactive console requires the "
             "optional 'textual' package.\n"
-            "Install it with: pip install massflow\\[tui]"
+            "Install it with: pip install massflow-msms\\[tui]"
         )
         raise typer.Exit(1) from e
 

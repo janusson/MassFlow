@@ -28,14 +28,14 @@ science-facing behaviour is unit-testable headlessly:
   :mod:`MassFlow.similarity`); runs synchronously so it can execute inside a
   Textual worker thread.
 - :mod:`MassFlow.tui.app` — the Textual application itself (requires the
-  ``tui`` extra: ``pip install massflow[tui]``).
+  ``tui`` extra: ``pip install massflow-msms[tui]``).
 """
 
 from __future__ import annotations
 
 TUI_INSTALL_HINT = (
     "The MassFlow terminal console requires the optional 'textual' package. "
-    "Install it with: pip install massflow[tui]"
+    "Install it with: pip install massflow-msms[tui]"
 )
 
 __all__ = [

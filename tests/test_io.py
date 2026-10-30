@@ -245,6 +245,7 @@ def test_save_match_results_to_mztab(tmp_path):
     assert out_path.exists()
     with open(out_path, "r") as f:
         content = f.read()
-        assert "MTD\tmzTab-version\t2.0.0-M" in content
+        assert "mzTab-version" not in content
+        assert "NOT mzTab-M standards-conformant" in content
         assert "SMH\tquery_id\treference_id\tscore\tAnnotation_Status" in content
         assert "SML\tq1\tr1\t0.95\tMatched" in content

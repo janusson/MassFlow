@@ -14,6 +14,7 @@ harmonization is deferred to :mod:`MassFlow.processing` after import.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -27,6 +28,7 @@ from typing import Any, Callable, Iterable, Iterator, Optional, Sequence
 import numpy as np
 import polars as pl
 import yaml
+from lxml import etree
 from matchms import Spectrum
 from matchms.importing import (
     load_from_mgf,
@@ -34,6 +36,9 @@ from matchms.importing import (
     load_from_mzml,
     load_from_mzxml,
 )
+
+from MassFlow.diagnostics import DiagnosticReason, DiagnosticStage, RejectionEvent
+from MassFlow.retention import normalize_retention_time
 
 logger = logging.getLogger(__name__)
 
@@ -223,6 +228,7 @@ def _validate_spectra_iterator(
     spectra: Iterable[Spectrum],
     source_path: Path,
     rejection_reporter: Optional[Callable[[str], None]] = None,
+    diagnostic_reporter: Optional[Callable[[RejectionEvent], None]] = None,
 ) -> Iterator[Spectrum]:
     """
     A high-performance validation layer for spectrum iterators.
@@ -232,7 +238,7 @@ def _validate_spectra_iterator(
     quarantine log and skipped, never reaching the downstream processing engine.
 
     Checks:
-    1. Precursor MZ must exist, be numeric, and be positive.
+    1. Precursor MZ must exist, be numeric, finite, and positive.
     2. Peak arrays must not be empty.
     3. M/Z and intensity arrays must have matching lengths.
     4. All intensity values must be positive.
@@ -278,15 +284,21 @@ def _validate_spectra_iterator(
 
         is_valid = True
         rejection_reason = ""
+        diagnostic_reason = DiagnosticReason.INPUT_INVALID
 
         # 1. Precursor Check
         precursor_mz = spectrum.get("precursor_mz")
         if precursor_mz is None:
             is_valid = False
             rejection_reason = "Missing precursor_mz"
+            diagnostic_reason = DiagnosticReason.PRECURSOR_MISSING
         else:
             try:
-                if float(precursor_mz) <= 0:
+                precursor_value = float(precursor_mz)
+                if not np.isfinite(precursor_value):
+                    is_valid = False
+                    rejection_reason = f"Non-finite precursor_mz: {precursor_mz}"
+                elif precursor_value <= 0:
                     is_valid = False
                     rejection_reason = f"Non-positive precursor_mz: {precursor_mz}"
             except (ValueError, TypeError):
@@ -316,24 +328,121 @@ def _validate_spectra_iterator(
         else:
             if rejection_reporter is not None:
                 rejection_reporter(rejection_reason)
+            if diagnostic_reporter is not None:
+                diagnostic_reporter(
+                    RejectionEvent(
+                        stage=DiagnosticStage.INPUT_VALIDATION,
+                        reason=diagnostic_reason,
+                        detail=rejection_reason,
+                        spectrum_id=(
+                            str(spectrum.get("id") or spectrum.get("spectrum_id") or "")
+                            or None
+                        ),
+                    )
+                )
             quarantine_logger.warning(
                 f"Quarantined Spectrum | Source: {source_path.name} | "
                 f"ID: {spec_id} | Reason: {rejection_reason}"
             )
 
 
+def _assign_library_record_ids(
+    spectra: Iterable[Spectrum], source_path: Path
+) -> Iterator[Spectrum]:
+    """Clone library records with source locators and unambiguous per-file IDs."""
+    with source_path.open("rb") as handle:
+        source_sha256 = hashlib.file_digest(handle, "sha256").hexdigest()
+    seen_ids: set[str] = set()
+    # Source ordinals precede validation/filtering; chemistry never keys records.
+    for source_index, spectrum in enumerate(spectra):
+        if spectrum is None:
+            continue
+        original_id = spectrum.get("id")
+        record_id = str(original_id) if original_id is not None else ""
+        missing_id = record_id.strip().lower() in {"", "none", "null", "nan"}
+        if missing_id or record_id in seen_ids:
+            record_id = f"massflow:sha256:{source_sha256}:spectrum:{source_index}"
+        if record_id in seen_ids:
+            raise ValueError(
+                f"Library record ID collides with generated ID: {record_id}"
+            )
+        seen_ids.add(record_id)
+        # Spectrum is mutable: clone before adding record provenance.
+        record = spectrum.clone()
+        record.set("id", record_id)
+        record.set("massflow_original_id", original_id)
+        record.set("massflow_source_path", str(source_path.resolve()))
+        record.set("massflow_source_sha256", source_sha256)
+        record.set("massflow_source_index", source_index)
+        yield record
+
+
+def _mzxml_original_times(path: Path) -> dict[str, str]:
+    """Read original MS2 duration attributes before pyteomics converts them.
+
+    Only scan IDs and duration strings are retained. Peak elements are cleared
+    during this metadata pass, so binary peak payloads do not accumulate.
+    """
+    original_times: dict[str, str] = {}
+    with path.open("rb") as handle:
+        for event, element in etree.iterparse(handle, events=("start", "end")):
+            if event == "start":
+                if (
+                    etree.QName(element).localname == "scan"
+                    and element.get("msLevel") == "2"
+                ):
+                    scan_number = element.get("num")
+                    duration = element.get("retentionTime")
+                    if scan_number is not None and duration is not None:
+                        original_times[scan_number] = duration
+            else:
+                element.clear()
+                parent = element.getparent()
+                if parent is not None:
+                    while element.getprevious() is not None:
+                        del parent[0]
+    return original_times
+
+
+def _mzxml_spectra_with_original_time(path: Path) -> Iterator[Spectrum]:
+    """Attach raw duration text by scan ID while retaining matchms peak decoding."""
+    original_times: Optional[dict[str, str]] = None
+    for spectrum in load_from_mzxml(str(path), metadata_harmonization=False):
+        scan_number = spectrum.get("scan_number")
+        if scan_number is not None:
+            if original_times is None:
+                original_times = _mzxml_original_times(path)
+            duration = original_times.get(str(scan_number))
+            if duration is not None:
+                spectrum.set(
+                    "retention_time_original",
+                    {
+                        "field": "retentionTime",
+                        "value": duration,
+                        "unit": "ISO8601 duration",
+                        "format": "mzXML",
+                        "scan_number": str(scan_number),
+                    },
+                )
+        yield spectrum
+
+
 def load_spectra(
     file_path: Path,
     file_format: Optional[str] = None,
     rejection_reporter: Optional[Callable[[str], None]] = None,
+    *,
+    assign_record_ids: bool = False,
+    diagnostic_reporter: Optional[Callable[[RejectionEvent], None]] = None,
 ) -> Iterator[Spectrum]:
     """
     Load spectra from an open spectral file or a MassFlow-native store.
 
     The loader infers the format from ``file_path`` unless ``file_format`` is
     provided explicitly. Supported formats are mzML, mzXML, MGF, MSP, and SQLite
-    (``db``/``sqlite``). Imported spectra are yielded exactly as the backend
-    loader returns them; MassFlow's metadata cleaning and peak filtering happen
+    (``db``/``sqlite``). Peak decoding is delegated to the backend loader.
+    mzXML spectra also retain the original duration text by scan ID, before
+    importer unit conversion. Metadata normalization and peak filtering happen
     later in :func:`MassFlow.processing.process_spectra`.
 
     Parameters
@@ -349,6 +458,14 @@ def load_spectra(
         Optional callback invoked with the rejection reason for every
         spectrum dropped by the validation layer (see
         :func:`_validate_spectra_iterator`).
+    assign_record_ids : bool
+        For raw library ingestion, clone each loader record with its source
+        SHA-256 and zero-based loader ordinal. Preserve the first occurrence of
+        an existing ID; missing or repeated IDs receive a content/ordinal ID.
+        Original IDs remain in ``massflow_original_id``. Chemical identifiers
+        are never used as record keys. Native stores are read without changes.
+    diagnostic_reporter : Callable[[RejectionEvent], None] or None
+        Optional typed observer for bounded failure-attribution diagnostics.
 
     Yields
     ------
@@ -390,7 +507,7 @@ def load_spectra(
     elif fmt == "mgf":
         loader = load_from_mgf(str(path), metadata_harmonization=False)
     elif fmt == "mzxml":
-        loader = load_from_mzxml(str(path), metadata_harmonization=False)
+        loader = _mzxml_spectra_with_original_time(path)
     elif fmt in ["db", "sqlite"]:
         from MassFlow.storage import create_spectral_store
 
@@ -410,8 +527,15 @@ def load_spectra(
     else:
         raise ValueError(f"Format '{fmt}' is not supported by MassFlow.")
 
+    # Assign library identity before validation, so rejected records cannot
+    # renumber later source records. Query loading keeps its existing contract.
+    if assign_record_ids and fmt not in {"db", "sqlite", "zarr"}:
+        loader = _assign_library_record_ids(loader, path)
+
     # Step 3: Yield spectra through the validation layer
-    yield from _validate_spectra_iterator(loader, path, rejection_reporter)
+    yield from _validate_spectra_iterator(
+        loader, path, rejection_reporter, diagnostic_reporter
+    )
 
 
 def _optional_float(value: Any) -> Optional[float]:
@@ -448,7 +572,7 @@ def _build_results_dataframe(
     consistent data shaping, merging, and status labeling.
 
     ``uncalibrated`` marks rows produced by a run whose decoy null was empty:
-    the q-values are then the conservative ``1/N`` rank bound, not a
+    the q-values are then the legacy ``1/N`` rank diagnostic, not a
     target-decoy FDR estimate, so no row may read as confident. Rows of such a
     run carry ``Annotation_Status = "Uncalibrated"`` (queries without any hit
     keep ``"Unknown"``).
@@ -464,7 +588,7 @@ def _build_results_dataframe(
     for r in results:
         clean_r = {}
         for key, value in r.items():
-            if isinstance(value, dict):
+            if isinstance(value, (dict, list, tuple)):
                 clean_r[key] = json.dumps(value, sort_keys=True, separators=(",", ":"))
             elif hasattr(value, "item"):
                 clean_r[key] = value.item()
@@ -473,22 +597,36 @@ def _build_results_dataframe(
         clean_results.append(clean_r)
 
     if query_spectra is not None:
-        q_ids, q_mzs, q_rts = [], [], []
+        q_ids, q_mzs, query_times_seconds, query_time_sources = [], [], [], []
         for q in query_spectra:
             q_ids.append(str(q.get("id")))
             q_mzs.append(_optional_float(q.get("precursor_mz")))
-            q_rts.append(_optional_float(q.get("retention_time")))
+            normalized_time = normalize_retention_time(q)
+            query_times_seconds.append(normalized_time.get("retention_time"))
+            query_time_sources.append(
+                json.dumps(
+                    normalized_time.get("retention_time_source"),
+                    sort_keys=True,
+                    separators=(",", ":"),
+                )
+            )
 
         base_df = pl.DataFrame(
             {
                 "query_id": q_ids,
                 "query_precursor_mz": q_mzs,
-                "query_retention_time": q_rts,
+                "query_retention_time": query_times_seconds,
+                "query_retention_time_seconds": query_times_seconds,
+                "query_retention_time_unit": ["seconds"] * len(q_ids),
+                "query_retention_time_source": query_time_sources,
             },
             schema={
                 "query_id": pl.Utf8,
                 "query_precursor_mz": pl.Float64,
                 "query_retention_time": pl.Float64,
+                "query_retention_time_seconds": pl.Float64,
+                "query_retention_time_unit": pl.Utf8,
+                "query_retention_time_source": pl.Utf8,
             },
         )
 
@@ -509,6 +647,24 @@ def _build_results_dataframe(
             return None
         df = pl.DataFrame(clean_results)
 
+    if not clean_results:
+        df = df.with_columns(
+            pl.lit("unavailable").alias("confidence_state"),
+            pl.lit(None, dtype=pl.Float64).alias("confidence_q_value"),
+            pl.lit("pooled_query_maxima_plus_one_v1").alias("confidence_method"),
+            pl.lit("query_best_target").alias("confidence_scope"),
+            pl.lit('["no_target_observations"]').alias("confidence_limitations"),
+        )
+    if "confidence_state" in df.columns:
+        df = df.with_columns(pl.col("confidence_state").fill_null("unavailable"))
+    unvalidated_confidence = (
+        pl.col("confidence_state").is_in(
+            ["estimated_uncalibrated", "unavailable", "invalid"]
+        )
+        if "confidence_state" in df.columns
+        else pl.lit(False)
+    )
+
     # Add Annotation_Status. A run without decoy evidence cannot support an
     # FDR claim, so its hits are labeled "Uncalibrated" instead of
     # "Matched"/"Putative" (queries without a hit stay "Unknown").
@@ -516,7 +672,7 @@ def _build_results_dataframe(
         status = (
             pl.when(pl.col("score").is_null())
             .then(pl.lit("Unknown"))
-            .when(pl.lit(uncalibrated))
+            .when(pl.lit(uncalibrated) | unvalidated_confidence)
             .then(pl.lit("Uncalibrated"))
             .when(pl.col("score") >= 0.9)
             .then(pl.lit("Matched"))
@@ -562,7 +718,7 @@ def save_match_results(
         are still represented in the CSV output.
     uncalibrated : bool
         True when the run's decoy null was empty and the q-values are the
-        conservative ``1/N`` rank bound (no FDR claim is supported).
+        legacy ``1/N`` rank diagnostic (no FDR claim is supported).
 
     Returns
     -------
@@ -636,6 +792,28 @@ def save_analysis_report(
     logger.info(f"Analysis report saved to {output_path}")
 
 
+def save_retrieval_diagnostics_json(
+    output_path: Path, diagnostics: dict[str, Any]
+) -> None:
+    """Write a compact machine-readable retrieval-funnel sidecar.
+
+    Parameters
+    ----------
+    output_path : Path
+        Destination JSON path.
+    diagnostics : dict[str, Any]
+        Versioned, JSON-safe diagnostic payload.
+
+    Returns
+    -------
+    None
+    """
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open("w", encoding="utf-8") as output_file:
+        json.dump(diagnostics, output_file, indent=2, sort_keys=True, allow_nan=False)
+        output_file.write("\n")
+
+
 def save_spectra_to_msp(spectra: Iterable[Spectrum], export_path: Path) -> None:
     """
     Export spectra to an MSP file.
@@ -688,11 +866,14 @@ def save_match_results_to_mztab(
     uncalibrated: bool = False,
 ) -> None:
     """
-    Save annotation results in a minimal mzTab-M format.
+    Save annotation results in an experimental mzTab-shaped tab-separated format.
 
-    This exporter produces a tab-separated file with MTD (metadata) and
-    SML (small molecule list) sections compatible with GNPS and other
-    metabolomics tools.
+    This exporter is **not** mzTab-M standards-conformant. It writes MTD, SMH and
+    SML sections with MassFlow-specific columns, but it does not write the
+    mandatory mzTab-M controlled vocabulary, required table structure, or
+    ``null`` missing-value encoding. CSV is the stable supported export. This
+    function remains available for backward-compatible diagnostic interchange
+    only.
 
     Parameters
     ----------
@@ -704,7 +885,7 @@ def save_match_results_to_mztab(
         Full set of experimental query spectra.
     uncalibrated : bool
         True when the run's decoy null was empty and the q-values are the
-        conservative ``1/N`` rank bound (no FDR claim is supported); matched
+        legacy ``1/N`` rank diagnostic (no FDR claim is supported); matched
         rows are then labeled ``Uncalibrated``.
     """
     df = _build_results_dataframe(results, query_spectra, uncalibrated=uncalibrated)
@@ -715,9 +896,13 @@ def save_match_results_to_mztab(
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     with open(output_path, "w") as f:
-        # 1. Metadata Section (MTD)
-        f.write("MTD\tmzTab-version\t2.0.0-M\n")
-        f.write("MTD\tmzTab-ID\tMassFlow_Export\n")
+        # 1. Metadata Section (MTD). Deliberately do not emit mzTab-version:
+        # this file is mzTab-shaped, not mzTab-M standards-conformant.
+        f.write(
+            "MTD\tcomment\tMassFlow experimental tabular export; "
+            "NOT mzTab-M standards-conformant\n"
+        )
+        f.write("MTD\tmassflow-export-id\tMassFlow_Export\n")
         f.write(
             f"MTD\ttitle\tMassFlow Annotation Results - {datetime.now().isoformat()}\n"
         )
@@ -733,4 +918,8 @@ def save_match_results_to_mztab(
             row_vals = [str(v) if v is not None else "" for v in row]
             f.write("SML\t" + "\t".join(row_vals) + "\n")
 
-    logger.info(f"mzTab-M results saved to {output_path}")
+    logger.warning(
+        "Experimental mzTab-shaped export written to %s; this file is NOT "
+        "mzTab-M standards-conformant. Use CSV for the supported export.",
+        output_path,
+    )

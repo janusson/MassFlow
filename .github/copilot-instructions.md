@@ -9,7 +9,7 @@ Build, test, and lint (authoritative commands)
 - Environment & deps (recommended):
   - uv is the supported environment manager. Install: curl -LsSf https://astral.sh/uv/install.sh | sh
   - Pin and sync: uv python pin 3.13 && uv sync
-  - CI-like full install: uv sync --all-extras
+  - Developer-convenience full install: uv sync --all-extras (optional ML/HNSW backends remain experimental/unqualified)
 
 - Run full tests (CI):
   - uv run pytest

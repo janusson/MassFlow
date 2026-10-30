@@ -58,7 +58,7 @@ When a valid **`smiles`** is present, MassFlow automatically calculates a theore
 ### 3. General Metadata
 | Field | Description | Type / Format |
 | :--- | :--- | :--- |
-| `retention_time` | Chromatographic retention time. | Float (seconds). Extracted/formatted automatically if possible. |
+| `retention_time` | Chromatographic retention time. | Float (seconds). Known source units are converted; missing or ambiguous values stay missing. Original time evidence is retained in `retention_time_source`. |
 | `exact_mass` | Provided monoisotopic mass. | Float. Will be auto-calculated if SMILES is present. |
 | `formula` | Chemical formula. | String (e.g., `C8H10N4O2`). Will be auto-calculated if SMILES is present. |
 

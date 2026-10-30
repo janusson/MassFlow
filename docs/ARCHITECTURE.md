@@ -18,25 +18,25 @@ The core execution path is:
 3. load a reference library
 4. process spectra with configurable `matchms` filters
 5. run similarity search against the reference library
-6. apply score and FDR filtering
+6. apply score and legacy numerical confidence filtering (uncalibrated)
 7. write per-file CSV result tables
 
 The architecture is intentionally modular. Configuration, I/O, processing,
 similarity scoring, database access, and workflow orchestration live in
 separate modules so the main annotation path stays predictable and testable.
 
-For `v0.1`, the stable product contract is centered on:
+The proposed restricted 1.0 candidate scope centers on:
 
-- `massflow tutorial` — generates synthetic tutorial data for local evaluation
-- `massflow annotate --config ...`
+- `massflow init` and `massflow annotate --config ...`
 - SQLite-backed library workflows through `massflow db`
 - open-format ingestion for `mzML`, `mzXML`, `MGF`, and `MSP`
-- configurable `matchms`-based processing
-- `cosine` and `modified_cosine` similarity
-- CSV and mzTab-M result export formats
+- transparent `matchms` processing
+- `cosine` and `modified_cosine` candidate ranking
+- CSV (stable) and experimental mzTab-shaped output with source-record metadata
 
-Advanced ML-backed engines and other experimental utilities remain outside the
-core support promise.
+Numerical confidence diagnostics are not calibrated FDR or confirmed identities.
+Tutorial, conversion, ML, networking, streaming and other experimental utilities
+are outside the supported candidate-release path.
 
 ---
 
@@ -49,8 +49,8 @@ graph LR
     Library[Reference Library] --> CLI
     CLI --> Processed[Processed Spectra]
     Processed --> Sim[Similarity Search]
-    Sim --> Filter[FDR Filtering]
-    Filter --> Out[CSV / mzTab + YAML Report]
+    Sim --> Filter[Candidate and Numeric-Estimate Filtering]
+    Filter --> Out[CSV / experimental mzTab-shaped + YAML Report]
 ```
 
 ---
@@ -62,7 +62,6 @@ graph LR
 - `src/MassFlow/cli.py`
   - Defines the CLI commands:
     - `init`
-    - `tutorial`
     - `annotate`
     - `convert`
     - `db build`
@@ -80,8 +79,7 @@ graph LR
 - `src/MassFlow/tui/`
   - A Textual-based interactive console (`massflow tui`, requires the `tui`
     extra) with four tabs: Browser (find/upload/load spectral files),
-    Viewer (interactive centroid stick plots), Identify (target-decoy
-    similarity search with mirror plots), and Diagnostics (problems with
+    Viewer (interactive centroid stick plots), Candidate Review (experimental score/mirror plots), and Diagnostics (problems with
     plain-English fixes plus the quarantine log).
   - All science-facing helpers are pure functions (NumPy/text in, text out)
     so the plot glyph math and file logic are unit-testable headlessly;
@@ -91,7 +89,7 @@ graph LR
 
 - `src/MassFlow/workflow.py`
   - Runs the end-to-end annotation pipeline.
-  - Coordinates loading, processing, searching, FDR filtering, and export.
+  - Coordinates loading, processing, candidate searching, numerical confidence reporting, and export.
   - Uses multiprocessing to process experimental input files in parallel.
   - Runs strict pre-flight checks (`preflight_annotation_run`) before any
     expensive work: engine/optional-extras availability, reference-library
@@ -110,7 +108,7 @@ graph LR
 - `src/MassFlow/io.py`
   - Loads spectra from supported open formats and SQLite libraries.
   - Rejects vendor raw formats instead of converting them implicitly.
-  - Writes match results to CSV and mzTab-M formats, and can export spectra
+  - Writes match results to CSV (stable) and an experimental mzTab-shaped format, and can export spectra
     as MGF or MSP.
 
 - `src/MassFlow/database.py`
@@ -151,11 +149,11 @@ graph LR
 - `src/MassFlow/hnsw.py`
   - hnswlib-backed HNSW (Hierarchical Navigable Small World) index over
     two-channel binned spectral vectors (`[binned exact m/z, binned
-    neutral losses]`) for sub-linear candidate retrieval on massive
-    libraries. The neutral-loss channel preserves recall for shifted
+    neutral losses]`) for optional approximate candidate retrieval
+    libraries. The neutral-loss channel adds a candidate channel for shifted
     analogues under modified cosine. Used by the cascade engine as an
-    approximate pre-stage; spectral similarity is non-metric, so exact
-    scoring always follows.
+    approximate pre-stage with no general recall guarantee; exact scoring
+     follows only for candidates returned by the index.
 
 ### Data models and consensus scoring
 
@@ -169,17 +167,17 @@ graph LR
 
 ## Scientific Data Integrity
 
-MassFlow enforces strict physical boundaries at the point of ingestion, ensuring that automated annotation pipelines do not propagate chemically impossible results.
+MassFlow checks declared metadata at ingestion under fixed software rules. Passing these checks does not establish a molecule's identity or universal chemical validity.
 
 ### Precursor Validation (5 ppm Tolerance)
-Within the `SpectrumMetadata` contract (defined in `MassFlow.models`), an experimental `precursor_mz` is rigorously cross-referenced against the molecule's theoretical exact mass, charge state, and ionization adduct. The theoretical m/z is computed from the exact mass plus the adduct offset — via `MassFlow.cheminformatics.compute_adduct_offset` and its `_ADDUCT_SPECS` registry — divided by the absolute charge. If the experimental precursor m/z deviates from this theoretical value by more than **5.0 ppm**, the record is flagged `is_physically_valid = False` so downstream processing treats it as chemically implausible. The same gate covers malformed structural metadata: unparseable SMILES/InChI claims, formula/exact-mass conflicts beyond 5 ppm, and non-registry adducts in an otherwise complete context. Adduct strings are canonicalised to the `_ADDUCT_SPECS` keys by `MassFlow.cheminformatics.normalize_adduct` before lookup, so the many ways a library may spell an ion (`M+H`, `[M+H]1+`, `[m+h]+`, `M+FA-H`) resolve to the same chemistry; notation that cannot be resolved still fails closed.
+The processing gate checks a recognized declared adduct/charge pair for signed-charge consistency even when precursor m/z is missing. When a structure and usable precursor are also declared, the `SpectrumMetadata` contract compares precursor m/z with the theoretical mass under the fixed 5 ppm policy. The theoretical m/z uses the formula-derived exact mass and registered adduct offset. These checks cover declared metadata consistency, not universal instrument tolerances or identity confirmation.
 
 **Enforcement surface** — the verdicts are consumed by three gates:
 
-1. **Classical `annotate` / `db build` processing gate** (`MassFlow.processing`, run after `matchms` harmonization for every spectrum declaring a formula, SMILES, or InChI):
+1. **Classical `annotate` / `db build` metadata gate** (`MassFlow.processing`, run after `matchms` harmonization): every record with a recognized explicit adduct/charge pair is checked for signed-charge consistency; records declaring a formula, SMILES, or InChI also receive structural and 5 ppm checks.
    - query spectra failing the gate are rejected with a human-readable reason, counted in `spectra_rejected`, and recorded in the quarantine log; a query file whose spectra are all rejected is an explicit `failed` result (`<stem>_failed.report.yaml`), never an empty success;
-   - a raw reference library containing a failing entry **aborts the annotate run** with `processing.PhysicalIntegrityError` before any file is processed — a silently shrunk target pool would corrupt every query's FDR calibration. Pre-built MassFlow stores are trusted (they are produced by `db build`, which runs the same gate and quarantines invalid entries);
-   - spectra without structural claims are exempt and pass at no measurable cost (the dominant case for raw experimental files).
+   - a raw reference library containing a failing entry **aborts the annotate run** with `processing.PhysicalIntegrityError` before any file is processed — silently shrinking the reference pool would change candidate searches and legacy numerical estimates. Pre-built MassFlow stores are trusted (they are produced by `db build`, which runs the same gate and quarantines invalid entries);
+   - spectra without structural claims skip the structural/5 ppm mass checks; explicitly declared supported adduct/charge pairs are still checked.
 2. **Streaming ingestion gate** (`MassFlow.streaming.engine.validate_streaming_spectrum`, experimental `stream-server`) rejects packets failing the Pydantic field constraints before scoring.
 3. **Model layer** — direct construction of `SpectrumMetadata`/`MolecularStructure` always computes the verdict.
 
@@ -223,7 +221,7 @@ The CLI loads the config and calls `run_annotation_pipeline()`.
    - Before any library store is built or any file is searched,
      `preflight_annotation_run()` validates: (a) the configured similarity
      surface is constructible with the installed optional extras (a pure ML
-     engine without `massflow[ml]` aborts with the install instruction
+     engine without `massflow-msms[ml]` aborts with the install instruction
      instead of crashing workers later); (b) the reference library is
      configured, exists, and is a loadable open-format/store input (vendor
      raw and unknown formats abort with zero artifacts); (c) the query
@@ -261,7 +259,7 @@ The CLI loads the config and calls `run_annotation_pipeline()`.
    - Each spectrum is passed through metadata and peak processing.
    - Missing query IDs are filled in automatically.
 
-6. **Chunked reference searching (Zero I/O overhead)**
+6. **Chunked reference searching (bounded library chunks)**
    - The worker searches its queries against the pre-loaded shared memory library in chunks to preserve RAM, entirely bypassing disk I/O.
    - Results are aggregated.
 
@@ -277,16 +275,16 @@ The CLI loads the config and calls `run_annotation_pipeline()`.
      hits are rare at production score/matched-peak gates, and an empty decoy
      null (no decoy competition) is reported explicitly: the engine exposes
      `decoy_diagnostics` + the `decoy_null_empty` flag, the workflow flags
-     `fdr_uncalibrated` (q-values are then the conservative `1/N` rank bound)
+     `fdr_uncalibrated` (q-values are then `1/N` rank diagnostics, not error bounds)
      and the exported rows are labeled `Uncalibrated`.
    - The workflow logs a target-decoy entropy-divergence diagnostic to
-     flag biased FDR calibration. See
+     report descriptive target/decoy entropy differences. See
      [scoring_logic.md](user-guide/scoring_logic.md) §5.1 for the empty-null
      contract.
    - Final results are filtered by:
      - score thresholds
      - matched-peak thresholds where applicable
-     - configured FDR threshold
+     - configured historical q-value threshold (not calibrated FDR control)
 
 8. **Result Export**
    - The workflow writes one result file per experimental input file.
@@ -314,7 +312,7 @@ sequenceDiagram
         Workflow->>IO: load query spectra
         Workflow->>Process: process queries
         Workflow->>Sim: search & score
-        Workflow->>Workflow: filter FDR
+        Workflow->>Workflow: apply legacy confidence filter
         Workflow->>IO: save results
     end
     Workflow-->>CLI: complete
@@ -354,30 +352,31 @@ running the annotation workflow.
 
 ### Standard outputs
 
-The stable output formats are:
+The stable output format is CSV. An experimental mzTab-shaped table is also
+available, but it is not mzTab-M standards-conformant and is outside the stable
+export contract.
 
-- CSV or mzTab-M result files written per experimental input
+- CSV (stable) or experimental mzTab-shaped result files written per experimental input
 
-The export format is selected via `export.format` in the config (supported
-values: `csv` or `mztab`).
+The export format is selected via `export.format` in the config (`csv` is the
+stable value; `mztab` is experimental and non-conformant).
 
 ---
 
 ## Core vs Experimental Features
 
-## Core for the stable annotation workflow
+## Core candidate-retrieval path
 
 These are the features the docs should treat as the main supported path:
 
-- `massflow tutorial` — generates synthetic tutorial data for local evaluation
 - `massflow annotate --config ...`
 - YAML configuration via `MassFlowConfig`
 - open-format ingestion for `mzML`, `mzXML`, `MGF`, and `MSP`
 - explicit SQLite reference-library workflows
 - `matchms`-based metadata and peak processing
 - `cosine` and `modified_cosine`
-- target-decoy FDR filtering
-- per-file CSV and mzTab-M result export
+- legacy query-level numerical confidence filtering (uncalibrated)
+- per-file CSV (stable) and experimental mzTab-shaped result export
 - `massflow db build`, `inspect`, and `merge`
 
 ## Experimental or less-stable surfaces
@@ -402,7 +401,8 @@ into the workflow or database layers.
 ### `MassFlow.workflow`
 Implements the annotation pipeline. It loads and processes the reference
 library, discovers input files, processes query spectra in parallel, performs
-chunked searching, applies FDR filtering, and writes output CSV files.
+chunked searching, reports uncalibrated query-level confidence diagnostics, and
+writes output tables.
 
 ### `MassFlow.config`
 Defines the nested configuration schema used by the CLI and workflow.
@@ -440,11 +440,7 @@ Applies the configured `matchms` metadata repairs and peak filtering pipeline.
 
 ### `MassFlow.similarity`
 Creates and runs the scoring engines. It also defines decoy generation and
-result structures used during FDR calculation. Modified-cosine scoring uses a
-Numba-accelerated peak/neutral-loss prefilter (`MassFlow.acceleration`) to
-skip pairs that cannot reach `min_matched_peaks`; the cascade engine can
-optionally use a HNSW (Hierarchical Navigable Small World) index
-(`MassFlow.hnsw`) for sub-linear candidate retrieval before exact scoring.
+result structures used during numerical confidence reporting. Modified-cosine full scoring is the default. An experimental Numba peak/neutral-loss prefilter (`MassFlow.acceleration`) is opt-in and has no general candidate-recall guarantee. The experimental cascade can optionally use HNSW (`MassFlow.hnsw`) for approximate candidate retrieval; no universal recall or sub-linear performance claim is made.
 External ML engines (Spec2Vec, MS2DeepScore) sit behind the
 `MLEngineProtocol` boundary and may run remotely over REST/gRPC
 (`MassFlow.ml_client`, `ml_endpoints` in the config); a circuit breaker plus
@@ -463,8 +459,8 @@ the `ConsensusEngine`; annotations stream back to the client as they complete.
 ### `MassFlow.tui` (interactive, requires the `tui` extra)
 Implements the interactive terminal console (`massflow tui`): a spectral file
 browser with workspace upload, an interactive spectrum viewer with
-Unicode-glyph stick plots, a target-decoy identification tab with mirror
-plots, and a diagnostics tab that surfaces problems with plain-English fixes
+Unicode-glyph stick plots, an experimental candidate-review tab with
+mirror plots, and a diagnostics tab that surfaces problems with plain-English fixes
 plus the quarantine log. All heavy work runs in Textual worker threads, and
 the science-facing helpers (peak downsampling, mirror alignment, plot
 rendering, file discovery, error hints) are pure functions covered by

@@ -621,11 +621,13 @@ def _stream_file_sha256(path: Path) -> str:
 
 
 def _installed_massflow_version() -> Optional[str]:
-    """Resolved massflow package version, or None when not installed."""
+    """Resolved MassFlow distribution version, or None when not installed."""
     import importlib.metadata as metadata
 
+    from . import __distribution_name__
+
     try:
-        return metadata.version("massflow")
+        return metadata.version(__distribution_name__)
     except metadata.PackageNotFoundError:
         return None
 
@@ -2012,11 +2014,13 @@ class SpectralDatabase(SpectralStore):
             mz_array, intensity_array = self._zarr_arrays.read_spectrum(
                 int(row["zarr_index"])
             )
-            return Spectrum(
-                mz=mz_array,
-                intensities=intensity_array,
-                metadata=metadata,
+            spectrum = Spectrum(
+                mz=mz_array, intensities=intensity_array, metadata=metadata
             )
+            # Generic harmonization must not overwrite already normalized seconds.
+            if "retention_time_source" in metadata:
+                spectrum.set("retention_time", metadata.get("retention_time"))
+            return spectrum
 
         mz_blob = row["mz_array"]
         intensity_blob = row["intensity_array"]
@@ -2026,7 +2030,11 @@ class SpectralDatabase(SpectralStore):
             )
         mz_array = np.frombuffer(mz_blob, dtype=np.float64).copy()
         intensity_array = np.frombuffer(intensity_blob, dtype=np.float64).copy()
-        return Spectrum(mz=mz_array, intensities=intensity_array, metadata=metadata)
+        spectrum = Spectrum(mz=mz_array, intensities=intensity_array, metadata=metadata)
+        # Preserve canonical time after matchms interprets retained source aliases.
+        if "retention_time_source" in metadata:
+            spectrum.set("retention_time", metadata.get("retention_time"))
+        return spectrum
 
     def get_total_spectra_count(self) -> int:
         """

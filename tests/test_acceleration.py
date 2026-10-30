@@ -1060,7 +1060,7 @@ class TestHNSWConfig:
         assert config.hnsw_ef_construction == 400
         assert config.hnsw_ef_search == 200
         assert config.hnsw_candidates_per_query == 200
-        assert config.enable_numba_prefilter is True
+        assert config.enable_numba_prefilter is False
 
     def test_ef_construction_below_m_rejected(self) -> None:
         """ef_construction < M is rejected (unstable graph construction)."""

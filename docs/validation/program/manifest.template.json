@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "status": "draft",
+  "dataset_id": "massflow-mvb1-draft",
+  "protocol_sha256": null,
+  "identity_policy_sha256": null,
+  "split_policy_sha256": null,
+  "harness_commit": null,
+  "assets": [],
+  "record_ledger": null,
+  "notes": [
+    "Empty design template only. No spectra have been selected or benchmarked.",
+    "Resolve truth, source rights, acquisition independence and hashes before freezing."
+  ]
+}

@@ -139,18 +139,18 @@ def suggest_fix(exception: BaseException) -> Optional[str]:
         return "The database file is unreadable or corrupt. Inspect it with: massflow db inspect <file>."
     if name == "ValidationError":
         return "The configuration failed schema validation. Fix the YAML (the error lists the offending keys) and reload."
-    if "hnswlib" in message.lower() or "massflow[hnsw]" in message:
+    if "hnswlib" in message.lower() or "massflow-msms[hnsw]" in message:
         return (
             "HNSW-accelerated candidate retrieval requires the optional "
-            "'hnswlib' package. Install it with: pip install massflow[hnsw]"
+            "'hnswlib' package. Install it with: pip install massflow-msms[hnsw]"
         )
-    if "machine-learning" in message.lower() or "massflow[ml]" in message:
+    if "machine-learning" in message.lower() or "massflow-msms[ml]" in message:
         return (
             _ML_INSTALL_RE.sub(r"\1", message)
-            or "Install the ML engines with: pip install massflow[ml]"
+            or "Install the ML engines with: pip install massflow-msms[ml]"
         )
     if name == "ImportError":
-        return "A required package is missing. Install the optional extra shown in the error (e.g. pip install massflow[ml] or massflow[tui])."
+        return "A required package is missing. Install the optional extra shown in the error (e.g. pip install massflow-msms[ml] or massflow-msms[tui])."
     if _LIBRARY_TOO_SMALL_RE.search(message):
         return (
             "Target-decoy FDR is statistically weak on small libraries. Use a "

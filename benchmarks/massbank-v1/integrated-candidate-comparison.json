@@ -1,0 +1,777 @@
+{
+  "arms": {
+    "mixed-cosine": {
+      "after": {
+        "absent_truth_candidate_calls": {
+          "denominator": 50,
+          "numerator": 2,
+          "value": 0.04
+        },
+        "candidate_call_coverage": {
+          "denominator": 99,
+          "numerator": 29,
+          "value": 0.29292929292929293
+        },
+        "candidate_calls": 29,
+        "confidence_family_state": "unavailable",
+        "confidence_limitations": [
+          "source_standard_labels_not_independently_authenticated",
+          "no_independent_deployment_validation",
+          "decoy_exchangeability_unvalidated",
+          "query_q_not_candidate_specific"
+        ],
+        "confidence_q_value_rows": {
+          "missing": 171,
+          "nonzero": 0,
+          "total": 171,
+          "zero": 0
+        },
+        "exact_top1": {
+          "denominator": 49,
+          "numerator": 26,
+          "value": 0.5306122448979592
+        },
+        "exact_top5": {
+          "denominator": 49,
+          "numerator": 27,
+          "value": 0.5510204081632653
+        },
+        "explicit_confidence_state_field": true,
+        "explicit_confidence_state_rows": {
+          "unavailable": 171
+        },
+        "explicit_confidence_states_by_row": {
+          "unavailable": 171
+        },
+        "processing_rejection_reasons": {
+          "minimum_peak_count": 8,
+          "potential_spectral_leakage": 1
+        },
+        "processing_states": {
+          "processing_rejected": 8,
+          "scored": 92
+        },
+        "qualified_candidate_rows": {
+          "decoy_rows": 0,
+          "target_rows": 108
+        },
+        "retrieval_coverage": {
+          "denominator": 49,
+          "numerator": 27,
+          "value": 0.5510204081632653
+        },
+        "target_decoy_competitions": {
+          "decoys": 0,
+          "targets": 29
+        }
+      },
+      "before": {
+        "absent_truth_candidate_calls": {
+          "denominator": 50,
+          "numerator": 2,
+          "value": 0.04
+        },
+        "candidate_call_coverage": {
+          "denominator": 99,
+          "numerator": 29,
+          "value": 0.29292929292929293
+        },
+        "candidate_calls": 29,
+        "confidence_family_state": "unavailable",
+        "confidence_q_value_rows": {
+          "missing": 0,
+          "nonzero": 0,
+          "zero": 0
+        },
+        "exact_top1": {
+          "denominator": 49,
+          "numerator": 26,
+          "value": 0.5306122448979592
+        },
+        "exact_top5": {
+          "denominator": 49,
+          "numerator": 27,
+          "value": 0.5510204081632653
+        },
+        "explicit_confidence_state_rows": {},
+        "processing_rejection_reasons": {
+          "minimum_peak_count": 8,
+          "potential_spectral_leakage": 1
+        },
+        "processing_states": {
+          "processing_rejected": 8,
+          "scored": 92
+        },
+        "qualified_candidate_rows": {
+          "decoy_rows": 0,
+          "target_rows": 108
+        },
+        "retrieval_coverage": {
+          "denominator": 49,
+          "numerator": 27,
+          "value": 0.5510204081632653
+        },
+        "target_decoy_competitions": {
+          "decoys": 0,
+          "targets": 29
+        }
+      },
+      "differences": {
+        "best_score_changed_queries": 0,
+        "candidate_domain_changed_queries": 0,
+        "eligibility_changed_queries": 0,
+        "legacy_q_changed_queries": 0,
+        "processing_state_changed_queries": 0,
+        "top5_ranking_changed_queries": 0,
+        "true_structure_rank_changed_queries": 0
+      },
+      "per_query_comparison": {
+        "after_complete_metric_result": {
+          "path": "/Users/ericjanusson/.cache/massflow-validation/runs/ae-v1-final-dd41813/mixed-cosine/result.json",
+          "sha256": "8cb55d08609d2f040cd7fa939c7fadba1597e462da7707ed39ca3ed62d9be56f"
+        },
+        "after_ledger": {
+          "path": "/Users/ericjanusson/.cache/massflow-validation/runs/ae-v1-final-dd41813/mixed-cosine/queries.jsonl",
+          "sha256": "46a5a0a49502ea30e42834aa1d3f3a7586623b58b5adc4acf34b9cc8f4798744"
+        },
+        "after_query_ledger": {
+          "path": "/Users/ericjanusson/.cache/massflow-validation/runs/ae-v1-final-dd41813/mixed-cosine/queries.jsonl",
+          "sha256": "46a5a0a49502ea30e42834aa1d3f3a7586623b58b5adc4acf34b9cc8f4798744"
+        },
+        "after_result": {
+          "path": "/Users/ericjanusson/.cache/massflow-validation/runs/ae-v1-final-dd41813/mixed-cosine/result.json",
+          "sha256": "8cb55d08609d2f040cd7fa939c7fadba1597e462da7707ed39ca3ed62d9be56f"
+        },
+        "attempted_queries_compared": 100,
+        "before_ledger": {
+          "path": "benchmarks/massbank-v1/measured-2026-10-22/mixed-cosine-outcomes.jsonl",
+          "sha256": "79d792cb57b899d8d2df4a5ded55d4e39b07bce6a61f1a56a392645fb41a509c"
+        },
+        "best_score_changed_queries": 0,
+        "candidate_domain_changed_queries": 0,
+        "changed_queries": {},
+        "eligibility_changed_queries": 0,
+        "legacy_q_changed_queries": 0,
+        "other_query_changes": [],
+        "processing_state_changed_queries": 0,
+        "ranking_changes": [],
+        "top5_ranking_changed_queries": 0,
+        "true_structure_rank_changed_queries": 0
+      }
+    },
+    "mixed-modified_cosine": {
+      "after": {
+        "absent_truth_candidate_calls": {
+          "denominator": 50,
+          "numerator": 46,
+          "value": 0.92
+        },
+        "candidate_call_coverage": {
+          "denominator": 99,
+          "numerator": 91,
+          "value": 0.9191919191919192
+        },
+        "candidate_calls": 91,
+        "confidence_family_state": "estimated_uncalibrated",
+        "confidence_limitations": [
+          "source_standard_labels_not_independently_authenticated",
+          "no_independent_deployment_validation",
+          "decoy_exchangeability_unvalidated",
+          "query_q_not_candidate_specific"
+        ],
+        "confidence_q_value_rows": {
+          "missing": 1,
+          "nonzero": 2961,
+          "total": 2962,
+          "zero": 0
+        },
+        "exact_top1": {
+          "denominator": 49,
+          "numerator": 16,
+          "value": 0.32653061224489793
+        },
+        "exact_top5": {
+          "denominator": 49,
+          "numerator": 21,
+          "value": 0.42857142857142855
+        },
+        "explicit_confidence_state_field": true,
+        "explicit_confidence_state_rows": {
+          "estimated_uncalibrated": 2961,
+          "unavailable": 1
+        },
+        "explicit_confidence_states_by_row": {
+          "estimated_uncalibrated": 2961,
+          "unavailable": 1
+        },
+        "processing_rejection_reasons": {
+          "minimum_peak_count": 8,
+          "potential_spectral_leakage": 1
+        },
+        "processing_states": {
+          "processing_rejected": 8,
+          "scored": 92
+        },
+        "qualified_candidate_rows": {
+          "decoy_rows": 1,
+          "target_rows": 2961
+        },
+        "retrieval_coverage": {
+          "denominator": 49,
+          "numerator": 27,
+          "value": 0.5510204081632653
+        },
+        "target_decoy_competitions": {
+          "decoys": 1,
+          "targets": 91
+        }
+      },
+      "before": {
+        "absent_truth_candidate_calls": {
+          "denominator": 50,
+          "numerator": 46,
+          "value": 0.92
+        },
+        "candidate_call_coverage": {
+          "denominator": 99,
+          "numerator": 91,
+          "value": 0.9191919191919192
+        },
+        "candidate_calls": 91,
+        "confidence_family_state": "estimated_uncalibrated",
+        "confidence_q_value_rows": {
+          "missing": 0,
+          "nonzero": 0,
+          "zero": 0
+        },
+        "exact_top1": {
+          "denominator": 49,
+          "numerator": 16,
+          "value": 0.32653061224489793
+        },
+        "exact_top5": {
+          "denominator": 49,
+          "numerator": 21,
+          "value": 0.42857142857142855
+        },
+        "explicit_confidence_state_rows": {},
+        "processing_rejection_reasons": {
+          "minimum_peak_count": 8,
+          "potential_spectral_leakage": 1
+        },
+        "processing_states": {
+          "processing_rejected": 8,
+          "scored": 92
+        },
+        "qualified_candidate_rows": {
+          "decoy_rows": 1,
+          "target_rows": 2961
+        },
+        "retrieval_coverage": {
+          "denominator": 49,
+          "numerator": 27,
+          "value": 0.5510204081632653
+        },
+        "target_decoy_competitions": {
+          "decoys": 1,
+          "targets": 91
+        }
+      },
+      "differences": {
+        "best_score_changed_queries": 0,
+        "candidate_domain_changed_queries": 0,
+        "eligibility_changed_queries": 0,
+        "legacy_q_changed_queries": 0,
+        "processing_state_changed_queries": 0,
+        "top5_ranking_changed_queries": 0,
+        "true_structure_rank_changed_queries": 0
+      },
+      "per_query_comparison": {
+        "after_complete_metric_result": {
+          "path": "/Users/ericjanusson/.cache/massflow-validation/runs/ae-v1-final-dd41813/mixed-modified_cosine/result.json",
+          "sha256": "0e0be84d4640f5fe2bd6570c7d650bd0c3e3445f2ab4467eea8601cad0ec47b8"
+        },
+        "after_ledger": {
+          "path": "/Users/ericjanusson/.cache/massflow-validation/runs/ae-v1-final-dd41813/mixed-modified_cosine/queries.jsonl",
+          "sha256": "46a5a0a49502ea30e42834aa1d3f3a7586623b58b5adc4acf34b9cc8f4798744"
+        },
+        "after_query_ledger": {
+          "path": "/Users/ericjanusson/.cache/massflow-validation/runs/ae-v1-final-dd41813/mixed-modified_cosine/queries.jsonl",
+          "sha256": "46a5a0a49502ea30e42834aa1d3f3a7586623b58b5adc4acf34b9cc8f4798744"
+        },
+        "after_result": {
+          "path": "/Users/ericjanusson/.cache/massflow-validation/runs/ae-v1-final-dd41813/mixed-modified_cosine/result.json",
+          "sha256": "0e0be84d4640f5fe2bd6570c7d650bd0c3e3445f2ab4467eea8601cad0ec47b8"
+        },
+        "attempted_queries_compared": 100,
+        "before_ledger": {
+          "path": "benchmarks/massbank-v1/measured-2026-10-22/mixed-modified_cosine-outcomes.jsonl",
+          "sha256": "e984a963ccb7360260698341ee2e72e8f6be4cdbf27a88c8f313ec6ca9d84128"
+        },
+        "best_score_changed_queries": 0,
+        "candidate_domain_changed_queries": 0,
+        "changed_queries": {},
+        "eligibility_changed_queries": 0,
+        "legacy_q_changed_queries": 0,
+        "other_query_changes": [],
+        "processing_state_changed_queries": 0,
+        "ranking_changes": [],
+        "top5_ranking_changed_queries": 0,
+        "true_structure_rank_changed_queries": 0
+      }
+    },
+    "present-cosine": {
+      "after": {
+        "absent_truth_candidate_calls": {
+          "denominator": 0,
+          "numerator": 0,
+          "value": null
+        },
+        "candidate_call_coverage": {
+          "denominator": 99,
+          "numerator": 55,
+          "value": 0.5555555555555556
+        },
+        "candidate_calls": 55,
+        "confidence_family_state": "unavailable",
+        "confidence_limitations": [
+          "source_standard_labels_not_independently_authenticated",
+          "no_independent_deployment_validation",
+          "decoy_exchangeability_unvalidated",
+          "query_q_not_candidate_specific"
+        ],
+        "confidence_q_value_rows": {
+          "missing": 284,
+          "nonzero": 0,
+          "total": 284,
+          "zero": 0
+        },
+        "exact_top1": {
+          "denominator": 99,
+          "numerator": 52,
+          "value": 0.5252525252525253
+        },
+        "exact_top5": {
+          "denominator": 99,
+          "numerator": 53,
+          "value": 0.5353535353535354
+        },
+        "explicit_confidence_state_field": true,
+        "explicit_confidence_state_rows": {
+          "unavailable": 284
+        },
+        "explicit_confidence_states_by_row": {
+          "unavailable": 284
+        },
+        "processing_rejection_reasons": {
+          "minimum_peak_count": 8,
+          "potential_spectral_leakage": 1
+        },
+        "processing_states": {
+          "processing_rejected": 8,
+          "scored": 92
+        },
+        "qualified_candidate_rows": {
+          "decoy_rows": 0,
+          "target_rows": 247
+        },
+        "retrieval_coverage": {
+          "denominator": 99,
+          "numerator": 53,
+          "value": 0.5353535353535354
+        },
+        "target_decoy_competitions": {
+          "decoys": 0,
+          "targets": 55
+        }
+      },
+      "before": {
+        "absent_truth_candidate_calls": {
+          "denominator": 0,
+          "numerator": 0,
+          "value": null
+        },
+        "candidate_call_coverage": {
+          "denominator": 99,
+          "numerator": 55,
+          "value": 0.5555555555555556
+        },
+        "candidate_calls": 55,
+        "confidence_family_state": "unavailable",
+        "confidence_q_value_rows": {
+          "missing": 0,
+          "nonzero": 0,
+          "zero": 0
+        },
+        "exact_top1": {
+          "denominator": 99,
+          "numerator": 52,
+          "value": 0.5252525252525253
+        },
+        "exact_top5": {
+          "denominator": 99,
+          "numerator": 53,
+          "value": 0.5353535353535354
+        },
+        "explicit_confidence_state_rows": {},
+        "processing_rejection_reasons": {
+          "minimum_peak_count": 8,
+          "potential_spectral_leakage": 1
+        },
+        "processing_states": {
+          "processing_rejected": 8,
+          "scored": 92
+        },
+        "qualified_candidate_rows": {
+          "decoy_rows": 0,
+          "target_rows": 247
+        },
+        "retrieval_coverage": {
+          "denominator": 99,
+          "numerator": 53,
+          "value": 0.5353535353535354
+        },
+        "target_decoy_competitions": {
+          "decoys": 0,
+          "targets": 55
+        }
+      },
+      "differences": {
+        "best_score_changed_queries": 0,
+        "candidate_domain_changed_queries": 0,
+        "eligibility_changed_queries": 0,
+        "legacy_q_changed_queries": 0,
+        "processing_state_changed_queries": 0,
+        "top5_ranking_changed_queries": 0,
+        "true_structure_rank_changed_queries": 0
+      },
+      "per_query_comparison": {
+        "after_complete_metric_result": {
+          "path": "/Users/ericjanusson/.cache/massflow-validation/runs/ae-v1-final-dd41813/present-cosine/result.json",
+          "sha256": "635f4e2de17bbafb0dfb0cfb87692fb90351e6fb609b1725e45ea438a870c23a"
+        },
+        "after_ledger": {
+          "path": "/Users/ericjanusson/.cache/massflow-validation/runs/ae-v1-final-dd41813/present-cosine/queries.jsonl",
+          "sha256": "2bb3f47dbd2fc5e8b53bf973ec7e720ef973befb9674c442fa95a4e17a1cd7be"
+        },
+        "after_query_ledger": {
+          "path": "/Users/ericjanusson/.cache/massflow-validation/runs/ae-v1-final-dd41813/present-cosine/queries.jsonl",
+          "sha256": "2bb3f47dbd2fc5e8b53bf973ec7e720ef973befb9674c442fa95a4e17a1cd7be"
+        },
+        "after_result": {
+          "path": "/Users/ericjanusson/.cache/massflow-validation/runs/ae-v1-final-dd41813/present-cosine/result.json",
+          "sha256": "635f4e2de17bbafb0dfb0cfb87692fb90351e6fb609b1725e45ea438a870c23a"
+        },
+        "attempted_queries_compared": 100,
+        "before_ledger": {
+          "path": "benchmarks/massbank-v1/measured-2026-10-22/present-cosine-outcomes.jsonl",
+          "sha256": "7fe37c715f7873a60f86ffb5342d03bc60f892c9cb080ba81af2236fb74f7e63"
+        },
+        "best_score_changed_queries": 0,
+        "candidate_domain_changed_queries": 0,
+        "changed_queries": {},
+        "eligibility_changed_queries": 0,
+        "legacy_q_changed_queries": 0,
+        "other_query_changes": [],
+        "processing_state_changed_queries": 0,
+        "ranking_changes": [],
+        "top5_ranking_changed_queries": 0,
+        "true_structure_rank_changed_queries": 0
+      }
+    },
+    "present-modified_cosine": {
+      "after": {
+        "absent_truth_candidate_calls": {
+          "denominator": 0,
+          "numerator": 0,
+          "value": null
+        },
+        "candidate_call_coverage": {
+          "denominator": 99,
+          "numerator": 92,
+          "value": 0.9292929292929293
+        },
+        "candidate_calls": 92,
+        "confidence_family_state": "estimated_uncalibrated",
+        "confidence_limitations": [
+          "source_standard_labels_not_independently_authenticated",
+          "no_independent_deployment_validation",
+          "decoy_exchangeability_unvalidated",
+          "query_q_not_candidate_specific"
+        ],
+        "confidence_q_value_rows": {
+          "missing": 0,
+          "nonzero": 3490,
+          "total": 3490,
+          "zero": 0
+        },
+        "exact_top1": {
+          "denominator": 99,
+          "numerator": 27,
+          "value": 0.2727272727272727
+        },
+        "exact_top5": {
+          "denominator": 99,
+          "numerator": 46,
+          "value": 0.46464646464646464
+        },
+        "explicit_confidence_state_field": true,
+        "explicit_confidence_state_rows": {
+          "estimated_uncalibrated": 3490
+        },
+        "explicit_confidence_states_by_row": {
+          "estimated_uncalibrated": 3490
+        },
+        "processing_rejection_reasons": {
+          "minimum_peak_count": 8,
+          "potential_spectral_leakage": 1
+        },
+        "processing_states": {
+          "processing_rejected": 8,
+          "scored": 92
+        },
+        "qualified_candidate_rows": {
+          "decoy_rows": 1,
+          "target_rows": 3490
+        },
+        "retrieval_coverage": {
+          "denominator": 99,
+          "numerator": 53,
+          "value": 0.5353535353535354
+        },
+        "target_decoy_competitions": {
+          "decoys": 1,
+          "targets": 92
+        }
+      },
+      "before": {
+        "absent_truth_candidate_calls": {
+          "denominator": 0,
+          "numerator": 0,
+          "value": null
+        },
+        "candidate_call_coverage": {
+          "denominator": 99,
+          "numerator": 92,
+          "value": 0.9292929292929293
+        },
+        "candidate_calls": 92,
+        "confidence_family_state": "estimated_uncalibrated",
+        "confidence_q_value_rows": {
+          "missing": 0,
+          "nonzero": 0,
+          "zero": 0
+        },
+        "exact_top1": {
+          "denominator": 99,
+          "numerator": 27,
+          "value": 0.2727272727272727
+        },
+        "exact_top5": {
+          "denominator": 99,
+          "numerator": 46,
+          "value": 0.46464646464646464
+        },
+        "explicit_confidence_state_rows": {},
+        "processing_rejection_reasons": {
+          "minimum_peak_count": 8,
+          "potential_spectral_leakage": 1
+        },
+        "processing_states": {
+          "processing_rejected": 8,
+          "scored": 92
+        },
+        "qualified_candidate_rows": {
+          "decoy_rows": 1,
+          "target_rows": 3490
+        },
+        "retrieval_coverage": {
+          "denominator": 99,
+          "numerator": 53,
+          "value": 0.5353535353535354
+        },
+        "target_decoy_competitions": {
+          "decoys": 1,
+          "targets": 92
+        }
+      },
+      "differences": {
+        "best_score_changed_queries": 0,
+        "candidate_domain_changed_queries": 0,
+        "eligibility_changed_queries": 0,
+        "legacy_q_changed_queries": 0,
+        "processing_state_changed_queries": 0,
+        "top5_ranking_changed_queries": 0,
+        "true_structure_rank_changed_queries": 0
+      },
+      "per_query_comparison": {
+        "after_complete_metric_result": {
+          "path": "/Users/ericjanusson/.cache/massflow-validation/runs/ae-v1-final-dd41813/present-modified_cosine/result.json",
+          "sha256": "cc0579c1dd363c659fcdf884ef4ac75afc8d706e488c7805258fa83510a0b73e"
+        },
+        "after_ledger": {
+          "path": "/Users/ericjanusson/.cache/massflow-validation/runs/ae-v1-final-dd41813/present-modified_cosine/queries.jsonl",
+          "sha256": "2bb3f47dbd2fc5e8b53bf973ec7e720ef973befb9674c442fa95a4e17a1cd7be"
+        },
+        "after_query_ledger": {
+          "path": "/Users/ericjanusson/.cache/massflow-validation/runs/ae-v1-final-dd41813/present-modified_cosine/queries.jsonl",
+          "sha256": "2bb3f47dbd2fc5e8b53bf973ec7e720ef973befb9674c442fa95a4e17a1cd7be"
+        },
+        "after_result": {
+          "path": "/Users/ericjanusson/.cache/massflow-validation/runs/ae-v1-final-dd41813/present-modified_cosine/result.json",
+          "sha256": "cc0579c1dd363c659fcdf884ef4ac75afc8d706e488c7805258fa83510a0b73e"
+        },
+        "attempted_queries_compared": 100,
+        "before_ledger": {
+          "path": "benchmarks/massbank-v1/measured-2026-10-22/present-modified_cosine-outcomes.jsonl",
+          "sha256": "99f106e8020bd1d5ba94ba4ccf261fdcf308e002bec28cf7e2c83aef42122a56"
+        },
+        "best_score_changed_queries": 0,
+        "candidate_domain_changed_queries": 0,
+        "changed_queries": {},
+        "eligibility_changed_queries": 0,
+        "legacy_q_changed_queries": 0,
+        "other_query_changes": [],
+        "processing_state_changed_queries": 0,
+        "ranking_changes": [],
+        "top5_ranking_changed_queries": 0,
+        "true_structure_rank_changed_queries": 0
+      }
+    }
+  },
+  "baseline": {
+    "application_commit": "4dab3c2bd0462adaec0031de4a7265839898db05",
+    "artifact_index_path": "benchmarks/massbank-v1/measured-2026-10-22/artifacts.json",
+    "artifact_index_sha256": "13208f74eaa0a90ae5f64b231906b2293c0e87c0e5411c2e0bb082b4cef85100",
+    "dirty": false,
+    "manifest_digest": "66e27364488feb3e4dc74a452d964d0240d2763e1d1dd40c94ff33c400410b49",
+    "parameters_digest": "096a6ea137ec010d28c5b657a7225bf57c274cc15fa0e3125166b0b5dd446738",
+    "run_artifacts_verified_against_index": true,
+    "run_directory": "/Users/ericjanusson/.cache/massflow-validation/runs/ae-v1-clean-4dab3c2"
+  },
+  "candidate": {
+    "application_commit": "dd418131c87d26eb84c69d1b3733c764d8ee14ff",
+    "candidate_artifacts_sha256": {
+      "mixed-cosine/candidates.jsonl": "1614142dec6d3c8c85d0e26bf3e0dc03421651f0c9bba33e2ed6cc9972cbe006",
+      "mixed-cosine/effective_config.json": "972c7d983ee12e2ba99f51c2fa8ab7a247b952e5b18aae6cb1ff0aceebe328c9",
+      "mixed-cosine/native/query_results.csv": "325f94bdb59764d7792e2730f7f8ad0d9ec82b7debff74f5e93bab5abde6d49a",
+      "mixed-cosine/native/query_results.report.yaml": "2615418643d182938bf2f5ba6590f4a29b953865e60a8c4ab61adac07b77c242",
+      "mixed-cosine/native/run_provenance.json": "a9f365be210896887db9d65541f1a292d2ee04f65fc3969d47e6c606ec9f8648",
+      "mixed-cosine/queries.jsonl": "46a5a0a49502ea30e42834aa1d3f3a7586623b58b5adc4acf34b9cc8f4798744",
+      "mixed-cosine/references.jsonl": "4814e4817affd8b0b063cc8efa8c417101a7fdc0533d0ad74fd781e157b49c20",
+      "mixed-cosine/result.json": "8cb55d08609d2f040cd7fa939c7fadba1597e462da7707ed39ca3ed62d9be56f",
+      "mixed-modified_cosine/candidates.jsonl": "dc598f8aed70318f327e425ec22c5d375e919ba524eab0d54a9355e60752a289",
+      "mixed-modified_cosine/effective_config.json": "788372f348031a99bd9a07480b73b5c3c2abb5e01e2ec15154a2fca5f2366402",
+      "mixed-modified_cosine/native/query_results.csv": "ee8256da01f9fc8a6c15b45a16c8d0fe8245b0edb5e7f97b179879cb01d074bf",
+      "mixed-modified_cosine/native/query_results.report.yaml": "3a8556290bae0c47957967cda9dd8060b71306f308b182c39f321a519e0f1a12",
+      "mixed-modified_cosine/native/run_provenance.json": "2de60389fdbdc4f7839bfa8ce184ad2ea7e4fabbed45b5c577035a552d4e0730",
+      "mixed-modified_cosine/queries.jsonl": "46a5a0a49502ea30e42834aa1d3f3a7586623b58b5adc4acf34b9cc8f4798744",
+      "mixed-modified_cosine/references.jsonl": "4814e4817affd8b0b063cc8efa8c417101a7fdc0533d0ad74fd781e157b49c20",
+      "mixed-modified_cosine/result.json": "0e0be84d4640f5fe2bd6570c7d650bd0c3e3445f2ab4467eea8601cad0ec47b8",
+      "present-cosine/candidates.jsonl": "58e9aa53d7f4702a4a40731d5a81ab6ba75ef837094f0ab77bc20656b16a9043",
+      "present-cosine/effective_config.json": "ff6f9bdf20b3126fc3e84146d049f8e977fc6c7e151e3fbf8ba8eff571287edc",
+      "present-cosine/native/query_results.csv": "73eddc68f097f235fae0abf7aef582bccd28d31b272f7e5b520432c936830ef6",
+      "present-cosine/native/query_results.report.yaml": "d55d9cf4eeb9c617debee71e32f2e8f74ed6bbb1c4437e4c9ae3d8795815edec",
+      "present-cosine/native/run_provenance.json": "fae7680c47f24ec2f10b4bde7c882e4a51a98583f2ed33665f9f347becc247d2",
+      "present-cosine/queries.jsonl": "2bb3f47dbd2fc5e8b53bf973ec7e720ef973befb9674c442fa95a4e17a1cd7be",
+      "present-cosine/references.jsonl": "b348b9b6bddc794d7d7d5a7c63a900870ab159d62bf8bc8b97088ae9bf1bfbbf",
+      "present-cosine/result.json": "635f4e2de17bbafb0dfb0cfb87692fb90351e6fb609b1725e45ea438a870c23a",
+      "present-modified_cosine/candidates.jsonl": "9c9dfc6aa47165b41c48c411ecd9a42e48c5a2c3d4b632ce961d85bf96b74508",
+      "present-modified_cosine/effective_config.json": "f5c89c9871687979d587c7cd9d1932c270ed4c8dcef85acbd1bca05387c2c0a5",
+      "present-modified_cosine/native/query_results.csv": "d986e6cefac22b2adc1102bc7fa2151255bad2315f9f49ba78d6ab39c84a77c4",
+      "present-modified_cosine/native/query_results.report.yaml": "5a20e6cab82331ef6a7dfa3ad20cf98a33fde763dcabc65a1a0cfc521c5a225f",
+      "present-modified_cosine/native/run_provenance.json": "fa0147c37688cce1364a9817275db40b83e618b51b3ae441ab36782ae2f536c1",
+      "present-modified_cosine/queries.jsonl": "2bb3f47dbd2fc5e8b53bf973ec7e720ef973befb9674c442fa95a4e17a1cd7be",
+      "present-modified_cosine/references.jsonl": "b348b9b6bddc794d7d7d5a7c63a900870ab159d62bf8bc8b97088ae9bf1bfbbf",
+      "present-modified_cosine/result.json": "cc0579c1dd363c659fcdf884ef4ac75afc8d706e488c7805258fa83510a0b73e"
+    },
+    "dependencies": {
+      "massflow": "0.1.0",
+      "matchms": "0.33.1",
+      "numpy": "2.2.6",
+      "polars": "1.40.1",
+      "pydantic": "2.13.4",
+      "pyteomics": "4.7.5",
+      "rdkit": "2026.3.1",
+      "scipy": "1.16.3"
+    },
+    "dirty": false,
+    "platform": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+    "python": "3.13.12",
+    "run_directory": "/Users/ericjanusson/.cache/massflow-validation/runs/ae-v1-final-dd41813"
+  },
+  "frozen_inputs": {
+    "corpus_selection_thresholds_and_denominators_unchanged": true,
+    "manifest_canonical_digest": "66e27364488feb3e4dc74a452d964d0240d2763e1d1dd40c94ff33c400410b49",
+    "manifest_path": "benchmarks/massbank-v1/manifest.json",
+    "manifest_sha256": "62cab3bafd38d585aae7db8f072440e7568dd530e86d2a134ddd52b66b808f1b",
+    "parameters": {
+      "algorithms": [
+        "cosine",
+        "modified_cosine"
+      ],
+      "arms": [
+        "present",
+        "mixed"
+      ],
+      "interpretation": "diagnostic_not_confirmatory",
+      "processing": {
+        "filter_by_mz": false,
+        "filter_min_peaks": true,
+        "min_peaks": 3,
+        "repair_inchi_inchikey_smiles": false
+      },
+      "schema_version": 1,
+      "seed": 42,
+      "similarity": {
+        "enable_numba_prefilter": false,
+        "fdr_threshold": 1.0,
+        "min_matched_peaks": 3,
+        "min_score": 0.6,
+        "ms1_tolerance": 0.02,
+        "ms2_tolerance": 0.02,
+        "rt_tolerance": null
+      }
+    },
+    "parameters_canonical_digest": "096a6ea137ec010d28c5b657a7225bf57c274cc15fa0e3125166b0b5dd446738",
+    "parameters_path": "benchmarks/massbank-v1/parameters.json",
+    "parameters_sha256": "9ed43a87727b05847d145791a70cf634365bc647ef2e52f83ff207619e90d74d",
+    "source_archive_sha256": "cb30a4aab9d06dc5978c08e73397106a104955f1c31a57671ee5c15025985529",
+    "source_commit": "705afb7bccc3b2c42410a744eef73674716a60ef"
+  },
+  "interpretation": "Retrieval diagnostics on the frozen deposited-standard cohort only. These data do not validate chemical identification or calibrated FDR.",
+  "schema_version": 1,
+  "summary": {
+    "arms": [
+      "present-cosine",
+      "present-modified_cosine",
+      "mixed-cosine",
+      "mixed-modified_cosine"
+    ],
+    "candidate_domains_changed_queries": {
+      "mixed-cosine": 0,
+      "mixed-modified_cosine": 0,
+      "present-cosine": 0,
+      "present-modified_cosine": 0
+    },
+    "confidence_contract_change": "explicit states and nullable confidence_q_value are now exported; no additional surviving decoy or empirical calibration evidence appeared",
+    "eligibility_or_processing_state_changes": 0,
+    "important_limit": "The frozen parameters disable the Numba prefilter and do not exercise the synthetic mixed-frame pruning regression. The new charge/adduct check is separately covered with missing-precursor boundary tests.",
+    "legacy_q_value_changes": 0,
+    "per_query_legacy_q_value_changes": {
+      "mixed-cosine": 0,
+      "mixed-modified_cosine": 0,
+      "present-cosine": 0,
+      "present-modified_cosine": 0
+    },
+    "per_query_rank_changed_queries": {
+      "mixed-cosine": 0,
+      "mixed-modified_cosine": 0,
+      "present-cosine": 0,
+      "present-modified_cosine": 0
+    },
+    "ranking_or_candidate_domain_changes": 0,
+    "top1_top5_candidate_call_absent_truth_processing_and_target_decoy_metrics_reproduced": true
+  },
+  "title": "Frozen MassBank integrated-candidate before/after comparison"
+}

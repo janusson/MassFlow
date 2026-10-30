@@ -1,0 +1,2720 @@
+{
+  "calibration": {
+    "counts": {
+      "library_size": 6345,
+      "n_competing_queries": 91,
+      "n_decoy_competitions": 1,
+      "n_target_competitions": 91
+    },
+    "empirical_calibration": "pending",
+    "limitations": [
+      "source_standard_labels_not_independently_authenticated",
+      "unmerged_correctness_fixes",
+      "decoy_exchangeability_unvalidated",
+      "query_q_not_candidate_specific"
+    ],
+    "method": "actual_production_pooled_query_maxima",
+    "state": "estimated_uncalibrated",
+    "threshold_diagnostics": [
+      {
+        "counts": {
+          "attempted": 100,
+          "calls": 0,
+          "correct_top1": 0,
+          "eligible": 99,
+          "excluded": 1,
+          "false_matches": 0,
+          "missed_matches": 49,
+          "query_states": {
+            "processing_rejected": 8,
+            "scored": 92
+          },
+          "rejection_reasons": {
+            "minimum_peak_count": 8,
+            "potential_spectral_leakage": 1
+          },
+          "successfully_scored": 92
+        },
+        "interpretation": "descriptive_observed_FDP_only_not_error_control",
+        "legacy_q_threshold": 0.01,
+        "observed_fdp": {
+          "denominator": 0,
+          "numerator": 0,
+          "value": null
+        }
+      },
+      {
+        "counts": {
+          "attempted": 100,
+          "calls": 91,
+          "correct_top1": 16,
+          "eligible": 99,
+          "excluded": 1,
+          "false_matches": 75,
+          "missed_matches": 33,
+          "query_states": {
+            "processing_rejected": 8,
+            "scored": 92
+          },
+          "rejection_reasons": {
+            "minimum_peak_count": 8,
+            "potential_spectral_leakage": 1
+          },
+          "successfully_scored": 92
+        },
+        "interpretation": "descriptive_observed_FDP_only_not_error_control",
+        "legacy_q_threshold": 0.05,
+        "observed_fdp": {
+          "denominator": 91,
+          "numerator": 75,
+          "value": 0.8241758241758241
+        }
+      },
+      {
+        "counts": {
+          "attempted": 100,
+          "calls": 91,
+          "correct_top1": 16,
+          "eligible": 99,
+          "excluded": 1,
+          "false_matches": 75,
+          "missed_matches": 33,
+          "query_states": {
+            "processing_rejected": 8,
+            "scored": 92
+          },
+          "rejection_reasons": {
+            "minimum_peak_count": 8,
+            "potential_spectral_leakage": 1
+          },
+          "successfully_scored": 92
+        },
+        "interpretation": "descriptive_observed_FDP_only_not_error_control",
+        "legacy_q_threshold": 0.1,
+        "observed_fdp": {
+          "denominator": 91,
+          "numerator": 75,
+          "value": 0.8241758241758241
+        }
+      },
+      {
+        "counts": {
+          "attempted": 100,
+          "calls": 91,
+          "correct_top1": 16,
+          "eligible": 99,
+          "excluded": 1,
+          "false_matches": 75,
+          "missed_matches": 33,
+          "query_states": {
+            "processing_rejected": 8,
+            "scored": 92
+          },
+          "rejection_reasons": {
+            "minimum_peak_count": 8,
+            "potential_spectral_leakage": 1
+          },
+          "successfully_scored": 92
+        },
+        "interpretation": "descriptive_observed_FDP_only_not_error_control",
+        "legacy_q_threshold": 1.0,
+        "observed_fdp": {
+          "denominator": 91,
+          "numerator": 75,
+          "value": 0.8241758241758241
+        }
+      }
+    ]
+  },
+  "candidate_rows": 2962,
+  "error": null,
+  "fatal_errors": [],
+  "file_status": "success",
+  "filter_observability": {
+    "limitation": "Search exports qualified hits only. Empty candidate sets cannot distinguish precursor, score and peak-gate losses; no per-gate counts are inferred.",
+    "measured": [
+      "io_validation",
+      "metadata_processing",
+      "peak_processing",
+      "physical_integrity",
+      "minimum_peak_count",
+      "qualified_candidate_presence"
+    ],
+    "not_separately_observed": [
+      "all_precursor_candidate_pairs",
+      "all_adduct_candidate_pairs",
+      "score_only_vs_matched_peak_only_rejections"
+    ]
+  },
+  "metrics": {
+    "by_stratum": {
+      "LC-ESI-QTOF | 10 eV": {
+        "call_coverage": {
+          "denominator": 64,
+          "numerator": 59,
+          "value": 0.921875
+        },
+        "closed_set": {
+          "recall": {
+            "denominator": 34,
+            "numerator": 6,
+            "value": 0.17647058823529413
+          },
+          "retrieval_coverage": {
+            "denominator": 34,
+            "numerator": 15,
+            "value": 0.4411764705882353
+          },
+          "top1": {
+            "denominator": 34,
+            "numerator": 6,
+            "value": 0.17647058823529413
+          },
+          "top5": {
+            "denominator": 34,
+            "numerator": 9,
+            "value": 0.2647058823529412
+          }
+        },
+        "counts": {
+          "attempted": 64,
+          "calls": 59,
+          "correct_top1": 6,
+          "eligible": 64,
+          "excluded": 0,
+          "false_matches": 53,
+          "missed_matches": 28,
+          "query_states": {
+            "processing_rejected": 5,
+            "scored": 59
+          },
+          "rejection_reasons": {
+            "minimum_peak_count": 5
+          },
+          "successfully_scored": 59
+        },
+        "identity_endpoint": "inchikey",
+        "observed_fdp": {
+          "denominator": 59,
+          "numerator": 53,
+          "value": 0.8983050847457628
+        },
+        "open_set": {
+          "false_assignment_rate": {
+            "denominator": 30,
+            "numerator": 27,
+            "value": 0.9
+          },
+          "searched_rejection_rate": {
+            "denominator": 27,
+            "numerator": 0,
+            "value": 0.0
+          }
+        },
+        "precision": {
+          "denominator": 59,
+          "numerator": 6,
+          "value": 0.1016949152542373
+        },
+        "schema_version": 1
+      },
+      "LC-ESI-QTOF | 20 eV": {
+        "call_coverage": {
+          "denominator": 1,
+          "numerator": 0,
+          "value": 0.0
+        },
+        "closed_set": {
+          "recall": {
+            "denominator": 1,
+            "numerator": 0,
+            "value": 0.0
+          },
+          "retrieval_coverage": {
+            "denominator": 1,
+            "numerator": 0,
+            "value": 0.0
+          },
+          "top1": {
+            "denominator": 1,
+            "numerator": 0,
+            "value": 0.0
+          },
+          "top5": {
+            "denominator": 1,
+            "numerator": 0,
+            "value": 0.0
+          }
+        },
+        "counts": {
+          "attempted": 1,
+          "calls": 0,
+          "correct_top1": 0,
+          "eligible": 1,
+          "excluded": 0,
+          "false_matches": 0,
+          "missed_matches": 1,
+          "query_states": {
+            "processing_rejected": 1
+          },
+          "rejection_reasons": {
+            "minimum_peak_count": 1
+          },
+          "successfully_scored": 0
+        },
+        "identity_endpoint": "inchikey",
+        "observed_fdp": {
+          "denominator": 0,
+          "numerator": 0,
+          "value": null
+        },
+        "open_set": {
+          "false_assignment_rate": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          },
+          "searched_rejection_rate": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          }
+        },
+        "precision": {
+          "denominator": 0,
+          "numerator": 0,
+          "value": null
+        },
+        "schema_version": 1
+      },
+      "LC-ESI-QTOF | 40 eV": {
+        "call_coverage": {
+          "denominator": 2,
+          "numerator": 2,
+          "value": 1.0
+        },
+        "closed_set": {
+          "recall": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          },
+          "retrieval_coverage": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          },
+          "top1": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          },
+          "top5": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          }
+        },
+        "counts": {
+          "attempted": 3,
+          "calls": 2,
+          "correct_top1": 0,
+          "eligible": 2,
+          "excluded": 1,
+          "false_matches": 2,
+          "missed_matches": 0,
+          "query_states": {
+            "processing_rejected": 1,
+            "scored": 2
+          },
+          "rejection_reasons": {
+            "minimum_peak_count": 1,
+            "potential_spectral_leakage": 1
+          },
+          "successfully_scored": 2
+        },
+        "identity_endpoint": "inchikey",
+        "observed_fdp": {
+          "denominator": 2,
+          "numerator": 2,
+          "value": 1.0
+        },
+        "open_set": {
+          "false_assignment_rate": {
+            "denominator": 2,
+            "numerator": 2,
+            "value": 1.0
+          },
+          "searched_rejection_rate": {
+            "denominator": 2,
+            "numerator": 0,
+            "value": 0.0
+          }
+        },
+        "precision": {
+          "denominator": 2,
+          "numerator": 0,
+          "value": 0.0
+        },
+        "schema_version": 1
+      },
+      "LC-ESI-QTOF | 50 eV": {
+        "call_coverage": {
+          "denominator": 2,
+          "numerator": 2,
+          "value": 1.0
+        },
+        "closed_set": {
+          "recall": {
+            "denominator": 1,
+            "numerator": 0,
+            "value": 0.0
+          },
+          "retrieval_coverage": {
+            "denominator": 1,
+            "numerator": 0,
+            "value": 0.0
+          },
+          "top1": {
+            "denominator": 1,
+            "numerator": 0,
+            "value": 0.0
+          },
+          "top5": {
+            "denominator": 1,
+            "numerator": 0,
+            "value": 0.0
+          }
+        },
+        "counts": {
+          "attempted": 2,
+          "calls": 2,
+          "correct_top1": 0,
+          "eligible": 2,
+          "excluded": 0,
+          "false_matches": 2,
+          "missed_matches": 1,
+          "query_states": {
+            "scored": 2
+          },
+          "rejection_reasons": {},
+          "successfully_scored": 2
+        },
+        "identity_endpoint": "inchikey",
+        "observed_fdp": {
+          "denominator": 2,
+          "numerator": 2,
+          "value": 1.0
+        },
+        "open_set": {
+          "false_assignment_rate": {
+            "denominator": 1,
+            "numerator": 1,
+            "value": 1.0
+          },
+          "searched_rejection_rate": {
+            "denominator": 1,
+            "numerator": 0,
+            "value": 0.0
+          }
+        },
+        "precision": {
+          "denominator": 2,
+          "numerator": 0,
+          "value": 0.0
+        },
+        "schema_version": 1
+      },
+      "LC-ESI-QTOF | RAMP 16.2-24.4 eV": {
+        "call_coverage": {
+          "denominator": 1,
+          "numerator": 1,
+          "value": 1.0
+        },
+        "closed_set": {
+          "recall": {
+            "denominator": 1,
+            "numerator": 1,
+            "value": 1.0
+          },
+          "retrieval_coverage": {
+            "denominator": 1,
+            "numerator": 1,
+            "value": 1.0
+          },
+          "top1": {
+            "denominator": 1,
+            "numerator": 1,
+            "value": 1.0
+          },
+          "top5": {
+            "denominator": 1,
+            "numerator": 1,
+            "value": 1.0
+          }
+        },
+        "counts": {
+          "attempted": 1,
+          "calls": 1,
+          "correct_top1": 1,
+          "eligible": 1,
+          "excluded": 0,
+          "false_matches": 0,
+          "missed_matches": 0,
+          "query_states": {
+            "scored": 1
+          },
+          "rejection_reasons": {},
+          "successfully_scored": 1
+        },
+        "identity_endpoint": "inchikey",
+        "observed_fdp": {
+          "denominator": 1,
+          "numerator": 0,
+          "value": 0.0
+        },
+        "open_set": {
+          "false_assignment_rate": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          },
+          "searched_rejection_rate": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          }
+        },
+        "precision": {
+          "denominator": 1,
+          "numerator": 1,
+          "value": 1.0
+        },
+        "schema_version": 1
+      },
+      "LC-ESI-QTOF | RAMP 17.2-25.8 eV": {
+        "call_coverage": {
+          "denominator": 1,
+          "numerator": 1,
+          "value": 1.0
+        },
+        "closed_set": {
+          "recall": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          },
+          "retrieval_coverage": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          },
+          "top1": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          },
+          "top5": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          }
+        },
+        "counts": {
+          "attempted": 1,
+          "calls": 1,
+          "correct_top1": 0,
+          "eligible": 1,
+          "excluded": 0,
+          "false_matches": 1,
+          "missed_matches": 0,
+          "query_states": {
+            "scored": 1
+          },
+          "rejection_reasons": {},
+          "successfully_scored": 1
+        },
+        "identity_endpoint": "inchikey",
+        "observed_fdp": {
+          "denominator": 1,
+          "numerator": 1,
+          "value": 1.0
+        },
+        "open_set": {
+          "false_assignment_rate": {
+            "denominator": 1,
+            "numerator": 1,
+            "value": 1.0
+          },
+          "searched_rejection_rate": {
+            "denominator": 1,
+            "numerator": 0,
+            "value": 0.0
+          }
+        },
+        "precision": {
+          "denominator": 1,
+          "numerator": 0,
+          "value": 0.0
+        },
+        "schema_version": 1
+      },
+      "LC-ESI-QTOF | RAMP 17.8-26.7 eV": {
+        "call_coverage": {
+          "denominator": 1,
+          "numerator": 1,
+          "value": 1.0
+        },
+        "closed_set": {
+          "recall": {
+            "denominator": 1,
+            "numerator": 0,
+            "value": 0.0
+          },
+          "retrieval_coverage": {
+            "denominator": 1,
+            "numerator": 1,
+            "value": 1.0
+          },
+          "top1": {
+            "denominator": 1,
+            "numerator": 0,
+            "value": 0.0
+          },
+          "top5": {
+            "denominator": 1,
+            "numerator": 1,
+            "value": 1.0
+          }
+        },
+        "counts": {
+          "attempted": 1,
+          "calls": 1,
+          "correct_top1": 0,
+          "eligible": 1,
+          "excluded": 0,
+          "false_matches": 1,
+          "missed_matches": 1,
+          "query_states": {
+            "scored": 1
+          },
+          "rejection_reasons": {},
+          "successfully_scored": 1
+        },
+        "identity_endpoint": "inchikey",
+        "observed_fdp": {
+          "denominator": 1,
+          "numerator": 1,
+          "value": 1.0
+        },
+        "open_set": {
+          "false_assignment_rate": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          },
+          "searched_rejection_rate": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          }
+        },
+        "precision": {
+          "denominator": 1,
+          "numerator": 0,
+          "value": 0.0
+        },
+        "schema_version": 1
+      },
+      "LC-ESI-QTOF | RAMP 20.3-30.5 eV": {
+        "call_coverage": {
+          "denominator": 2,
+          "numerator": 2,
+          "value": 1.0
+        },
+        "closed_set": {
+          "recall": {
+            "denominator": 1,
+            "numerator": 1,
+            "value": 1.0
+          },
+          "retrieval_coverage": {
+            "denominator": 1,
+            "numerator": 1,
+            "value": 1.0
+          },
+          "top1": {
+            "denominator": 1,
+            "numerator": 1,
+            "value": 1.0
+          },
+          "top5": {
+            "denominator": 1,
+            "numerator": 1,
+            "value": 1.0
+          }
+        },
+        "counts": {
+          "attempted": 2,
+          "calls": 2,
+          "correct_top1": 1,
+          "eligible": 2,
+          "excluded": 0,
+          "false_matches": 1,
+          "missed_matches": 0,
+          "query_states": {
+            "scored": 2
+          },
+          "rejection_reasons": {},
+          "successfully_scored": 2
+        },
+        "identity_endpoint": "inchikey",
+        "observed_fdp": {
+          "denominator": 2,
+          "numerator": 1,
+          "value": 0.5
+        },
+        "open_set": {
+          "false_assignment_rate": {
+            "denominator": 1,
+            "numerator": 1,
+            "value": 1.0
+          },
+          "searched_rejection_rate": {
+            "denominator": 1,
+            "numerator": 0,
+            "value": 0.0
+          }
+        },
+        "precision": {
+          "denominator": 2,
+          "numerator": 1,
+          "value": 0.5
+        },
+        "schema_version": 1
+      },
+      "LC-ESI-QTOF | RAMP 21.0-31.4 eV": {
+        "call_coverage": {
+          "denominator": 1,
+          "numerator": 1,
+          "value": 1.0
+        },
+        "closed_set": {
+          "recall": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          },
+          "retrieval_coverage": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          },
+          "top1": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          },
+          "top5": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          }
+        },
+        "counts": {
+          "attempted": 1,
+          "calls": 1,
+          "correct_top1": 0,
+          "eligible": 1,
+          "excluded": 0,
+          "false_matches": 1,
+          "missed_matches": 0,
+          "query_states": {
+            "scored": 1
+          },
+          "rejection_reasons": {},
+          "successfully_scored": 1
+        },
+        "identity_endpoint": "inchikey",
+        "observed_fdp": {
+          "denominator": 1,
+          "numerator": 1,
+          "value": 1.0
+        },
+        "open_set": {
+          "false_assignment_rate": {
+            "denominator": 1,
+            "numerator": 1,
+            "value": 1.0
+          },
+          "searched_rejection_rate": {
+            "denominator": 1,
+            "numerator": 0,
+            "value": 0.0
+          }
+        },
+        "precision": {
+          "denominator": 1,
+          "numerator": 0,
+          "value": 0.0
+        },
+        "schema_version": 1
+      },
+      "LC-ESI-QTOF | RAMP 21.9-32.9 eV": {
+        "call_coverage": {
+          "denominator": 1,
+          "numerator": 1,
+          "value": 1.0
+        },
+        "closed_set": {
+          "recall": {
+            "denominator": 1,
+            "numerator": 1,
+            "value": 1.0
+          },
+          "retrieval_coverage": {
+            "denominator": 1,
+            "numerator": 1,
+            "value": 1.0
+          },
+          "top1": {
+            "denominator": 1,
+            "numerator": 1,
+            "value": 1.0
+          },
+          "top5": {
+            "denominator": 1,
+            "numerator": 1,
+            "value": 1.0
+          }
+        },
+        "counts": {
+          "attempted": 1,
+          "calls": 1,
+          "correct_top1": 1,
+          "eligible": 1,
+          "excluded": 0,
+          "false_matches": 0,
+          "missed_matches": 0,
+          "query_states": {
+            "scored": 1
+          },
+          "rejection_reasons": {},
+          "successfully_scored": 1
+        },
+        "identity_endpoint": "inchikey",
+        "observed_fdp": {
+          "denominator": 1,
+          "numerator": 0,
+          "value": 0.0
+        },
+        "open_set": {
+          "false_assignment_rate": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          },
+          "searched_rejection_rate": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          }
+        },
+        "precision": {
+          "denominator": 1,
+          "numerator": 1,
+          "value": 1.0
+        },
+        "schema_version": 1
+      },
+      "LC-ESI-QTOF | Ramp 15.7-23.5 eV": {
+        "call_coverage": {
+          "denominator": 1,
+          "numerator": 0,
+          "value": 0.0
+        },
+        "closed_set": {
+          "recall": {
+            "denominator": 1,
+            "numerator": 0,
+            "value": 0.0
+          },
+          "retrieval_coverage": {
+            "denominator": 1,
+            "numerator": 0,
+            "value": 0.0
+          },
+          "top1": {
+            "denominator": 1,
+            "numerator": 0,
+            "value": 0.0
+          },
+          "top5": {
+            "denominator": 1,
+            "numerator": 0,
+            "value": 0.0
+          }
+        },
+        "counts": {
+          "attempted": 1,
+          "calls": 0,
+          "correct_top1": 0,
+          "eligible": 1,
+          "excluded": 0,
+          "false_matches": 0,
+          "missed_matches": 1,
+          "query_states": {
+            "processing_rejected": 1
+          },
+          "rejection_reasons": {
+            "minimum_peak_count": 1
+          },
+          "successfully_scored": 0
+        },
+        "identity_endpoint": "inchikey",
+        "observed_fdp": {
+          "denominator": 0,
+          "numerator": 0,
+          "value": null
+        },
+        "open_set": {
+          "false_assignment_rate": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          },
+          "searched_rejection_rate": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          }
+        },
+        "precision": {
+          "denominator": 0,
+          "numerator": 0,
+          "value": null
+        },
+        "schema_version": 1
+      },
+      "LC-ESI-QTOF | Ramp 17.4-26.1 eV": {
+        "call_coverage": {
+          "denominator": 1,
+          "numerator": 1,
+          "value": 1.0
+        },
+        "closed_set": {
+          "recall": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          },
+          "retrieval_coverage": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          },
+          "top1": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          },
+          "top5": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          }
+        },
+        "counts": {
+          "attempted": 1,
+          "calls": 1,
+          "correct_top1": 0,
+          "eligible": 1,
+          "excluded": 0,
+          "false_matches": 1,
+          "missed_matches": 0,
+          "query_states": {
+            "scored": 1
+          },
+          "rejection_reasons": {},
+          "successfully_scored": 1
+        },
+        "identity_endpoint": "inchikey",
+        "observed_fdp": {
+          "denominator": 1,
+          "numerator": 1,
+          "value": 1.0
+        },
+        "open_set": {
+          "false_assignment_rate": {
+            "denominator": 1,
+            "numerator": 1,
+            "value": 1.0
+          },
+          "searched_rejection_rate": {
+            "denominator": 1,
+            "numerator": 0,
+            "value": 0.0
+          }
+        },
+        "precision": {
+          "denominator": 1,
+          "numerator": 0,
+          "value": 0.0
+        },
+        "schema_version": 1
+      },
+      "LC-ESI-QTOF | Ramp 18.0-27.1 eV": {
+        "call_coverage": {
+          "denominator": 1,
+          "numerator": 1,
+          "value": 1.0
+        },
+        "closed_set": {
+          "recall": {
+            "denominator": 1,
+            "numerator": 1,
+            "value": 1.0
+          },
+          "retrieval_coverage": {
+            "denominator": 1,
+            "numerator": 1,
+            "value": 1.0
+          },
+          "top1": {
+            "denominator": 1,
+            "numerator": 1,
+            "value": 1.0
+          },
+          "top5": {
+            "denominator": 1,
+            "numerator": 1,
+            "value": 1.0
+          }
+        },
+        "counts": {
+          "attempted": 1,
+          "calls": 1,
+          "correct_top1": 1,
+          "eligible": 1,
+          "excluded": 0,
+          "false_matches": 0,
+          "missed_matches": 0,
+          "query_states": {
+            "scored": 1
+          },
+          "rejection_reasons": {},
+          "successfully_scored": 1
+        },
+        "identity_endpoint": "inchikey",
+        "observed_fdp": {
+          "denominator": 1,
+          "numerator": 0,
+          "value": 0.0
+        },
+        "open_set": {
+          "false_assignment_rate": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          },
+          "searched_rejection_rate": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          }
+        },
+        "precision": {
+          "denominator": 1,
+          "numerator": 1,
+          "value": 1.0
+        },
+        "schema_version": 1
+      },
+      "LC-ESI-QTOF | Ramp 18.1-27.1 eV": {
+        "call_coverage": {
+          "denominator": 1,
+          "numerator": 1,
+          "value": 1.0
+        },
+        "closed_set": {
+          "recall": {
+            "denominator": 1,
+            "numerator": 1,
+            "value": 1.0
+          },
+          "retrieval_coverage": {
+            "denominator": 1,
+            "numerator": 1,
+            "value": 1.0
+          },
+          "top1": {
+            "denominator": 1,
+            "numerator": 1,
+            "value": 1.0
+          },
+          "top5": {
+            "denominator": 1,
+            "numerator": 1,
+            "value": 1.0
+          }
+        },
+        "counts": {
+          "attempted": 1,
+          "calls": 1,
+          "correct_top1": 1,
+          "eligible": 1,
+          "excluded": 0,
+          "false_matches": 0,
+          "missed_matches": 0,
+          "query_states": {
+            "scored": 1
+          },
+          "rejection_reasons": {},
+          "successfully_scored": 1
+        },
+        "identity_endpoint": "inchikey",
+        "observed_fdp": {
+          "denominator": 1,
+          "numerator": 0,
+          "value": 0.0
+        },
+        "open_set": {
+          "false_assignment_rate": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          },
+          "searched_rejection_rate": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          }
+        },
+        "precision": {
+          "denominator": 1,
+          "numerator": 1,
+          "value": 1.0
+        },
+        "schema_version": 1
+      },
+      "LC-ESI-QTOF | Ramp 18.3-27.4 eV": {
+        "call_coverage": {
+          "denominator": 1,
+          "numerator": 1,
+          "value": 1.0
+        },
+        "closed_set": {
+          "recall": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          },
+          "retrieval_coverage": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          },
+          "top1": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          },
+          "top5": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          }
+        },
+        "counts": {
+          "attempted": 1,
+          "calls": 1,
+          "correct_top1": 0,
+          "eligible": 1,
+          "excluded": 0,
+          "false_matches": 1,
+          "missed_matches": 0,
+          "query_states": {
+            "scored": 1
+          },
+          "rejection_reasons": {},
+          "successfully_scored": 1
+        },
+        "identity_endpoint": "inchikey",
+        "observed_fdp": {
+          "denominator": 1,
+          "numerator": 1,
+          "value": 1.0
+        },
+        "open_set": {
+          "false_assignment_rate": {
+            "denominator": 1,
+            "numerator": 1,
+            "value": 1.0
+          },
+          "searched_rejection_rate": {
+            "denominator": 1,
+            "numerator": 0,
+            "value": 0.0
+          }
+        },
+        "precision": {
+          "denominator": 1,
+          "numerator": 0,
+          "value": 0.0
+        },
+        "schema_version": 1
+      },
+      "LC-ESI-QTOF | Ramp 19.3-29.0 eV": {
+        "call_coverage": {
+          "denominator": 1,
+          "numerator": 1,
+          "value": 1.0
+        },
+        "closed_set": {
+          "recall": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          },
+          "retrieval_coverage": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          },
+          "top1": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          },
+          "top5": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          }
+        },
+        "counts": {
+          "attempted": 1,
+          "calls": 1,
+          "correct_top1": 0,
+          "eligible": 1,
+          "excluded": 0,
+          "false_matches": 1,
+          "missed_matches": 0,
+          "query_states": {
+            "scored": 1
+          },
+          "rejection_reasons": {},
+          "successfully_scored": 1
+        },
+        "identity_endpoint": "inchikey",
+        "observed_fdp": {
+          "denominator": 1,
+          "numerator": 1,
+          "value": 1.0
+        },
+        "open_set": {
+          "false_assignment_rate": {
+            "denominator": 1,
+            "numerator": 1,
+            "value": 1.0
+          },
+          "searched_rejection_rate": {
+            "denominator": 1,
+            "numerator": 0,
+            "value": 0.0
+          }
+        },
+        "precision": {
+          "denominator": 1,
+          "numerator": 0,
+          "value": 0.0
+        },
+        "schema_version": 1
+      },
+      "LC-ESI-QTOF | Ramp 19.4-29.2 eV": {
+        "call_coverage": {
+          "denominator": 1,
+          "numerator": 0,
+          "value": 0.0
+        },
+        "closed_set": {
+          "recall": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          },
+          "retrieval_coverage": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          },
+          "top1": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          },
+          "top5": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          }
+        },
+        "counts": {
+          "attempted": 1,
+          "calls": 0,
+          "correct_top1": 0,
+          "eligible": 1,
+          "excluded": 0,
+          "false_matches": 0,
+          "missed_matches": 0,
+          "query_states": {
+            "scored": 1
+          },
+          "rejection_reasons": {},
+          "successfully_scored": 1
+        },
+        "identity_endpoint": "inchikey",
+        "observed_fdp": {
+          "denominator": 0,
+          "numerator": 0,
+          "value": null
+        },
+        "open_set": {
+          "false_assignment_rate": {
+            "denominator": 1,
+            "numerator": 0,
+            "value": 0.0
+          },
+          "searched_rejection_rate": {
+            "denominator": 1,
+            "numerator": 1,
+            "value": 1.0
+          }
+        },
+        "precision": {
+          "denominator": 0,
+          "numerator": 0,
+          "value": null
+        },
+        "schema_version": 1
+      },
+      "LC-ESI-QTOF | Ramp 19.5-29.3 eV": {
+        "call_coverage": {
+          "denominator": 1,
+          "numerator": 1,
+          "value": 1.0
+        },
+        "closed_set": {
+          "recall": {
+            "denominator": 1,
+            "numerator": 1,
+            "value": 1.0
+          },
+          "retrieval_coverage": {
+            "denominator": 1,
+            "numerator": 1,
+            "value": 1.0
+          },
+          "top1": {
+            "denominator": 1,
+            "numerator": 1,
+            "value": 1.0
+          },
+          "top5": {
+            "denominator": 1,
+            "numerator": 1,
+            "value": 1.0
+          }
+        },
+        "counts": {
+          "attempted": 1,
+          "calls": 1,
+          "correct_top1": 1,
+          "eligible": 1,
+          "excluded": 0,
+          "false_matches": 0,
+          "missed_matches": 0,
+          "query_states": {
+            "scored": 1
+          },
+          "rejection_reasons": {},
+          "successfully_scored": 1
+        },
+        "identity_endpoint": "inchikey",
+        "observed_fdp": {
+          "denominator": 1,
+          "numerator": 0,
+          "value": 0.0
+        },
+        "open_set": {
+          "false_assignment_rate": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          },
+          "searched_rejection_rate": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          }
+        },
+        "precision": {
+          "denominator": 1,
+          "numerator": 1,
+          "value": 1.0
+        },
+        "schema_version": 1
+      },
+      "LC-ESI-QTOF | Ramp 19.7-29.5 eV": {
+        "call_coverage": {
+          "denominator": 1,
+          "numerator": 1,
+          "value": 1.0
+        },
+        "closed_set": {
+          "recall": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          },
+          "retrieval_coverage": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          },
+          "top1": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          },
+          "top5": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          }
+        },
+        "counts": {
+          "attempted": 1,
+          "calls": 1,
+          "correct_top1": 0,
+          "eligible": 1,
+          "excluded": 0,
+          "false_matches": 1,
+          "missed_matches": 0,
+          "query_states": {
+            "scored": 1
+          },
+          "rejection_reasons": {},
+          "successfully_scored": 1
+        },
+        "identity_endpoint": "inchikey",
+        "observed_fdp": {
+          "denominator": 1,
+          "numerator": 1,
+          "value": 1.0
+        },
+        "open_set": {
+          "false_assignment_rate": {
+            "denominator": 1,
+            "numerator": 1,
+            "value": 1.0
+          },
+          "searched_rejection_rate": {
+            "denominator": 1,
+            "numerator": 0,
+            "value": 0.0
+          }
+        },
+        "precision": {
+          "denominator": 1,
+          "numerator": 0,
+          "value": 0.0
+        },
+        "schema_version": 1
+      },
+      "LC-ESI-QTOF | Ramp 19.8-29.6 eV": {
+        "call_coverage": {
+          "denominator": 1,
+          "numerator": 1,
+          "value": 1.0
+        },
+        "closed_set": {
+          "recall": {
+            "denominator": 1,
+            "numerator": 1,
+            "value": 1.0
+          },
+          "retrieval_coverage": {
+            "denominator": 1,
+            "numerator": 1,
+            "value": 1.0
+          },
+          "top1": {
+            "denominator": 1,
+            "numerator": 1,
+            "value": 1.0
+          },
+          "top5": {
+            "denominator": 1,
+            "numerator": 1,
+            "value": 1.0
+          }
+        },
+        "counts": {
+          "attempted": 1,
+          "calls": 1,
+          "correct_top1": 1,
+          "eligible": 1,
+          "excluded": 0,
+          "false_matches": 0,
+          "missed_matches": 0,
+          "query_states": {
+            "scored": 1
+          },
+          "rejection_reasons": {},
+          "successfully_scored": 1
+        },
+        "identity_endpoint": "inchikey",
+        "observed_fdp": {
+          "denominator": 1,
+          "numerator": 0,
+          "value": 0.0
+        },
+        "open_set": {
+          "false_assignment_rate": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          },
+          "searched_rejection_rate": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          }
+        },
+        "precision": {
+          "denominator": 1,
+          "numerator": 1,
+          "value": 1.0
+        },
+        "schema_version": 1
+      },
+      "LC-ESI-QTOF | Ramp 19.8-29.7 eV": {
+        "call_coverage": {
+          "denominator": 1,
+          "numerator": 1,
+          "value": 1.0
+        },
+        "closed_set": {
+          "recall": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          },
+          "retrieval_coverage": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          },
+          "top1": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          },
+          "top5": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          }
+        },
+        "counts": {
+          "attempted": 1,
+          "calls": 1,
+          "correct_top1": 0,
+          "eligible": 1,
+          "excluded": 0,
+          "false_matches": 1,
+          "missed_matches": 0,
+          "query_states": {
+            "scored": 1
+          },
+          "rejection_reasons": {},
+          "successfully_scored": 1
+        },
+        "identity_endpoint": "inchikey",
+        "observed_fdp": {
+          "denominator": 1,
+          "numerator": 1,
+          "value": 1.0
+        },
+        "open_set": {
+          "false_assignment_rate": {
+            "denominator": 1,
+            "numerator": 1,
+            "value": 1.0
+          },
+          "searched_rejection_rate": {
+            "denominator": 1,
+            "numerator": 0,
+            "value": 0.0
+          }
+        },
+        "precision": {
+          "denominator": 1,
+          "numerator": 0,
+          "value": 0.0
+        },
+        "schema_version": 1
+      },
+      "LC-ESI-QTOF | Ramp 20.6-30.9 eV": {
+        "call_coverage": {
+          "denominator": 1,
+          "numerator": 1,
+          "value": 1.0
+        },
+        "closed_set": {
+          "recall": {
+            "denominator": 1,
+            "numerator": 1,
+            "value": 1.0
+          },
+          "retrieval_coverage": {
+            "denominator": 1,
+            "numerator": 1,
+            "value": 1.0
+          },
+          "top1": {
+            "denominator": 1,
+            "numerator": 1,
+            "value": 1.0
+          },
+          "top5": {
+            "denominator": 1,
+            "numerator": 1,
+            "value": 1.0
+          }
+        },
+        "counts": {
+          "attempted": 1,
+          "calls": 1,
+          "correct_top1": 1,
+          "eligible": 1,
+          "excluded": 0,
+          "false_matches": 0,
+          "missed_matches": 0,
+          "query_states": {
+            "scored": 1
+          },
+          "rejection_reasons": {},
+          "successfully_scored": 1
+        },
+        "identity_endpoint": "inchikey",
+        "observed_fdp": {
+          "denominator": 1,
+          "numerator": 0,
+          "value": 0.0
+        },
+        "open_set": {
+          "false_assignment_rate": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          },
+          "searched_rejection_rate": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          }
+        },
+        "precision": {
+          "denominator": 1,
+          "numerator": 1,
+          "value": 1.0
+        },
+        "schema_version": 1
+      },
+      "LC-ESI-QTOF | Ramp 20.8-31.2 eV": {
+        "call_coverage": {
+          "denominator": 1,
+          "numerator": 1,
+          "value": 1.0
+        },
+        "closed_set": {
+          "recall": {
+            "denominator": 1,
+            "numerator": 1,
+            "value": 1.0
+          },
+          "retrieval_coverage": {
+            "denominator": 1,
+            "numerator": 1,
+            "value": 1.0
+          },
+          "top1": {
+            "denominator": 1,
+            "numerator": 1,
+            "value": 1.0
+          },
+          "top5": {
+            "denominator": 1,
+            "numerator": 1,
+            "value": 1.0
+          }
+        },
+        "counts": {
+          "attempted": 1,
+          "calls": 1,
+          "correct_top1": 1,
+          "eligible": 1,
+          "excluded": 0,
+          "false_matches": 0,
+          "missed_matches": 0,
+          "query_states": {
+            "scored": 1
+          },
+          "rejection_reasons": {},
+          "successfully_scored": 1
+        },
+        "identity_endpoint": "inchikey",
+        "observed_fdp": {
+          "denominator": 1,
+          "numerator": 0,
+          "value": 0.0
+        },
+        "open_set": {
+          "false_assignment_rate": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          },
+          "searched_rejection_rate": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          }
+        },
+        "precision": {
+          "denominator": 1,
+          "numerator": 1,
+          "value": 1.0
+        },
+        "schema_version": 1
+      },
+      "LC-ESI-QTOF | Ramp 20.8-31.3 eV": {
+        "call_coverage": {
+          "denominator": 1,
+          "numerator": 1,
+          "value": 1.0
+        },
+        "closed_set": {
+          "recall": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          },
+          "retrieval_coverage": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          },
+          "top1": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          },
+          "top5": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          }
+        },
+        "counts": {
+          "attempted": 1,
+          "calls": 1,
+          "correct_top1": 0,
+          "eligible": 1,
+          "excluded": 0,
+          "false_matches": 1,
+          "missed_matches": 0,
+          "query_states": {
+            "scored": 1
+          },
+          "rejection_reasons": {},
+          "successfully_scored": 1
+        },
+        "identity_endpoint": "inchikey",
+        "observed_fdp": {
+          "denominator": 1,
+          "numerator": 1,
+          "value": 1.0
+        },
+        "open_set": {
+          "false_assignment_rate": {
+            "denominator": 1,
+            "numerator": 1,
+            "value": 1.0
+          },
+          "searched_rejection_rate": {
+            "denominator": 1,
+            "numerator": 0,
+            "value": 0.0
+          }
+        },
+        "precision": {
+          "denominator": 1,
+          "numerator": 0,
+          "value": 0.0
+        },
+        "schema_version": 1
+      },
+      "LC-ESI-QTOF | Ramp 21.9-32.8 eV": {
+        "call_coverage": {
+          "denominator": 1,
+          "numerator": 1,
+          "value": 1.0
+        },
+        "closed_set": {
+          "recall": {
+            "denominator": 1,
+            "numerator": 0,
+            "value": 0.0
+          },
+          "retrieval_coverage": {
+            "denominator": 1,
+            "numerator": 1,
+            "value": 1.0
+          },
+          "top1": {
+            "denominator": 1,
+            "numerator": 0,
+            "value": 0.0
+          },
+          "top5": {
+            "denominator": 1,
+            "numerator": 1,
+            "value": 1.0
+          }
+        },
+        "counts": {
+          "attempted": 1,
+          "calls": 1,
+          "correct_top1": 0,
+          "eligible": 1,
+          "excluded": 0,
+          "false_matches": 1,
+          "missed_matches": 1,
+          "query_states": {
+            "scored": 1
+          },
+          "rejection_reasons": {},
+          "successfully_scored": 1
+        },
+        "identity_endpoint": "inchikey",
+        "observed_fdp": {
+          "denominator": 1,
+          "numerator": 1,
+          "value": 1.0
+        },
+        "open_set": {
+          "false_assignment_rate": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          },
+          "searched_rejection_rate": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          }
+        },
+        "precision": {
+          "denominator": 1,
+          "numerator": 0,
+          "value": 0.0
+        },
+        "schema_version": 1
+      },
+      "LC-ESI-QTOF | Ramp 21.9-32.9 eV": {
+        "call_coverage": {
+          "denominator": 1,
+          "numerator": 1,
+          "value": 1.0
+        },
+        "closed_set": {
+          "recall": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          },
+          "retrieval_coverage": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          },
+          "top1": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          },
+          "top5": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          }
+        },
+        "counts": {
+          "attempted": 1,
+          "calls": 1,
+          "correct_top1": 0,
+          "eligible": 1,
+          "excluded": 0,
+          "false_matches": 1,
+          "missed_matches": 0,
+          "query_states": {
+            "scored": 1
+          },
+          "rejection_reasons": {},
+          "successfully_scored": 1
+        },
+        "identity_endpoint": "inchikey",
+        "observed_fdp": {
+          "denominator": 1,
+          "numerator": 1,
+          "value": 1.0
+        },
+        "open_set": {
+          "false_assignment_rate": {
+            "denominator": 1,
+            "numerator": 1,
+            "value": 1.0
+          },
+          "searched_rejection_rate": {
+            "denominator": 1,
+            "numerator": 0,
+            "value": 0.0
+          }
+        },
+        "precision": {
+          "denominator": 1,
+          "numerator": 0,
+          "value": 0.0
+        },
+        "schema_version": 1
+      },
+      "LC-ESI-QTOF | Ramp 22.1-33.2 eV": {
+        "call_coverage": {
+          "denominator": 1,
+          "numerator": 1,
+          "value": 1.0
+        },
+        "closed_set": {
+          "recall": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          },
+          "retrieval_coverage": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          },
+          "top1": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          },
+          "top5": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          }
+        },
+        "counts": {
+          "attempted": 1,
+          "calls": 1,
+          "correct_top1": 0,
+          "eligible": 1,
+          "excluded": 0,
+          "false_matches": 1,
+          "missed_matches": 0,
+          "query_states": {
+            "scored": 1
+          },
+          "rejection_reasons": {},
+          "successfully_scored": 1
+        },
+        "identity_endpoint": "inchikey",
+        "observed_fdp": {
+          "denominator": 1,
+          "numerator": 1,
+          "value": 1.0
+        },
+        "open_set": {
+          "false_assignment_rate": {
+            "denominator": 1,
+            "numerator": 1,
+            "value": 1.0
+          },
+          "searched_rejection_rate": {
+            "denominator": 1,
+            "numerator": 0,
+            "value": 0.0
+          }
+        },
+        "precision": {
+          "denominator": 1,
+          "numerator": 0,
+          "value": 0.0
+        },
+        "schema_version": 1
+      },
+      "LC-ESI-QTOF | Ramp 22.8-34.2 eV": {
+        "call_coverage": {
+          "denominator": 1,
+          "numerator": 1,
+          "value": 1.0
+        },
+        "closed_set": {
+          "recall": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          },
+          "retrieval_coverage": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          },
+          "top1": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          },
+          "top5": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          }
+        },
+        "counts": {
+          "attempted": 1,
+          "calls": 1,
+          "correct_top1": 0,
+          "eligible": 1,
+          "excluded": 0,
+          "false_matches": 1,
+          "missed_matches": 0,
+          "query_states": {
+            "scored": 1
+          },
+          "rejection_reasons": {},
+          "successfully_scored": 1
+        },
+        "identity_endpoint": "inchikey",
+        "observed_fdp": {
+          "denominator": 1,
+          "numerator": 1,
+          "value": 1.0
+        },
+        "open_set": {
+          "false_assignment_rate": {
+            "denominator": 1,
+            "numerator": 1,
+            "value": 1.0
+          },
+          "searched_rejection_rate": {
+            "denominator": 1,
+            "numerator": 0,
+            "value": 0.0
+          }
+        },
+        "precision": {
+          "denominator": 1,
+          "numerator": 0,
+          "value": 0.0
+        },
+        "schema_version": 1
+      },
+      "LC-ESI-QTOF | Ramp 23.4-35.1 eV": {
+        "call_coverage": {
+          "denominator": 1,
+          "numerator": 1,
+          "value": 1.0
+        },
+        "closed_set": {
+          "recall": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          },
+          "retrieval_coverage": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          },
+          "top1": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          },
+          "top5": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          }
+        },
+        "counts": {
+          "attempted": 1,
+          "calls": 1,
+          "correct_top1": 0,
+          "eligible": 1,
+          "excluded": 0,
+          "false_matches": 1,
+          "missed_matches": 0,
+          "query_states": {
+            "scored": 1
+          },
+          "rejection_reasons": {},
+          "successfully_scored": 1
+        },
+        "identity_endpoint": "inchikey",
+        "observed_fdp": {
+          "denominator": 1,
+          "numerator": 1,
+          "value": 1.0
+        },
+        "open_set": {
+          "false_assignment_rate": {
+            "denominator": 1,
+            "numerator": 1,
+            "value": 1.0
+          },
+          "searched_rejection_rate": {
+            "denominator": 1,
+            "numerator": 0,
+            "value": 0.0
+          }
+        },
+        "precision": {
+          "denominator": 1,
+          "numerator": 0,
+          "value": 0.0
+        },
+        "schema_version": 1
+      },
+      "LC-ESI-QTOF | Ramp 23.7-35.5 eV": {
+        "call_coverage": {
+          "denominator": 1,
+          "numerator": 1,
+          "value": 1.0
+        },
+        "closed_set": {
+          "recall": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          },
+          "retrieval_coverage": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          },
+          "top1": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          },
+          "top5": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          }
+        },
+        "counts": {
+          "attempted": 1,
+          "calls": 1,
+          "correct_top1": 0,
+          "eligible": 1,
+          "excluded": 0,
+          "false_matches": 1,
+          "missed_matches": 0,
+          "query_states": {
+            "scored": 1
+          },
+          "rejection_reasons": {},
+          "successfully_scored": 1
+        },
+        "identity_endpoint": "inchikey",
+        "observed_fdp": {
+          "denominator": 1,
+          "numerator": 1,
+          "value": 1.0
+        },
+        "open_set": {
+          "false_assignment_rate": {
+            "denominator": 1,
+            "numerator": 1,
+            "value": 1.0
+          },
+          "searched_rejection_rate": {
+            "denominator": 1,
+            "numerator": 0,
+            "value": 0.0
+          }
+        },
+        "precision": {
+          "denominator": 1,
+          "numerator": 0,
+          "value": 0.0
+        },
+        "schema_version": 1
+      },
+      "LC-ESI-QTOF | Ramp 24.3-36.5 eV": {
+        "call_coverage": {
+          "denominator": 1,
+          "numerator": 1,
+          "value": 1.0
+        },
+        "closed_set": {
+          "recall": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          },
+          "retrieval_coverage": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          },
+          "top1": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          },
+          "top5": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          }
+        },
+        "counts": {
+          "attempted": 1,
+          "calls": 1,
+          "correct_top1": 0,
+          "eligible": 1,
+          "excluded": 0,
+          "false_matches": 1,
+          "missed_matches": 0,
+          "query_states": {
+            "scored": 1
+          },
+          "rejection_reasons": {},
+          "successfully_scored": 1
+        },
+        "identity_endpoint": "inchikey",
+        "observed_fdp": {
+          "denominator": 1,
+          "numerator": 1,
+          "value": 1.0
+        },
+        "open_set": {
+          "false_assignment_rate": {
+            "denominator": 1,
+            "numerator": 1,
+            "value": 1.0
+          },
+          "searched_rejection_rate": {
+            "denominator": 1,
+            "numerator": 0,
+            "value": 0.0
+          }
+        },
+        "precision": {
+          "denominator": 1,
+          "numerator": 0,
+          "value": 0.0
+        },
+        "schema_version": 1
+      },
+      "LC-ESI-QTOF | Ramp 24.7-37.1 eV": {
+        "call_coverage": {
+          "denominator": 1,
+          "numerator": 1,
+          "value": 1.0
+        },
+        "closed_set": {
+          "recall": {
+            "denominator": 1,
+            "numerator": 1,
+            "value": 1.0
+          },
+          "retrieval_coverage": {
+            "denominator": 1,
+            "numerator": 1,
+            "value": 1.0
+          },
+          "top1": {
+            "denominator": 1,
+            "numerator": 1,
+            "value": 1.0
+          },
+          "top5": {
+            "denominator": 1,
+            "numerator": 1,
+            "value": 1.0
+          }
+        },
+        "counts": {
+          "attempted": 1,
+          "calls": 1,
+          "correct_top1": 1,
+          "eligible": 1,
+          "excluded": 0,
+          "false_matches": 0,
+          "missed_matches": 0,
+          "query_states": {
+            "scored": 1
+          },
+          "rejection_reasons": {},
+          "successfully_scored": 1
+        },
+        "identity_endpoint": "inchikey",
+        "observed_fdp": {
+          "denominator": 1,
+          "numerator": 0,
+          "value": 0.0
+        },
+        "open_set": {
+          "false_assignment_rate": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          },
+          "searched_rejection_rate": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          }
+        },
+        "precision": {
+          "denominator": 1,
+          "numerator": 1,
+          "value": 1.0
+        },
+        "schema_version": 1
+      },
+      "LC-ESI-QTOF | Ramp 26.8-40.2 eV": {
+        "call_coverage": {
+          "denominator": 1,
+          "numerator": 1,
+          "value": 1.0
+        },
+        "closed_set": {
+          "recall": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          },
+          "retrieval_coverage": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          },
+          "top1": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          },
+          "top5": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          }
+        },
+        "counts": {
+          "attempted": 1,
+          "calls": 1,
+          "correct_top1": 0,
+          "eligible": 1,
+          "excluded": 0,
+          "false_matches": 1,
+          "missed_matches": 0,
+          "query_states": {
+            "scored": 1
+          },
+          "rejection_reasons": {},
+          "successfully_scored": 1
+        },
+        "identity_endpoint": "inchikey",
+        "observed_fdp": {
+          "denominator": 1,
+          "numerator": 1,
+          "value": 1.0
+        },
+        "open_set": {
+          "false_assignment_rate": {
+            "denominator": 1,
+            "numerator": 1,
+            "value": 1.0
+          },
+          "searched_rejection_rate": {
+            "denominator": 1,
+            "numerator": 0,
+            "value": 0.0
+          }
+        },
+        "precision": {
+          "denominator": 1,
+          "numerator": 0,
+          "value": 0.0
+        },
+        "schema_version": 1
+      }
+    },
+    "call_coverage": {
+      "denominator": 99,
+      "numerator": 91,
+      "value": 0.9191919191919192
+    },
+    "closed_set": {
+      "recall": {
+        "denominator": 49,
+        "numerator": 16,
+        "value": 0.32653061224489793
+      },
+      "retrieval_coverage": {
+        "denominator": 49,
+        "numerator": 27,
+        "value": 0.5510204081632653
+      },
+      "top1": {
+        "denominator": 49,
+        "numerator": 16,
+        "value": 0.32653061224489793
+      },
+      "top5": {
+        "denominator": 49,
+        "numerator": 21,
+        "value": 0.42857142857142855
+      }
+    },
+    "connectivity_endpoint": {
+      "call_coverage": {
+        "denominator": 99,
+        "numerator": 91,
+        "value": 0.9191919191919192
+      },
+      "closed_set": {
+        "recall": {
+          "denominator": 49,
+          "numerator": 16,
+          "value": 0.32653061224489793
+        },
+        "retrieval_coverage": {
+          "denominator": 49,
+          "numerator": 27,
+          "value": 0.5510204081632653
+        },
+        "top1": {
+          "denominator": 49,
+          "numerator": 16,
+          "value": 0.32653061224489793
+        },
+        "top5": {
+          "denominator": 49,
+          "numerator": 21,
+          "value": 0.42857142857142855
+        }
+      },
+      "counts": {
+        "attempted": 100,
+        "calls": 91,
+        "correct_top1": 16,
+        "eligible": 99,
+        "excluded": 1,
+        "false_matches": 75,
+        "missed_matches": 33,
+        "query_states": {
+          "processing_rejected": 8,
+          "scored": 92
+        },
+        "rejection_reasons": {
+          "minimum_peak_count": 8,
+          "potential_spectral_leakage": 1
+        },
+        "successfully_scored": 92
+      },
+      "identity_endpoint": "connectivity",
+      "observed_fdp": {
+        "denominator": 91,
+        "numerator": 75,
+        "value": 0.8241758241758241
+      },
+      "open_set": {
+        "false_assignment_rate": {
+          "denominator": 50,
+          "numerator": 46,
+          "value": 0.92
+        },
+        "searched_rejection_rate": {
+          "denominator": 47,
+          "numerator": 1,
+          "value": 0.02127659574468085
+        }
+      },
+      "precision": {
+        "denominator": 91,
+        "numerator": 16,
+        "value": 0.17582417582417584
+      },
+      "schema_version": 1
+    },
+    "counts": {
+      "attempted": 100,
+      "calls": 91,
+      "correct_top1": 16,
+      "eligible": 99,
+      "excluded": 1,
+      "false_matches": 75,
+      "missed_matches": 33,
+      "query_states": {
+        "processing_rejected": 8,
+        "scored": 92
+      },
+      "rejection_reasons": {
+        "minimum_peak_count": 8,
+        "potential_spectral_leakage": 1
+      },
+      "successfully_scored": 92
+    },
+    "identity_endpoint": "inchikey",
+    "observed_fdp": {
+      "denominator": 91,
+      "numerator": 75,
+      "value": 0.8241758241758241
+    },
+    "open_set": {
+      "false_assignment_rate": {
+        "denominator": 50,
+        "numerator": 46,
+        "value": 0.92
+      },
+      "searched_rejection_rate": {
+        "denominator": 47,
+        "numerator": 1,
+        "value": 0.02127659574468085
+      }
+    },
+    "precision": {
+      "denominator": 91,
+      "numerator": 16,
+      "value": 0.17582417582417584
+    },
+    "schema_version": 1,
+    "score_distributions": {
+      "decoys": {
+        "count": 1,
+        "histogram_counts": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1,
+          0
+        ],
+        "histogram_edges": [
+          0.0,
+          0.1,
+          0.2,
+          0.30000000000000004,
+          0.4,
+          0.5,
+          0.6000000000000001,
+          0.7000000000000001,
+          0.8,
+          0.9,
+          1.0
+        ],
+        "max": 0.8681349442458295,
+        "median": 0.8681349442458295,
+        "min": 0.8681349442458295
+      },
+      "targets": {
+        "count": 2961,
+        "histogram_counts": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          804,
+          539,
+          704,
+          914
+        ],
+        "histogram_edges": [
+          0.0,
+          0.1,
+          0.2,
+          0.30000000000000004,
+          0.4,
+          0.5,
+          0.6000000000000001,
+          0.7000000000000001,
+          0.8,
+          0.9,
+          1.0
+        ],
+        "max": 0.9996611913700916,
+        "median": 0.8271364807702636,
+        "min": 0.6001138880408285
+      }
+    }
+  },
+  "projection": "Remove duplicate query/outcome arrays only; full original result.json remains in external artifact index.",
+  "provenance": {
+    "application_commit": "4dab3c2bd0462adaec0031de4a7265839898db05",
+    "dependencies": {
+      "massflow": "0.1.0",
+      "matchms": "0.33.1",
+      "numpy": "2.2.6",
+      "polars": "1.40.1",
+      "pydantic": "2.13.4",
+      "pyteomics": "4.7.5",
+      "rdkit": "2026.3.1",
+      "scipy": "1.16.3"
+    },
+    "dirty": false,
+    "effective_config": {
+      "config_path": null,
+      "export": {
+        "format": "csv"
+      },
+      "input": {
+        "format": "mgf",
+        "input_path": "/Users/ericjanusson/.cache/massflow-validation/runs/ae-v1-clean-4dab3c2/mixed-modified_cosine/query.mgf",
+        "library_path": "/Users/ericjanusson/.cache/massflow-validation/runs/ae-v1-clean-4dab3c2/mixed-modified_cosine/library.msp",
+        "storage_backend": "sqlite",
+        "streaming_threshold_mb": 500
+      },
+      "modifications": {},
+      "processing": {
+        "add_retention_time": true,
+        "clean_compound_name": true,
+        "clean_metadata": true,
+        "decoy_min_relative_intensity": 0.01,
+        "decoy_mz_shift_da": 1.0,
+        "derive_adduct_from_name": true,
+        "derive_formula_from_name": true,
+        "derive_ionmode": true,
+        "filter_by_intensity": false,
+        "filter_by_mz": false,
+        "filter_min_peaks": true,
+        "instrument": null,
+        "make_charge_int": true,
+        "min_intensity": 0.0,
+        "min_peaks": 3,
+        "mode": "",
+        "mz_max": 1000.0,
+        "mz_min": 0.0,
+        "n_max": null,
+        "noise_threshold": 1000.0,
+        "normalize_intensity": true,
+        "precursor_mz": 0.0,
+        "reduce_to_top_n_peaks": false,
+        "repair_inchi_inchikey_smiles": false,
+        "retention_time": 0.0,
+        "solvents": []
+      },
+      "project": {
+        "name": "mixed-modified_cosine",
+        "output_directory": "/Users/ericjanusson/.cache/massflow-validation/runs/ae-v1-clean-4dab3c2/mixed-modified_cosine/native"
+      },
+      "similarity": {
+        "algorithm": "modified_cosine",
+        "analog_search": false,
+        "cascade_lower_bound": 0.3,
+        "cascade_stages": [
+          "cosine",
+          "modified_cosine"
+        ],
+        "cascade_upper_bound": 0.7,
+        "consensus_min_engines": 1,
+        "consensus_weights": {
+          "cosine": 0.5,
+          "modified_cosine": 0.5
+        },
+        "enable_numba_prefilter": false,
+        "enable_routing": false,
+        "fdr_threshold": 1.0,
+        "hnsw_bin_width": 1.0,
+        "hnsw_candidates_per_query": 200,
+        "hnsw_ef_construction": 400,
+        "hnsw_ef_search": 200,
+        "hnsw_enabled": false,
+        "hnsw_m": 32,
+        "hnsw_mz_max": 2000.0,
+        "hnsw_mz_min": 0.0,
+        "hnsw_random_seed": 42,
+        "min_matched_peaks": 3,
+        "min_score": 0.6,
+        "ml_circuit_breaker_cooldown_seconds": 60.0,
+        "ml_circuit_breaker_threshold": 3,
+        "ml_endpoints": {},
+        "ml_request_timeout_seconds": 10.0,
+        "ms1_tolerance": 0.02,
+        "ms2_tolerance": 0.02,
+        "resolution_ppm": null,
+        "routing_chimeric_action": "hard",
+        "routing_easy_engine": "modified_cosine",
+        "routing_fallback_engine": "modified_cosine",
+        "routing_hard_engine": "consensus",
+        "routing_min_difficulty_flags": 1,
+        "routing_ml_timeout_seconds": 300.0,
+        "routing_precursor_purity_threshold": 0.8,
+        "routing_snr_threshold": 3.0,
+        "rt_tolerance": null
+      },
+      "workflow": {}
+    },
+    "harness_source_sha256": {
+      "scripts/validation_benchmark/__init__.py": "c4696d590d68b507d6a0fa2ce8b649a7f16fda3fec86a7589df11ed327acdaa6",
+      "scripts/validation_benchmark/dataset.py": "d0a15a75e64a890b4ed164bbdf0dabe845e927529057f8dd5cf6081ae8a44d76",
+      "scripts/validation_benchmark/metrics.py": "ee56fb34f06fd9711a5eb81c9a2ac7f5ec0f14280096839a8492e31bd2840616",
+      "scripts/validation_benchmark/runner.py": "0bfb24938f647817f555b661f808735fe4be94a8653e729163d425340ac78070"
+    },
+    "library_sha256": "4fc86937144cb22c8bb7f0d5465d6faba4bc841e14be88f208866ffa90e55e13",
+    "lock_sha256": "429d9ea7727c714ae1f058d86e3626148af288f246cefad23e3941f20a4fa712",
+    "machine": "arm64",
+    "memory_scope": "whole_process_high_water_including_earlier_arms",
+    "peak_process_rss_bytes": 620904448,
+    "pipeline": "MassFlow.workflow.run_annotation_pipeline",
+    "platform": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+    "python": "3.13.12",
+    "query_sha256": "1479926a7b9d3ab9964e688e7f5129d83af64b2b789716f50a36bb2dcb17989a",
+    "seed": 42,
+    "tracked_diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "wall_seconds": 39.39703712501796
+  },
+  "query_outcomes_file": "mixed-modified_cosine-outcomes.jsonl",
+  "reference_accounting": {
+    "attempted": 6904,
+    "rejection_reasons": {
+      "minimum_peak_count": 559
+    },
+    "states": {
+      "processed": 6345,
+      "processing_rejected": 559
+    }
+  },
+  "reference_records_after_processing": 6345,
+  "reference_rejection_reasons": {},
+  "schema_version": 1,
+  "source_result_sha256": "a9a8ff58cf4c73759d01cd6e43058d51a8fd4c8b9b298616166cd206e0282fb2",
+  "warnings": []
+}

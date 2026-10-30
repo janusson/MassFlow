@@ -1,0 +1,290 @@
+{
+  "arms": {
+    "mixed-cosine": {
+      "call_coverage": {
+        "denominator": 100,
+        "numerator": 29,
+        "value": 0.29
+      },
+      "closed_set": {
+        "recall": {
+          "denominator": 50,
+          "numerator": 26,
+          "value": 0.52
+        },
+        "retrieval_coverage": {
+          "denominator": 50,
+          "numerator": 27,
+          "value": 0.54
+        },
+        "top1": {
+          "denominator": 50,
+          "numerator": 26,
+          "value": 0.52
+        },
+        "top5": {
+          "denominator": 50,
+          "numerator": 27,
+          "value": 0.54
+        }
+      },
+      "counts": {
+        "attempted": 100,
+        "calls": 29,
+        "correct_top1": 26,
+        "eligible": 100,
+        "excluded": 0,
+        "false_matches": 3,
+        "missed_matches": 24,
+        "query_states": {
+          "processing_rejected": 8,
+          "scored": 92
+        },
+        "rejection_reasons": {
+          "minimum_peak_count": 8,
+          "potential_spectral_leakage": 1
+        },
+        "successfully_scored": 92
+      },
+      "identity_endpoint": "inchikey",
+      "observed_fdp": {
+        "denominator": 29,
+        "numerator": 3,
+        "value": 0.10344827586206896
+      },
+      "open_set": {
+        "false_assignment_rate": {
+          "denominator": 50,
+          "numerator": 2,
+          "value": 0.04
+        },
+        "searched_rejection_rate": {
+          "denominator": 47,
+          "numerator": 45,
+          "value": 0.9574468085106383
+        }
+      },
+      "precision": {
+        "denominator": 29,
+        "numerator": 26,
+        "value": 0.896551724137931
+      },
+      "schema_version": 1
+    },
+    "mixed-modified_cosine": {
+      "call_coverage": {
+        "denominator": 100,
+        "numerator": 91,
+        "value": 0.91
+      },
+      "closed_set": {
+        "recall": {
+          "denominator": 50,
+          "numerator": 16,
+          "value": 0.32
+        },
+        "retrieval_coverage": {
+          "denominator": 50,
+          "numerator": 27,
+          "value": 0.54
+        },
+        "top1": {
+          "denominator": 50,
+          "numerator": 16,
+          "value": 0.32
+        },
+        "top5": {
+          "denominator": 50,
+          "numerator": 21,
+          "value": 0.42
+        }
+      },
+      "counts": {
+        "attempted": 100,
+        "calls": 91,
+        "correct_top1": 16,
+        "eligible": 100,
+        "excluded": 0,
+        "false_matches": 75,
+        "missed_matches": 34,
+        "query_states": {
+          "processing_rejected": 8,
+          "scored": 92
+        },
+        "rejection_reasons": {
+          "minimum_peak_count": 8,
+          "potential_spectral_leakage": 1
+        },
+        "successfully_scored": 92
+      },
+      "identity_endpoint": "inchikey",
+      "observed_fdp": {
+        "denominator": 91,
+        "numerator": 75,
+        "value": 0.8241758241758241
+      },
+      "open_set": {
+        "false_assignment_rate": {
+          "denominator": 50,
+          "numerator": 46,
+          "value": 0.92
+        },
+        "searched_rejection_rate": {
+          "denominator": 47,
+          "numerator": 1,
+          "value": 0.02127659574468085
+        }
+      },
+      "precision": {
+        "denominator": 91,
+        "numerator": 16,
+        "value": 0.17582417582417584
+      },
+      "schema_version": 1
+    },
+    "present-cosine": {
+      "call_coverage": {
+        "denominator": 100,
+        "numerator": 55,
+        "value": 0.55
+      },
+      "closed_set": {
+        "recall": {
+          "denominator": 100,
+          "numerator": 52,
+          "value": 0.52
+        },
+        "retrieval_coverage": {
+          "denominator": 100,
+          "numerator": 53,
+          "value": 0.53
+        },
+        "top1": {
+          "denominator": 100,
+          "numerator": 52,
+          "value": 0.52
+        },
+        "top5": {
+          "denominator": 100,
+          "numerator": 53,
+          "value": 0.53
+        }
+      },
+      "counts": {
+        "attempted": 100,
+        "calls": 55,
+        "correct_top1": 52,
+        "eligible": 100,
+        "excluded": 0,
+        "false_matches": 3,
+        "missed_matches": 48,
+        "query_states": {
+          "processing_rejected": 8,
+          "scored": 92
+        },
+        "rejection_reasons": {
+          "minimum_peak_count": 8,
+          "potential_spectral_leakage": 1
+        },
+        "successfully_scored": 92
+      },
+      "identity_endpoint": "inchikey",
+      "observed_fdp": {
+        "denominator": 55,
+        "numerator": 3,
+        "value": 0.05454545454545454
+      },
+      "open_set": {
+        "false_assignment_rate": {
+          "denominator": 0,
+          "numerator": 0,
+          "value": null
+        },
+        "searched_rejection_rate": {
+          "denominator": 0,
+          "numerator": 0,
+          "value": null
+        }
+      },
+      "precision": {
+        "denominator": 55,
+        "numerator": 52,
+        "value": 0.9454545454545454
+      },
+      "schema_version": 1
+    },
+    "present-modified_cosine": {
+      "call_coverage": {
+        "denominator": 100,
+        "numerator": 92,
+        "value": 0.92
+      },
+      "closed_set": {
+        "recall": {
+          "denominator": 100,
+          "numerator": 27,
+          "value": 0.27
+        },
+        "retrieval_coverage": {
+          "denominator": 100,
+          "numerator": 53,
+          "value": 0.53
+        },
+        "top1": {
+          "denominator": 100,
+          "numerator": 27,
+          "value": 0.27
+        },
+        "top5": {
+          "denominator": 100,
+          "numerator": 46,
+          "value": 0.46
+        }
+      },
+      "counts": {
+        "attempted": 100,
+        "calls": 92,
+        "correct_top1": 27,
+        "eligible": 100,
+        "excluded": 0,
+        "false_matches": 65,
+        "missed_matches": 73,
+        "query_states": {
+          "processing_rejected": 8,
+          "scored": 92
+        },
+        "rejection_reasons": {
+          "minimum_peak_count": 8,
+          "potential_spectral_leakage": 1
+        },
+        "successfully_scored": 92
+      },
+      "identity_endpoint": "inchikey",
+      "observed_fdp": {
+        "denominator": 92,
+        "numerator": 65,
+        "value": 0.7065217391304348
+      },
+      "open_set": {
+        "false_assignment_rate": {
+          "denominator": 0,
+          "numerator": 0,
+          "value": null
+        },
+        "searched_rejection_rate": {
+          "denominator": 0,
+          "numerator": 0,
+          "value": null
+        }
+      },
+      "precision": {
+        "denominator": 92,
+        "numerator": 27,
+        "value": 0.29347826086956524
+      },
+      "schema_version": 1
+    }
+  },
+  "purpose": "Secondary analysis retaining potential single-peak leakage flag in denominators; no scoring repeated or changed",
+  "schema_version": 1
+}
