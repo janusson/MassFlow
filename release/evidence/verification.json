@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-22",
+  "base_commit": "ffef50bff913fcf400cb3de72595dab50e4f3fd8",
+  "scope": "Documentation only; no version bump, runtime changes, merging or publication",
+  "checks": {
+    "strict_mkdocs": {
+      "exit_code": 0,
+      "sha256": "321f54f6beef0d16fcfbc04fee90c16b4763f014444717b00ee55ba9da85d000"
+    },
+    "ruff": {
+      "exit_code": 0,
+      "sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18"
+    },
+    "diff_whitespace": "passed"
+  },
+  "runtime_qualification": "Not a combined release candidate. Separate confidence and benchmark branches have full coverage evidence; release approval stays no-go.",
+  "issues_created": [
+    108,
+    109
+  ],
+  "dependent_drafts": [
+    101,
+    103,
+    104,
+    105,
+    106,
+    107,
+    110,
+    111
+  ]
+}

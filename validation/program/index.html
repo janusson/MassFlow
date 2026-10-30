@@ -1,0 +1,3095 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A config-first Python toolkit for local tandem mass spectrometry (MS/MS) data annotation.">
+      
+      
+        <meta name="author" content="Eric Janusson">
+      
+      
+      
+        <link rel="prev" href="../../user-guide/confidence-semantics/">
+      
+      
+        <link rel="next" href="../experimental-benchmark/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Scientific Validation Program - MassFlow</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/_mkdocstrings.css">
+    
+      <link rel="stylesheet" href="../../stylesheets/ayu-dark.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="teal">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#scientific-validation-program-for-core-msms-annotation" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="MassFlow" class="md-header__button md-logo" aria-label="MassFlow" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            MassFlow
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Scientific Validation Program
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="teal"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="teal"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+          <a href="javascript:void(0)" class="md-search__icon md-icon" title="Share" aria-label="Share" data-clipboard data-clipboard-text="" data-md-component="search-share" tabindex="-1">
+            
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9a3 3 0 0 0-3 3 3 3 0 0 0 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.15c-.05.21-.08.43-.08.66 0 1.61 1.31 2.91 2.92 2.91s2.92-1.3 2.92-2.91A2.92 2.92 0 0 0 18 16.08"/></svg>
+          </a>
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/janusson/MassFlow" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    janusson/MassFlow
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../getting-started/installation/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Getting Started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../../summary_diagrams/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  User Guide
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../ARCHITECTURE/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Architecture
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../CAPABILITY_MATRIX/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Product Contract & Capability Matrix
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../COMPLEXITY_AUDIT/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Complexity Audit & Subsystem Classification
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../api_reference/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  API Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../release/1.0-readiness/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  1.0 Release Readiness
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../post-v0.1-roadmap/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Roadmap
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../CHANGELOG/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Changelog
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="MassFlow" class="md-nav__button md-logo" aria-label="MassFlow" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    MassFlow
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/janusson/MassFlow" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    janusson/MassFlow
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/tutorial/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tutorial
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/quickstart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quickstart
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../summary_diagrams/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Diagrams & Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+          
+          
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_2" id="__nav_3_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Core Workflow (Stable)
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Core Workflow (Stable)
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/annotation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Annotation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration (YAML)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/database/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SQLite Library Management
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/processing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Processing & Filtering
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/validation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Scientific Validation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/scientific_validation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Golden Test Suite
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/similarity/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Classical Similarity
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/results/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Result Export & Confidence
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/usage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Usage Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+          
+          
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_3" checked>
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="./" class="md-nav__link md-nav__link--active">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data & Math
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link md-nav__link--active" for="__nav_3_3" id="__nav_3_3_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Data & Math
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/data-requirements/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data Requirements
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/scoring_logic/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Scoring Logic
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/confidence-semantics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Confidence Semantics
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../experimental-benchmark/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Experimental Benchmark
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/benchmarking/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cross-instrument Benchmarking
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../multiprocessing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Multiprocessing & Memory Model
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../ARCHITECTURE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../CAPABILITY_MATRIX/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Product Contract & Capability Matrix
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../COMPLEXITY_AUDIT/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Complexity Audit & Subsystem Classification
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api_reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/tui/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Terminal Console (TUI)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/config/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/database/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Database
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/convert/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Conversion
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/io/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Input/Output
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/processing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Processing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/similarity/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Similarity
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/storage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Storage (Zarr)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/hnsw/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HNSW Indexing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/acceleration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Acceleration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/queue/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Streaming Queue
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/workflow/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workflow
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/models/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/cheminformatics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cheminformatics
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/consensus/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Consensus
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/server/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Server
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../release/1.0-readiness/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    1.0 Release Readiness
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../post-v0.1-roadmap/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Roadmap
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../CHANGELOG/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-intended-decision-and-claim-boundaries" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Intended decision and claim boundaries
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-freeze-the-study-before-scoring" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Freeze the study before scoring
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-identity-eligibility-and-independence" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Identity, eligibility and independence
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3. Identity, eligibility and independence">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#chemical-identity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Chemical identity
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#experimental-record-identity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Experimental record identity
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#query-eligibility" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Query eligibility
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#independence-and-leakage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Independence and leakage
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-protocols" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Protocols
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. Protocols">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#p0-software-and-provenance-qualification" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        P0 — Software and provenance qualification
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#p1-closed-set-acquisition-independent-retrieval" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        P1 — Closed-set acquisition-independent retrieval
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#p2-open-set-rejection-and-paired-removal" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        P2 — Open-set rejection and paired removal
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#p3-confidence-calibration-against-experimental-truth" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        P3 — Confidence calibration against experimental truth
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#p4-candidate-and-filter-loss-decomposition" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        P4 — Candidate and filter loss decomposition
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#p5-strata-and-robustness" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        P5 — Strata and robustness
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-metrics-with-explicit-denominators" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Metrics with explicit denominators
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-uncertainty-and-statistical-decisions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Uncertainty and statistical decisions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-required-controls-and-baselines" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Required controls and baselines
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-smallest-useful-benchmark-mvb-1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Smallest useful benchmark: MVB-1
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-release-evidence-categories" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. Release evidence categories
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#10-limitations-and-next-work" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10. Limitations and next work
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="10. Limitations and next work">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#primary-references" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Primary references
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="scientific-validation-program-for-core-msms-annotation">Scientific validation program for core MS/MS annotation<a class="headerlink" href="#scientific-validation-program-for-core-msms-annotation" title="Permanent link">&para;</a></h1>
+<p><strong>Specification v1.0 — proposed experiments, not a validation certificate.</strong>
+Audit: 2026-10-21 America/Vancouver (2026-10-22 UTC). Implementation baseline:
+<code>ffef50bff913fcf400cb3de72595dab50e4f3fd8</code>, matching remote <code>main</code> when checked.
+No new experimental spectra were acquired and no new annotation benchmark was run
+for this specification. Existing saved outputs were recounted independently.</p>
+<p>MassFlow has useful software correctness evidence and limited retrospective
+reference-library retrieval evidence. <strong>Chemical identification performance and
+empirical FDR control are not established for a declared deployment domain.</strong>
+A score, a passing test suite, or a nonempty decoy null cannot establish them.</p>
+<p>Read the <a href="implementation-audit/">implementation/evidence audit</a>,
+<a href="datasets/">source assessment</a>, <a href="manifest-contract/">manifest contract</a>, and
+<a href="issue-backlog/">ordered GitHub-ready issue drafts</a> alongside this protocol.
+The <a href="evidence/audit-snapshot.json">audit snapshot</a> records source hashes and counts.</p>
+<h2 id="1-intended-decision-and-claim-boundaries">1. Intended decision and claim boundaries<a class="headerlink" href="#1-intended-decision-and-claim-boundaries" title="Permanent link">&para;</a></h2>
+<p>The initial intended use is <strong>retrospective retrieval of a small-molecule library
+structure from centroided, experimental ESI-MS/MS reference spectra</strong>, with explicit
+abstention. This does not validate an LC/matrix workflow. Inlet types (LC, flow
+injection or direct infusion) are retained and reported separately for queries
+and references. The initial benchmark is positive-mode, singly protonated MS2;
+expansion to
+negative ions, other adducts, multiple charges, instruments, or matrices requires
+separate evidence. No quantitative concentration, recovery, LOD/LOQ, diagnostic,
+regulatory, peptide-search, or de novo structure-elucidation claim follows.</p>
+<p>Three experiments answer different questions:</p>
+<table>
+<thead>
+<tr>
+<th>Experiment</th>
+<th>Library truth</th>
+<th>Decision being assessed</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Closed set</td>
+<td>At least one independent source acquisition of each query identity is present</td>
+<td>Can the true structure be retrieved and ranked?</td>
+</tr>
+<tr>
+<td>Open set</td>
+<td>Every reference equivalent to the query truth is removed</td>
+<td>Does the procedure abstain instead of assigning an incorrect structure?</td>
+</tr>
+<tr>
+<td>Confidence calibration</td>
+<td>A prespecified mixture of present and absent known truths</td>
+<td>Does the reported acceptance procedure achieve its claimed error behavior?</td>
+</tr>
+</tbody>
+</table>
+<p>Modified cosine can retrieve analogues through precursor-shifted fragments.
+An analogue is <strong>incorrect for exact-structure retrieval</strong> even if chemically
+interesting; score analogue retrieval separately using independently curated
+relationships. Do not relabel incorrect identities as successes after inspection.</p>
+<p>A library match supports a candidate annotation under tested conditions. It does
+not automatically confer a confirmed structure or a confidence level from an
+external framework. Confirmation needs independent evidence appropriate to that
+framework and use, including authentic standards and applicable orthogonal
+measurements [S1].</p>
+<h2 id="2-freeze-the-study-before-scoring">2. Freeze the study before scoring<a class="headerlink" href="#2-freeze-the-study-before-scoring" title="Permanent link">&para;</a></h2>
+<ol>
+<li>Record the scientific question, intended domain, identity rules, error costs,
+   acceptance criteria, primary endpoints, exclusions, candidate policy, configuration
+   grid, and uncertainty method in a dated protocol. Freeze its SHA-256.</li>
+<li>Resolve the known affected-path software defects listed in the audit before a
+   release-validation run. A run on baseline main is a diagnostic experiment with
+   known limitations. Do not silently combine PRs or substitute their test results.</li>
+<li>Freeze the source release, asset hashes, record-level labels, acquisition groups,
+   duplicate graph, all exclusions, development/test partitions, and two libraries
+   (truth present / truth removed). Publish manifests where rights permit.</li>
+<li>Select settings on development structures only. Freeze the complete effective
+   config, environment lock, clean application commit and harness commit. Any
+   scientific change after unblinding creates a new version and a new independent
+   confirmatory set; the old result stays in the record.</li>
+<li>Run the independent scorer baseline and MassFlow on identical frozen data. Save
+   all candidates before q filtering, stage counters, best target/decoy scores,
+   source-record mappings, failures, logs, final calls, and checksums.</li>
+<li>Unblind once, compute the prespecified tables, and retain all failed and negative
+   results. All selected queries remain in the end-to-end denominator.</li>
+</ol>
+<p>A repository change may be diagnostic and useful while still unsuitable for
+release validation. Capture <code>git status</code>, <code>git diff</code> digest, Python/OS/CPU, installed
+package versions using distribution names, lock hash, command line, seeds, backend,
+worker count, cache construction/reuse state, source hashes and run timestamps.
+A dirty SHA alone cannot reproduce uncommitted behavior. Existing provenance
+version fields containing requirement expressions must be checked against the
+actual installed versions; see the audit.</p>
+<h2 id="3-identity-eligibility-and-independence">3. Identity, eligibility and independence<a class="headerlink" href="#3-identity-eligibility-and-independence" title="Permanent link">&para;</a></h2>
+<h3 id="chemical-identity">Chemical identity<a class="headerlink" href="#chemical-identity" title="Permanent link">&para;</a></h3>
+<p>Primary endpoint: <strong>full standardized InChIKey agreement</strong>, with an archived
+structure, standardization policy/version, and independently reviewed mapping.
+This is a strict label comparison, not proof that MS/MS resolves stereochemistry.
+For stereochemically undefined references or insufficiently verified labels,
+report primary-endpoint ineligibility and a separate connectivity endpoint; do not
+invent stereochemical truth. Report stereo/isotope failures separately.</p>
+<p>Secondary endpoint: first 14 InChIKey characters (connectivity block), explicitly
+named connectivity retrieval. Freeze salt/solvate stripping, neutralization,
+tautomer and isotope treatment before scoring; retain original structures and
+all alias mappings. Do not collapse unrelated ions by nominal mass, formula or
+name. Charged structures and mixtures require manual adjudication before inclusion.
+Evaluate correct <strong>ion/adduct/charge assignment</strong> separately from structure rank.
+A protonated and a sodiated spectrum may share chemical identity while being
+separate experimental records with different matching eligibility.</p>
+<h3 id="experimental-record-identity">Experimental record identity<a class="headerlink" href="#experimental-record-identity" title="Permanent link">&para;</a></h3>
+<p>Use a source namespace + immutable accession/version + source-file SHA-256 and
+loader ordinal/native scan locator. A full InChIKey identifies a chemical label;
+it cannot identify an acquisition. Keep collision energy and its original units,
+instrument model/analyzer, polarity, adduct, charge, contributing laboratory,
+source experiment, raw file, processing lineage, and library accession per record.
+Preserve missing values. Every exported candidate must join to exactly one source
+spectrum. Aggregate structure ranks without discarding the contributing record IDs.</p>
+<h3 id="query-eligibility">Query eligibility<a class="headerlink" href="#query-eligibility" title="Permanent link">&para;</a></h3>
+<p>Select queries using label evidence and acquisition metadata <strong>before seeing
+MassFlow scores or whether its gates accept them</strong>. Primary reference-standard
+cohort: measured ESI MS2, verified centroided representation (or a documented,
+validated centroiding conversion), documented known standard identity, finite
+positive precursor, identified polarity/adduct/charge, interpretable acquisition lineage, and legal
+access. Records only labelled by another spectral search are a separate cohort.
+Exclude MS1, EI, MS3/pseudo-MS2/merged-stage spectra, simulated spectra, unverified
+suspects and ambiguous mixtures from the primary cohort. Record every exclusion.</p>
+<p>Valid but sparse/noisy spectra remain selected; pipeline rejection is an outcome.
+Known metadata defects enter a labelled challenge cohort rather than quietly
+shrinking the primary denominator. Unknown truth cannot be counted correct or
+incorrect: report it separately, never treat it as a negative.</p>
+<p>Keep the evaluator's structure/name/formula truth in a separate label table.
+Provide the search process only deployment-available query peaks, precursor,
+polarity, charge/adduct if measured/declared, instrument and CE. Remove query names,
+formula, SMILES, InChI/InChIKey, answer-bearing accessions and lookup routes from
+scoring input. Reference metadata may retain its legitimate library chemistry.
+Do not let query truth drive formula-derived filtering or metadata repair.</p>
+<h3 id="independence-and-leakage">Independence and leakage<a class="headerlink" href="#independence-and-leakage" title="Permanent link">&para;</a></h3>
+<p>Maintain separate IDs for chemical identity, vendor standard/sample lot,
+experiment/raw acquisition, scan, preprocessing derivative and spectral duplicate
+component. All scans, collision energies, consensus spectra, exports, and mirrored
+copies of one acquisition belong to the same group. Unknown lineage is <strong>unknown
+independence</strong>, not an independent replicate.</p>
+<p>Development and test query <strong>structures and connectivity groups</strong> are disjoint;
+their acquisition and near-duplicate groups are disjoint too. This also prevents
+tuning exposure for the secondary connectivity endpoint. In a closed-set test the test structure
+must nevertheless exist in the searchable reference library: this is necessary,
+and differs from training/tuning exposure. Its query acquisition must be separate
+from reference acquisitions. For optional learned methods, additionally audit the
+actual model training structures/spectra; unavailable training data prevents an
+unseen-structure claim.</p>
+<p>Audit across repositories using original accessions, raw-file/scan links, SPLASH,
+exact normalized peak hashes and near-duplicate comparisons. SPLASH alone does
+not certify independent acquisitions. Proposed conservative screening rule: flag
+pairs with equal polarity/adduct, precursor within 5 ppm, and direct cosine</p>
+<blockquote>
+<p>=0.99 with &gt;=90% of each spectrum's peaks matched within 0.005 Da. Also flag
+same-lineage pairs irrespective of score. These numbers are a <strong>study screening
+rule</strong>, not a chemical identity rule. Cluster linked derivatives; if independent
+lineage cannot resolve a flagged query/reference pair, exclude it from the strict
+independence cohort and retain it in the leakage sensitivity cohort. Audit the
+consequence of this exclusion; do not hide the loss of easy legitimate matches.
+Freeze the deduplication implementation and rule before evaluating retrieval.</p>
+</blockquote>
+<h2 id="4-protocols">4. Protocols<a class="headerlink" href="#4-protocols" title="Permanent link">&para;</a></h2>
+<h3 id="p0-software-and-provenance-qualification">P0 — Software and provenance qualification<a class="headerlink" href="#p0-software-and-provenance-qualification" title="Permanent link">&para;</a></h3>
+<p>Run the required full coverage gate on the exact candidate release:</p>
+<div class="language-sh highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>uv<span class="w"> </span>run<span class="w"> </span>pytest<span class="w"> </span>--cov<span class="o">=</span>src/MassFlow<span class="w"> </span>--cov-report<span class="o">=</span>xml<span class="w"> </span>--cov-fail-under<span class="o">=</span><span class="m">80</span><span class="w"> </span>-v
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>uv<span class="w"> </span>run<span class="w"> </span>pytest<span class="w"> </span>-m<span class="w"> </span>core<span class="w"> </span>-v
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>uv<span class="w"> </span>run<span class="w"> </span>ruff<span class="w"> </span>check<span class="w"> </span>.
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>uv<span class="w"> </span>run<span class="w"> </span>mypy<span class="w"> </span>.
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>uv<span class="w"> </span>lock<span class="w"> </span>--check
+</span></code></pre></div>
+<p>These establish software evidence only. Add independent known-answer comparisons
+for greedy cosine, shifted matching, mixed frames, ppm boundaries, signed charge,
+missing metadata, ties, record collisions, source round-trips and rejected spectra.
+Compare the enabled prefilter with exhaustive exact scoring on every small-study
+query/reference pair. Compare in-memory, freshly built SQLite, warm managed cache,
+iterator/chunk and single/multiple-worker paths. Require identical eligible
+candidate identities, matched counts, rankings and q-values within declared float64
+roundoff; numerical tolerance must never excuse changed threshold decisions.
+Inspect CSV and experimental mzTab-shaped joins and failed/rejected-query accounting. Legacy stores must
+be rebuilt into new paths; their lineage must identify the processing semantics.</p>
+<h3 id="p1-closed-set-acquisition-independent-retrieval">P1 — Closed-set acquisition-independent retrieval<a class="headerlink" href="#p1-closed-set-acquisition-independent-retrieval" title="Permanent link">&para;</a></h3>
+<p>Use one prespecified query acquisition per test structure for the primary analysis.
+Retain additional acquisitions for repeated-measurement/stratum analyses. Search
+against the entire frozen eligible background library plus independent references
+for the true structures, excluding all query acquisition groups and unresolved
+cross-set duplicates. Freeze the actual library size and spectrum multiplicity
+per structure; do not create a toy library containing only the correct answers.</p>
+<p>Run cosine and modified cosine separately. Initial fixed operating configuration:
+<code>ms1_tolerance=0.02 Da</code>, <code>resolution_ppm=null</code>, <code>ms2_tolerance=0.02 Da</code>,
+<code>min_score=0.6</code>, <code>min_matched_peaks=3</code>, <code>rt_tolerance=null</code>, routing/HNSW off,
+<code>top_n=None</code>. Declare the modified-cosine default prefilter state and perform its
+exhaustive agreement control. Preserve processing defaults from the pinned version
+as complete JSON, with <code>filter_by_mz=false</code>; do not rely on changing defaults.
+These settings are a baseline, not an assertion of instrument suitability.</p>
+<p>Use an analysis collection pass with <code>fdr_threshold=1.0</code> to retain all
+score/match-gate-qualified targets and decoys; capture pre-q internal results as
+well, since normal exports omit decoys. Separately run the unchanged deployment
+config including its default q threshold. The collection pass is a benchmark
+instrumentation mode, not a recommendation to relax production confidence.
+For exhaustive candidate-loss diagnosis use the same processed spectra and scorer
+with score/match pruning disabled in the <strong>harness</strong>, and label that counterfactual.</p>
+<p>Collapse eligible reference acquisitions to structures using maximum score, keeping
+all supporting record IDs. Rank distinct structures, not five repeated spectra of
+one compound. Deterministic tie order: descending score then standardized identity;
+also report pessimistic/optimistic rank bounds for exact-score ties, independent
+of correctness. Do not select the correct isomer to break ties. Report both strict
+and connectivity metrics, and record-level rank as a separate reproducibility check.</p>
+<h3 id="p2-open-set-rejection-and-paired-removal">P2 — Open-set rejection and paired removal<a class="headerlink" href="#p2-open-set-rejection-and-paired-removal" title="Permanent link">&para;</a></h3>
+<p>Starting from the same known-truth query panel, remove <strong>all</strong> reference records
+sharing the query connectivity block, including full-key variants, salts mapped
+by the identity policy, acquisition derivatives and mirrored copies. Verify removal
+against the independent label ledger, not only metadata parsed by MassFlow. This
+makes the open-set challenge unambiguously absent under both identity endpoints.
+Keep near-isobaric and related but different structures to make plausible false
+matches possible. List removal counts and changed library composition.</p>
+<p>Use both (a) a mixed present/absent batch and (b) an all-absent challenge. Pair
+queries across present/removal arms; do not regard the two outputs as independent.
+At fixed score/match and q acceptance policies, count an accepted exact-structure
+assignment for any absent truth as a false positive. Correct rejection means
+<strong>searched and abstained</strong>. A preprocessing failure is an operational failure;
+report it separately, with an additional end-to-end no-false-call rate if useful.
+No-hit does not establish chemical absence in a sample. Top-k identity success is
+undefined as a retrieval objective for the absent set; all forced identity calls
+are wrong. Evaluate analogue usefulness only under its separate endpoint.</p>
+<h3 id="p3-confidence-calibration-against-experimental-truth">P3 — Confidence calibration against experimental truth<a class="headerlink" href="#p3-confidence-calibration-against-experimental-truth" title="Permanent link">&para;</a></h3>
+<p>Freeze test structure groups into acquisition-balanced batches before scoring.
+Create explicit present/absent fractions 0, 0.25, 0.50, 0.75 and 1 as <strong>proposed
+stress scenarios</strong>, not estimates of real sample prevalence. Keep total query
+count, query quality strata and library construction policy documented. Repeat
+batch allocations using stored seeds; reuse of compounds creates dependence, so
+repeated allocations quantify design sensitivity rather than new independent
+experiments. Include a separate laboratory/source holdout for transfer claims.</p>
+<p>Evaluate the <strong>current procedure as implemented</strong>, including score/match truncation,
+best-target/best-decoy pooling, ties, per-file calibration, q lookup and target
+row inheritance. Do not replace it with winner-take-all TDC or a published decoy
+algorithm and claim to have validated MassFlow. Compare alternate procedures in
+separately named research arms only. The primary discovery unit is one top-ranked
+structure per query. Assess the risk of treating every exported row as a discovery
+as a separate endpoint; a query q-value is not candidate-specific evidence.</p>
+<p>For each batch, retain best target and best decoy <strong>before and after each gate</strong>,
+including no-hit sentinels. Tabulate how often known incorrect target maxima and
+decoy maxima survive. On absent queries, compare their score distributions,
+matched counts, precursor eligibility, peak density and score tails within strata.
+This probes exchangeability; matching entropy alone cannot establish it. The
+published fragmentation-tree decoy work [S2] is relevant precedent, not validation
+of MassFlow's jitter/permutation generator. Li et al. [S3] also caution that
+computational decoys can underestimate errors.</p>
+<p>Evaluate fixed q thresholds <code>{0.01, 0.05, 0.10, 0.20, 1.0}</code> and the deployment
+threshold, without choosing a favorable one after test inspection. Plot reported
+threshold versus observed FDP and number of accepted queries, including zero-call
+points. Plot raw decoy/target tail counts and empty-null frequency. A q-value is a
+set-level error measure, not the posterior probability that a particular structure
+is incorrect [S4]. Do not apply reliability-bin/Brier-score interpretation to it.</p>
+<p>Every empty-null batch is labelled uncalibrated. Current code can give every target
+query <code>q=1/N_target</code> when decoys are absent; increasing query count can therefore
+make rows pass a fixed cutoff without adding null evidence. Test this explicitly
+by partitioning/recombining the same known-truth queries. This is a design
+sensitivity test, not extra independent sample size. Nonempty nulls still require
+empirical calibration. Never tune jitter, gates, or query batch size to manufacture
+nominally significant calls.</p>
+<h3 id="p4-candidate-and-filter-loss-decomposition">P4 — Candidate and filter loss decomposition<a class="headerlink" href="#p4-candidate-and-filter-loss-decomposition" title="Permanent link">&para;</a></h3>
+<p>For every selected query, retain truth-presence indicators at ordered checkpoints:
+raw frozen library; post-ingestion/physical-validation library; post-metadata
+eligibility; precursor candidacy; accelerator candidacy; exact scoring; score and
+matched-peak gates; adduct/RT gates; distinct-structure top-1/top-5; q acceptance.
+Match actual execution order in the pinned implementation and label counterfactual
+reordering as such. Assign a first-loss reason; retain overlapping reasons too.</p>
+<p>Compare each accelerator to exhaustive scoring on the same input and eligibility
+rules. Precursor filtering loss is not synonymous with 5-ppm model validation:
+report separately query metadata rejection, reference chemistry rejection, and
+query-reference search window loss. Modified cosine lacks cosine's hard precursor
+window, so candidate expansion is expected and must be evaluated for both true
+retrieval and false calls. If raw-library validation aborts the run, record the
+abort before curation; any curated rerun is a separately versioned library.</p>
+<h3 id="p5-strata-and-robustness">P5 — Strata and robustness<a class="headerlink" href="#p5-strata-and-robustness" title="Permanent link">&para;</a></h3>
+<p>Prespecify instrument analyzer/model, ionization method, inlet type, source
+laboratory, acquisition family,
+polarity, adduct/charge, CE value/unit, precursor mass, usable peak count, entropy,
+structural class and library multiplicity. Report counts and uncertainty for every
+stratum, including unknown metadata and zero-call strata. Report same-instrument,
+independent acquisition and different-instrument results separately. Never convert
+NCE to eV or compare numeric energies across instruments without a validated mapping.
+The pilot does not support these expanded claims until adequate eligible records
+exist; empty strata remain unsupported.</p>
+<p>Use development data to select instrument-appropriate MS1 and MS2 tolerance ranges
+independently. Then freeze a 2x2 factorial sensitivity comparison (for the pilot,
+MS1 <code>{0.01,0.02}</code> Da x MS2 <code>{0.01,0.02}</code> Da); do not attribute a paired change in
+both tolerances to either alone. The repository's 5-ppm metadata rule stays fixed;
+its empirical appropriateness is evaluated through rejection accounting, not
+silently weakened.</p>
+<p>On the unchanged held-out queries, compare default preprocessing with a locked
+identity-preserving normalization-only analysis, 1% base-peak noise removal and
+top-50 peak reduction, each one factor at a time. Document exact operation order,
+renormalization and resulting empty spectra. Additional synthetic perturbations
+of real query spectra: fragment shifts <code>{-10,-5,0,5,10}</code> ppm; independent precursor
+shifts at the same values; remove <code>{0,10,30,50}%</code> of fragments; add <code>{0,10,30}%</code>
+background peaks sampled from a disjoint measured blank pool. Use five fixed
+seeds per stochastic condition (42–46), peak-count rounding down, no label-dependent
+selection, float64 arrays and stored original/perturbed hashes. Declare this grid
+as sensitivity analysis rather than a physical instrument-error model. If no
+measured blanks are available, defer that arm. Synthetic two-spectrum chimeras
+(10% and 50% intensity contribution, normalized component TIC) are stress controls,
+not measured co-isolation validation. Preserve the source groups for both parts.
+Confirm unexpected effects later using independent experimental acquisitions.</p>
+<h2 id="5-metrics-with-explicit-denominators">5. Metrics with explicit denominators<a class="headerlink" href="#5-metrics-with-explicit-denominators" title="Permanent link">&para;</a></h2>
+<p>Let <code>N</code> be all prespecified labelled test queries, <code>N_present</code> those with truth in
+the frozen raw reference library, <code>S</code> successfully searched, <code>C</code> queries with any
+qualified target candidate, and <code>A(t)</code> queries making one accepted top-1 structure
+call under policy <code>t</code>. Let <code>TP(t)</code> be correct accepted calls and <code>FP(t)</code> incorrect
+accepted calls; an abstention is never a TP. Let <code>H_k</code> indicate that truth is among
+the first <code>k</code> <strong>distinct structures</strong> before confidence filtering. No numerical
+rate is reported with denominator zero: use null plus raw counts.</p>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th>Definition and interpretation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Closed-set end-to-end top-k accuracy</td>
+<td><code>sum(H_k) / N_present</code>, k=1,5; selected queries rejected or without candidates contribute zero</td>
+</tr>
+<tr>
+<td>Conditional top-k</td>
+<td><code>sum(H_k) / searched_present</code>; report alongside the end-to-end result</td>
+</tr>
+<tr>
+<td>Candidate retrieval coverage</td>
+<td>Queries with any true structure among candidates / <code>N_present</code>; specify checkpoint</td>
+</tr>
+<tr>
+<td>Call coverage</td>
+<td><code>A(t)/N</code>, also <code>A(t)/S</code>; candidate coverage <code>C/N</code> is a different measure</td>
+</tr>
+<tr>
+<td>Accepted-call precision</td>
+<td><code>TP/(TP+FP)</code> for the declared strict/connectivity endpoint and mixed cohort</td>
+</tr>
+<tr>
+<td>Identification recall</td>
+<td>Correct accepted present-query calls / <code>N_present</code>; wrong or missing call is a miss</td>
+</tr>
+<tr>
+<td>False negatives</td>
+<td><code>N_present - correct accepted present calls</code>; distinguish wrong assignment, abstention and operational failure</td>
+</tr>
+<tr>
+<td>Observed FDP</td>
+<td><code>FP/max(A,1)</code> by convention 0 for A=0; show <code>A=0</code> and precision undefined so no-call runs cannot pass utility criteria</td>
+</tr>
+<tr>
+<td>Estimated FDR at score cutoff</td>
+<td>Recompute MassFlow's <code>(1+D_ge)/(T_ge)</code>, clipped to 1; show raw counts, gates and q closure</td>
+</tr>
+<tr>
+<td>Open-set false assignment rate</td>
+<td>Incorrect accepted absent-query calls / <code>N_absent</code>; additionally condition on successfully searched absent queries</td>
+</tr>
+<tr>
+<td>Open-set searched rejection rate</td>
+<td>Successfully searched absent queries with no accepted call / <code>searched_absent</code>; failures reported separately</td>
+</tr>
+<tr>
+<td>Specificity</td>
+<td>Same searched-absent rejection fraction, using the explicit detection-task convention</td>
+</tr>
+<tr>
+<td>Stage survival</td>
+<td>Queries retaining &gt;=1 true reference at stage j / <code>N_present</code>; conditional loss at j = first lost at j / truth-surviving prior stage</td>
+</tr>
+<tr>
+<td>Ranking loss</td>
+<td>Truth retrievable but not top-k / truth retrievable; retain total selected denominator too</td>
+</tr>
+<tr>
+<td>Procedure FDR</td>
+<td>Expectation of FDP over the declared sampling/batch-generating process; estimated only with appropriately independent batches</td>
+</tr>
+</tbody>
+</table>
+<p>A wrong call on a present query is both an FP assignment and an FN for the correct
+identity; explain this paired interpretation. Do not construct invented
+<code>WRONG:&lt;name&gt;</code> classes or use weighted multiclass accuracy as identification
+precision. Candidate-row counts measure computational output, not discoveries.
+Report acquisition-weighted metrics and a structure-macro average (mean of each
+structure's rate), with unique-compound counts; multiple CEs are not independent
+compounds. Report per-structure discovery FDR separately if deduplicating calls
+across queries; query-level q-values do not establish that error rate.</p>
+<h2 id="6-uncertainty-and-statistical-decisions">6. Uncertainty and statistical decisions<a class="headerlink" href="#6-uncertainty-and-statistical-decisions" title="Permanent link">&para;</a></h2>
+<p>Report counts and 95% uncertainty intervals with each primary rate where the
+sampling model supports them. Wilson intervals for retrieval/coverage and exact
+binomial one-sided bounds for rare errors apply only to a <strong>fixed per-query
+decision rule under an explicitly justified independent Bernoulli sampling model</strong>,
+conditional on the fixed library. Unique structures alone do not justify this
+model, and it does not apply to file-level q-based acceptance: those decisions
+share a data-dependent threshold. If sampling assumptions are unsupported, report
+descriptive counts and design sensitivity rather than an inferential binomial bound.</p>
+<p>For q-based pilot analyses as well as expanded repeated acquisitions, resample
+whole connectivity groups (all full-key variants and conditions together),
+2,000 bootstrap replicates, seed 42. Where stratified resampling is used, assign
+each group to its prespecified primary query's source/polarity stratum; all paired
+acquisitions follow that group's draw. Record the anchor query and weights, so
+cross-stratum acquisitions cannot be independently resampled. Recompute
+acceptance sets and q-values from resampled best-target/decoy maxima, preserving
+resampling multiplicities as weights; resampling final accepted rows alone misses
+selection uncertainty. Within-query ranks come from the unchanged frozen library.
+Identical resampled acquisitions are weights, not new measurements or collapsed
+query IDs. Pilot bootstrap results are sensitivity analyses, not proof of control.
+Use batch/laboratory-level resampling for transfer and distinguish sensitivity
+intervals on reused data from independent validation intervals.</p>
+<p>Observed FDP for one fixed batch is known conditional on its adjudicated labels.
+An interval concerns generalization to other sampled structures/batches, not
+uncertainty in counting that batch. Record disputed-label adjudications and give
+best/worst-case sensitivity bounds; a statistical interval does not repair bad
+truth. At zero accepted calls FDP=0 is bookkeeping, not evidence of useful control.</p>
+<p>For a claimed operating error bound, set a scientifically justified allowable error
+and minimum useful retrieval/coverage <strong>before</strong> testing, based on the intended
+cost of false calls versus misses. Compare a one-sided upper uncertainty bound
+with that limit; also require a minimum useful number of calls. If precision is
+insufficient, conclude inconclusive rather than passing or moving the threshold.
+As a sample-size illustration under an ideal independent fixed-rule Bernoulli
+model only, zero errors among 50 independent accepted calls has a 95% one-sided
+binomial upper bound about 5.82%; 299 independent accepted
+calls with zero errors are needed to put that bound below 1%
+(<code>1 - 0.05**(1/n)</code>). This is not proof of FDR control or a universal sample-size
+requirement. Correlation, repeated compounds, label errors, batches and strata
+can require substantially more evidence.</p>
+<p>Evaluate q calibration across all fixed thresholds with intervals and explicit
+multiplicity scope. Use a single prespecified primary operating point for a
+confirmatory claim; use a simultaneous band or prespecified multiplicity correction
+if claiming multiple strata/thresholds simultaneously. Do not declare calibration
+from a nonsignificant deviation or overlap of wide intervals. Report unresolved
+regions as unsupported. Paired algorithm comparisons use compound-level paired
+bootstrap differences, not independent-spectrum tests. Baselines are compared on
+identical eligible denominators and operating policies.</p>
+<h2 id="7-required-controls-and-baselines">7. Required controls and baselines<a class="headerlink" href="#7-required-controls-and-baselines" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Control/baseline</th>
+<th>Purpose and allowed interpretation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Exact self-match, kept outside test accuracy</td>
+<td>Plumbing/serialization positive control; disclose inevitable leakage</td>
+</tr>
+<tr>
+<td>Independent standard acquisition, same structure</td>
+<td>Real retrieval positive control</td>
+</tr>
+<tr>
+<td>Truth removal plus isobaric/isomeric decoys from measured compounds</td>
+<td>Real open-set false-call challenge</td>
+</tr>
+<tr>
+<td>Wrong polarity, contradictory charge/adduct, missing precursor and metadata</td>
+<td>Failure/rejection/provenance behavior; constructed controls cannot establish prevalence</td>
+</tr>
+<tr>
+<td>Label permutation after scoring</td>
+<td>Evaluator sanity check only; not a physically realistic null or FDR estimate</td>
+</tr>
+<tr>
+<td>Measured blanks and held-out unrelated standards</td>
+<td>Operational false calls; no exhaustive chemical-negative truth inferred from a blank</td>
+</tr>
+<tr>
+<td>Library multiplicity: natural, one reference/structure, controlled duplicates</td>
+<td>Detect score/opportunity inflation and traceability failures; do not tune multiplicity on test outcomes</td>
+</tr>
+<tr>
+<td>Independent matchms 0.33.1 greedy exhaustive search</td>
+<td>Detect wrapper/prefilter/ranking differences with identical preprocessing and gates</td>
+</tr>
+<tr>
+<td>Maximum-weight one-to-one matching on a small subset</td>
+<td>Distinguish greedy assignment approximation from an implementation error; not assumed to be the production algorithm</td>
+</tr>
+<tr>
+<td>Precursor-only nearest eligible reference</td>
+<td>Measures information added by MS/MS beyond mass, with deterministic ties and no chemical label access</td>
+</tr>
+<tr>
+<td>Fixed-seed random eligible structure rank</td>
+<td>Checks candidate density and evaluator behavior; retain all failures</td>
+</tr>
+<tr>
+<td>Published decoy method, if fully reproduced</td>
+<td>Research comparator for error estimation [S2]; never borrowed calibration for the current generator</td>
+</tr>
+</tbody>
+</table>
+<p>Fixed-count/shuffled-intensity/jittered spectra are software stress inputs, not
+real negative chemicals. No decoy generator is accepted solely because its
+entropy, peak count or precursor distribution matches the targets.</p>
+<h2 id="8-smallest-useful-benchmark-mvb-1">8. Smallest useful benchmark: MVB-1<a class="headerlink" href="#8-smallest-useful-benchmark-mvb-1" title="Permanent link">&para;</a></h2>
+<p><strong>Proposed, not executed:</strong> a MassBank frozen-release pilot with <strong>20 development
+and 100 test structures from 120 distinct connectivity groups</strong>, one query per
+structure, each with a traceable
+independent reference acquisition. Select positive-mode <code>[M+H]+</code> experimental MS2
+with reference-standard label evidence, CC0/CC BY record rights, full-key identity,
+verified centroided representation, ESI ionization, known analyzer and CE units for
+both query and reference. Record inlet types and report cross-inlet retrieval
+separately; do not claim LC validation from flow-injection/direct-infusion data.
+Prefer different laboratories/instruments; a same-lab
+independent acquisition cohort must be reported separately. CE variants of one
+injection alone do not meet strict acquisition independence.</p>
+<p>Freeze MassBank release <code>2026.03</code>, resolved commit
+<code>705afb7bccc3b2c42410a744eef73674716a60ef</code> (verified tag), plus every asset SHA-256.
+Inventory before asserting that the requested panel exists. First choose one
+eligible full-key truth per connectivity group by ascending
+<code>SHA256("massflow-mvb1-truth-v1|" + full_inchikey)</code>. Then sort connectivity groups
+by <code>SHA256("massflow-mvb1-v1|" + connectivity_key)</code>; choose the first 20 for
+development and next 100 for test, retaining the entire ordered eligible/reserve
+ledger and the within-group choices. Never split variants of one connectivity
+group across development/test or present/absent assignments.
+Within each selected structure choose query/reference groups by sorted immutable accession
+among qualifying independent pairs, using a frozen instrument-priority list
+(QTOF query / Orbitrap reference, then the reverse, then explicitly separate
+same-analyzer acquisitions). No fallback based on matching success.</p>
+<p>Library L0 contains all rights/metadata-eligible positive protonated experimental
+MS2 records from that release except test/development query acquisition groups and
+unresolved cross-set duplicate components. Deduplicate mirrored acquisitions,
+retaining independent repeated references and their multiplicity. Preserve all
+background structures; report the resulting library size.</p>
+<p>Library L50 removes all connectivity-equivalent records for the first 50 test
+groups in the frozen order. Because each test query has a different connectivity
+group, the other 50 remain present. Search the same 100 queries against L0 (all
+present) and L50 (50 present/50 absent), with both classical engines: <strong>four primary
+search runs</strong>. Construct development libraries using only development absence
+assignments so test labels do not tune settings. Save P4 funnels, top-1/top-5,
+precision/recall/coverage, paired truth-removal behavior, all target/decoy maxima,
+q/FDP tables and strata. A separate all-absent library is a required P2 extension,
+not one of these four minimal runs. P0 controls and the deployment-policy pass
+remain mandatory qualification checks.</p>
+<p>This pilot is sufficient to exercise an honest retrieval/rejection evaluation and
+expose gross gate/calibration problems. It cannot validate a 1% FDR claim,
+comprehensive instrument performance or matrix generalization. If 120 qualifying
+structures/pairs do not exist, publish the inventory and the shortfall; reduce
+scope by a new protocol amendment or use a rights-cleared independent source,
+not synthetic replacement or relaxed undocumented independence. Expand calibration
+sample size only after observing pilot precision and predeclaring a new design.</p>
+<h2 id="9-release-evidence-categories">9. Release evidence categories<a class="headerlink" href="#9-release-evidence-categories" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Category</th>
+<th>Evidence required</th>
+<th>Current audit recommendation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Validated stable functionality</td>
+<td>Exact version/domain/config/data identified; software qualification; independent held-out experimental results with adequate uncertainty; prespecified error and utility criteria met; provenance complete</td>
+<td>No broad chemical-identification or calibrated-FDR claim qualifies from the inspected evidence. Narrow arithmetic/I/O invariants can be called software-verified</td>
+</tr>
+<tr>
+<td>Functional but scientifically unvalidated</td>
+<td>Qualified software behavior, transparent limitations, no unsupported identity/FDR claims</td>
+<td>Classical library retrieval and numerical q/p outputs, subject to affected-path correctness fixes and explicit calibration warnings</td>
+</tr>
+<tr>
+<td>Experimental</td>
+<td>Explicit opt-in, isolated outputs, model/training or method evidence incomplete</td>
+<td>ML/meta-engine/routing/network/analogue inference and confidence transfer across untested strata</td>
+</tr>
+<tr>
+<td>Correction required before release of affected claims/paths</td>
+<td>Reproduced correctness/provenance defect, unreconciled metadata/units, materially misleading scientific claim, or inability to reproduce</td>
+<td>Review/integrate affected-path fixes #101/#103–#107; reconcile cache semantics; correct confidence/identity wording and RT units; repair benchmark/provenance deficiencies before evidentiary use</td>
+</tr>
+</tbody>
+</table>
+<p>Release managers must decide whether an affected path is corrected or explicitly
+excluded/disabled and documented. A draft PR is not a correction on main. Green CI
+is necessary software evidence under repository policy, not a release approval.
+Do not advertise <code>Matched</code> at score &gt;=0.9 as a confirmed identity, entropy
+preservation as calibrated FDR, or a 2,000-entry library as sufficient statistical
+power. Scope any future validation statement to the actual domain and frozen
+procedure. Human review is required for any merge or release; this program does
+neither.</p>
+<h2 id="10-limitations-and-next-work">10. Limitations and next work<a class="headerlink" href="#10-limitations-and-next-work" title="Permanent link">&para;</a></h2>
+<p>Public library labels may be wrong or incomplete; source mirroring and undocumented
+replicates limit independence. Full-key truth does not guarantee stereochemical
+selectivity. A standard-library pilot omits extraction losses, chromatographic
+coelution, ion suppression, endogenous concentration effects and real chimeras.
+Prospective blinded standard mixtures in relevant matrices, including blanks,
+spikes and independently acquired confirmatory spectra, are the next evidence
+layer after the retrospective pilot. Their composition, practical replicates and
+error limits must be designed for a stated application; they are not supplied by
+unit tests or this specification.</p>
+<h3 id="primary-references">Primary references<a class="headerlink" href="#primary-references" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>S1:</strong> Schymanski et al. (2014), <em>Identifying Small Molecules via High Resolution
+  Mass Spectrometry: Communicating Confidence</em>, DOI
+  <a href="https://doi.org/10.1021/es5002105">10.1021/es5002105</a>. Bibliographic identity
+  verified through <a href="https://pubmed.ncbi.nlm.nih.gov/24476540/">PubMed</a>; publisher
+  full text was inaccessible during this audit, so no detailed level assignment
+  is inferred here.</li>
+<li><strong>S2:</strong> Scheubert et al. (2017), <em>Significance estimation for large scale
+  metabolomics annotations by spectral matching</em>, DOI
+  <a href="https://doi.org/10.1038/s41467-017-01318-5">10.1038/s41467-017-01318-5</a>.
+  Read through <a href="https://www.ebi.ac.uk/europepmc/webservices/rest/PMC5684233/fullTextXML">Europe PMC full-text XML</a>,
+  Results and Methods. Its algorithms and evaluations differ from MassFlow's.</li>
+<li><strong>S3:</strong> Li et al. (2021), <em>Spectral entropy outperforms MS/MS dot product
+  similarity for small-molecule compound identification</em>, DOI
+  <a href="https://doi.org/10.1038/s41592-021-01331-z">10.1038/s41592-021-01331-z</a>,
+  <a href="https://yuanyueli.github.io/project/spectral_entropy/Yuanyue-spectral_entropy.pdf">author-hosted full text</a>,
+  Discussion pp. 6–7. Similarity evidence does not validate entropy-preserving decoys.</li>
+<li><strong>S4:</strong> Storey and Tibshirani (2003), <em>Statistical significance for genomewide
+  studies</em>, DOI <a href="https://doi.org/10.1073/pnas.1530509100">10.1073/pnas.1530509100</a>,
+  <a href="https://genomics.princeton.edu/storeylab/papers/Storey_Tibs_PNAS_2003.pdf">author-hosted paper</a>.
+  General q-value interpretation, not the estimator implemented by MassFlow.</li>
+<li><strong>S5:</strong> Huber et al. (2020), <em>matchms — processing and similarity evaluation of
+  mass spectrometry data</em>, DOI <a href="https://joss.theoj.org/papers/10.21105/joss.02411">10.21105/joss.02411</a>.
+  Software reference; benchmark baseline must additionally pin the exact version.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "navigation.indexes", "search.suggest", "search.highlight", "search.share", "content.code.copy", "content.code.annotate", "content.tabs.link"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+        <script src="../../javascripts/mathjax.js"></script>
+      
+        <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+      
+    
+  </body>
+</html>

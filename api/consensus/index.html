@@ -1,0 +1,3256 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A config-first Python toolkit for local tandem mass spectrometry (MS/MS) data annotation.">
+      
+      
+        <meta name="author" content="Eric Janusson">
+      
+      
+      
+        <link rel="prev" href="../cheminformatics/">
+      
+      
+        <link rel="next" href="../server/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Consensus - MassFlow</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/_mkdocstrings.css">
+    
+      <link rel="stylesheet" href="../../stylesheets/ayu-dark.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="teal">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#consensus-scoring" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="MassFlow" class="md-header__button md-logo" aria-label="MassFlow" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            MassFlow
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Consensus
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="teal"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="teal"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+          <a href="javascript:void(0)" class="md-search__icon md-icon" title="Share" aria-label="Share" data-clipboard data-clipboard-text="" data-md-component="search-share" tabindex="-1">
+            
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9a3 3 0 0 0-3 3 3 3 0 0 0 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.15c-.05.21-.08.43-.08.66 0 1.61 1.31 2.91 2.92 2.91s2.92-1.3 2.92-2.91A2.92 2.92 0 0 0 18 16.08"/></svg>
+          </a>
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/janusson/MassFlow" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    janusson/MassFlow
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../getting-started/installation/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Getting Started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../summary_diagrams/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  User Guide
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../ARCHITECTURE/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Architecture
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../CAPABILITY_MATRIX/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Product Contract & Capability Matrix
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../COMPLEXITY_AUDIT/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Complexity Audit & Subsystem Classification
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../../api_reference/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  API Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../release/1.0-readiness/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  1.0 Release Readiness
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../post-v0.1-roadmap/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Roadmap
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../CHANGELOG/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Changelog
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="MassFlow" class="md-nav__button md-logo" aria-label="MassFlow" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    MassFlow
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/janusson/MassFlow" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    janusson/MassFlow
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/tutorial/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tutorial
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/quickstart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quickstart
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../summary_diagrams/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Diagrams & Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_2" id="__nav_3_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Core Workflow (Stable)
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Core Workflow (Stable)
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/annotation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Annotation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration (YAML)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/database/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SQLite Library Management
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/processing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Processing & Filtering
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/validation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Scientific Validation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/scientific_validation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Golden Test Suite
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/similarity/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Classical Similarity
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/results/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Result Export & Confidence
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/usage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Usage Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_3" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../validation/program/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data & Math
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3_3" id="__nav_3_3_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Data & Math
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/data-requirements/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data Requirements
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/scoring_logic/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Scoring Logic
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/confidence-semantics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Confidence Semantics
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../validation/experimental-benchmark/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Experimental Benchmark
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/benchmarking/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cross-instrument Benchmarking
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../multiprocessing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Multiprocessing & Memory Model
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../ARCHITECTURE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../CAPABILITY_MATRIX/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Product Contract & Capability Matrix
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../COMPLEXITY_AUDIT/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Complexity Audit & Subsystem Classification
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api_reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tui/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Terminal Console (TUI)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../config/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../database/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Database
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../convert/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Conversion
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../io/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Input/Output
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../processing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Processing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../similarity/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Similarity
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../storage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Storage (Zarr)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../hnsw/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HNSW Indexing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../acceleration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Acceleration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../queue/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Streaming Queue
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../workflow/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workflow
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../models/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cheminformatics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cheminformatics
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Consensus
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Consensus
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#MassFlow.similarity.ConsensusEngine" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ConsensusEngine
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="ConsensusEngine">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#MassFlow.similarity.ConsensusEngine.degraded_mode_flags" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        degraded_mode_flags
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#MassFlow.similarity.ConsensusEngine.batch_score" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        batch_score
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#MassFlow.similarity.ConsensusEngine.load_model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        load_model
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#MassFlow.similarity.ConsensusEngine.search" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        search
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../server/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Server
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../release/1.0-readiness/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    1.0 Release Readiness
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../post-v0.1-roadmap/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Roadmap
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../CHANGELOG/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#MassFlow.similarity.ConsensusEngine" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ConsensusEngine
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="ConsensusEngine">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#MassFlow.similarity.ConsensusEngine.degraded_mode_flags" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        degraded_mode_flags
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#MassFlow.similarity.ConsensusEngine.batch_score" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        batch_score
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#MassFlow.similarity.ConsensusEngine.load_model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        load_model
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#MassFlow.similarity.ConsensusEngine.search" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        search
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="consensus-scoring">Consensus Scoring<a class="headerlink" href="#consensus-scoring" title="Permanent link">&para;</a></h1>
+<p>Consensus scoring is implemented by the <code>ConsensusEngine</code> class in
+<code>MassFlow.similarity</code>. It computes scores from multiple independent
+sub-engines (cosine, modified_cosine, and — when the <code>[ml]</code> extra is
+installed — spec2vec and ms2deepscore) and produces a weighted consensus
+score, improving annotation confidence by leveraging orthogonal scoring
+approaches.</p>
+<p>Configure it in YAML with <code>similarity.algorithm: "consensus"</code>; per-engine
+weights live under <code>similarity.consensus_weights</code> and the minimum number
+of sub-engines that must agree under <code>similarity.consensus_min_engines</code>.
+If no sub-engine can be built (ML dependencies missing, remote endpoints
+unreachable), scoring falls back to <code>modified_cosine</code> — a failed ML call
+can never crash the run.</p>
+<div class="admonition note">
+<p class="admonition-title">Standalone <code>MassFlow.consensus</code> module removed</p>
+<p>The standalone orchestrator module <code>MassFlow.consensus</code> (with
+<code>generate_consensus</code> / <code>ConsensusResult</code>) is not part of the current
+codebase. Consensus <em>scoring</em> now lives in
+<code>MassFlow.similarity.ConsensusEngine</code>, and the engine-agnostic data
+contracts (<code>ConsensusInput</code>, <code>ConsensusResult</code>, <code>ConsensusConfig</code>)
+live in <code>MassFlow.models</code>. See the <a href="../similarity/">Similarity page</a>
+for the full engine family (consensus, cascade, router).</p>
+</div>
+
+
+<div class="doc doc-object doc-class">
+
+
+
+<h2 id="MassFlow.similarity.ConsensusEngine" class="doc doc-heading">
+            <span class="doc doc-object-name doc-class-name">MassFlow.similarity.ConsensusEngine</span>
+
+
+<a href="#MassFlow.similarity.ConsensusEngine" class="headerlink" title="Permanent link">&para;</a></h2>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">ConsensusEngine</span><span class="p">(</span><span class="n">config</span><span class="p">:</span> <span class="n">SimilarityConfig</span><span class="p">)</span>
+</span></code></pre></div>
+
+    <div class="doc doc-contents first">
+            <p class="doc doc-class-bases">
+              Bases: <code><span title="MassFlow.similarity._MLEngineBase">_MLEngineBase</span></code></p>
+
+
+
+        <p>Consensus scoring engine combining multiple similarity scores.</p>
+<p>Computes scores from multiple underlying engines (e.g., cosine, spec2vec,
+ms2deepscore) and produces a weighted consensus score. This is designed to
+improve annotation confidence by leveraging orthogonal scoring approaches.</p>
+<p>Requires: <code>pip install massflow-msms[ml]</code></p>
+
+
+
+
+
+
+
+
+                  <details class="mkdocstrings-source">
+                    <summary>Source code in <code>src/MassFlow/similarity.py</code></summary>
+                    <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-2291">2291</a></span>
+<span class="normal"><a href="#__codelineno-0-2292">2292</a></span>
+<span class="normal"><a href="#__codelineno-0-2293">2293</a></span>
+<span class="normal"><a href="#__codelineno-0-2294">2294</a></span></pre></div></td><td class="code"><div><pre><span></span><code><span id="__span-0-2291"><a id="__codelineno-0-2291" name="__codelineno-0-2291"></a><span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">config</span><span class="p">:</span> <span class="n">SimilarityConfig</span><span class="p">):</span>
+</span><span id="__span-0-2292"><a id="__codelineno-0-2292" name="__codelineno-0-2292"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">config</span> <span class="o">=</span> <span class="n">config</span>
+</span><span id="__span-0-2293"><a id="__codelineno-0-2293" name="__codelineno-0-2293"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_check_dependencies</span><span class="p">()</span>
+</span><span id="__span-0-2294"><a id="__codelineno-0-2294" name="__codelineno-0-2294"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_build_model</span><span class="p">()</span>
+</span></code></pre></div></td></tr></table></div>
+                  </details>
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+<div class="doc doc-object doc-attribute">
+
+
+
+<h3 id="MassFlow.similarity.ConsensusEngine.degraded_mode_flags" class="doc doc-heading">
+            <span class="doc doc-object-name doc-attribute-name">degraded_mode_flags</span>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-property"><code>property</code></small>
+  </span>
+
+<a href="#MassFlow.similarity.ConsensusEngine.degraded_mode_flags" class="headerlink" title="Permanent link">&para;</a></h3>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">degraded_mode_flags</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span>
+</span></code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Degradation flags recorded by the most recent <code>search()</code> call.</p>
+<p>Values: <code>consensus_subengine_failed:&lt;algo&gt;</code> for each sub-engine
+that raised during the last search, and
+<code>consensus_all_subengines_failed</code> when every sub-engine failed and
+the engine fell back to modified_cosine.</p>
+
+    </div>
+
+</div>
+
+
+
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="MassFlow.similarity.ConsensusEngine.batch_score" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">batch_score</span>
+
+
+<a href="#MassFlow.similarity.ConsensusEngine.batch_score" class="headerlink" title="Permanent link">&para;</a></h3>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">batch_score</span><span class="p">(</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">query_spectra</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Spectrum</span><span class="p">],</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="n">reference_spectra</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Spectrum</span><span class="p">],</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span>
+</span></code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Score pre-formed query--reference pairs via consensus.</p>
+<p>Delegates to each sub-engine and returns a weighted-consensus
+score per pair.</p>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/MassFlow/similarity.py</code></summary>
+              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-2815">2815</a></span>
+<span class="normal"><a href="#__codelineno-0-2816">2816</a></span>
+<span class="normal"><a href="#__codelineno-0-2817">2817</a></span>
+<span class="normal"><a href="#__codelineno-0-2818">2818</a></span>
+<span class="normal"><a href="#__codelineno-0-2819">2819</a></span>
+<span class="normal"><a href="#__codelineno-0-2820">2820</a></span>
+<span class="normal"><a href="#__codelineno-0-2821">2821</a></span>
+<span class="normal"><a href="#__codelineno-0-2822">2822</a></span>
+<span class="normal"><a href="#__codelineno-0-2823">2823</a></span>
+<span class="normal"><a href="#__codelineno-0-2824">2824</a></span>
+<span class="normal"><a href="#__codelineno-0-2825">2825</a></span></pre></div></td><td class="code"><div><pre><span></span><code><span id="__span-0-2815"><a id="__codelineno-0-2815" name="__codelineno-0-2815"></a><span class="k">def</span><span class="w"> </span><span class="nf">batch_score</span><span class="p">(</span>
+</span><span id="__span-0-2816"><a id="__codelineno-0-2816" name="__codelineno-0-2816"></a>    <span class="bp">self</span><span class="p">,</span>
+</span><span id="__span-0-2817"><a id="__codelineno-0-2817" name="__codelineno-0-2817"></a>    <span class="n">query_spectra</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Spectrum</span><span class="p">],</span>
+</span><span id="__span-0-2818"><a id="__codelineno-0-2818" name="__codelineno-0-2818"></a>    <span class="n">reference_spectra</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Spectrum</span><span class="p">],</span>
+</span><span id="__span-0-2819"><a id="__codelineno-0-2819" name="__codelineno-0-2819"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+</span><span id="__span-0-2820"><a id="__codelineno-0-2820" name="__codelineno-0-2820"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Score pre-formed query--reference pairs via consensus.</span>
+</span><span id="__span-0-2821"><a id="__codelineno-0-2821" name="__codelineno-0-2821"></a>
+</span><span id="__span-0-2822"><a id="__codelineno-0-2822" name="__codelineno-0-2822"></a><span class="sd">    Delegates to each sub-engine and returns a weighted-consensus</span>
+</span><span id="__span-0-2823"><a id="__codelineno-0-2823" name="__codelineno-0-2823"></a><span class="sd">    score per pair.</span>
+</span><span id="__span-0-2824"><a id="__codelineno-0-2824" name="__codelineno-0-2824"></a><span class="sd">    &quot;&quot;&quot;</span>
+</span><span id="__span-0-2825"><a id="__codelineno-0-2825" name="__codelineno-0-2825"></a>    <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">batch_score</span><span class="p">(</span><span class="n">query_spectra</span><span class="p">,</span> <span class="n">reference_spectra</span><span class="p">)</span>
+</span></code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="MassFlow.similarity.ConsensusEngine.load_model" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">load_model</span>
+
+
+<a href="#MassFlow.similarity.ConsensusEngine.load_model" class="headerlink" title="Permanent link">&para;</a></h3>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">load_model</span><span class="p">(</span><span class="n">model_path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span>
+</span></code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Load model weights for all sub-engines.</p>
+<p>Calls <code>load_model</code> on each sub-engine in turn.  Failures are
+logged but do not prevent other sub-engines from loading.</p>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/MassFlow/similarity.py</code></summary>
+              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-2827">2827</a></span>
+<span class="normal"><a href="#__codelineno-0-2828">2828</a></span>
+<span class="normal"><a href="#__codelineno-0-2829">2829</a></span>
+<span class="normal"><a href="#__codelineno-0-2830">2830</a></span>
+<span class="normal"><a href="#__codelineno-0-2831">2831</a></span>
+<span class="normal"><a href="#__codelineno-0-2832">2832</a></span>
+<span class="normal"><a href="#__codelineno-0-2833">2833</a></span>
+<span class="normal"><a href="#__codelineno-0-2834">2834</a></span>
+<span class="normal"><a href="#__codelineno-0-2835">2835</a></span>
+<span class="normal"><a href="#__codelineno-0-2836">2836</a></span>
+<span class="normal"><a href="#__codelineno-0-2837">2837</a></span>
+<span class="normal"><a href="#__codelineno-0-2838">2838</a></span>
+<span class="normal"><a href="#__codelineno-0-2839">2839</a></span></pre></div></td><td class="code"><div><pre><span></span><code><span id="__span-0-2827"><a id="__codelineno-0-2827" name="__codelineno-0-2827"></a><span class="k">def</span><span class="w"> </span><span class="nf">load_model</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model_path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+</span><span id="__span-0-2828"><a id="__codelineno-0-2828" name="__codelineno-0-2828"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Load model weights for all sub-engines.</span>
+</span><span id="__span-0-2829"><a id="__codelineno-0-2829" name="__codelineno-0-2829"></a>
+</span><span id="__span-0-2830"><a id="__codelineno-0-2830" name="__codelineno-0-2830"></a><span class="sd">    Calls ``load_model`` on each sub-engine in turn.  Failures are</span>
+</span><span id="__span-0-2831"><a id="__codelineno-0-2831" name="__codelineno-0-2831"></a><span class="sd">    logged but do not prevent other sub-engines from loading.</span>
+</span><span id="__span-0-2832"><a id="__codelineno-0-2832" name="__codelineno-0-2832"></a><span class="sd">    &quot;&quot;&quot;</span>
+</span><span id="__span-0-2833"><a id="__codelineno-0-2833" name="__codelineno-0-2833"></a>    <span class="k">for</span> <span class="n">algo</span><span class="p">,</span> <span class="n">engine</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sub_engines</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+</span><span id="__span-0-2834"><a id="__codelineno-0-2834" name="__codelineno-0-2834"></a>        <span class="k">try</span><span class="p">:</span>
+</span><span id="__span-0-2835"><a id="__codelineno-0-2835" name="__codelineno-0-2835"></a>            <span class="n">engine</span><span class="o">.</span><span class="n">load_model</span><span class="p">(</span><span class="n">model_path</span><span class="p">)</span>
+</span><span id="__span-0-2836"><a id="__codelineno-0-2836" name="__codelineno-0-2836"></a>        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+</span><span id="__span-0-2837"><a id="__codelineno-0-2837" name="__codelineno-0-2837"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+</span><span id="__span-0-2838"><a id="__codelineno-0-2838" name="__codelineno-0-2838"></a>                <span class="s2">&quot;Failed to load model for sub-engine &#39;</span><span class="si">%s</span><span class="s2">&#39;: </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">algo</span><span class="p">,</span> <span class="n">exc</span>
+</span><span id="__span-0-2839"><a id="__codelineno-0-2839" name="__codelineno-0-2839"></a>            <span class="p">)</span>
+</span></code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="MassFlow.similarity.ConsensusEngine.search" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">search</span>
+
+
+<a href="#MassFlow.similarity.ConsensusEngine.search" class="headerlink" title="Permanent link">&para;</a></h3>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">search</span><span class="p">(</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">query_spectra</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Spectrum</span><span class="p">],</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="n">reference_spectra</span><span class="p">:</span> <span class="n">Iterable</span><span class="p">[</span><span class="n">Spectrum</span><span class="p">],</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="n">min_score</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    <span class="n">top_n</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    <span class="n">include_decoys</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    <span class="n">ref_precursor_mzs</span><span class="p">:</span> <span class="n">ndarray</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>    <span class="n">ref_is_decoy</span><span class="p">:</span> <span class="n">ndarray</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>    <span class="n">decoy_min_relative_intensity</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>    <span class="n">decoy_mz_shift_da</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="n">SearchResult</span><span class="p">]</span>
+</span></code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Run consensus similarity search across configured sub-engines.</p>
+<p>Each sub-engine scores the query-reference pairs independently.
+Results are aggregated per <code>(query_id, reference_id)</code> and a
+weighted-average consensus score is computed.  Only pairs scored by
+at least <code>consensus_min_engines</code> sub-engines are retained.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>query_spectra</code>
+            </td>
+            <td>
+                  <code><span title="typing.List">List</span>[<span title="matchms.Spectrum">Spectrum</span>]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Experimental spectra to annotate.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>reference_spectra</code>
+            </td>
+            <td>
+                  <code><span title="typing.Iterable">Iterable</span>[<span title="matchms.Spectrum">Spectrum</span>]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Reference library spectra.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>min_score</code>
+            </td>
+            <td>
+                  <code><span title="float">float</span> or None</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Override for the final consensus-score threshold.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>top_n</code>
+            </td>
+            <td>
+                  <code><span title="int">int</span> or None</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Maximum hits per query after consensus aggregation.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>include_decoys</code>
+            </td>
+            <td>
+                  <code><span title="bool">bool</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Whether sub-engines should generate and score decoys.</p>
+              </div>
+            </td>
+            <td>
+                  <code>True</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>ref_precursor_mzs</code>
+            </td>
+            <td>
+                  <code><span title="numpy.ndarray">ndarray</span> or None</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Pre-computed reference precursor m/z array (passed through).</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>ref_is_decoy</code>
+            </td>
+            <td>
+                  <code><span title="numpy.ndarray">ndarray</span> or None</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Pre-computed reference decoy flags (passed through).</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>decoy_min_relative_intensity</code>
+            </td>
+            <td>
+                  <code><span title="float">float</span> or None</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Decoy noise floor passed through to sub-engines that generate
+decoys (see :meth:<code>SimilarityEngine.search</code>).</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>decoy_mz_shift_da</code>
+            </td>
+            <td>
+                  <code><span title="float">float</span> or None</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Decoy m/z jitter passed through to sub-engines that generate
+decoys.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="typing.List">List</span>[<span title="MassFlow.similarity.SearchResult">SearchResult</span>]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Aggregated and weighted consensus results.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/MassFlow/similarity.py</code></summary>
+              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-2599">2599</a></span>
+<span class="normal"><a href="#__codelineno-0-2600">2600</a></span>
+<span class="normal"><a href="#__codelineno-0-2601">2601</a></span>
+<span class="normal"><a href="#__codelineno-0-2602">2602</a></span>
+<span class="normal"><a href="#__codelineno-0-2603">2603</a></span>
+<span class="normal"><a href="#__codelineno-0-2604">2604</a></span>
+<span class="normal"><a href="#__codelineno-0-2605">2605</a></span>
+<span class="normal"><a href="#__codelineno-0-2606">2606</a></span>
+<span class="normal"><a href="#__codelineno-0-2607">2607</a></span>
+<span class="normal"><a href="#__codelineno-0-2608">2608</a></span>
+<span class="normal"><a href="#__codelineno-0-2609">2609</a></span>
+<span class="normal"><a href="#__codelineno-0-2610">2610</a></span>
+<span class="normal"><a href="#__codelineno-0-2611">2611</a></span>
+<span class="normal"><a href="#__codelineno-0-2612">2612</a></span>
+<span class="normal"><a href="#__codelineno-0-2613">2613</a></span>
+<span class="normal"><a href="#__codelineno-0-2614">2614</a></span>
+<span class="normal"><a href="#__codelineno-0-2615">2615</a></span>
+<span class="normal"><a href="#__codelineno-0-2616">2616</a></span>
+<span class="normal"><a href="#__codelineno-0-2617">2617</a></span>
+<span class="normal"><a href="#__codelineno-0-2618">2618</a></span>
+<span class="normal"><a href="#__codelineno-0-2619">2619</a></span>
+<span class="normal"><a href="#__codelineno-0-2620">2620</a></span>
+<span class="normal"><a href="#__codelineno-0-2621">2621</a></span>
+<span class="normal"><a href="#__codelineno-0-2622">2622</a></span>
+<span class="normal"><a href="#__codelineno-0-2623">2623</a></span>
+<span class="normal"><a href="#__codelineno-0-2624">2624</a></span>
+<span class="normal"><a href="#__codelineno-0-2625">2625</a></span>
+<span class="normal"><a href="#__codelineno-0-2626">2626</a></span>
+<span class="normal"><a href="#__codelineno-0-2627">2627</a></span>
+<span class="normal"><a href="#__codelineno-0-2628">2628</a></span>
+<span class="normal"><a href="#__codelineno-0-2629">2629</a></span>
+<span class="normal"><a href="#__codelineno-0-2630">2630</a></span>
+<span class="normal"><a href="#__codelineno-0-2631">2631</a></span>
+<span class="normal"><a href="#__codelineno-0-2632">2632</a></span>
+<span class="normal"><a href="#__codelineno-0-2633">2633</a></span>
+<span class="normal"><a href="#__codelineno-0-2634">2634</a></span>
+<span class="normal"><a href="#__codelineno-0-2635">2635</a></span>
+<span class="normal"><a href="#__codelineno-0-2636">2636</a></span>
+<span class="normal"><a href="#__codelineno-0-2637">2637</a></span>
+<span class="normal"><a href="#__codelineno-0-2638">2638</a></span>
+<span class="normal"><a href="#__codelineno-0-2639">2639</a></span>
+<span class="normal"><a href="#__codelineno-0-2640">2640</a></span>
+<span class="normal"><a href="#__codelineno-0-2641">2641</a></span>
+<span class="normal"><a href="#__codelineno-0-2642">2642</a></span>
+<span class="normal"><a href="#__codelineno-0-2643">2643</a></span>
+<span class="normal"><a href="#__codelineno-0-2644">2644</a></span>
+<span class="normal"><a href="#__codelineno-0-2645">2645</a></span>
+<span class="normal"><a href="#__codelineno-0-2646">2646</a></span>
+<span class="normal"><a href="#__codelineno-0-2647">2647</a></span>
+<span class="normal"><a href="#__codelineno-0-2648">2648</a></span>
+<span class="normal"><a href="#__codelineno-0-2649">2649</a></span>
+<span class="normal"><a href="#__codelineno-0-2650">2650</a></span>
+<span class="normal"><a href="#__codelineno-0-2651">2651</a></span>
+<span class="normal"><a href="#__codelineno-0-2652">2652</a></span>
+<span class="normal"><a href="#__codelineno-0-2653">2653</a></span>
+<span class="normal"><a href="#__codelineno-0-2654">2654</a></span>
+<span class="normal"><a href="#__codelineno-0-2655">2655</a></span>
+<span class="normal"><a href="#__codelineno-0-2656">2656</a></span>
+<span class="normal"><a href="#__codelineno-0-2657">2657</a></span>
+<span class="normal"><a href="#__codelineno-0-2658">2658</a></span>
+<span class="normal"><a href="#__codelineno-0-2659">2659</a></span>
+<span class="normal"><a href="#__codelineno-0-2660">2660</a></span>
+<span class="normal"><a href="#__codelineno-0-2661">2661</a></span>
+<span class="normal"><a href="#__codelineno-0-2662">2662</a></span>
+<span class="normal"><a href="#__codelineno-0-2663">2663</a></span>
+<span class="normal"><a href="#__codelineno-0-2664">2664</a></span>
+<span class="normal"><a href="#__codelineno-0-2665">2665</a></span>
+<span class="normal"><a href="#__codelineno-0-2666">2666</a></span>
+<span class="normal"><a href="#__codelineno-0-2667">2667</a></span>
+<span class="normal"><a href="#__codelineno-0-2668">2668</a></span>
+<span class="normal"><a href="#__codelineno-0-2669">2669</a></span>
+<span class="normal"><a href="#__codelineno-0-2670">2670</a></span>
+<span class="normal"><a href="#__codelineno-0-2671">2671</a></span>
+<span class="normal"><a href="#__codelineno-0-2672">2672</a></span>
+<span class="normal"><a href="#__codelineno-0-2673">2673</a></span>
+<span class="normal"><a href="#__codelineno-0-2674">2674</a></span>
+<span class="normal"><a href="#__codelineno-0-2675">2675</a></span>
+<span class="normal"><a href="#__codelineno-0-2676">2676</a></span>
+<span class="normal"><a href="#__codelineno-0-2677">2677</a></span>
+<span class="normal"><a href="#__codelineno-0-2678">2678</a></span>
+<span class="normal"><a href="#__codelineno-0-2679">2679</a></span>
+<span class="normal"><a href="#__codelineno-0-2680">2680</a></span>
+<span class="normal"><a href="#__codelineno-0-2681">2681</a></span>
+<span class="normal"><a href="#__codelineno-0-2682">2682</a></span>
+<span class="normal"><a href="#__codelineno-0-2683">2683</a></span>
+<span class="normal"><a href="#__codelineno-0-2684">2684</a></span>
+<span class="normal"><a href="#__codelineno-0-2685">2685</a></span>
+<span class="normal"><a href="#__codelineno-0-2686">2686</a></span>
+<span class="normal"><a href="#__codelineno-0-2687">2687</a></span>
+<span class="normal"><a href="#__codelineno-0-2688">2688</a></span>
+<span class="normal"><a href="#__codelineno-0-2689">2689</a></span>
+<span class="normal"><a href="#__codelineno-0-2690">2690</a></span>
+<span class="normal"><a href="#__codelineno-0-2691">2691</a></span>
+<span class="normal"><a href="#__codelineno-0-2692">2692</a></span>
+<span class="normal"><a href="#__codelineno-0-2693">2693</a></span>
+<span class="normal"><a href="#__codelineno-0-2694">2694</a></span>
+<span class="normal"><a href="#__codelineno-0-2695">2695</a></span>
+<span class="normal"><a href="#__codelineno-0-2696">2696</a></span>
+<span class="normal"><a href="#__codelineno-0-2697">2697</a></span>
+<span class="normal"><a href="#__codelineno-0-2698">2698</a></span>
+<span class="normal"><a href="#__codelineno-0-2699">2699</a></span>
+<span class="normal"><a href="#__codelineno-0-2700">2700</a></span>
+<span class="normal"><a href="#__codelineno-0-2701">2701</a></span>
+<span class="normal"><a href="#__codelineno-0-2702">2702</a></span>
+<span class="normal"><a href="#__codelineno-0-2703">2703</a></span>
+<span class="normal"><a href="#__codelineno-0-2704">2704</a></span>
+<span class="normal"><a href="#__codelineno-0-2705">2705</a></span>
+<span class="normal"><a href="#__codelineno-0-2706">2706</a></span>
+<span class="normal"><a href="#__codelineno-0-2707">2707</a></span>
+<span class="normal"><a href="#__codelineno-0-2708">2708</a></span>
+<span class="normal"><a href="#__codelineno-0-2709">2709</a></span>
+<span class="normal"><a href="#__codelineno-0-2710">2710</a></span>
+<span class="normal"><a href="#__codelineno-0-2711">2711</a></span>
+<span class="normal"><a href="#__codelineno-0-2712">2712</a></span>
+<span class="normal"><a href="#__codelineno-0-2713">2713</a></span>
+<span class="normal"><a href="#__codelineno-0-2714">2714</a></span>
+<span class="normal"><a href="#__codelineno-0-2715">2715</a></span>
+<span class="normal"><a href="#__codelineno-0-2716">2716</a></span>
+<span class="normal"><a href="#__codelineno-0-2717">2717</a></span>
+<span class="normal"><a href="#__codelineno-0-2718">2718</a></span>
+<span class="normal"><a href="#__codelineno-0-2719">2719</a></span>
+<span class="normal"><a href="#__codelineno-0-2720">2720</a></span>
+<span class="normal"><a href="#__codelineno-0-2721">2721</a></span>
+<span class="normal"><a href="#__codelineno-0-2722">2722</a></span>
+<span class="normal"><a href="#__codelineno-0-2723">2723</a></span>
+<span class="normal"><a href="#__codelineno-0-2724">2724</a></span>
+<span class="normal"><a href="#__codelineno-0-2725">2725</a></span>
+<span class="normal"><a href="#__codelineno-0-2726">2726</a></span>
+<span class="normal"><a href="#__codelineno-0-2727">2727</a></span>
+<span class="normal"><a href="#__codelineno-0-2728">2728</a></span>
+<span class="normal"><a href="#__codelineno-0-2729">2729</a></span>
+<span class="normal"><a href="#__codelineno-0-2730">2730</a></span>
+<span class="normal"><a href="#__codelineno-0-2731">2731</a></span>
+<span class="normal"><a href="#__codelineno-0-2732">2732</a></span>
+<span class="normal"><a href="#__codelineno-0-2733">2733</a></span>
+<span class="normal"><a href="#__codelineno-0-2734">2734</a></span>
+<span class="normal"><a href="#__codelineno-0-2735">2735</a></span>
+<span class="normal"><a href="#__codelineno-0-2736">2736</a></span>
+<span class="normal"><a href="#__codelineno-0-2737">2737</a></span>
+<span class="normal"><a href="#__codelineno-0-2738">2738</a></span>
+<span class="normal"><a href="#__codelineno-0-2739">2739</a></span>
+<span class="normal"><a href="#__codelineno-0-2740">2740</a></span>
+<span class="normal"><a href="#__codelineno-0-2741">2741</a></span>
+<span class="normal"><a href="#__codelineno-0-2742">2742</a></span>
+<span class="normal"><a href="#__codelineno-0-2743">2743</a></span>
+<span class="normal"><a href="#__codelineno-0-2744">2744</a></span>
+<span class="normal"><a href="#__codelineno-0-2745">2745</a></span>
+<span class="normal"><a href="#__codelineno-0-2746">2746</a></span>
+<span class="normal"><a href="#__codelineno-0-2747">2747</a></span>
+<span class="normal"><a href="#__codelineno-0-2748">2748</a></span>
+<span class="normal"><a href="#__codelineno-0-2749">2749</a></span>
+<span class="normal"><a href="#__codelineno-0-2750">2750</a></span>
+<span class="normal"><a href="#__codelineno-0-2751">2751</a></span>
+<span class="normal"><a href="#__codelineno-0-2752">2752</a></span>
+<span class="normal"><a href="#__codelineno-0-2753">2753</a></span>
+<span class="normal"><a href="#__codelineno-0-2754">2754</a></span>
+<span class="normal"><a href="#__codelineno-0-2755">2755</a></span>
+<span class="normal"><a href="#__codelineno-0-2756">2756</a></span>
+<span class="normal"><a href="#__codelineno-0-2757">2757</a></span>
+<span class="normal"><a href="#__codelineno-0-2758">2758</a></span>
+<span class="normal"><a href="#__codelineno-0-2759">2759</a></span>
+<span class="normal"><a href="#__codelineno-0-2760">2760</a></span>
+<span class="normal"><a href="#__codelineno-0-2761">2761</a></span>
+<span class="normal"><a href="#__codelineno-0-2762">2762</a></span>
+<span class="normal"><a href="#__codelineno-0-2763">2763</a></span>
+<span class="normal"><a href="#__codelineno-0-2764">2764</a></span>
+<span class="normal"><a href="#__codelineno-0-2765">2765</a></span>
+<span class="normal"><a href="#__codelineno-0-2766">2766</a></span>
+<span class="normal"><a href="#__codelineno-0-2767">2767</a></span>
+<span class="normal"><a href="#__codelineno-0-2768">2768</a></span>
+<span class="normal"><a href="#__codelineno-0-2769">2769</a></span>
+<span class="normal"><a href="#__codelineno-0-2770">2770</a></span>
+<span class="normal"><a href="#__codelineno-0-2771">2771</a></span>
+<span class="normal"><a href="#__codelineno-0-2772">2772</a></span>
+<span class="normal"><a href="#__codelineno-0-2773">2773</a></span>
+<span class="normal"><a href="#__codelineno-0-2774">2774</a></span>
+<span class="normal"><a href="#__codelineno-0-2775">2775</a></span>
+<span class="normal"><a href="#__codelineno-0-2776">2776</a></span>
+<span class="normal"><a href="#__codelineno-0-2777">2777</a></span>
+<span class="normal"><a href="#__codelineno-0-2778">2778</a></span>
+<span class="normal"><a href="#__codelineno-0-2779">2779</a></span>
+<span class="normal"><a href="#__codelineno-0-2780">2780</a></span>
+<span class="normal"><a href="#__codelineno-0-2781">2781</a></span>
+<span class="normal"><a href="#__codelineno-0-2782">2782</a></span>
+<span class="normal"><a href="#__codelineno-0-2783">2783</a></span>
+<span class="normal"><a href="#__codelineno-0-2784">2784</a></span>
+<span class="normal"><a href="#__codelineno-0-2785">2785</a></span>
+<span class="normal"><a href="#__codelineno-0-2786">2786</a></span>
+<span class="normal"><a href="#__codelineno-0-2787">2787</a></span>
+<span class="normal"><a href="#__codelineno-0-2788">2788</a></span>
+<span class="normal"><a href="#__codelineno-0-2789">2789</a></span>
+<span class="normal"><a href="#__codelineno-0-2790">2790</a></span>
+<span class="normal"><a href="#__codelineno-0-2791">2791</a></span>
+<span class="normal"><a href="#__codelineno-0-2792">2792</a></span>
+<span class="normal"><a href="#__codelineno-0-2793">2793</a></span>
+<span class="normal"><a href="#__codelineno-0-2794">2794</a></span>
+<span class="normal"><a href="#__codelineno-0-2795">2795</a></span>
+<span class="normal"><a href="#__codelineno-0-2796">2796</a></span>
+<span class="normal"><a href="#__codelineno-0-2797">2797</a></span>
+<span class="normal"><a href="#__codelineno-0-2798">2798</a></span>
+<span class="normal"><a href="#__codelineno-0-2799">2799</a></span>
+<span class="normal"><a href="#__codelineno-0-2800">2800</a></span>
+<span class="normal"><a href="#__codelineno-0-2801">2801</a></span>
+<span class="normal"><a href="#__codelineno-0-2802">2802</a></span>
+<span class="normal"><a href="#__codelineno-0-2803">2803</a></span>
+<span class="normal"><a href="#__codelineno-0-2804">2804</a></span>
+<span class="normal"><a href="#__codelineno-0-2805">2805</a></span>
+<span class="normal"><a href="#__codelineno-0-2806">2806</a></span>
+<span class="normal"><a href="#__codelineno-0-2807">2807</a></span>
+<span class="normal"><a href="#__codelineno-0-2808">2808</a></span>
+<span class="normal"><a href="#__codelineno-0-2809">2809</a></span>
+<span class="normal"><a href="#__codelineno-0-2810">2810</a></span>
+<span class="normal"><a href="#__codelineno-0-2811">2811</a></span>
+<span class="normal"><a href="#__codelineno-0-2812">2812</a></span>
+<span class="normal"><a href="#__codelineno-0-2813">2813</a></span></pre></div></td><td class="code"><div><pre><span></span><code><span id="__span-0-2599"><a id="__codelineno-0-2599" name="__codelineno-0-2599"></a><span class="k">def</span><span class="w"> </span><span class="nf">search</span><span class="p">(</span>
+</span><span id="__span-0-2600"><a id="__codelineno-0-2600" name="__codelineno-0-2600"></a>    <span class="bp">self</span><span class="p">,</span>
+</span><span id="__span-0-2601"><a id="__codelineno-0-2601" name="__codelineno-0-2601"></a>    <span class="n">query_spectra</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Spectrum</span><span class="p">],</span>
+</span><span id="__span-0-2602"><a id="__codelineno-0-2602" name="__codelineno-0-2602"></a>    <span class="n">reference_spectra</span><span class="p">:</span> <span class="n">Iterable</span><span class="p">[</span><span class="n">Spectrum</span><span class="p">],</span>
+</span><span id="__span-0-2603"><a id="__codelineno-0-2603" name="__codelineno-0-2603"></a>    <span class="n">min_score</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+</span><span id="__span-0-2604"><a id="__codelineno-0-2604" name="__codelineno-0-2604"></a>    <span class="n">top_n</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+</span><span id="__span-0-2605"><a id="__codelineno-0-2605" name="__codelineno-0-2605"></a>    <span class="n">include_decoys</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+</span><span id="__span-0-2606"><a id="__codelineno-0-2606" name="__codelineno-0-2606"></a>    <span class="n">ref_precursor_mzs</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+</span><span id="__span-0-2607"><a id="__codelineno-0-2607" name="__codelineno-0-2607"></a>    <span class="n">ref_is_decoy</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+</span><span id="__span-0-2608"><a id="__codelineno-0-2608" name="__codelineno-0-2608"></a>    <span class="n">decoy_min_relative_intensity</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+</span><span id="__span-0-2609"><a id="__codelineno-0-2609" name="__codelineno-0-2609"></a>    <span class="n">decoy_mz_shift_da</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+</span><span id="__span-0-2610"><a id="__codelineno-0-2610" name="__codelineno-0-2610"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="n">SearchResult</span><span class="p">]:</span>
+</span><span id="__span-0-2611"><a id="__codelineno-0-2611" name="__codelineno-0-2611"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Run consensus similarity search across configured sub-engines.</span>
+</span><span id="__span-0-2612"><a id="__codelineno-0-2612" name="__codelineno-0-2612"></a>
+</span><span id="__span-0-2613"><a id="__codelineno-0-2613" name="__codelineno-0-2613"></a><span class="sd">    Each sub-engine scores the query-reference pairs independently.</span>
+</span><span id="__span-0-2614"><a id="__codelineno-0-2614" name="__codelineno-0-2614"></a><span class="sd">    Results are aggregated per ``(query_id, reference_id)`` and a</span>
+</span><span id="__span-0-2615"><a id="__codelineno-0-2615" name="__codelineno-0-2615"></a><span class="sd">    weighted-average consensus score is computed.  Only pairs scored by</span>
+</span><span id="__span-0-2616"><a id="__codelineno-0-2616" name="__codelineno-0-2616"></a><span class="sd">    at least ``consensus_min_engines`` sub-engines are retained.</span>
+</span><span id="__span-0-2617"><a id="__codelineno-0-2617" name="__codelineno-0-2617"></a>
+</span><span id="__span-0-2618"><a id="__codelineno-0-2618" name="__codelineno-0-2618"></a><span class="sd">    Parameters</span>
+</span><span id="__span-0-2619"><a id="__codelineno-0-2619" name="__codelineno-0-2619"></a><span class="sd">    ----------</span>
+</span><span id="__span-0-2620"><a id="__codelineno-0-2620" name="__codelineno-0-2620"></a><span class="sd">    query_spectra : List[matchms.Spectrum]</span>
+</span><span id="__span-0-2621"><a id="__codelineno-0-2621" name="__codelineno-0-2621"></a><span class="sd">        Experimental spectra to annotate.</span>
+</span><span id="__span-0-2622"><a id="__codelineno-0-2622" name="__codelineno-0-2622"></a><span class="sd">    reference_spectra : Iterable[matchms.Spectrum]</span>
+</span><span id="__span-0-2623"><a id="__codelineno-0-2623" name="__codelineno-0-2623"></a><span class="sd">        Reference library spectra.</span>
+</span><span id="__span-0-2624"><a id="__codelineno-0-2624" name="__codelineno-0-2624"></a><span class="sd">    min_score : float or None</span>
+</span><span id="__span-0-2625"><a id="__codelineno-0-2625" name="__codelineno-0-2625"></a><span class="sd">        Override for the final consensus-score threshold.</span>
+</span><span id="__span-0-2626"><a id="__codelineno-0-2626" name="__codelineno-0-2626"></a><span class="sd">    top_n : int or None</span>
+</span><span id="__span-0-2627"><a id="__codelineno-0-2627" name="__codelineno-0-2627"></a><span class="sd">        Maximum hits per query after consensus aggregation.</span>
+</span><span id="__span-0-2628"><a id="__codelineno-0-2628" name="__codelineno-0-2628"></a><span class="sd">    include_decoys : bool</span>
+</span><span id="__span-0-2629"><a id="__codelineno-0-2629" name="__codelineno-0-2629"></a><span class="sd">        Whether sub-engines should generate and score decoys.</span>
+</span><span id="__span-0-2630"><a id="__codelineno-0-2630" name="__codelineno-0-2630"></a><span class="sd">    ref_precursor_mzs : np.ndarray or None</span>
+</span><span id="__span-0-2631"><a id="__codelineno-0-2631" name="__codelineno-0-2631"></a><span class="sd">        Pre-computed reference precursor m/z array (passed through).</span>
+</span><span id="__span-0-2632"><a id="__codelineno-0-2632" name="__codelineno-0-2632"></a><span class="sd">    ref_is_decoy : np.ndarray or None</span>
+</span><span id="__span-0-2633"><a id="__codelineno-0-2633" name="__codelineno-0-2633"></a><span class="sd">        Pre-computed reference decoy flags (passed through).</span>
+</span><span id="__span-0-2634"><a id="__codelineno-0-2634" name="__codelineno-0-2634"></a><span class="sd">    decoy_min_relative_intensity : float or None, optional</span>
+</span><span id="__span-0-2635"><a id="__codelineno-0-2635" name="__codelineno-0-2635"></a><span class="sd">        Decoy noise floor passed through to sub-engines that generate</span>
+</span><span id="__span-0-2636"><a id="__codelineno-0-2636" name="__codelineno-0-2636"></a><span class="sd">        decoys (see :meth:`SimilarityEngine.search`).</span>
+</span><span id="__span-0-2637"><a id="__codelineno-0-2637" name="__codelineno-0-2637"></a><span class="sd">    decoy_mz_shift_da : float or None, optional</span>
+</span><span id="__span-0-2638"><a id="__codelineno-0-2638" name="__codelineno-0-2638"></a><span class="sd">        Decoy m/z jitter passed through to sub-engines that generate</span>
+</span><span id="__span-0-2639"><a id="__codelineno-0-2639" name="__codelineno-0-2639"></a><span class="sd">        decoys.</span>
+</span><span id="__span-0-2640"><a id="__codelineno-0-2640" name="__codelineno-0-2640"></a>
+</span><span id="__span-0-2641"><a id="__codelineno-0-2641" name="__codelineno-0-2641"></a><span class="sd">    Returns</span>
+</span><span id="__span-0-2642"><a id="__codelineno-0-2642" name="__codelineno-0-2642"></a><span class="sd">    -------</span>
+</span><span id="__span-0-2643"><a id="__codelineno-0-2643" name="__codelineno-0-2643"></a><span class="sd">    List[SearchResult]</span>
+</span><span id="__span-0-2644"><a id="__codelineno-0-2644" name="__codelineno-0-2644"></a><span class="sd">        Aggregated and weighted consensus results.</span>
+</span><span id="__span-0-2645"><a id="__codelineno-0-2645" name="__codelineno-0-2645"></a><span class="sd">    &quot;&quot;&quot;</span>
+</span><span id="__span-0-2646"><a id="__codelineno-0-2646" name="__codelineno-0-2646"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">query_spectra</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">reference_spectra</span><span class="p">:</span>
+</span><span id="__span-0-2647"><a id="__codelineno-0-2647" name="__codelineno-0-2647"></a>        <span class="k">return</span> <span class="p">[]</span>
+</span><span id="__span-0-2648"><a id="__codelineno-0-2648" name="__codelineno-0-2648"></a>
+</span><span id="__span-0-2649"><a id="__codelineno-0-2649" name="__codelineno-0-2649"></a>    <span class="n">ref_list</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">reference_spectra</span><span class="p">)</span>
+</span><span id="__span-0-2650"><a id="__codelineno-0-2650" name="__codelineno-0-2650"></a>    <span class="n">_require_reference_record_ids</span><span class="p">(</span><span class="n">ref_list</span><span class="p">,</span> <span class="n">include_decoys</span><span class="o">=</span><span class="n">include_decoys</span><span class="p">)</span>
+</span><span id="__span-0-2651"><a id="__codelineno-0-2651" name="__codelineno-0-2651"></a>    <span class="n">cutoff</span> <span class="o">=</span> <span class="n">min_score</span> <span class="k">if</span> <span class="n">min_score</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">min_score</span>
+</span><span id="__span-0-2652"><a id="__codelineno-0-2652" name="__codelineno-0-2652"></a>    <span class="n">min_engines</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">consensus_min_engines</span>
+</span><span id="__span-0-2653"><a id="__codelineno-0-2653" name="__codelineno-0-2653"></a>
+</span><span id="__span-0-2654"><a id="__codelineno-0-2654" name="__codelineno-0-2654"></a>    <span class="c1"># Reset the per-search degradation record.</span>
+</span><span id="__span-0-2655"><a id="__codelineno-0-2655" name="__codelineno-0-2655"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_degraded_flags</span> <span class="o">=</span> <span class="p">[]</span>
+</span><span id="__span-0-2656"><a id="__codelineno-0-2656" name="__codelineno-0-2656"></a>
+</span><span id="__span-0-2657"><a id="__codelineno-0-2657" name="__codelineno-0-2657"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sub_engines</span><span class="p">:</span>
+</span><span id="__span-0-2658"><a id="__codelineno-0-2658" name="__codelineno-0-2658"></a>        <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+</span><span id="__span-0-2659"><a id="__codelineno-0-2659" name="__codelineno-0-2659"></a>            <span class="s2">&quot;Consensus has no sub-engines; falling back to modified_cosine.&quot;</span>
+</span><span id="__span-0-2660"><a id="__codelineno-0-2660" name="__codelineno-0-2660"></a>        <span class="p">)</span>
+</span><span id="__span-0-2661"><a id="__codelineno-0-2661" name="__codelineno-0-2661"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_degraded_flags</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;consensus_all_subengines_failed&quot;</span><span class="p">)</span>
+</span><span id="__span-0-2662"><a id="__codelineno-0-2662" name="__codelineno-0-2662"></a>        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_fallback_engine</span><span class="p">()</span><span class="o">.</span><span class="n">search</span><span class="p">(</span>
+</span><span id="__span-0-2663"><a id="__codelineno-0-2663" name="__codelineno-0-2663"></a>            <span class="n">query_spectra</span><span class="o">=</span><span class="n">query_spectra</span><span class="p">,</span>
+</span><span id="__span-0-2664"><a id="__codelineno-0-2664" name="__codelineno-0-2664"></a>            <span class="n">reference_spectra</span><span class="o">=</span><span class="n">ref_list</span><span class="p">,</span>
+</span><span id="__span-0-2665"><a id="__codelineno-0-2665" name="__codelineno-0-2665"></a>            <span class="n">min_score</span><span class="o">=</span><span class="n">cutoff</span><span class="p">,</span>
+</span><span id="__span-0-2666"><a id="__codelineno-0-2666" name="__codelineno-0-2666"></a>            <span class="n">top_n</span><span class="o">=</span><span class="n">top_n</span><span class="p">,</span>
+</span><span id="__span-0-2667"><a id="__codelineno-0-2667" name="__codelineno-0-2667"></a>            <span class="n">include_decoys</span><span class="o">=</span><span class="n">include_decoys</span><span class="p">,</span>
+</span><span id="__span-0-2668"><a id="__codelineno-0-2668" name="__codelineno-0-2668"></a>            <span class="n">ref_precursor_mzs</span><span class="o">=</span><span class="n">ref_precursor_mzs</span><span class="p">,</span>
+</span><span id="__span-0-2669"><a id="__codelineno-0-2669" name="__codelineno-0-2669"></a>            <span class="n">ref_is_decoy</span><span class="o">=</span><span class="n">ref_is_decoy</span><span class="p">,</span>
+</span><span id="__span-0-2670"><a id="__codelineno-0-2670" name="__codelineno-0-2670"></a>            <span class="n">decoy_min_relative_intensity</span><span class="o">=</span><span class="n">decoy_min_relative_intensity</span><span class="p">,</span>
+</span><span id="__span-0-2671"><a id="__codelineno-0-2671" name="__codelineno-0-2671"></a>            <span class="n">decoy_mz_shift_da</span><span class="o">=</span><span class="n">decoy_mz_shift_da</span><span class="p">,</span>
+</span><span id="__span-0-2672"><a id="__codelineno-0-2672" name="__codelineno-0-2672"></a>        <span class="p">)</span>
+</span><span id="__span-0-2673"><a id="__codelineno-0-2673" name="__codelineno-0-2673"></a>
+</span><span id="__span-0-2674"><a id="__codelineno-0-2674" name="__codelineno-0-2674"></a>    <span class="c1"># ------------------------------------------------------------------</span>
+</span><span id="__span-0-2675"><a id="__codelineno-0-2675" name="__codelineno-0-2675"></a>    <span class="c1"># Phase 1: run every available sub-engine and collect raw results</span>
+</span><span id="__span-0-2676"><a id="__codelineno-0-2676" name="__codelineno-0-2676"></a>    <span class="c1"># ------------------------------------------------------------------</span>
+</span><span id="__span-0-2677"><a id="__codelineno-0-2677" name="__codelineno-0-2677"></a>    <span class="c1"># engine_results: list of (algo, weight, list of SearchResult)</span>
+</span><span id="__span-0-2678"><a id="__codelineno-0-2678" name="__codelineno-0-2678"></a>    <span class="n">engine_results</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">float</span><span class="p">,</span> <span class="nb">list</span><span class="p">[</span><span class="n">SearchResult</span><span class="p">]]]</span> <span class="o">=</span> <span class="p">[]</span>
+</span><span id="__span-0-2679"><a id="__codelineno-0-2679" name="__codelineno-0-2679"></a>    <span class="n">failed_algos</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+</span><span id="__span-0-2680"><a id="__codelineno-0-2680" name="__codelineno-0-2680"></a>
+</span><span id="__span-0-2681"><a id="__codelineno-0-2681" name="__codelineno-0-2681"></a>    <span class="k">for</span> <span class="n">algo</span><span class="p">,</span> <span class="n">engine</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sub_engines</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+</span><span id="__span-0-2682"><a id="__codelineno-0-2682" name="__codelineno-0-2682"></a>        <span class="n">weight</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sub_weights</span><span class="p">[</span><span class="n">algo</span><span class="p">]</span>
+</span><span id="__span-0-2683"><a id="__codelineno-0-2683" name="__codelineno-0-2683"></a>        <span class="k">try</span><span class="p">:</span>
+</span><span id="__span-0-2684"><a id="__codelineno-0-2684" name="__codelineno-0-2684"></a>            <span class="n">raw</span> <span class="o">=</span> <span class="n">engine</span><span class="o">.</span><span class="n">search</span><span class="p">(</span>
+</span><span id="__span-0-2685"><a id="__codelineno-0-2685" name="__codelineno-0-2685"></a>                <span class="n">query_spectra</span><span class="o">=</span><span class="n">query_spectra</span><span class="p">,</span>
+</span><span id="__span-0-2686"><a id="__codelineno-0-2686" name="__codelineno-0-2686"></a>                <span class="n">reference_spectra</span><span class="o">=</span><span class="n">ref_list</span><span class="p">,</span>
+</span><span id="__span-0-2687"><a id="__codelineno-0-2687" name="__codelineno-0-2687"></a>                <span class="n">min_score</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span>  <span class="c1"># collect all hits; filter later</span>
+</span><span id="__span-0-2688"><a id="__codelineno-0-2688" name="__codelineno-0-2688"></a>                <span class="n">top_n</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+</span><span id="__span-0-2689"><a id="__codelineno-0-2689" name="__codelineno-0-2689"></a>                <span class="n">include_decoys</span><span class="o">=</span><span class="n">include_decoys</span><span class="p">,</span>
+</span><span id="__span-0-2690"><a id="__codelineno-0-2690" name="__codelineno-0-2690"></a>                <span class="n">ref_precursor_mzs</span><span class="o">=</span><span class="n">ref_precursor_mzs</span><span class="p">,</span>
+</span><span id="__span-0-2691"><a id="__codelineno-0-2691" name="__codelineno-0-2691"></a>                <span class="n">ref_is_decoy</span><span class="o">=</span><span class="n">ref_is_decoy</span><span class="p">,</span>
+</span><span id="__span-0-2692"><a id="__codelineno-0-2692" name="__codelineno-0-2692"></a>                <span class="n">decoy_min_relative_intensity</span><span class="o">=</span><span class="n">decoy_min_relative_intensity</span><span class="p">,</span>
+</span><span id="__span-0-2693"><a id="__codelineno-0-2693" name="__codelineno-0-2693"></a>                <span class="n">decoy_mz_shift_da</span><span class="o">=</span><span class="n">decoy_mz_shift_da</span><span class="p">,</span>
+</span><span id="__span-0-2694"><a id="__codelineno-0-2694" name="__codelineno-0-2694"></a>            <span class="p">)</span>
+</span><span id="__span-0-2695"><a id="__codelineno-0-2695" name="__codelineno-0-2695"></a>            <span class="n">engine_results</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">algo</span><span class="p">,</span> <span class="n">weight</span><span class="p">,</span> <span class="n">raw</span><span class="p">))</span>
+</span><span id="__span-0-2696"><a id="__codelineno-0-2696" name="__codelineno-0-2696"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;Sub-engine &#39;</span><span class="si">%s</span><span class="s2">&#39; returned </span><span class="si">%d</span><span class="s2"> raw results.&quot;</span><span class="p">,</span> <span class="n">algo</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">raw</span><span class="p">))</span>
+</span><span id="__span-0-2697"><a id="__codelineno-0-2697" name="__codelineno-0-2697"></a>        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+</span><span id="__span-0-2698"><a id="__codelineno-0-2698" name="__codelineno-0-2698"></a>            <span class="n">failed_algos</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">algo</span><span class="p">)</span>
+</span><span id="__span-0-2699"><a id="__codelineno-0-2699" name="__codelineno-0-2699"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">_degraded_flags</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;consensus_subengine_failed:</span><span class="si">{</span><span class="n">algo</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</span><span id="__span-0-2700"><a id="__codelineno-0-2700" name="__codelineno-0-2700"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+</span><span id="__span-0-2701"><a id="__codelineno-0-2701" name="__codelineno-0-2701"></a>                <span class="s2">&quot;Sub-engine &#39;</span><span class="si">%s</span><span class="s2">&#39; failed during search, skipping: </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span>
+</span><span id="__span-0-2702"><a id="__codelineno-0-2702" name="__codelineno-0-2702"></a>                <span class="n">algo</span><span class="p">,</span>
+</span><span id="__span-0-2703"><a id="__codelineno-0-2703" name="__codelineno-0-2703"></a>                <span class="n">exc</span><span class="p">,</span>
+</span><span id="__span-0-2704"><a id="__codelineno-0-2704" name="__codelineno-0-2704"></a>            <span class="p">)</span>
+</span><span id="__span-0-2705"><a id="__codelineno-0-2705" name="__codelineno-0-2705"></a>
+</span><span id="__span-0-2706"><a id="__codelineno-0-2706" name="__codelineno-0-2706"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">engine_results</span><span class="p">:</span>
+</span><span id="__span-0-2707"><a id="__codelineno-0-2707" name="__codelineno-0-2707"></a>        <span class="k">if</span> <span class="n">failed_algos</span><span class="p">:</span>
+</span><span id="__span-0-2708"><a id="__codelineno-0-2708" name="__codelineno-0-2708"></a>            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+</span><span id="__span-0-2709"><a id="__codelineno-0-2709" name="__codelineno-0-2709"></a>                <span class="s2">&quot;All consensus sub-engines failed (</span><span class="si">%s</span><span class="s2">); falling back to &quot;</span>
+</span><span id="__span-0-2710"><a id="__codelineno-0-2710" name="__codelineno-0-2710"></a>                <span class="s2">&quot;modified_cosine scoring.&quot;</span><span class="p">,</span>
+</span><span id="__span-0-2711"><a id="__codelineno-0-2711" name="__codelineno-0-2711"></a>                <span class="s2">&quot;, &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">failed_algos</span><span class="p">),</span>
+</span><span id="__span-0-2712"><a id="__codelineno-0-2712" name="__codelineno-0-2712"></a>            <span class="p">)</span>
+</span><span id="__span-0-2713"><a id="__codelineno-0-2713" name="__codelineno-0-2713"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">_degraded_flags</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;consensus_all_subengines_failed&quot;</span><span class="p">)</span>
+</span><span id="__span-0-2714"><a id="__codelineno-0-2714" name="__codelineno-0-2714"></a>            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_fallback_engine</span><span class="p">()</span><span class="o">.</span><span class="n">search</span><span class="p">(</span>
+</span><span id="__span-0-2715"><a id="__codelineno-0-2715" name="__codelineno-0-2715"></a>                <span class="n">query_spectra</span><span class="o">=</span><span class="n">query_spectra</span><span class="p">,</span>
+</span><span id="__span-0-2716"><a id="__codelineno-0-2716" name="__codelineno-0-2716"></a>                <span class="n">reference_spectra</span><span class="o">=</span><span class="n">ref_list</span><span class="p">,</span>
+</span><span id="__span-0-2717"><a id="__codelineno-0-2717" name="__codelineno-0-2717"></a>                <span class="n">min_score</span><span class="o">=</span><span class="n">cutoff</span><span class="p">,</span>
+</span><span id="__span-0-2718"><a id="__codelineno-0-2718" name="__codelineno-0-2718"></a>                <span class="n">top_n</span><span class="o">=</span><span class="n">top_n</span><span class="p">,</span>
+</span><span id="__span-0-2719"><a id="__codelineno-0-2719" name="__codelineno-0-2719"></a>                <span class="n">include_decoys</span><span class="o">=</span><span class="n">include_decoys</span><span class="p">,</span>
+</span><span id="__span-0-2720"><a id="__codelineno-0-2720" name="__codelineno-0-2720"></a>                <span class="n">ref_precursor_mzs</span><span class="o">=</span><span class="n">ref_precursor_mzs</span><span class="p">,</span>
+</span><span id="__span-0-2721"><a id="__codelineno-0-2721" name="__codelineno-0-2721"></a>                <span class="n">ref_is_decoy</span><span class="o">=</span><span class="n">ref_is_decoy</span><span class="p">,</span>
+</span><span id="__span-0-2722"><a id="__codelineno-0-2722" name="__codelineno-0-2722"></a>                <span class="n">decoy_min_relative_intensity</span><span class="o">=</span><span class="n">decoy_min_relative_intensity</span><span class="p">,</span>
+</span><span id="__span-0-2723"><a id="__codelineno-0-2723" name="__codelineno-0-2723"></a>                <span class="n">decoy_mz_shift_da</span><span class="o">=</span><span class="n">decoy_mz_shift_da</span><span class="p">,</span>
+</span><span id="__span-0-2724"><a id="__codelineno-0-2724" name="__codelineno-0-2724"></a>            <span class="p">)</span>
+</span><span id="__span-0-2725"><a id="__codelineno-0-2725" name="__codelineno-0-2725"></a>        <span class="k">return</span> <span class="p">[]</span>
+</span><span id="__span-0-2726"><a id="__codelineno-0-2726" name="__codelineno-0-2726"></a>
+</span><span id="__span-0-2727"><a id="__codelineno-0-2727" name="__codelineno-0-2727"></a>    <span class="c1"># ------------------------------------------------------------------</span>
+</span><span id="__span-0-2728"><a id="__codelineno-0-2728" name="__codelineno-0-2728"></a>    <span class="c1"># Phase 2: aggregate by (query_id, reference_id)</span>
+</span><span id="__span-0-2729"><a id="__codelineno-0-2729" name="__codelineno-0-2729"></a>    <span class="c1"># ------------------------------------------------------------------</span>
+</span><span id="__span-0-2730"><a id="__codelineno-0-2730" name="__codelineno-0-2730"></a>    <span class="c1"># bucket[key] = {&quot;scores&quot;: {algo: score}, &quot;template&quot;: SearchResult}</span>
+</span><span id="__span-0-2731"><a id="__codelineno-0-2731" name="__codelineno-0-2731"></a>    <span class="n">buckets</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">],</span> <span class="nb">dict</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+</span><span id="__span-0-2732"><a id="__codelineno-0-2732" name="__codelineno-0-2732"></a>
+</span><span id="__span-0-2733"><a id="__codelineno-0-2733" name="__codelineno-0-2733"></a>    <span class="k">for</span> <span class="n">algo</span><span class="p">,</span> <span class="n">_weight</span><span class="p">,</span> <span class="n">results</span> <span class="ow">in</span> <span class="n">engine_results</span><span class="p">:</span>
+</span><span id="__span-0-2734"><a id="__codelineno-0-2734" name="__codelineno-0-2734"></a>        <span class="k">for</span> <span class="n">res</span> <span class="ow">in</span> <span class="n">results</span><span class="p">:</span>
+</span><span id="__span-0-2735"><a id="__codelineno-0-2735" name="__codelineno-0-2735"></a>            <span class="n">key</span> <span class="o">=</span> <span class="p">(</span><span class="n">res</span><span class="p">[</span><span class="s2">&quot;query_id&quot;</span><span class="p">],</span> <span class="n">res</span><span class="p">[</span><span class="s2">&quot;reference_id&quot;</span><span class="p">])</span>
+</span><span id="__span-0-2736"><a id="__codelineno-0-2736" name="__codelineno-0-2736"></a>            <span class="k">if</span> <span class="n">key</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">buckets</span><span class="p">:</span>
+</span><span id="__span-0-2737"><a id="__codelineno-0-2737" name="__codelineno-0-2737"></a>                <span class="n">buckets</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;scores&quot;</span><span class="p">:</span> <span class="p">{},</span> <span class="s2">&quot;template&quot;</span><span class="p">:</span> <span class="n">res</span><span class="p">}</span>
+</span><span id="__span-0-2738"><a id="__codelineno-0-2738" name="__codelineno-0-2738"></a>            <span class="c1"># Reference IDs have already been validated as acquisition keys.</span>
+</span><span id="__span-0-2739"><a id="__codelineno-0-2739" name="__codelineno-0-2739"></a>            <span class="n">buckets</span><span class="p">[</span><span class="n">key</span><span class="p">][</span><span class="s2">&quot;scores&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="n">algo</span><span class="p">,</span> <span class="p">[])</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">res</span><span class="p">[</span><span class="s2">&quot;score&quot;</span><span class="p">])</span>
+</span><span id="__span-0-2740"><a id="__codelineno-0-2740" name="__codelineno-0-2740"></a>
+</span><span id="__span-0-2741"><a id="__codelineno-0-2741" name="__codelineno-0-2741"></a>    <span class="c1"># ------------------------------------------------------------------</span>
+</span><span id="__span-0-2742"><a id="__codelineno-0-2742" name="__codelineno-0-2742"></a>    <span class="c1"># Phase 3: compute weighted consensus scores</span>
+</span><span id="__span-0-2743"><a id="__codelineno-0-2743" name="__codelineno-0-2743"></a>    <span class="c1"># ------------------------------------------------------------------</span>
+</span><span id="__span-0-2744"><a id="__codelineno-0-2744" name="__codelineno-0-2744"></a>    <span class="n">aggregated</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">SearchResult</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+</span><span id="__span-0-2745"><a id="__codelineno-0-2745" name="__codelineno-0-2745"></a>
+</span><span id="__span-0-2746"><a id="__codelineno-0-2746" name="__codelineno-0-2746"></a>    <span class="k">for</span> <span class="p">(</span><span class="n">_qid</span><span class="p">,</span> <span class="n">_rid</span><span class="p">),</span> <span class="n">bucket</span> <span class="ow">in</span> <span class="n">buckets</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+</span><span id="__span-0-2747"><a id="__codelineno-0-2747" name="__codelineno-0-2747"></a>        <span class="n">scores_by_algo</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">]]</span> <span class="o">=</span> <span class="n">bucket</span><span class="p">[</span><span class="s2">&quot;scores&quot;</span><span class="p">]</span>
+</span><span id="__span-0-2748"><a id="__codelineno-0-2748" name="__codelineno-0-2748"></a>
+</span><span id="__span-0-2749"><a id="__codelineno-0-2749" name="__codelineno-0-2749"></a>        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">scores_by_algo</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">min_engines</span><span class="p">:</span>
+</span><span id="__span-0-2750"><a id="__codelineno-0-2750" name="__codelineno-0-2750"></a>            <span class="k">continue</span>
+</span><span id="__span-0-2751"><a id="__codelineno-0-2751" name="__codelineno-0-2751"></a>
+</span><span id="__span-0-2752"><a id="__codelineno-0-2752" name="__codelineno-0-2752"></a>        <span class="n">total_weight</span> <span class="o">=</span> <span class="mf">0.0</span>
+</span><span id="__span-0-2753"><a id="__codelineno-0-2753" name="__codelineno-0-2753"></a>        <span class="n">weighted_sum</span> <span class="o">=</span> <span class="mf">0.0</span>
+</span><span id="__span-0-2754"><a id="__codelineno-0-2754" name="__codelineno-0-2754"></a>        <span class="k">for</span> <span class="n">algo</span><span class="p">,</span> <span class="n">scores</span> <span class="ow">in</span> <span class="n">scores_by_algo</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+</span><span id="__span-0-2755"><a id="__codelineno-0-2755" name="__codelineno-0-2755"></a>            <span class="n">w</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sub_weights</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">algo</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">)</span>
+</span><span id="__span-0-2756"><a id="__codelineno-0-2756" name="__codelineno-0-2756"></a>            <span class="n">total_weight</span> <span class="o">+=</span> <span class="n">w</span>
+</span><span id="__span-0-2757"><a id="__codelineno-0-2757" name="__codelineno-0-2757"></a>            <span class="n">weighted_sum</span> <span class="o">+=</span> <span class="nb">max</span><span class="p">(</span><span class="n">scores</span><span class="p">)</span> <span class="o">*</span> <span class="n">w</span>
+</span><span id="__span-0-2758"><a id="__codelineno-0-2758" name="__codelineno-0-2758"></a>
+</span><span id="__span-0-2759"><a id="__codelineno-0-2759" name="__codelineno-0-2759"></a>        <span class="k">if</span> <span class="n">total_weight</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+</span><span id="__span-0-2760"><a id="__codelineno-0-2760" name="__codelineno-0-2760"></a>            <span class="k">continue</span>
+</span><span id="__span-0-2761"><a id="__codelineno-0-2761" name="__codelineno-0-2761"></a>
+</span><span id="__span-0-2762"><a id="__codelineno-0-2762" name="__codelineno-0-2762"></a>        <span class="n">consensus_score</span> <span class="o">=</span> <span class="n">weighted_sum</span> <span class="o">/</span> <span class="n">total_weight</span>
+</span><span id="__span-0-2763"><a id="__codelineno-0-2763" name="__codelineno-0-2763"></a>
+</span><span id="__span-0-2764"><a id="__codelineno-0-2764" name="__codelineno-0-2764"></a>        <span class="k">if</span> <span class="n">consensus_score</span> <span class="o">&lt;</span> <span class="n">cutoff</span><span class="p">:</span>
+</span><span id="__span-0-2765"><a id="__codelineno-0-2765" name="__codelineno-0-2765"></a>            <span class="k">continue</span>
+</span><span id="__span-0-2766"><a id="__codelineno-0-2766" name="__codelineno-0-2766"></a>
+</span><span id="__span-0-2767"><a id="__codelineno-0-2767" name="__codelineno-0-2767"></a>        <span class="n">template</span> <span class="o">=</span> <span class="n">bucket</span><span class="p">[</span><span class="s2">&quot;template&quot;</span><span class="p">]</span>
+</span><span id="__span-0-2768"><a id="__codelineno-0-2768" name="__codelineno-0-2768"></a>        <span class="n">best_individual</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="nb">max</span><span class="p">(</span><span class="n">scores</span><span class="p">)</span> <span class="k">for</span> <span class="n">scores</span> <span class="ow">in</span> <span class="n">scores_by_algo</span><span class="o">.</span><span class="n">values</span><span class="p">())</span>
+</span><span id="__span-0-2769"><a id="__codelineno-0-2769" name="__codelineno-0-2769"></a>
+</span><span id="__span-0-2770"><a id="__codelineno-0-2770" name="__codelineno-0-2770"></a>        <span class="n">aggregated</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+</span><span id="__span-0-2771"><a id="__codelineno-0-2771" name="__codelineno-0-2771"></a>            <span class="n">SearchResult</span><span class="p">(</span>
+</span><span id="__span-0-2772"><a id="__codelineno-0-2772" name="__codelineno-0-2772"></a>                <span class="n">query_id</span><span class="o">=</span><span class="n">template</span><span class="p">[</span><span class="s2">&quot;query_id&quot;</span><span class="p">],</span>
+</span><span id="__span-0-2773"><a id="__codelineno-0-2773" name="__codelineno-0-2773"></a>                <span class="n">query_precursor_mz</span><span class="o">=</span><span class="n">template</span><span class="p">[</span><span class="s2">&quot;query_precursor_mz&quot;</span><span class="p">],</span>
+</span><span id="__span-0-2774"><a id="__codelineno-0-2774" name="__codelineno-0-2774"></a>                <span class="n">reference_id</span><span class="o">=</span><span class="n">template</span><span class="p">[</span><span class="s2">&quot;reference_id&quot;</span><span class="p">],</span>
+</span><span id="__span-0-2775"><a id="__codelineno-0-2775" name="__codelineno-0-2775"></a>                <span class="n">reference_name</span><span class="o">=</span><span class="n">template</span><span class="p">[</span><span class="s2">&quot;reference_name&quot;</span><span class="p">],</span>
+</span><span id="__span-0-2776"><a id="__codelineno-0-2776" name="__codelineno-0-2776"></a>                <span class="n">reference_precursor_mz</span><span class="o">=</span><span class="n">template</span><span class="p">[</span><span class="s2">&quot;reference_precursor_mz&quot;</span><span class="p">],</span>
+</span><span id="__span-0-2777"><a id="__codelineno-0-2777" name="__codelineno-0-2777"></a>                <span class="n">score</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">consensus_score</span><span class="p">),</span>
+</span><span id="__span-0-2778"><a id="__codelineno-0-2778" name="__codelineno-0-2778"></a>                <span class="n">matched_peaks</span><span class="o">=</span><span class="n">template</span><span class="p">[</span><span class="s2">&quot;matched_peaks&quot;</span><span class="p">],</span>
+</span><span id="__span-0-2779"><a id="__codelineno-0-2779" name="__codelineno-0-2779"></a>                <span class="n">smiles</span><span class="o">=</span><span class="n">template</span><span class="p">[</span><span class="s2">&quot;smiles&quot;</span><span class="p">],</span>
+</span><span id="__span-0-2780"><a id="__codelineno-0-2780" name="__codelineno-0-2780"></a>                <span class="n">inchikey</span><span class="o">=</span><span class="n">template</span><span class="p">[</span><span class="s2">&quot;inchikey&quot;</span><span class="p">],</span>
+</span><span id="__span-0-2781"><a id="__codelineno-0-2781" name="__codelineno-0-2781"></a>                <span class="n">is_decoy</span><span class="o">=</span><span class="n">template</span><span class="p">[</span><span class="s2">&quot;is_decoy&quot;</span><span class="p">],</span>
+</span><span id="__span-0-2782"><a id="__codelineno-0-2782" name="__codelineno-0-2782"></a>                <span class="n">q_value</span><span class="o">=</span><span class="n">template</span><span class="p">[</span><span class="s2">&quot;q_value&quot;</span><span class="p">],</span>
+</span><span id="__span-0-2783"><a id="__codelineno-0-2783" name="__codelineno-0-2783"></a>                <span class="n">p_value</span><span class="o">=</span><span class="n">template</span><span class="p">[</span><span class="s2">&quot;p_value&quot;</span><span class="p">],</span>
+</span><span id="__span-0-2784"><a id="__codelineno-0-2784" name="__codelineno-0-2784"></a>                <span class="n">annotation_tier</span><span class="o">=</span><span class="n">template</span><span class="p">[</span><span class="s2">&quot;annotation_tier&quot;</span><span class="p">],</span>
+</span><span id="__span-0-2785"><a id="__codelineno-0-2785" name="__codelineno-0-2785"></a>                <span class="n">structural_similarity</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">best_individual</span><span class="p">),</span>
+</span><span id="__span-0-2786"><a id="__codelineno-0-2786" name="__codelineno-0-2786"></a>                <span class="n">mass_error_ppm</span><span class="o">=</span><span class="n">template</span><span class="p">[</span><span class="s2">&quot;mass_error_ppm&quot;</span><span class="p">],</span>
+</span><span id="__span-0-2787"><a id="__codelineno-0-2787" name="__codelineno-0-2787"></a>                <span class="n">score_breakdown</span><span class="o">=</span><span class="p">{</span>
+</span><span id="__span-0-2788"><a id="__codelineno-0-2788" name="__codelineno-0-2788"></a>                    <span class="n">algo</span><span class="p">:</span> <span class="nb">max</span><span class="p">(</span><span class="n">scores</span><span class="p">)</span> <span class="k">for</span> <span class="n">algo</span><span class="p">,</span> <span class="n">scores</span> <span class="ow">in</span> <span class="n">scores_by_algo</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+</span><span id="__span-0-2789"><a id="__codelineno-0-2789" name="__codelineno-0-2789"></a>                <span class="p">},</span>
+</span><span id="__span-0-2790"><a id="__codelineno-0-2790" name="__codelineno-0-2790"></a>                <span class="n">reference_metadata</span><span class="o">=</span><span class="n">template</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;reference_metadata&quot;</span><span class="p">),</span>
+</span><span id="__span-0-2791"><a id="__codelineno-0-2791" name="__codelineno-0-2791"></a>            <span class="p">)</span>
+</span><span id="__span-0-2792"><a id="__codelineno-0-2792" name="__codelineno-0-2792"></a>        <span class="p">)</span>
+</span><span id="__span-0-2793"><a id="__codelineno-0-2793" name="__codelineno-0-2793"></a>
+</span><span id="__span-0-2794"><a id="__codelineno-0-2794" name="__codelineno-0-2794"></a>    <span class="c1"># ------------------------------------------------------------------</span>
+</span><span id="__span-0-2795"><a id="__codelineno-0-2795" name="__codelineno-0-2795"></a>    <span class="c1"># Phase 4: apply top_n per query (sort by consensus score desc,</span>
+</span><span id="__span-0-2796"><a id="__codelineno-0-2796" name="__codelineno-0-2796"></a>    <span class="c1">#           then by best individual score desc as tie-break)</span>
+</span><span id="__span-0-2797"><a id="__codelineno-0-2797" name="__codelineno-0-2797"></a>    <span class="c1"># ------------------------------------------------------------------</span>
+</span><span id="__span-0-2798"><a id="__codelineno-0-2798" name="__codelineno-0-2798"></a>    <span class="k">if</span> <span class="n">top_n</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+</span><span id="__span-0-2799"><a id="__codelineno-0-2799" name="__codelineno-0-2799"></a>        <span class="n">by_query</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">list</span><span class="p">[</span><span class="n">SearchResult</span><span class="p">]]</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="nb">list</span><span class="p">)</span>
+</span><span id="__span-0-2800"><a id="__codelineno-0-2800" name="__codelineno-0-2800"></a>        <span class="k">for</span> <span class="n">res</span> <span class="ow">in</span> <span class="n">aggregated</span><span class="p">:</span>
+</span><span id="__span-0-2801"><a id="__codelineno-0-2801" name="__codelineno-0-2801"></a>            <span class="n">by_query</span><span class="p">[</span><span class="n">res</span><span class="p">[</span><span class="s2">&quot;query_id&quot;</span><span class="p">]]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">res</span><span class="p">)</span>
+</span><span id="__span-0-2802"><a id="__codelineno-0-2802" name="__codelineno-0-2802"></a>
+</span><span id="__span-0-2803"><a id="__codelineno-0-2803" name="__codelineno-0-2803"></a>        <span class="n">aggregated</span> <span class="o">=</span> <span class="p">[]</span>
+</span><span id="__span-0-2804"><a id="__codelineno-0-2804" name="__codelineno-0-2804"></a>        <span class="k">for</span> <span class="n">_qid</span><span class="p">,</span> <span class="n">hits</span> <span class="ow">in</span> <span class="n">by_query</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+</span><span id="__span-0-2805"><a id="__codelineno-0-2805" name="__codelineno-0-2805"></a>            <span class="n">hits</span><span class="o">.</span><span class="n">sort</span><span class="p">(</span>
+</span><span id="__span-0-2806"><a id="__codelineno-0-2806" name="__codelineno-0-2806"></a>                <span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">r</span><span class="p">:</span> <span class="p">(</span>
+</span><span id="__span-0-2807"><a id="__codelineno-0-2807" name="__codelineno-0-2807"></a>                    <span class="o">-</span><span class="n">r</span><span class="p">[</span><span class="s2">&quot;score&quot;</span><span class="p">],</span>
+</span><span id="__span-0-2808"><a id="__codelineno-0-2808" name="__codelineno-0-2808"></a>                    <span class="o">-</span><span class="p">(</span><span class="n">r</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;structural_similarity&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="mi">0</span><span class="p">),</span>
+</span><span id="__span-0-2809"><a id="__codelineno-0-2809" name="__codelineno-0-2809"></a>                <span class="p">)</span>
+</span><span id="__span-0-2810"><a id="__codelineno-0-2810" name="__codelineno-0-2810"></a>            <span class="p">)</span>
+</span><span id="__span-0-2811"><a id="__codelineno-0-2811" name="__codelineno-0-2811"></a>            <span class="n">aggregated</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">hits</span><span class="p">[:</span><span class="n">top_n</span><span class="p">])</span>
+</span><span id="__span-0-2812"><a id="__codelineno-0-2812" name="__codelineno-0-2812"></a>
+</span><span id="__span-0-2813"><a id="__codelineno-0-2813" name="__codelineno-0-2813"></a>    <span class="k">return</span> <span class="n">aggregated</span>
+</span></code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "navigation.indexes", "search.suggest", "search.highlight", "search.share", "content.code.copy", "content.code.annotate", "content.tabs.link"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+        <script src="../../javascripts/mathjax.js"></script>
+      
+        <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+      
+    
+  </body>
+</html>
