@@ -1,7 +1,7 @@
 [project]
-name = "massflow"
+name = "massflow-msms"
 version = "0.1.0"
-description = "A scientific Python package for mass spectrometry processing and analysis."
+description = "Reproducible MS/MS reference-library candidate retrieval and annotation-evidence toolkit."
 readme = "README.md"
 license = {text = "MIT"}
 classifiers = [
@@ -18,10 +18,14 @@ dependencies = [
     "numpy>=1.26.4",
     "packaging>=26.0",
     "polars>=0.20.0",
+    # The shipped MassFlow.streaming protobuf stubs were generated with
+    # protobuf 7.35 and validate the runtime version on import.
+    "protobuf>=7.35.0,<8",
     "pydantic>=2.12.5",
     "pyteomics",
     "PyYAML",
-    # rdkit moved to optional "chem" extra
+    # RDKit is not a direct core requirement, but locked matchms requires it
+    # transitively; the chem extra declares MassFlow's direct cheminformatics use.
     "rich>=15.0.0",
     "scikit-learn>=1.8.0",
     # scipy 1.15.x resolves to a macOS wheel that will not load on newer macOS
@@ -89,8 +93,8 @@ dev = [
 [tool.mypy]
 ignore_missing_imports = true
 plugins = ["pydantic.mypy"]
-# Exclude root-level scratch scripts
-exclude = ["repro_isotope\\.py"]
+# Exclude root-level scratch scripts and generated MkDocs output
+exclude = ["repro_isotope\\.py", "^site/"]
 
 [tool.ruff]
 # Generated protobuf/gRPC stubs are not linted.

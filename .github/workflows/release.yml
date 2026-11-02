@@ -1,34 +1,551 @@
 name: Release
 
+# Manual, qualification-first release. A version tag alone can never publish:
+# this workflow is only started by a deliberate workflow_dispatch run, the
+# source SHA/version/tag must agree, and publication additionally requires the
+# protected `release` environment approval plus an explicit confirmation.
 on:
-  push:
-    tags:
-      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "qualify (no publication) or publish (requires an existing annotated tag and environment approval)"
+        required: true
+        default: qualify
+        type: choice
+        options:
+          - qualify
+          - publish
+      candidate_sha:
+        description: "Full 40-character commit SHA to qualify"
+        required: true
+        type: string
+      version:
+        description: "Release version without the leading v (must match pyproject.toml)"
+        required: true
+        type: string
+      tag:
+        description: "Annotated tag pointing at candidate_sha (required for publish; optional for qualify)"
+        required: false
+        type: string
+      confirmation:
+        description: "For publish only: type PUBLISH <version>"
+        required: false
+        type: string
+      evidence_url:
+        description: "URL or committed docs path containing independent qualification evidence"
+        required: true
+        type: string
+      migration_notes:
+        description: "Migration notes (required for publish)"
+        required: false
+        type: string
+      rollback_notes:
+        description: "Rollback procedure (required for publish)"
+        required: false
+        type: string
+      allow_prerelease:
+        description: "Allow publishing a pre-release version"
+        required: false
+        default: false
+        type: boolean
 
-# 1. THE FIX: Grant the workflow permission to write to the repo
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  build-and-publish:
+  qualify:
+    name: Qualify candidate
     runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Check out the exact candidate SHA
+        uses: actions/checkout@v4
         with:
-          python-version: "3.13"
+          ref: ${{ inputs.candidate_sha }}
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+
+      - name: Require candidate on main or a release branch
+        env:
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+        run: |
+          git fetch --no-tags origin '+refs/heads/main:refs/remotes/origin/main'
+          git fetch --no-tags origin '+refs/heads/release/*:refs/remotes/origin/release/*' || true
+          if git merge-base --is-ancestor "$CANDIDATE_SHA" origin/main; then
+            echo "candidate is an ancestor of main"
+            exit 0
+          fi
+          if git for-each-ref --contains "$CANDIDATE_SHA" --format='%(refname)' refs/remotes/origin/release/ | grep -q .; then
+            echo "candidate is on a release branch"
+            exit 0
+          fi
+          echo "::error::candidate_sha must be reachable from main or a release/* branch"
+          exit 1
+
+      - name: Validate SHA, version, tag, and evidence inputs
+        env:
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          VERSION: ${{ inputs.version }}
+          TAG: ${{ inputs.tag }}
+          ACTION: ${{ inputs.action }}
+          EVIDENCE_URL: ${{ inputs.evidence_url }}
+          ALLOW_PRERELEASE: ${{ inputs.allow_prerelease }}
+        run: |
+          python - <<'PY'
+          import os
+          import re
+          import subprocess
+          import sys
+          import tomllib
+
+          sha = os.environ["CANDIDATE_SHA"].strip()
+          version = os.environ["VERSION"].strip()
+          tag = os.environ["TAG"].strip()
+          action = os.environ["ACTION"].strip()
+          evidence = os.environ["EVIDENCE_URL"].strip()
+          allow_prerelease = os.environ["ALLOW_PRERELEASE"].strip().lower() == "true"
+
+          def fail(message: str) -> None:
+              print(f"::error::{message}")
+              sys.exit(1)
+
+          if not re.fullmatch(r"[0-9a-f]{40}", sha):
+              fail("candidate_sha must be a full 40-character lowercase commit SHA")
+          if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+(?:[-.][0-9A-Za-z.-]+)?", version):
+              fail("version must be a SemVer-like X.Y.Z value")
+          if tag and tag != f"v{version}":
+              fail("tag must be exactly 'v' + version")
+          if action == "publish" and not tag:
+              fail("tag is required for publish")
+          if action == "publish" and not allow_prerelease and re.search(r"(?:a|b|rc|dev|post)", version):
+              fail("pre-release versions require allow_prerelease=true")
+          if not (evidence.startswith("https://") or evidence.startswith("docs/")):
+              fail("evidence_url must be an https:// URL or a committed docs/ path")
+
+          head = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+          if head != sha:
+              fail(f"checked-out HEAD {head} does not match candidate_sha {sha}")
+
+          with open("pyproject.toml", "rb") as handle:
+              project_version = tomllib.load(handle)["project"]["version"]
+          if project_version != version:
+              fail(f"pyproject.toml version {project_version!r} does not match input {version!r}")
+
+          if tag:
+              tag_type = subprocess.check_output(["git", "cat-file", "-t", tag], text=True).strip()
+              if tag_type != "tag":
+                  fail(f"{tag} must be an annotated tag, got {tag_type!r}")
+              tag_sha = subprocess.check_output(
+                  ["git", "rev-parse", f"refs/tags/{tag}^{{commit}}"], text=True
+              ).strip()
+              if tag_sha != sha:
+                  fail(f"tag {tag} points to {tag_sha}, not candidate_sha {sha}")
+          print(f"validated {action}: {version} at {sha}")
+          PY
 
       - name: Install uv
         run: curl -LsSf https://astral.sh/uv/install.sh | sh
 
-      - name: Build sdist and wheel
+      - name: Validate lockfile
+        run: uv lock --check
+
+      - name: Install locked dependencies
+        # Core qualification: optional extras are experimental and are not part
+        # of the supported distribution. The installed-wheel smoke below uses
+        # the lock-exported runtime requirements without extras.
+        run: uv sync --frozen
+
+      - name: Formatting
+        run: uv run ruff format --check .
+
+      - name: Linting
+        run: uv run ruff check .
+
+      - name: Type checking
+        run: uv run mypy .
+
+      - name: Release suite with coverage
+        env:
+          PYTHONFAULTHANDLER: "1"
+        run: uv run pytest --cov=src/MassFlow --cov-report=xml --cov-fail-under=80 -o faulthandler_timeout=600 -v
+
+      - name: Scientific-validation tests
+        run: uv run pytest -m scientific -v
+
+      - name: Core-contract tests
+        run: uv run pytest -m core -q
+
+      - name: Build wheel and sdist
         run: uv build
 
-      - name: Release to GitHub
-        uses: softprops/action-gh-release@v2
+      - name: Record artifact hashes
+        run: |
+          cd dist
+          sha256sum * > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Export locked runtime requirements
+        run: |
+          uv export --frozen --no-dev --no-emit-project \
+            --format requirements.txt \
+            --output-file /tmp/massflow-release-requirements.txt
+
+      - name: Installed-wheel smoke
+        run: |
+          uv venv --python 3.13 /tmp/massflow-release-venv
+          uv pip install --python /tmp/massflow-release-venv/bin/python \
+            -r /tmp/massflow-release-requirements.txt
+          uv pip install --python /tmp/massflow-release-venv/bin/python --no-deps dist/*.whl
+          uv pip check --python /tmp/massflow-release-venv/bin/python
+          /tmp/massflow-release-venv/bin/python - <<'PY'
+          from importlib.metadata import version
+          from pathlib import Path
+          import MassFlow
+          import MassFlow.streaming
+          import MassFlow.streaming.generated.massflow.v1.streaming_pb2
+          path = Path(MassFlow.__file__).resolve()
+          if "site-packages" not in path.parts:
+              raise SystemExit(f"MassFlow imported from outside site-packages: {path}")
+          print(path)
+          print("distribution version", version("massflow-msms"))
+          PY
+          /tmp/massflow-release-venv/bin/massflow --help
+          /tmp/massflow-release-venv/bin/massflow init --output /tmp/massflow-release-config.yaml
+          mkdir -p /tmp/massflow-release-smoke
+          printf '%s\n' \
+            'NAME: caffeine' \
+            'ID: ref-caffeine' \
+            'PRECURSOR_MZ: 195.0877' \
+            'CHARGE: 1' \
+            'NUM PEAKS: 3' \
+            '100.0 1.0' \
+            '150.0 2.0' \
+            '175.0 3.0' \
+            '' > /tmp/massflow-release-smoke/library.msp
+          printf '%s\n' \
+            'BEGIN IONS' \
+            'TITLE=query' \
+            'ID=query' \
+            'PEPMASS=195.0877' \
+            'CHARGE=1+' \
+            '100.0 1.0' \
+            '150.0 2.0' \
+            '175.0 3.0' \
+            'END IONS' > /tmp/massflow-release-smoke/query.mgf
+          printf '%s\n' \
+            'project:' \
+            '  name: release-smoke' \
+            '  output_directory: /tmp/massflow-release-smoke/out' \
+            'input:' \
+            '  input_path: /tmp/massflow-release-smoke/query.mgf' \
+            '  library_path: /tmp/massflow-release-smoke/library.msp' \
+            '  format: mgf' \
+            'processing:' \
+            '  filter_min_peaks: false' \
+            'similarity:' \
+            '  algorithm: cosine' \
+            '  ms1_tolerance: 0.02' \
+            '  ms2_tolerance: 0.02' \
+            '  min_score: 0.5' \
+            '  min_matched_peaks: 1' \
+            '  fdr_threshold: 1.0' \
+            'export:' \
+            '  format: csv' > /tmp/massflow-release-smoke/config.yaml
+          /tmp/massflow-release-venv/bin/massflow annotate --config /tmp/massflow-release-smoke/config.yaml
+          test -s /tmp/massflow-release-smoke/out/query_results.csv
+
+      - name: Write release provenance
+        env:
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          VERSION: ${{ inputs.version }}
+          TAG: ${{ inputs.tag }}
+          ACTION: ${{ inputs.action }}
+          EVIDENCE_URL: ${{ inputs.evidence_url }}
+          MIGRATION_NOTES: ${{ inputs.migration_notes }}
+          ROLLBACK_NOTES: ${{ inputs.rollback_notes }}
+        run: |
+          # Use the project environment so provenance records the qualified
+          # Python version, not the runner's system interpreter.
+          uv run python - <<'PY'
+          import hashlib
+          import json
+          import os
+          import platform
+          from pathlib import Path
+
+          def digest(path: Path) -> str:
+              return hashlib.sha256(path.read_bytes()).hexdigest()
+
+          version = os.environ["VERSION"]
+          dist = Path("dist")
+          expected_names = {
+              f"massflow_msms-{version}-py3-none-any.whl",
+              f"massflow_msms-{version}.tar.gz",
+              "SHA256SUMS",
+          }
+          artifacts = {
+              name: digest(dist / name)
+              for name in sorted(expected_names)
+              if (dist / name).is_file()
+          }
+          if not expected_names.issubset(artifacts):
+              raise SystemExit(
+                  f"qualified artifact set incomplete: {sorted(artifacts)}"
+              )
+          payload = {
+              "schema_version": 1,
+              "repository": os.environ["GITHUB_REPOSITORY"],
+              "candidate_sha": os.environ["CANDIDATE_SHA"],
+              "version": os.environ["VERSION"],
+              "tag": os.environ.get("TAG") or None,
+              "action": os.environ["ACTION"],
+              "qualification_evidence": os.environ["EVIDENCE_URL"],
+              "migration_notes": os.environ.get("MIGRATION_NOTES") or None,
+              "rollback_notes": os.environ.get("ROLLBACK_NOTES") or None,
+              "workflow_run_id": os.environ["GITHUB_RUN_ID"],
+              "workflow_run_attempt": os.environ["GITHUB_RUN_ATTEMPT"],
+              "workflow_ref": os.environ["GITHUB_WORKFLOW_REF"],
+              "python": platform.python_version(),
+              "platform": platform.platform(),
+              "lock_sha256": digest(Path("uv.lock")),
+              "pyproject_sha256": digest(Path("pyproject.toml")),
+              "artifacts": artifacts,
+          }
+          Path("release-provenance.json").write_text(
+              json.dumps(payload, indent=2, sort_keys=True) + "\n"
+          )
+          print(json.dumps(payload, indent=2, sort_keys=True))
+          PY
+
+      - name: Upload qualified artifacts
+        uses: actions/upload-artifact@v4
         with:
-          files: dist/*
-          # 2. THE FIX: Auto-generate notes instead of looking for a missing CHANGELOG.md
-          generate_release_notes: true
+          name: release-candidate
+          path: |
+            dist/*
+            release-provenance.json
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Qualification summary
+        env:
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          VERSION: ${{ inputs.version }}
+          ACTION: ${{ inputs.action }}
+        run: |
+          {
+            echo "### Qualification passed"
+            echo
+            printf '%s\n\n' "Candidate SHA: \`${CANDIDATE_SHA}\`"
+            printf '%s\n\n' "Version: \`${VERSION}\`"
+            printf '%s\n\n' "Action: \`${ACTION}\`"
+            echo "Artifact hashes:"
+            echo '```'
+            cat dist/SHA256SUMS
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  publish:
+    name: Publish approved release
+    needs: qualify
+    if: inputs.action == 'publish'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: release
+    permissions:
+      contents: write
+      actions: read
+      # PyPI Trusted Publishing uses GitHub OIDC; no API token is stored.
+      id-token: write
+    steps:
+      - name: Download qualified artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: release-candidate
+          path: release
+
+      - name: Validate publication confirmation and notes
+        env:
+          CONFIRMATION: ${{ inputs.confirmation }}
+          VERSION: ${{ inputs.version }}
+          MIGRATION_NOTES: ${{ inputs.migration_notes }}
+          ROLLBACK_NOTES: ${{ inputs.rollback_notes }}
+        run: |
+          python - <<'PY'
+          import os
+          import sys
+
+          expected = f"PUBLISH {os.environ['VERSION']}"
+          if os.environ["CONFIRMATION"] != expected:
+              print(f"::error::confirmation must be exactly {expected!r}")
+              sys.exit(1)
+          if not os.environ["MIGRATION_NOTES"].strip():
+              print("::error::migration_notes is required for publish")
+              sys.exit(1)
+          if not os.environ["ROLLBACK_NOTES"].strip():
+              print("::error::rollback_notes is required for publish")
+              sys.exit(1)
+          print("publication confirmation and notes validated")
+          PY
+
+      - name: Verify artifact hashes
+        run: |
+          cd release/dist
+          sha256sum -c SHA256SUMS
+          cd ../..
+          python - <<'PY'
+          import hashlib
+          import json
+          from pathlib import Path
+
+          payload = json.loads(Path("release/release-provenance.json").read_text())
+          for name, expected in payload["artifacts"].items():
+              actual = hashlib.sha256((Path("release/dist") / name).read_bytes()).hexdigest()
+              if actual != expected:
+                  raise SystemExit(f"hash mismatch for {name}: {actual} != {expected}")
+          print("all artifact hashes match release-provenance.json")
+          PY
+
+      - name: Verify annotated tag points at the candidate
+        env:
+          TAG: ${{ inputs.tag }}
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+        run: |
+          python - <<'PY'
+          import os
+          import subprocess
+
+          tag = os.environ["TAG"]
+          candidate = os.environ["CANDIDATE_SHA"]
+          remote = f"https://github.com/{os.environ['GITHUB_REPOSITORY']}.git"
+          output = subprocess.check_output(
+              ["git", "ls-remote", "--tags", remote, f"refs/tags/{tag}", f"refs/tags/{tag}^{{}}"],
+              text=True,
+          )
+          direct = []
+          peeled = []
+          for line in output.splitlines():
+              sha, ref = line.split("\t", 1)
+              if ref.endswith("^{}"):
+                  peeled.append(sha)
+              elif ref == f"refs/tags/{tag}":
+                  direct.append(sha)
+          if not peeled:
+              raise SystemExit(f"{tag} must be an annotated tag")
+          if peeled[0] != candidate:
+              raise SystemExit(f"{tag} peels to {peeled[0]}, expected {candidate}")
+          print(f"verified annotated tag {tag} -> {candidate}")
+          PY
+
+      - name: Write release notes
+        env:
+          VERSION: ${{ inputs.version }}
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          EVIDENCE_URL: ${{ inputs.evidence_url }}
+          MIGRATION_NOTES: ${{ inputs.migration_notes }}
+          ROLLBACK_NOTES: ${{ inputs.rollback_notes }}
+        run: |
+          {
+            printf '%s\n\n' "## MassFlow ${VERSION}"
+            printf '%s\n\n' "Qualified candidate SHA: \`${CANDIDATE_SHA}\`"
+            printf '%s\n\n' "Qualification evidence: ${EVIDENCE_URL}"
+            printf '%s\n' "### Artifacts"
+            cat release/dist/SHA256SUMS
+            printf '\n%s\n' "Provenance SHA-256:"
+            sha256sum release/release-provenance.json
+            printf '\n%s\n\n' "### Migration notes"
+            printf '%s\n\n' "${MIGRATION_NOTES}"
+            printf '%s\n' "### Rollback"
+            printf '%s\n' "${ROLLBACK_NOTES}"
+          } > release-notes.md
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          gh release create "$TAG" \
+            release/dist/* \
+            release/release-provenance.json \
+            --repo "$GITHUB_REPOSITORY" \
+            --verify-tag \
+            --title "MassFlow $VERSION" \
+            --notes-file release-notes.md
+
+      - name: Verify and stage qualified distributions for PyPI
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          import shutil
+          from pathlib import Path
+
+          version = os.environ["VERSION"]
+          dist = Path("release/dist")
+          provenance = json.loads(Path("release/release-provenance.json").read_text())
+          if provenance.get("version") != version:
+              raise SystemExit("provenance version mismatch")
+          expected = provenance.get("artifacts", {})
+          wheel = f"massflow_msms-{version}-py3-none-any.whl"
+          sdist = f"massflow_msms-{version}.tar.gz"
+          names = {wheel, sdist}
+          if not names.issubset(expected):
+              raise SystemExit(
+                  f"qualified wheel/sdist missing from provenance: {sorted(expected)}"
+              )
+          for name in sorted(names):
+              path = dist / name
+              if not path.is_file():
+                  raise SystemExit(f"missing qualified artifact: {path}")
+              actual = hashlib.sha256(path.read_bytes()).hexdigest()
+              if actual != expected[name]:
+                  raise SystemExit(f"hash mismatch for {name}: {actual} != {expected[name]}")
+          upload = Path("pypi-dist")
+          if upload.exists():
+              shutil.rmtree(upload)
+          upload.mkdir()
+          for name in sorted(names):
+              shutil.copy2(dist / name, upload / name)
+          print("staged exact qualified artifacts for PyPI:", ", ".join(sorted(names)))
+          PY
+          cd release/dist
+          sha256sum -c SHA256SUMS
+          cd ../..
+          sha256sum pypi-dist/*
+
+      - name: Publish to PyPI (Trusted Publishing / OIDC)
+        # No API token or password is used. This job uploads only the exact
+        # artifacts produced and verified by the qualification job; it never
+        # rebuilds a distribution.
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: pypi-dist
+          attestations: true
+          print-hash: true
+          verbose: true
+
+      - name: Publication summary
+        env:
+          TAG: ${{ inputs.tag }}
+          VERSION: ${{ inputs.version }}
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+        run: |
+          {
+            printf '%s\n\n' "### Published MassFlow ${VERSION}"
+            printf '%s\n\n' "Tag: \`${TAG}\`"
+            printf '%s\n\n' "Candidate SHA: \`${CANDIDATE_SHA}\`"
+            printf '%s\n' "PyPI: https://pypi.org/project/massflow-msms/${VERSION}/"
+            printf '%s\n\n' "GitHub release and PyPI received the same qualified artifacts."
+            cat release/dist/SHA256SUMS
+          } >> "$GITHUB_STEP_SUMMARY"

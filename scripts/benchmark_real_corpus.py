@@ -1,17 +1,18 @@
 #!/usr/bin/env python3
-"""Real-data, objectively-labelled benchmark for MassFlow annotation accuracy.
+"""Real-data, objectively-labelled reference-library retrieval benchmark.
 
 Replaces the synthetic benchmark's biggest weakness (made-up spectra) with real
 acquired spectra and labels that come from the data itself rather than from
 construction.
 
-**Design: cross-instrument compound identification.**
+**Design: cross-instrument reference-library retrieval.**
 The corpus contains the same Vaniya-Fiehn natural-products library acquired on
 three different instruments (LTQ, QTOF, QExactive). Using one instrument as the
 reference library and another as the queries is a genuine cross-instrument
 library-matching task — the same design used in the Spec2Vec evaluation — and
 the label is objective: a hit is correct iff the query's and the hit's InChIKey
-connectivity block agree.
+connectivity block agree. This evaluates retrieval from a known reference
+library; it is not identification of compounds in an unknown sample.
 
 Why InChIKey rather than "did it return the same record": the same compound
 appears as several records per library, and MS/MS generally cannot resolve
@@ -36,17 +37,34 @@ from __future__ import annotations
 
 import argparse
 import csv as _csv
+from collections import Counter
 import hashlib
 import json
+import platform
 import random
 import shutil
 import statistics
 import subprocess
 import sys
+import time
+
+import numpy as np
 from pathlib import Path
 from typing import Any, Iterable, Optional
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from scripts.benchmark_reporting import (  # noqa: E402
+    REPORT_SCHEMA_VERSION,
+    attribute_truth_candidates,
+    compare_benchmark_reports,
+    compare_result_rows,
+    evaluate_query_retrieval,
+    summarize_diagnostics_by_source,
+)
+
 DEFAULT_CORPUS = Path.home() / "Projects/MassFlow/assets/spectral-libraries/msp"
 
 # Files with (near-)complete InChIKey coverage, all real acquisitions.
@@ -311,12 +329,49 @@ def build_real_benchmark(
         lib_hashes.add(peak_hash(rec["peaks"]))
 
     workdir.mkdir(parents=True, exist_ok=True)
+    library_mode_counts: Counter[str] = Counter()
+    library_type_counts: Counter[str] = Counter()
+    library_adduct_counts: Counter[str] = Counter()
+    library_charge_counts: Counter[str] = Counter()
+    for library_record in lib_records:
+        library_metadata = library_record["meta"]
+        library_mode_counts[
+            (
+                library_metadata.get("ionmode")
+                or library_metadata.get("ion_mode")
+                or "unknown"
+            )
+            .strip()
+            .upper()
+        ] += 1
+        library_type_counts[
+            (
+                library_metadata.get("precursor_type")
+                or library_metadata.get("precursortype")
+                or "unknown"
+            )
+            .strip()
+            .upper()
+        ] += 1
+        library_charge_counts[
+            (library_metadata.get("charge") or "unknown").strip()
+        ] += 1
     stats: dict[str, Any] = {
         "library_file": library_file,
         "library_records": len(lib_records),
         "library_distinct_connectivity": len(lib_by_key),
         "library_duplicate_spectra": len(lib_records) - len(lib_hashes),
+        "library_source_metadata_counts": {
+            "ion_mode": dict(sorted(library_mode_counts.items())),
+            "precursor_type": dict(sorted(library_type_counts.items())),
+            "adduct": dict(sorted(library_adduct_counts.items())),
+            "charge": dict(sorted(library_charge_counts.items())),
+        },
         "query_sources": {},
+        "selected_source_metadata": {},
+        "selected_truth_reference_precursor_mz": {},
+        "truth_pair_source_ion_mode_cross_tab": {},
+        "truth_pair_source_precursor_type_cross_tab": {},
     }
     (workdir / "library.msp").write_text(
         "".join(fmt_msp(r, f"LIB_{i:06d}") for i, r in enumerate(lib_records))
@@ -329,6 +384,8 @@ def build_real_benchmark(
     labels: dict[str, Any] = {}
     blocks: list[str] = []
     selected_records: list[dict[str, Any]] = []
+    truth_pair_mode_counts: Counter[str] = Counter()
+    truth_pair_type_counts: Counter[str] = Counter()
 
     for qf in query_files:
         qpath = corpus / qf
@@ -368,12 +425,73 @@ def build_real_benchmark(
             qid = f"{qf.split('-')[-1].replace('.msp', '')}_Q{n:05d}"
             blocks.append(fmt_mgf(rec, qid))
             selected_records.append(rec)
+            source_ion_mode = (
+                (rec["meta"].get("ionmode") or rec["meta"].get("ion_mode") or "unknown")
+                .strip()
+                .upper()
+            )
+            source_precursor_type = rec["meta"].get("precursor_type") or rec[
+                "meta"
+            ].get("precursortype")
+            source_adduct = rec["meta"].get("adduct") or rec["meta"].get(
+                "adductionname"
+            )
+            stats["selected_source_metadata"][qid] = {
+                "source": qf,
+                "ion_mode": source_ion_mode,
+                "precursor_type": source_precursor_type,
+                "adduct": source_adduct,
+                "charge": rec["meta"].get("charge"),
+                "precursor_mz": precursor_of(rec["meta"]),
+                "search_precursor_mz": (
+                    float(f"{precursor_of(rec['meta']):.6f}")
+                    if precursor_of(rec["meta"]) is not None
+                    else None
+                ),
+                "instrument": rec["meta"].get("instrument")
+                or rec["meta"].get("instrumenttype"),
+            }
+            for library_index in lib_by_key[ik[:14]]:
+                library_record_id = f"LIB_{library_index:06d}"
+                library_precursor_mz = precursor_of(lib_records[library_index]["meta"])
+                stats["selected_truth_reference_precursor_mz"][library_record_id] = (
+                    float(f"{library_precursor_mz:.6f}")
+                    if library_precursor_mz is not None
+                    else None
+                )
+                library_meta = lib_records[library_index]["meta"]
+                library_ion_mode = (
+                    (
+                        library_meta.get("ionmode")
+                        or library_meta.get("ion_mode")
+                        or "unknown"
+                    )
+                    .strip()
+                    .upper()
+                )
+                library_precursor_type = (
+                    (
+                        library_meta.get("precursor_type")
+                        or library_meta.get("precursortype")
+                        or "unknown"
+                    )
+                    .strip()
+                    .upper()
+                )
+                query_precursor_type = (
+                    (source_precursor_type or "unknown").strip().upper()
+                )
+                truth_pair_mode_counts[f"{source_ion_mode}/{library_ion_mode}"] += 1
+                truth_pair_type_counts[
+                    f"{query_precursor_type}/{library_precursor_type}"
+                ] += 1
             labels[qid] = {
                 "inchikey": ik,
                 "connectivity": ik[:14],
                 "true_lib_records": [f"LIB_{i:06d}" for i in lib_by_key[ik[:14]]],
                 "precursor_mz": precursor_of(rec["meta"]),
                 "source": qf,
+                "peak_count": len(rec["peaks"]),
             }
         stats["query_sources"][qf] = {
             "records": len(q_records),
@@ -385,12 +503,157 @@ def build_real_benchmark(
             "selected": len(selected),
         }
 
+    stats["truth_pair_source_ion_mode_cross_tab"] = dict(
+        sorted(truth_pair_mode_counts.items())
+    )
+    stats["truth_pair_source_precursor_type_cross_tab"] = dict(
+        sorted(truth_pair_type_counts.items())
+    )
     (workdir / "queries.mgf").write_text("\n".join(blocks) + "\n")
     stats["queries_write_check"] = verify_written_spectra(
         workdir / "queries.mgf", "mgf", selected_records
     )
     (workdir / "labels.json").write_text(json.dumps(labels, indent=2, sort_keys=True))
     return {"stats": stats, "labels": labels}
+
+
+def audit_truth_precursor_eligibility(
+    labels: dict[str, Any],
+    stats: dict[str, Any],
+    *,
+    min_query_peaks: int,
+) -> dict[str, Any]:
+    """Quantify truth-record precursor differences at the configured MS1 windows.
+
+    This benchmark-only analysis uses only the selected truth labels and the
+    exact six-decimal query/library precursor values serialized for search. It
+    does not pass truth labels into MassFlow or change the candidate cohort.
+
+    Parameters
+    ----------
+    labels : dict[str, Any]
+        Selected benchmark query labels.
+    stats : dict[str, Any]
+        Dataset provenance with source and truth-reference precursor metadata.
+    min_query_peaks : int
+        Preprocessing threshold that defines the searched-query denominator.
+
+    Returns
+    -------
+    dict[str, Any]
+        Per-source true-record MS1-window coverage and absolute-mass-difference
+        summaries. Quantiles use NumPy's linear interpolation method.
+    """
+    source_metadata = stats.get("selected_source_metadata", {})
+    reference_precursors = stats.get("selected_truth_reference_precursor_mz", {})
+    by_source: dict[str, list[tuple[str, float | None, list[float]]]] = {}
+    missing_query_precursors: dict[str, int] = {}
+    missing_reference_precursors: dict[str, int] = {}
+    for query_id, label in labels.items():
+        source = str(label.get("source", "unknown"))
+        metadata = source_metadata.get(query_id, {})
+        query_precursor_mz = metadata.get("search_precursor_mz")
+        if query_precursor_mz is None:
+            missing_query_precursors[source] = (
+                missing_query_precursors.get(source, 0) + 1
+            )
+        differences: list[float] = []
+        if query_precursor_mz is not None:
+            for reference_id in label.get("true_lib_records", []):
+                reference_precursor_mz = reference_precursors.get(str(reference_id))
+                if reference_precursor_mz is None:
+                    missing_reference_precursors[source] = (
+                        missing_reference_precursors.get(source, 0) + 1
+                    )
+                    continue
+                differences.append(
+                    abs(float(query_precursor_mz) - float(reference_precursor_mz))
+                )
+        by_source.setdefault(source, []).append(
+            (
+                str(query_id),
+                (float(query_precursor_mz) if query_precursor_mz is not None else None),
+                differences,
+            )
+        )
+
+    report: dict[str, Any] = {
+        "schema_version": 1,
+        "mass_error_summary": "absolute query minus truth-reference precursor m/z in Da",
+        "quantile_method": "numpy.quantile(method='linear')",
+        "tolerance_denominator": "configured cosine MS1 half-window in Da",
+        "by_source": {},
+    }
+    for source, query_records in sorted(by_source.items()):
+        all_differences = [
+            difference
+            for _query_id, _precursor_mz, differences in query_records
+            for difference in differences
+        ]
+        searched_records = [
+            record
+            for record in query_records
+            if int(labels[record[0]].get("peak_count", min_query_peaks))
+            >= min_query_peaks
+        ]
+        searched_differences = [
+            difference
+            for _query_id, _precursor_mz, differences in searched_records
+            for difference in differences
+        ]
+
+        def summarize(differences: list[float]) -> dict[str, Any]:
+            if not differences:
+                return {"pair_count": 0, "absolute_difference_da": None}
+            values = np.asarray(differences, dtype=np.float64)
+            quantiles = np.quantile(values, [0.0, 0.5, 0.9, 0.95, 1.0])
+            return {
+                "pair_count": int(values.size),
+                "absolute_difference_da": {
+                    "min": float(quantiles[0]),
+                    "median": float(quantiles[1]),
+                    "p90": float(quantiles[2]),
+                    "p95": float(quantiles[3]),
+                    "max": float(quantiles[4]),
+                },
+            }
+
+        tolerances: dict[str, Any] = {}
+        for tolerance in (0.01, 0.02):
+            selected_pairs = [
+                difference for difference in all_differences if difference <= tolerance
+            ]
+            searched_pairs = [
+                difference
+                for difference in searched_differences
+                if difference <= tolerance
+            ]
+            selected_queries = sum(
+                any(difference <= tolerance for difference in differences)
+                for _query_id, _precursor_mz, differences in query_records
+            )
+            searched_queries = sum(
+                any(difference <= tolerance for difference in differences)
+                for _query_id, _precursor_mz, differences in searched_records
+            )
+            tolerances[f"{tolerance:.2f}_Da"] = {
+                "selected_true_reference_pairs_in_window": len(selected_pairs),
+                "selected_queries_with_any_truth_pair_in_window": selected_queries,
+                "searched_true_reference_pairs_in_window": len(searched_pairs),
+                "searched_queries_with_any_truth_pair_in_window": searched_queries,
+            }
+        report["by_source"][source] = {
+            "selected_queries": len(query_records),
+            "searched_queries": len(searched_records),
+            "selected_truth_pairs": summarize(all_differences),
+            "searched_truth_pairs": summarize(searched_differences),
+            "tolerances": tolerances,
+            "missing_query_precursor_count": missing_query_precursors.get(source, 0),
+            "missing_truth_reference_precursor_count": missing_reference_precursors.get(
+                source, 0
+            ),
+        }
+    return report
 
 
 # ---------------------------------------------------------------------------
@@ -407,6 +670,7 @@ def write_config(
     name: str,
     ms1_tolerance: float = 0.02,
     ms2_tolerance: float = 0.02,
+    min_query_peaks: int = 3,
 ) -> Path:
     import yaml  # noqa: PLC0415
 
@@ -421,7 +685,7 @@ def write_config(
             "clean_metadata": True,
             "normalize_intensity": True,
             "filter_min_peaks": True,
-            "min_peaks": 3,
+            "min_peaks": min_query_peaks,
             "decoy_min_relative_intensity": 0.01,
             "decoy_mz_shift_da": 1.0,
         },
@@ -432,6 +696,7 @@ def write_config(
             "min_score": min_score,
             "min_matched_peaks": min_matched_peaks,
             "fdr_threshold": fdr,
+            "collect_retrieval_diagnostics": True,
         },
         "export": {"format": "csv"},
     }
@@ -451,6 +716,7 @@ def run_cli(config: Path, run_dir: Path) -> dict[str, Any]:
             "import sys; from MassFlow.cli import main; sys.exit(main())",
         ]
     )
+    started = time.perf_counter()
     proc = subprocess.run(
         cmd + ["annotate", "--config", str(config)],
         cwd=REPO_ROOT,
@@ -458,11 +724,13 @@ def run_cli(config: Path, run_dir: Path) -> dict[str, Any]:
         text=True,
         timeout=14400,
     )
+    wall_time_seconds = time.perf_counter() - started
     csvs = sorted(run_dir.rglob("*_results.csv")) if run_dir.exists() else []
     return {
         "exit_code": proc.returncode,
         "results_csv": str(csvs[0]) if csvs else None,
         "stdout_tail": proc.stdout[-1500:],
+        "wall_time_seconds": wall_time_seconds,
     }
 
 
@@ -482,143 +750,85 @@ def evaluate_real(
     score_thresholds: Iterable[float] = (0.0,),
     q_thresholds: Iterable[float] = (float("inf"),),
     min_matched_peaks: int = 1,
+    min_query_peaks: int = 3,
 ) -> dict[str, Any]:
-    """Top-1 + weighted P/R/F1 with InChIKey connectivity as the label.
-
-    ``q_thresholds=inf`` means "ignore the q column", which is what a single
-    permissive run wants: the score sweep then shows where the pipeline should
-    be operated instead of us guessing a threshold up front.
-
-    ``min_matched_peaks`` is applied at evaluation time so two engines run at
-    different CLI gates can still be compared at one common operating point.
-    """
-    from sklearn.metrics import accuracy_score, precision_recall_fscore_support
-
+    """Evaluate retrieval and ranking from the complete exported query table."""
     ref_col = _col(rows, "reference_name")
-    query_col = _col(rows, "query_id")
+    query_col = _col(rows, "query_id", "query")
     score_col = _col(rows, "score")
-    q_col = _col(rows, "q_value")
+    identity_col = _col(rows, "inchikey", "connectivity")
     if not query_col:
-        raise RuntimeError(
-            f"no query column in results: {list(rows[0]) if rows else 'no rows'}"
-        )
-    if not (ref_col and score_col):
-        # The pipeline exported only no-hit placeholder rows: no candidate passed
-        # the configured gates. That is a result, not a harness failure.
-        return {
-            "n_rows": 0,
-            "n_queries": len(labels),
-            "hits_passed_gates": 0,
-            "top1_accuracy_connectivity": 0.0,
-            "precision_weighted": 0.0,
-            "recall_weighted": 0.0,
-            "f1_weighted": 0.0,
-            "f1_micro": 0.0,
-            "multi_candidate_queries": 0,
-            "multi_candidate_top1_accuracy": None,
-            "note": "no candidate pair passed min_score/min_matched_peaks for any query",
-        }
-    assert ref_col and query_col and score_col
-
-    lib_of = {q: set(v["true_lib_records"]) for q, v in labels.items()}
-    conn_of = {q: v["connectivity"] for q, v in labels.items()}
-
-    # Annotated so the heterogeneous literal is typed Any-valued: without this
-    # mypy widens the dict to dict[str, object] and every arithmetic use of a
-    # field fails.
-    parsed: list[dict[str, Any]] = [
-        {
-            "query": str(r[query_col]),
-            "ref": str(r[ref_col]),
-            "score": float(r[score_col]),
-            "peaks": int(float(r["matched_peaks"])) if r.get("matched_peaks") else 0,
-            "q": float(r[q_col]) if q_col and r.get(q_col) else float("nan"),
-        }
-        for r in rows
-        if r.get(ref_col)
-    ]
-    parsed = [p for p in parsed if p["peaks"] >= min_matched_peaks]
-    if not parsed:
-        return {
-            "n_rows": 0,
-            "n_queries": len(labels),
-            "hits_passed_gates": 0,
-            "top1_accuracy_connectivity": 0.0,
-            "precision_weighted": 0.0,
-            "recall_weighted": 0.0,
-            "f1_weighted": 0.0,
-            "f1_micro": 0.0,
-            "multi_candidate_queries": 0,
-            "multi_candidate_top1_accuracy": None,
-            "sweep": [],
-            "note": "no candidate pair passed min_score/min_matched_peaks for any query",
-        }
-
+        raise RuntimeError("results are missing the query_id column")
+    if not rows:
+        raise RuntimeError("results CSV contains no query accounting rows")
+    accounting_rows = rows
+    base_metrics = evaluate_query_retrieval(
+        labels,
+        accounting_rows,
+        min_query_peaks=min_query_peaks,
+        min_score=0.0,
+        min_matched_peaks=min_matched_peaks,
+    )
+    candidate_rows = [row for row in rows if ref_col and row.get(ref_col)]
+    if candidate_rows and (ref_col is None or score_col is None):
+        raise RuntimeError("candidate rows require reference_name and score columns")
+    if candidate_rows:
+        assert ref_col is not None and score_col is not None
     hits_by_query: dict[str, list[dict[str, Any]]] = {}
-    for p in parsed:
-        hits_by_query.setdefault(p["query"], []).append(p)
-    # NB: bound as `hit_list`, not `v`: mypy types the whole function scope, and
-    # reusing `v` below for a label dict would inherit this list type.
-    for hit_list in hits_by_query.values():
-        hit_list.sort(key=lambda p: -p["score"])
-
-    out: dict[str, Any] = {"n_rows": len(parsed), "n_queries": len(labels), "sweep": []}
-    best: Optional[dict[str, Any]] = None
-
-    for tau in score_thresholds:
-        for alpha in q_thresholds:
-            y_true: list[str] = []
-            y_pred: list[str] = []
-            multi_true = multi_correct = n_called = 0
-            for qid in sorted(labels):
-                hits = [
-                    h
-                    for h in hits_by_query.get(qid, [])
-                    if h["score"] >= tau and (alpha == float("inf") or h["q"] <= alpha)
-                ]
-                y_true.append(conn_of[qid])
-                if not hits:
-                    y_pred.append("NO_CALL")
-                    continue
-                n_called += 1
-                top = hits[0]
-                correct = top["ref"] in lib_of[qid]
-                y_pred.append(conn_of[qid] if correct else f"WRONG:{top['ref']}")
-                if len({h["ref"] for h in hits}) > 1:
-                    multi_true += 1
-                    multi_correct += int(correct)
-
-            acc = float(accuracy_score(y_true, y_pred))
-            p_w, r_w, f_w, _ = precision_recall_fscore_support(
-                y_true, y_pred, average="weighted", zero_division=0
-            )  # type: ignore[arg-type]
-            _, _, f_mi, _ = precision_recall_fscore_support(
-                y_true, y_pred, average="micro", zero_division=0
-            )  # type: ignore[arg-type]
-            row: dict[str, Any] = {
-                "min_score": tau,
-                "q_threshold": None if alpha == float("inf") else alpha,
-                "queries_called": n_called,
-                "top1_accuracy_connectivity": acc,
-                "precision_weighted": float(p_w),
-                "recall_weighted": float(r_w),
-                "f1_weighted": float(f_w),
-                "f1_micro": float(f_mi),
-                "multi_candidate_queries": multi_true,
-                "multi_candidate_top1_accuracy": (
-                    multi_correct / multi_true if multi_true else None
-                ),
+    for row in candidate_rows:
+        if ref_col is None or score_col is None:
+            raise RuntimeError(
+                "candidate rows require reference_name and score columns"
+            )
+        query_id = str(row[query_col])
+        raw_identity = row.get(identity_col) if identity_col else None
+        identity = (
+            str(raw_identity).split("-")[0]
+            if raw_identity not in (None, "")
+            else str(row[ref_col])
+        )
+        hits_by_query.setdefault(query_id, []).append(
+            {
+                "ref": str(row[ref_col]),
+                "identity": identity,
+                "score": float(row[score_col]) if score_col else 0.0,
             }
-            out["sweep"].append(row)
-            if best is None or row["f1_weighted"] > best["f1_weighted"]:
-                best = row
+        )
+    for hit_list in hits_by_query.values():
+        hit_list.sort(key=lambda hit: (-hit["score"], hit["identity"], hit["ref"]))
 
-    out["best_f1_operating_point"] = best
+    out: dict[str, Any] = {
+        **base_metrics,
+        "n_rows": base_metrics["candidate_rows_exported"],
+        "n_queries": len(labels),
+        "sweep": [],
+    }
+    for score_threshold in score_thresholds:
+        for q_threshold in q_thresholds:
+            point = evaluate_query_retrieval(
+                labels,
+                accounting_rows,
+                min_query_peaks=min_query_peaks,
+                min_score=score_threshold,
+                q_threshold=q_threshold,
+                min_matched_peaks=min_matched_peaks,
+            )
+            out["sweep"].append(
+                {
+                    "min_score": score_threshold,
+                    "q_threshold": None if q_threshold == float("inf") else q_threshold,
+                    **point["query_counts"],
+                    **point["metrics"],
+                }
+            )
 
     # Ranking funnel: separates the two ways a query can fail. "The true
     # compound was never a candidate" is a gating/prefilter problem; "it was a
     # candidate but ranked below something else" is a scoring/ranking problem.
     # Without this split, a low top-1 number says nothing about which to fix.
+    lib_of = {
+        query_id: set(value["true_lib_records"]) for query_id, value in labels.items()
+    }
     funnel: dict[str, Any] = {
         "queries": len(labels),
         "with_any_candidate": 0,
@@ -633,8 +843,14 @@ def evaluate_real(
         if not hits:
             continue
         funnel["with_any_candidate"] += 1
+        truth_connectivity = str(labels[qid].get("connectivity", ""))
         for rank, h in enumerate(hits, start=1):
-            if h["ref"] in lib_of[qid]:
+            matches = (
+                h["identity"] == truth_connectivity
+                if identity_col is not None and truth_connectivity
+                else h["ref"] in lib_of[qid]
+            )
+            if matches:
                 true_ranks.append(rank)
                 funnel["true_compound_among_candidates"] += 1
                 if rank == 1:
@@ -649,51 +865,70 @@ def evaluate_real(
         else None
     )
 
-    # Per query-source breakdown: LTQ (low-resolution ion trap) and QTOF differ
-    # enough in fragmentation that pooling them hides which source is failing.
-    by_source: dict[str, dict[str, Any]] = {}
-    for qid, v in labels.items():
-        src = str(v.get("source", "unknown"))
-        # NB: named `entry`, not `acc`. `acc` is already bound to the float
-        # accuracy inside the sweep loop above, and mypy types the whole
-        # function scope, so reusing the name makes the dict itself a float.
-        entry = by_source.setdefault(
-            src,
-            {
-                "queries": 0,
-                "with_any_candidate": 0,
-                "true_compound_among_candidates": 0,
-                "true_compound_ranked_first": 0,
-                "top1_accuracy": 0.0,
-                "reachable_fraction": 0.0,
-                "rank1_of_reachable": None,
-            },
-        )
-        entry["queries"] += 1
-        hits = hits_by_query.get(qid, [])
-        if hits:
-            entry["with_any_candidate"] += 1
-        first_rank = None
-        for rank, h in enumerate(hits, start=1):
-            if h["ref"] in lib_of[qid]:
-                first_rank = rank
-                break
-        if first_rank is not None:
-            entry["true_compound_among_candidates"] += 1
-            if first_rank == 1:
-                entry["true_compound_ranked_first"] += 1
-    for entry in by_source.values():
-        n = entry["queries"] or 1
-        entry["top1_accuracy"] = entry["true_compound_ranked_first"] / n
-        entry["reachable_fraction"] = entry["true_compound_among_candidates"] / n
-        if entry["true_compound_among_candidates"]:
-            entry["rank1_of_reachable"] = (
-                entry["true_compound_ranked_first"]
-                / entry["true_compound_among_candidates"]
-            )
-    out["by_source"] = by_source
+    out["by_source"] = base_metrics["by_source"]
     out["ranking_funnel"] = funnel
     return out
+
+
+def _sha256_file(path: Path) -> str:
+    """Hash a prepared input file without loading it entirely into memory."""
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _git_provenance() -> dict[str, Any]:
+    """Return the checkout revision and whether tracked files are modified."""
+    revision = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    status = subprocess.run(
+        ["git", "status", "--porcelain"],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return {
+        "revision": revision.stdout.strip() if revision.returncode == 0 else None,
+        "working_tree_dirty": bool(status.stdout.strip())
+        if status.returncode == 0
+        else None,
+    }
+
+
+def _dataset_fingerprint(workdir: Path, labels: dict[str, Any]) -> str:
+    """Identify the exact normalized library, query file, and selected labels."""
+    identity = {
+        "library_sha256": _sha256_file(workdir / "library.msp"),
+        "queries_sha256": _sha256_file(workdir / "queries.mgf"),
+        "labels": labels,
+    }
+    return hashlib.sha256(
+        json.dumps(identity, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+
+
+def _metadata_counts_by_source(
+    selected_metadata: dict[str, dict[str, Any]], field: str
+) -> dict[str, dict[str, int]]:
+    """Summarize original source metadata without adding it to truth labels."""
+    counts_by_source: dict[str, Counter[str]] = {}
+    for metadata in selected_metadata.values():
+        source = str(metadata.get("source", "unknown"))
+        counts_by_source.setdefault(source, Counter())[
+            str(metadata.get(field) or "unknown")
+        ] += 1
+    return {
+        source: dict(sorted(counts.items()))
+        for source, counts in sorted(counts_by_source.items())
+    }
 
 
 def main(argv: Optional[list[str]] = None) -> int:
@@ -703,6 +938,12 @@ def main(argv: Optional[list[str]] = None) -> int:
     ap.add_argument("--library-file", default=DEFAULT_LIBRARY)
     ap.add_argument("--query-files", nargs="*", default=DEFAULT_QUERIES)
     ap.add_argument("--max-queries", type=int, default=400)
+    ap.add_argument(
+        "--min-query-peaks",
+        type=int,
+        default=3,
+        help="preprocessing gate; rejected selected queries remain in end-to-end denominators",
+    )
     ap.add_argument("--seed", type=int, default=20260921)
     ap.add_argument("--skip-run", action="store_true")
     ap.add_argument(
@@ -755,12 +996,27 @@ def main(argv: Optional[list[str]] = None) -> int:
         default="",
         help="suffix for the run directory, to keep runs side by side",
     )
+    ap.add_argument(
+        "--compare-to",
+        type=Path,
+        default=None,
+        help="compare this report.json to a prior schema-v2 report on the same dataset",
+    )
+    ap.add_argument(
+        "--compare-results-to",
+        type=Path,
+        default=None,
+        help="compare exported query rankings to a previous results CSV",
+    )
     args = ap.parse_args(argv)
 
     print("=" * 80)
-    print("MassFlow real-corpus benchmark (real spectra, InChIKey labels)")
+    print("MassFlow cross-instrument reference-library retrieval benchmark")
     print("=" * 80)
 
+    baseline_report: Optional[dict[str, Any]] = None
+    if args.compare_to is not None:
+        baseline_report = json.loads(args.compare_to.read_text())
     if args.workdir.exists() and not args.keep_data:
         shutil.rmtree(args.workdir)
     labels_file = args.workdir / "labels.json"
@@ -769,6 +1025,20 @@ def main(argv: Optional[list[str]] = None) -> int:
         labels = json.loads(labels_file.read_text())
         stats_file = args.workdir / "stats.json"
         s = json.loads(stats_file.read_text()) if stats_file.exists() else {}
+        if (
+            s.get("report_schema_version") != REPORT_SCHEMA_VERSION
+            or "dataset_fingerprint" not in s
+            or any("peak_count" not in label for label in labels.values())
+        ):
+            raise RuntimeError(
+                "prepared benchmark data predates reporting schema v2; "
+                "rerun without --keep-data"
+            )
+        if s["dataset_fingerprint"] != _dataset_fingerprint(args.workdir, labels):
+            raise RuntimeError(
+                "prepared benchmark inputs no longer match stats.json; "
+                "rerun without --keep-data"
+            )
         print(f"\n[corpus] reusing prepared dataset in {args.workdir}")
         print(
             f"[library] {s.get('library_records', '?')} real spectra, "
@@ -784,6 +1054,14 @@ def main(argv: Optional[list[str]] = None) -> int:
             query_files=args.query_files,
             max_queries=args.max_queries,
             seed=args.seed,
+        )
+        if any("peak_count" not in label for label in built["labels"].values()):
+            raise RuntimeError("prepared query labels are missing peak_count")
+        built["stats"]["report_schema_version"] = REPORT_SCHEMA_VERSION
+        built["stats"]["library_sha256"] = _sha256_file(args.workdir / "library.msp")
+        built["stats"]["queries_sha256"] = _sha256_file(args.workdir / "queries.mgf")
+        built["stats"]["dataset_fingerprint"] = _dataset_fingerprint(
+            args.workdir, built["labels"]
         )
         (args.workdir / "stats.json").write_text(
             json.dumps(built["stats"], indent=2, default=str)
@@ -813,9 +1091,58 @@ def main(argv: Optional[list[str]] = None) -> int:
                 f"{st['rejected_no_inchikey']} no InChIKey -> {st['selected']} used"
             )
 
-    results: dict[str, Any] = {"dataset": s, "runs": {}}
+    results: dict[str, Any] = {
+        "schema_version": REPORT_SCHEMA_VERSION,
+        "dataset": s,
+        "dataset_fingerprint": s["dataset_fingerprint"],
+        "runtime": {
+            "platform_system": platform.system(),
+            "platform_machine": platform.machine(),
+            "python_version": sys.version.split()[0],
+            "git": _git_provenance(),
+        },
+        "truth_precursor_eligibility_audit": audit_truth_precursor_eligibility(
+            labels, s, min_query_peaks=args.min_query_peaks
+        ),
+        "source_metadata_audit": {
+            "normalized_query_writer": {
+                "ionmode": "Positive",
+                "charge": 1,
+                "adduct_emitted": False,
+            },
+            "raw_query_ion_mode_counts_by_source": _metadata_counts_by_source(
+                s.get("selected_source_metadata", {}), "ion_mode"
+            ),
+            "raw_query_precursor_type_counts_by_source": _metadata_counts_by_source(
+                s.get("selected_source_metadata", {}), "precursor_type"
+            ),
+            "raw_query_adduct_counts_by_source": _metadata_counts_by_source(
+                s.get("selected_source_metadata", {}), "adduct"
+            ),
+            "raw_query_charge_counts_by_source": _metadata_counts_by_source(
+                s.get("selected_source_metadata", {}), "charge"
+            ),
+            "reference_source_metadata_counts": s.get(
+                "library_source_metadata_counts", {}
+            ),
+            "truth_pair_raw_ion_mode_cross_tab": s.get(
+                "truth_pair_source_ion_mode_cross_tab", {}
+            ),
+            "truth_pair_raw_precursor_type_cross_tab": s.get(
+                "truth_pair_source_precursor_type_cross_tab", {}
+            ),
+            "selected_query_metadata": s.get("selected_source_metadata", {}),
+            "interpretation": (
+                "The normalized benchmark inputs do not preserve source ion mode, "
+                "charge, or precursor-type metadata; polarity/adduct eligibility "
+                "in the MassFlow search therefore cannot explain these benchmark calls."
+            ),
+        },
+        "runs": {},
+    }
     for algorithm in args.algorithms:
         name = f"real_{algorithm}{args.run_tag}"
+        run_config_path = args.workdir / f"config_{name}.yaml"
         if args.skip_run:
             run: dict[str, Any] = {"exit_code": 0, "results_csv": None}
         else:
@@ -828,6 +1155,7 @@ def main(argv: Optional[list[str]] = None) -> int:
                 name,
                 args.ms1_tolerance,
                 args.ms2_tolerance,
+                args.min_query_peaks,
             )
             print(
                 f"\n[run] {algorithm} over {s.get('library_records', '?')} references "
@@ -835,6 +1163,7 @@ def main(argv: Optional[list[str]] = None) -> int:
                 f"q<={args.fdr_threshold}) …",
                 flush=True,
             )
+            run_config_path = cfg
             run = run_cli(cfg, args.workdir / name)
             print(f"      exit_code={run['exit_code']}")
         csvs = [Path(run["results_csv"])] if run.get("results_csv") else []
@@ -849,34 +1178,88 @@ def main(argv: Optional[list[str]] = None) -> int:
         metrics = evaluate_real(
             rows,
             labels,
-            score_thresholds=args.sweep_scores or (0.0,),
+            score_thresholds=args.sweep_scores or (args.min_score,),
             q_thresholds=args.sweep_q or (float("inf"),),
+            min_matched_peaks=args.min_matched_peaks,
+            min_query_peaks=args.min_query_peaks,
         )
-        results["runs"][name] = metrics
-        if metrics.get("hits_passed_gates") == 0 and metrics["n_rows"] == 0:
-            print(f"      {metrics['note']}")
-            continue
-        print(f"      rows={metrics['n_rows']} queries={metrics['n_queries']}")
+        metrics.update(
+            {
+                "algorithm": algorithm,
+                "exit_code": run.get("exit_code"),
+                "wall_time_seconds": run.get("wall_time_seconds"),
+                "configuration": {
+                    "min_score": args.min_score,
+                    "min_matched_peaks": args.min_matched_peaks,
+                    "fdr_threshold": args.fdr_threshold,
+                    "ms1_tolerance": args.ms1_tolerance,
+                    "ms2_tolerance": args.ms2_tolerance,
+                    "min_query_peaks": args.min_query_peaks,
+                },
+            }
+        )
+        diagnostics_payload: dict[str, Any] = {
+            "status": "unavailable",
+            "reason": "diagnostic JSON was not produced by the annotation run",
+        }
+        truth_attribution: dict[str, Any] = {
+            "status": "unavailable",
+            "reason": "run output or prepared library store was unavailable",
+        }
+        if csvs:
+            diagnostic_path = csvs[0].with_name(f"{csvs[0].stem}.diagnostics.json")
+            if diagnostic_path.is_file():
+                diagnostics_payload = json.loads(diagnostic_path.read_text())
+            prepared_library_path = csvs[0].parent / "library_library.db"
+            if prepared_library_path.is_file() and run_config_path.is_file():
+                truth_attribution = attribute_truth_candidates(
+                    labels,
+                    rows,
+                    config_path=str(run_config_path),
+                    prepared_library_path=str(prepared_library_path),
+                    run_diagnostics=diagnostics_payload,
+                    identity_endpoint="connectivity",
+                )
+                for query_id, query_attribution in truth_attribution.get(
+                    "by_query", {}
+                ).items():
+                    query_attribution["raw_source_metadata"] = s.get(
+                        "selected_source_metadata", {}
+                    ).get(query_id)
+        metrics["retrieval_diagnostics"] = diagnostics_payload
+        metrics["retrieval_diagnostics_by_source"] = summarize_diagnostics_by_source(
+            labels,
+            diagnostics_payload,
+            min_query_peaks=args.min_query_peaks,
+        )
+        metrics["truth_attribution"] = truth_attribution
+        if args.compare_results_to is not None:
+            with args.compare_results_to.open(newline="") as baseline_file:
+                baseline_rows = [dict(row) for row in _csv.DictReader(baseline_file)]
+            metrics["result_comparison_to_baseline"] = {
+                "baseline_csv_name": args.compare_results_to.name,
+                "baseline_csv_sha256": _sha256_file(args.compare_results_to),
+                **compare_result_rows(baseline_rows, rows),
+            }
+        results["runs"][algorithm] = metrics
         print(
-            f"      {'min_score':>9} {'called':>7} {'top1':>7} {'prec':>7} "
-            f"{'recall':>7} {'wF1':>7} {'multi':>6} {'multi_top1':>10}"
+            f"      candidate_rows_exported={metrics['candidate_rows_exported']} "
+            f"selected={metrics['query_counts']['selected']} "
+            f"searched={metrics['query_counts']['searched']}"
+        )
+        print(
+            f"      {'min_score':>9} {'calls':>7} {'coverage':>9} "
+            f"{'top1/all':>9} {'top1/searched':>14} {'accepted_acc':>13}"
         )
         for row in metrics["sweep"]:
-            mca = row["multi_candidate_top1_accuracy"]
+            conditional_accuracy = row["conditional_top1_accuracy"]
+            accepted_accuracy = row["accepted_call_accuracy"]
             print(
-                f"      {row['min_score']:>9.2f} {row['queries_called']:>7} "
-                f"{row['top1_accuracy_connectivity']:>7.4f} "
-                f"{row['precision_weighted']:>7.4f} {row['recall_weighted']:>7.4f} "
-                f"{row['f1_weighted']:>7.4f} {row['multi_candidate_queries']:>6} "
-                f"{(f'{mca:.4f}' if mca is not None else 'n/a'):>10}"
-            )
-        best = metrics.get("best_f1_operating_point")
-        if best:
-            print(
-                f"      best weighted F1: {best['f1_weighted']:.4f} at "
-                f"min_score={best['min_score']:.2f} "
-                f"(top-1 {best['top1_accuracy_connectivity']:.4f}, "
-                f"{best['queries_called']}/{metrics['n_queries']} called)"
+                f"      {row['min_score']:>9.2f} {row['with_candidate']:>7} "
+                f"{row['call_coverage_selected']:>9.4f} "
+                f"{row['end_to_end_top1_accuracy']:>9.4f} "
+                f"{(f'{conditional_accuracy:.4f}' if conditional_accuracy is not None else 'n/a'):>14} "
+                f"{(f'{accepted_accuracy:.4f}' if accepted_accuracy is not None else 'n/a'):>13}"
             )
         f = metrics.get("ranking_funnel")
         if f:
@@ -892,6 +1275,10 @@ def main(argv: Optional[list[str]] = None) -> int:
             )
 
     out = args.workdir / "report.json"
+    if baseline_report is not None:
+        results["comparison_to_baseline"] = compare_benchmark_reports(
+            baseline_report, results
+        )
     out.write_text(json.dumps(results, indent=2, default=str))
     print(f"\nWrote {out}")
     return 0

@@ -1,0 +1,215 @@
+{
+  "application_commit": "4dab3c2bd0462adaec0031de4a7265839898db05",
+  "artifacts": {
+    "inventory.json": {
+      "bytes": 3117738,
+      "sha256": "3263a6b65864ae422f8c582376b3f266be2ed02b3ba6acc7cc30e2b8d1de92f0"
+    },
+    "leakage.json": {
+      "bytes": 32373,
+      "sha256": "d8fd86207146b84e40db7b48787eefe4a9647c5373820fb593b2cd2864239296"
+    },
+    "mixed-cosine/candidates.jsonl": {
+      "bytes": 52666,
+      "sha256": "d84a223751a947a27942914aedb87f0c212424310e0018646e46c9f7d5d50d9b"
+    },
+    "mixed-cosine/effective_config.json": {
+      "bytes": 2700,
+      "sha256": "968b41c65b2b6b3c56191f36a964b25768643f16b83f8d9113713225a56a439c"
+    },
+    "mixed-cosine/library.msp": {
+      "bytes": 7164436,
+      "sha256": "4fc86937144cb22c8bb7f0d5465d6faba4bc841e14be88f208866ffa90e55e13"
+    },
+    "mixed-cosine/native/library_library.db": {
+      "bytes": 9080832,
+      "sha256": "cb3db62634d4048dc1e71304f51c1d6d12bacde2fc0429e75585c0092d3ce43a"
+    },
+    "mixed-cosine/native/library_library.db.meta.json": {
+      "bytes": 278,
+      "sha256": "f12184dfc46ad2a7187b103759f6a8c2e03a2ad6139974cb5d1098a102f06857"
+    },
+    "mixed-cosine/native/query_results.csv": {
+      "bytes": 24609,
+      "sha256": "eeeef5f93e9c803f8dd4f8aa039353966c1fcb7041a9e73091aa1bd4566a5d82"
+    },
+    "mixed-cosine/native/query_results.report.yaml": {
+      "bytes": 6351,
+      "sha256": "64962f6191998499a42cfa2bfbbc823ee342679e1198ec838a23e86521e442a0"
+    },
+    "mixed-cosine/native/run_provenance.json": {
+      "bytes": 7740,
+      "sha256": "0f78df79605cb5d5e7678f3f2386ea7c40ed8f8b9147f82d23f62413617ebb6d"
+    },
+    "mixed-cosine/queries.jsonl": {
+      "bytes": 40345,
+      "sha256": "46a5a0a49502ea30e42834aa1d3f3a7586623b58b5adc4acf34b9cc8f4798744"
+    },
+    "mixed-cosine/query.mgf": {
+      "bytes": 38395,
+      "sha256": "1479926a7b9d3ab9964e688e7f5129d83af64b2b789716f50a36bb2dcb17989a"
+    },
+    "mixed-cosine/references.jsonl": {
+      "bytes": 8930901,
+      "sha256": "4814e4817affd8b0b063cc8efa8c417101a7fdc0533d0ad74fd781e157b49c20"
+    },
+    "mixed-cosine/result.json": {
+      "bytes": 207981,
+      "sha256": "4081bead00bd6fc880168a27e756e2922926e96be9b8a0c28bfa0b8e67948ab4"
+    },
+    "mixed-modified_cosine/candidates.jsonl": {
+      "bytes": 1440480,
+      "sha256": "0d55bcbb3a99f186abf673447be523f68edaf1e58e9e216e22074af5b9ae02cd"
+    },
+    "mixed-modified_cosine/effective_config.json": {
+      "bytes": 2745,
+      "sha256": "e67a468480639606aa7919286427bc308f507caba498c6f214177fac546833b4"
+    },
+    "mixed-modified_cosine/library.msp": {
+      "bytes": 7164436,
+      "sha256": "4fc86937144cb22c8bb7f0d5465d6faba4bc841e14be88f208866ffa90e55e13"
+    },
+    "mixed-modified_cosine/native/library_library.db": {
+      "bytes": 9080832,
+      "sha256": "b4166fb9da58354787678dbb3cb0210bd0e1017e339e4c5b17d4e759dbd200aa"
+    },
+    "mixed-modified_cosine/native/library_library.db.meta.json": {
+      "bytes": 287,
+      "sha256": "f73056eb91181ba3e5165cb510fdc079d0fc35020bfdf388eeb0cb62d08be863"
+    },
+    "mixed-modified_cosine/native/query_results.csv": {
+      "bytes": 577604,
+      "sha256": "f28d2dade0f794abbb210984e2b7638d6807071cc3baba27c402566e5ca2fedc"
+    },
+    "mixed-modified_cosine/native/query_results.report.yaml": {
+      "bytes": 6107,
+      "sha256": "7994654d70426258bde4346a4ccbcc28c9a5478f65c58f167a3247c3a59cbb43"
+    },
+    "mixed-modified_cosine/native/run_provenance.json": {
+      "bytes": 7428,
+      "sha256": "5af4a0d2e60b203f55fdf84f1352491f7dfddf9f368f211c49121d16e4bc00db"
+    },
+    "mixed-modified_cosine/queries.jsonl": {
+      "bytes": 40345,
+      "sha256": "46a5a0a49502ea30e42834aa1d3f3a7586623b58b5adc4acf34b9cc8f4798744"
+    },
+    "mixed-modified_cosine/query.mgf": {
+      "bytes": 38395,
+      "sha256": "1479926a7b9d3ab9964e688e7f5129d83af64b2b789716f50a36bb2dcb17989a"
+    },
+    "mixed-modified_cosine/references.jsonl": {
+      "bytes": 8930901,
+      "sha256": "4814e4817affd8b0b063cc8efa8c417101a7fdc0533d0ad74fd781e157b49c20"
+    },
+    "mixed-modified_cosine/result.json": {
+      "bytes": 214112,
+      "sha256": "a9a8ff58cf4c73759d01cd6e43058d51a8fd4c8b9b298616166cd206e0282fb2"
+    },
+    "present-cosine/candidates.jsonl": {
+      "bytes": 120027,
+      "sha256": "cb77e8ab5532879c31391161c17ab720905c6eb9b40462bfe64c647d519cd4b7"
+    },
+    "present-cosine/effective_config.json": {
+      "bytes": 2708,
+      "sha256": "5af22b065dfce8fa4bb520a227fcca8103e70457385ebf7ce13339651de1c4ac"
+    },
+    "present-cosine/library.msp": {
+      "bytes": 7748134,
+      "sha256": "87f72b3bc2a0e66c5e1d735cf10f02344621a8ba6020ca900d805c4c530df310"
+    },
+    "present-cosine/native/library_library.db": {
+      "bytes": 9826304,
+      "sha256": "472fdce23ab23225fddee910a7f0a52f3494122629deb3f9540d062a029595b6"
+    },
+    "present-cosine/native/library_library.db.meta.json": {
+      "bytes": 280,
+      "sha256": "4ac492f6106d32d04be4841483254bd9684e9857c37e0602d32a8dcdbf2829eb"
+    },
+    "present-cosine/native/query_results.csv": {
+      "bytes": 50945,
+      "sha256": "6bc3128e5eca7fc82c165d748096478a913e6874b40ed1b682b7f76118c1d084"
+    },
+    "present-cosine/native/query_results.report.yaml": {
+      "bytes": 6371,
+      "sha256": "885a064974b4177e40a35278f1f9ae78fd2c89f0cf54d2aaf5f4ec2de2d30977"
+    },
+    "present-cosine/native/run_provenance.json": {
+      "bytes": 7752,
+      "sha256": "1f74a56642b7629c856af1cec5feb6badf9ca4744580d5c01f3cbb4fcc7dfa48"
+    },
+    "present-cosine/queries.jsonl": {
+      "bytes": 40295,
+      "sha256": "2bb3f47dbd2fc5e8b53bf973ec7e720ef973befb9674c442fa95a4e17a1cd7be"
+    },
+    "present-cosine/query.mgf": {
+      "bytes": 38395,
+      "sha256": "1479926a7b9d3ab9964e688e7f5129d83af64b2b789716f50a36bb2dcb17989a"
+    },
+    "present-cosine/references.jsonl": {
+      "bytes": 9731424,
+      "sha256": "b348b9b6bddc794d7d7d5a7c63a900870ab159d62bf8bc8b97088ae9bf1bfbbf"
+    },
+    "present-cosine/result.json": {
+      "bytes": 209932,
+      "sha256": "48d86f123a27c8286b579b8a389a85636348cc000bffbead8349fb2839db40e0"
+    },
+    "present-modified_cosine/candidates.jsonl": {
+      "bytes": 1698121,
+      "sha256": "ba8671875ae702add3db818a19c7d89efa7d3a112a851f85b8239d1709ec0861"
+    },
+    "present-modified_cosine/effective_config.json": {
+      "bytes": 2753,
+      "sha256": "45b4227e7d01e9d692ad21c432e0cc8b1d90d9a703d4adde935110cd047847f7"
+    },
+    "present-modified_cosine/library.msp": {
+      "bytes": 7748134,
+      "sha256": "87f72b3bc2a0e66c5e1d735cf10f02344621a8ba6020ca900d805c4c530df310"
+    },
+    "present-modified_cosine/native/library_library.db": {
+      "bytes": 9826304,
+      "sha256": "d6d2cb35367920d054a7e7e7672d8e7696d0556693b2aeb5f9d22c59f1c1b3b6"
+    },
+    "present-modified_cosine/native/library_library.db.meta.json": {
+      "bytes": 289,
+      "sha256": "1b8e54ea84022aad046511d3d0ca6cb99e904ab44ba2596432a800a348093ec6"
+    },
+    "present-modified_cosine/native/query_results.csv": {
+      "bytes": 681005,
+      "sha256": "b6221b5363e19fefb9ccb3e0f493df1ed4cc766fbd4c3e0d43789af24084ab93"
+    },
+    "present-modified_cosine/native/query_results.report.yaml": {
+      "bytes": 6127,
+      "sha256": "99c9c94d7be35fe123a611a9f0058b180e1f4c3abeffb3c89873021566fb5bbb"
+    },
+    "present-modified_cosine/native/run_provenance.json": {
+      "bytes": 7440,
+      "sha256": "cfe06bfb0217430230632e1092ca3b2c3df3cc3b2aeb9f5a8e465ad4d1bc7308"
+    },
+    "present-modified_cosine/queries.jsonl": {
+      "bytes": 40295,
+      "sha256": "2bb3f47dbd2fc5e8b53bf973ec7e720ef973befb9674c442fa95a4e17a1cd7be"
+    },
+    "present-modified_cosine/query.mgf": {
+      "bytes": 38395,
+      "sha256": "1479926a7b9d3ab9964e688e7f5129d83af64b2b789716f50a36bb2dcb17989a"
+    },
+    "present-modified_cosine/references.jsonl": {
+      "bytes": 9731424,
+      "sha256": "b348b9b6bddc794d7d7d5a7c63a900870ab159d62bf8bc8b97088ae9bf1bfbbf"
+    },
+    "present-modified_cosine/result.json": {
+      "bytes": 213652,
+      "sha256": "c04fbd227c5739e22c8fc80085a8f787c0c19a6ea4bd93b5f2ce97392da70ab6"
+    },
+    "summary.json": {
+      "bytes": 962456,
+      "sha256": "3a1f72736ca33d76416bf0489a562d953b8b67b502e399d102a9ca9dc7ff6d1d"
+    }
+  },
+  "comparison_to_prior_diagnostic": "all metric dictionaries identical; timing/environment/accounting expanded",
+  "execution_status": "completed",
+  "manifest_digest": "66e27364488feb3e4dc74a452d964d0240d2763e1d1dd40c94ff33c400410b49",
+  "parameters_digest": "096a6ea137ec010d28c5b657a7225bf57c274cc15fa0e3125166b0b5dd446738",
+  "run_directory": "/Users/ericjanusson/.cache/massflow-validation/runs/ae-v1-clean-4dab3c2",
+  "schema_version": 1
+}

@@ -25,7 +25,7 @@
 | Module | Lines | Tier | Classification / rationale | Boundary |
 | --- | --- | --- | --- | --- |
 | `config.py` | 1140 | **Required** (stable schema) + **deprecated** legacy fields | Strict Pydantic schema (`extra="forbid"`, line-numbered errors, relative-path resolution). Contains the deprecated `SimilarityConfig.tolerance` alias, `ProcessingConfig.precursor_mz`/`retention_time` legacy fields, `SolventConfig` (validated but not consumed by the pipeline), `WorkflowConfig` (empty placeholder kept for `workflow:` YAML compat), and `MassFlowConfig.output_directory` legacy property | Deprecated fields warn or are inert; `tolerance` warns and maps onto `ms2_tolerance`; removal deferred to a schema bump |
-| `io.py` | 520 | **Required** | File-system boundary: loaders (mzML/mzXML/MGF/MSP), validation layer, CSV/mzTab-M exporters, YAML reports, vendor-format rejection | — |
+| `io.py` | 520 | **Required** | File-system boundary: loaders (mzML/mzXML/MGF/MSP), validation layer, CSV exporter and experimental mzTab-shaped exporter, YAML reports, vendor-format rejection | — |
 | `processing.py` | ~500 | **Required** | `matchms`-based metadata/peak pipeline + the strict 5 ppm physical-integrity gate (`physical_integrity_reason`), which consumes the `MassFlow.models` contracts on spectra with declared structural claims | Gate rejections are reported via the optional `rejection_reporter` and the quarantine logger; see CAPABILITY_MATRIX D-8 |
 | `similarity.py` | 3135 | **Required** (classical core) + **experimental** (meta/ML engines) | Required: `SimilarityEngine` (cosine/modified_cosine), MS1 prefilter, `generate_decoys`, `calculate_fdr`, `calibrate_query_level_fdr`, `calculate_empirical_p_values`, `spectral_entropy`, `SearchResult`, `get_similarity_engine` factory. Experimental: `ConsensusEngine`, `CascadeEngine`, `Spec2VecEngine`, `MS2DeepScoreEngine`, `MLRouter`, entry-point discovery, remote-endpoint routing | Experimental engines are flagged by `workflow.experimental_surface_flags` at the run boundary; ML engines raise `RuntimeError` when dependencies are missing (no silent swap); consensus/cascade degrade to classical only with explicit warnings + degraded-mode flags |
 | `workflow.py` | ~1300 | **Required** | Orchestration, per-file failure model (`FileExecutionResult`), provenance, TDC block, worker-owned library backends, library-lineage sidecar payload (`_build_library_provenance`) | Lineage payload attaches to every per-file result and is written into the YAML sidecar (`library:` section); `LibrarySpec` mechanism unchanged |
@@ -37,7 +37,7 @@
 | `protocols.py` | 134 | **Experimental** | `MLEngineProtocol` — contract for the ML satellite boundary | Only consumed by ML engines |
 | `ml_client.py` | 573 | **Experimental** | Remote ML engines (REST/gRPC) + circuit breaker | Only active when `similarity.ml_endpoints` is configured (flagged) |
 | `hnsw.py` | 585 | **Experimental** | HNSW two-channel candidate index (`[hnsw]` extra) | Only active inside `cascade` with `hnsw_enabled=true` (config-validated); flagged |
-| `acceleration.py` | 521 | **Experimental** (as a whole) with a **supported** default-on part | Numba peak/neutral-loss prefilter: default-on for `modified_cosine` but **numerically identical** to the pure-NumPy fallback (identity-tested end-to-end, incl. decoys) — an optimization, not a science change. HNSW spectral binning: experimental | Prefilter falls back to NumPy when numba is absent |
+| `acceleration.py` | 521 | **Experimental** | Numba peak/neutral-loss prefilter: opt-in for `modified_cosine`; disabled by default until exact candidate-domain equivalence is qualified. HNSW spectral binning: experimental approximate retrieval with no recall guarantee | Full scoring is the default; prefilter remains an explicitly experimental path |
 | `convert.py` | 104 | **Experimental** | Thin wrapper around external ProteoWizard `msconvert`; the annotate pipeline rejects vendor formats | CLI help marks it EXPERIMENTAL |
 | `log_config.py` | 103 | **Required** | Structured logging setup | — |
 | `streaming/` (server 1189, engine 734, queue 542) | 2465 | **Experimental** | gRPC streaming server (loopback default, TLS/auth, bounded queue); `stream-server` CLI command | CLI help marks it EXPERIMENTAL; safe-by-default binds/auth |
@@ -49,7 +49,7 @@
 
 | Command | Tier | Notes |
 | --- | --- | --- |
-| `init`, `tutorial`, `annotate` | **Required** | Stable product entry points |
+| `init`, `annotate` | **Required** | Stable product entry points |
 | `db build` / `db inspect` / `db merge` | **Required** | SQLite library workflows |
 | `convert` | **Experimental** | External-tool wrapper (help text marked) |
 | `stream-server` | **Experimental** | gRPC streaming (help text marked) |
@@ -76,7 +76,7 @@ or remote-ML endpoints — an experimental run is never silent.
 
 | Path | Tier | Notes |
 | --- | --- | --- |
-| `scripts/generate_tutorial_data.py` | **Required** | Backs `massflow tutorial` |
+| `scripts/generate_tutorial_data.py` | **Dev tooling** | Source-checkout-only synthetic generator; the unsupported `massflow tutorial` CLI command was removed |
 | `scripts/migrations/0001_peaks_to_arrays.py`, `0002_blobs_to_zarr.py` | **Deprecated tooling** | One-shot migration utilities for legacy (pre-array-schema / BLOB-only) databases; new databases never need them |
 | `scripts/benchmark_*.py`, `scripts/measure_baseline.py` | **Dev tooling** | Opt-in benchmarks; never run by pytest |
 | `scripts/experiments/` | **Research prototypes** | Scratch/exploratory tests; never collected by pytest (`testpaths=["tests"]`) |
@@ -118,7 +118,7 @@ or remote-ML endpoints — an experimental run is never silent.
 3. **HNSW**: `hnsw_enabled` defaults `false`, and config validation rejects `hnsw_enabled` with any engine other than `cascade`.
 4. **Storage**: `storage_backend` defaults `sqlite`; `zarr`/`hybrid` are explicit choices with contract tests.
 5. **Streaming**: loopback bind by default; TLS/`--admin-token`/`--allow-remote-control` required for remote/control-plane use.
-6. **Numba prefilter**: default-on, but numerically identical to the pure-NumPy fallback (identity-tested with decoys); it is an optimization, not a science change.
+6. **Numba prefilter**: opt-in and disabled by default in the restricted candidate-retrieval scope; full scoring is used unless a caller explicitly enables the experimental pruning path.
 7. **Pytest**: default selection runs unit + integration + scientific-validation; `benchmark`/`slow`/`optional` are opt-in; `scripts/experiments/` is never collected.
 
 ### 3.2 Added in this pass

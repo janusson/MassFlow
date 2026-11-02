@@ -248,3 +248,14 @@ def test_convert_general_error(mock_convert, mock_isdir):
         cli.app, ["convert", "--input", "fake_dir", "--output", "out_dir"]
     )
     assert result.exit_code == 1
+
+
+def test_tutorial_command_is_not_installed():
+    """The unsupported tutorial command must not be part of the CLI."""
+    runner = CliRunner()
+    help_result = runner.invoke(cli.app, ["--help"])
+    assert help_result.exit_code == 0
+    assert "tutorial" not in help_result.output.lower()
+
+    result = runner.invoke(cli.app, ["tutorial"])
+    assert result.exit_code != 0

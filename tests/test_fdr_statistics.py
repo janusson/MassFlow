@@ -727,7 +727,9 @@ class TestExecutionModeEquivalence:
         assert config.input.library_path is not None
         library_path = Path(config.input.library_path)
 
-        def mock_load(path, file_format=None, rejection_reporter=None):
+        def mock_load(
+            path, file_format=None, rejection_reporter=None, *, assign_record_ids=False
+        ):
             if Path(path) == library_path:
                 return iter(library)
             return iter([query])

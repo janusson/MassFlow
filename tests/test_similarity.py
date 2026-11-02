@@ -109,14 +109,18 @@ def test_modified_cosine_integration(
     )
     mod_cosine_engine = SimilarityEngine(mod_cosine_config)
 
+    # Direct search APIs require an acquisition record ID on every reference.
+    reference = cocaine_spectrum.clone()
+    reference.set("id", "cocaine-reference")
+
     # Run searches
     cosine_results = cosine_engine.search(
-        query_spectra=[methylene_homolog], reference_spectra=[cocaine_spectrum]
+        query_spectra=[methylene_homolog], reference_spectra=[reference]
     )
     cosine_results = [r for r in cosine_results if not r.get("is_decoy")]
 
     mod_cosine_results = mod_cosine_engine.search(
-        query_spectra=[methylene_homolog], reference_spectra=[cocaine_spectrum]
+        query_spectra=[methylene_homolog], reference_spectra=[reference]
     )
     mod_cosine_results = [r for r in mod_cosine_results if not r.get("is_decoy")]
 
@@ -140,20 +144,24 @@ def test_modified_cosine_integration(
 
 def test_ms1_tolerance_filtering(cocaine_spectrum: Spectrum) -> None:
     """Verify that queries outside the MS1 tolerance are rejected."""
+    # Direct search APIs require an acquisition record ID on every reference.
+    reference = cocaine_spectrum.clone()
+    reference.set("id", "cocaine-reference")
+
     # Create a query with a precursor mz shifted by 20 ppm
     shift_ppm = 20.0
-    precursor_mz = cocaine_spectrum.get("precursor_mz")
+    precursor_mz = reference.get("precursor_mz")
     assert precursor_mz is not None
     orig_precursor = float(precursor_mz)
     shift_da = orig_precursor * (shift_ppm / 1e6)
 
-    new_metadata = cocaine_spectrum.metadata.copy()
+    new_metadata = reference.metadata.copy()
     new_metadata["precursor_mz"] = orig_precursor + shift_da
     new_metadata["id"] = "shifted_ms1"
 
     query_spectrum = Spectrum(
-        mz=cocaine_spectrum.peaks.mz,
-        intensities=cocaine_spectrum.peaks.intensities,
+        mz=reference.peaks.mz,
+        intensities=reference.peaks.intensities,
         metadata=new_metadata,
     )
 
@@ -164,7 +172,7 @@ def test_ms1_tolerance_filtering(cocaine_spectrum: Spectrum) -> None:
     strict_engine = SimilarityEngine(strict_config)
 
     strict_results = strict_engine.search(
-        query_spectra=[query_spectrum], reference_spectra=[cocaine_spectrum]
+        query_spectra=[query_spectrum], reference_spectra=[reference]
     )
     strict_results = [r for r in strict_results if not r.get("is_decoy")]
 
@@ -177,7 +185,7 @@ def test_ms1_tolerance_filtering(cocaine_spectrum: Spectrum) -> None:
     relaxed_engine = SimilarityEngine(relaxed_config)
 
     relaxed_results = relaxed_engine.search(
-        query_spectra=[query_spectrum], reference_spectra=[cocaine_spectrum]
+        query_spectra=[query_spectrum], reference_spectra=[reference]
     )
     relaxed_results = [r for r in relaxed_results if not r.get("is_decoy")]
 

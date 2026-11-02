@@ -867,7 +867,7 @@ class MassFlowStreamingServicer(pb_grpc.MassFlowStreamingServicer):
             spectrum_id=result["spectrum_id"],
             status=result["status"],
             error_message=result.get("error_message", ""),
-            fdr_q_value=result.get("fdr_q_value", 0.0),
+            fdr_q_value=result.get("fdr_q_value", float("nan")),
             top_hits=hits,
         )
 

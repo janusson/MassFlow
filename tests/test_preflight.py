@@ -6,7 +6,7 @@ Contract under test (see docs/user-guide/annotation.md, "Pre-flight
 validation", and ``MassFlow.workflow.preflight_annotation_run``):
 
 * A run whose similarity surface needs missing optional extras (e.g.
-  ``spec2vec`` without ``massflow[ml]``) aborts at pre-flight with the
+  ``spec2vec`` without ``massflow-msms[ml]``) aborts at pre-flight with the
   install instruction — never as a late per-file failure or an opaque worker
   crash after the library store was built.
 * The reference library must be configured, exist, and be a loadable
@@ -430,7 +430,7 @@ def test_missing_ml_engine_aborts_preflight(tmp_path, monkeypatch):
 
     with pytest.raises(RuntimeError, match="machine-learning extras") as excinfo:
         run_annotation_pipeline(config)
-    assert "massflow[ml]" in str(excinfo.value)
+    assert "massflow-msms[ml]" in str(excinfo.value)
     assert not (tmp_path / "results").exists()
 
 
@@ -447,7 +447,7 @@ def test_optional_extra_warnings_meta_engines_without_ml(monkeypatch):
         similarity=SimilarityConfig(algorithm="consensus"),
     )
     warnings = optional_extra_warnings(config)
-    assert any("massflow[ml]" in w for w in warnings)
+    assert any("massflow-msms[ml]" in w for w in warnings)
 
 
 def test_optional_extra_warnings_cascade_hnsw_without_hnswlib(monkeypatch, tmp_path):
@@ -475,7 +475,7 @@ def test_optional_extra_warnings_cascade_hnsw_without_hnswlib(monkeypatch, tmp_p
         similarity=SimilarityConfig(algorithm="cascade", hnsw_enabled=True),
     )
     warnings = optional_extra_warnings(config)
-    assert any("massflow[hnsw]" in w for w in warnings)
+    assert any("massflow-msms[hnsw]" in w for w in warnings)
 
     # Pre-flight itself does not raise for the graceful-degradation case.
     preflight_annotation_run(config)
@@ -554,7 +554,7 @@ def test_cli_annotate_missing_ml_extra_prints_install_fix(tmp_path, monkeypatch)
 
     assert result.exit_code == 1
     assert "machine-learning" in result.output
-    assert "massflow[ml]" in result.output
+    assert "massflow-msms[ml]" in result.output
     assert "fix:" in result.output
     assert "Traceback" not in result.output
     assert not (tmp_path / "results").exists()

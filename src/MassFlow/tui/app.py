@@ -17,7 +17,7 @@ searches) runs in Textual worker threads; the UI stays responsive and every
 failure is captured as a :class:`MassFlow.tui.diagnostics.Problem` rather
 than a traceback vomited over the interface.
 
-Requires the ``tui`` extra: ``pip install massflow[tui]``.
+Requires the ``tui`` extra: ``pip install massflow-msms[tui]``.
 """
 
 from __future__ import annotations

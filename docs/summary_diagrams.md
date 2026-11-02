@@ -22,8 +22,8 @@ graph TD
     Exp[Query Spectrum] --> Clean[Processing Filters]
     Ref[Reference Library] --> Clean
     Clean --> Sim{Similarity Scoring}
-    Sim --> FDR[FDR Filtering]
-    FDR --> Results[Filtered Results]
+    Sim --> FDR[Candidate and Numeric-Estimate Filtering]
+    FDR --> Results[Ranked Candidate Results]
     Results --> CSV[CSV Export]
 ```
 

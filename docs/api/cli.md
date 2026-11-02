@@ -1,8 +1,8 @@
 # Command Line Interface (CLI)
 
 The `MassFlow.cli` module uses the `typer` framework to provide the user-facing
-terminal commands (`tutorial`, `annotate`, `init`, `convert`, `db`, `stream-server`,
-`watch`, `tui`). It handles argument parsing and delegates execution to the
+terminal commands (`annotate`, `init`, `convert`, `db`, `stream-server`, `watch`,
+`tui`). It handles argument parsing and delegates execution to the
 core workflow. (`massflow serve` remains as a deprecated alias for
 `stream-server` and prints a deprecation notice.)
 
@@ -10,7 +10,6 @@ core workflow. (`massflow serve` remains as a deprecated alias for
 
 | Command | Description |
 |---|---|
-| `massflow tutorial` | Generate synthetic tutorial data for evaluating MassFlow locally |
 | `massflow annotate` | Run the end-to-end annotation pipeline |
 | `massflow init` | Create a starter YAML configuration file |
 | `massflow convert` | Convert vendor raw files to mzML via ProteoWizard |
@@ -57,7 +56,7 @@ inputs before any library store is built or any file is searched: required
 files must exist, the reference library must be a loadable open-format/store
 input (vendor raw formats and unknown extensions abort with zero output
 artifacts). For normal annotation, the similarity engine must be constructible
-with the installed optional extras (missing `massflow[ml]` aborts with the install fix instead
+with the installed optional extras (missing `massflow-msms[ml]` aborts with the install fix instead
 of a late worker crash), and optional-extras degradations
 (`consensus`/`cascade` without `[ml]`, `cascade` + `hnsw_enabled` without
 `[hnsw]`) are warned about up-front. Failures print a plain-English `fix:`

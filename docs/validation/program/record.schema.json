@@ -1,0 +1,477 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "record_uid",
+    "source",
+    "chemical_identity",
+    "measurement",
+    "lineage",
+    "rights",
+    "spectral_content",
+    "selection"
+  ],
+  "properties": {
+    "record_uid": {
+      "type": "string",
+      "minLength": 1
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "namespace",
+        "accession",
+        "asset_id",
+        "parser_ordinal",
+        "native_scan",
+        "annotation_revision"
+      ],
+      "properties": {
+        "namespace": {
+          "type": "string",
+          "minLength": 1
+        },
+        "accession": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "asset_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "parser_ordinal": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "native_scan": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "annotation_revision": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "chemical_identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "structure_key",
+        "original_inchikey",
+        "standardized_inchikey",
+        "connectivity_key",
+        "standardization_policy_id",
+        "truth_tier",
+        "truth_evidence"
+      ],
+      "properties": {
+        "structure_key": {
+          "type": "string",
+          "minLength": 1
+        },
+        "original_inchikey": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "standardized_inchikey": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[A-Z]{14}-[A-Z]{10}-[A-Z]$"
+        },
+        "connectivity_key": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[A-Z]{14}$"
+        },
+        "standardization_policy_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "truth_tier": {
+          "enum": [
+            "verified_standard",
+            "repository_asserted",
+            "unknown"
+          ]
+        },
+        "truth_evidence": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "format": "uri"
+          }
+        }
+      }
+    },
+    "measurement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "spectrum_kind",
+        "ms_level",
+        "precursor_mz",
+        "adduct",
+        "charge",
+        "polarity",
+        "instrument_model",
+        "analyzer",
+        "collision_energy_value",
+        "collision_energy_unit",
+        "collision_energy_original",
+        "retention_time_seconds",
+        "spectrum_representation",
+        "ionization_method",
+        "ionization_method_original",
+        "inlet_type"
+      ],
+      "properties": {
+        "spectrum_kind": {
+          "enum": [
+            "experimental_ms2",
+            "experimental_msn",
+            "pseudo_ms2",
+            "consensus",
+            "in_silico",
+            "unknown"
+          ]
+        },
+        "ms_level": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "precursor_mz": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "exclusiveMinimum": 0
+        },
+        "adduct": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "charge": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "polarity": {
+          "enum": [
+            "positive",
+            "negative",
+            "unknown"
+          ]
+        },
+        "instrument_model": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "analyzer": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "collision_energy_value": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "collision_energy_unit": {
+          "enum": [
+            "eV",
+            "NCE",
+            "percent",
+            "other",
+            "unknown"
+          ]
+        },
+        "collision_energy_original": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "retention_time_seconds": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "spectrum_representation": {
+          "enum": [
+            "centroid",
+            "profile",
+            "unknown"
+          ]
+        },
+        "ionization_method": {
+          "enum": [
+            "ESI",
+            "APCI",
+            "APPI",
+            "EI",
+            "MALDI",
+            "other",
+            "unknown"
+          ]
+        },
+        "ionization_method_original": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "inlet_type": {
+          "enum": [
+            "LC",
+            "FIA",
+            "direct_infusion",
+            "GC",
+            "other",
+            "unknown"
+          ]
+        }
+      }
+    },
+    "lineage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "acquisition_group_id",
+        "raw_file_sha256",
+        "laboratory",
+        "sample_or_standard_lot_id",
+        "derivative_parent_uids",
+        "duplicate_component_id",
+        "independence",
+        "independence_evidence"
+      ],
+      "properties": {
+        "acquisition_group_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "raw_file_sha256": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "laboratory": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sample_or_standard_lot_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "derivative_parent_uids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "duplicate_component_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "independence": {
+          "enum": [
+            "verified",
+            "same_acquisition",
+            "unknown"
+          ]
+        },
+        "independence_evidence": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "rights": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "license_id",
+        "attribution",
+        "evidence_urls",
+        "redistribute"
+      ],
+      "properties": {
+        "license_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "attribution": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evidence_urls": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "format": "uri"
+          }
+        },
+        "redistribute": {
+          "enum": [
+            "allowed",
+            "restricted",
+            "unresolved"
+          ]
+        }
+      }
+    },
+    "spectral_content": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "raw_peak_sha256",
+        "normalized_peak_sha256",
+        "peak_count",
+        "hash_policy_id"
+      ],
+      "properties": {
+        "raw_peak_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "normalized_peak_sha256": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "peak_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "hash_policy_id": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "selection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "disposition",
+        "reasons",
+        "split",
+        "roles"
+      ],
+      "properties": {
+        "disposition": {
+          "enum": [
+            "eligible",
+            "excluded",
+            "challenge"
+          ]
+        },
+        "reasons": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "split": {
+          "enum": [
+            "development",
+            "test",
+            "reference_only",
+            "excluded"
+          ]
+        },
+        "roles": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "query",
+              "reference",
+              "background"
+            ]
+          }
+        }
+      }
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MassFlow proposed source-spectrum record row v1",
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "chemical_identity": {
+            "properties": {
+              "truth_tier": {
+                "const": "verified_standard"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "chemical_identity": {
+            "properties": {
+              "truth_evidence": {
+                "minItems": 1
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

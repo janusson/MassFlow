@@ -55,7 +55,7 @@ logger = logging.getLogger(__name__)
 
 _HNSW_INSTALL_MSG = (
     "HNSW-accelerated candidate retrieval requires hnswlib. "
-    "Install it with: pip install massflow[hnsw]"
+    "Install it with: pip install massflow-msms[hnsw]"
 )
 
 try:

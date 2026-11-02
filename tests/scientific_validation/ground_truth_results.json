@@ -74,8 +74,8 @@
         "library_size": 7
       },
       "warnings": [
-        "Small reference library (7 spectra): target-decoy FDR is statistically weak below ~2000 entries; q-values are conservative.",
-        "No decoy hits survived scoring; q-values are uncalibrated (1/N rank bound). FDR claims are not supported for this file. Decoys were generated and scored (42 decoy pairs); the best decoy score was 0.0000, below the configured gates \u2014 no decoy-based false-positive estimate is possible at this configuration."
+        "Small reference library (7 spectra): target-decoy FDR calibration is unvalidated; inspect surviving decoy counts and confidence_state. Library size alone establishes no error bound.",
+        "No decoy hits survived scoring; q-values are uncalibrated (legacy 1/N rank diagnostic). FDR claims are not supported for this file. Decoys were generated and scored (42 decoy pairs); the best decoy score was 0.0000, below the configured gates \u2014 no decoy-based false-positive estimate is possible at this configuration."
       ],
       "degraded_mode_flags": [
         "decoy_null_empty",
@@ -340,8 +340,8 @@
         "library_size": 7
       },
       "warnings": [
-        "Small reference library (7 spectra): target-decoy FDR is statistically weak below ~2000 entries; q-values are conservative.",
-        "No decoy hits survived scoring; q-values are uncalibrated (1/N rank bound). FDR claims are not supported for this file. Decoys were generated and scored (42 decoy pairs); the best decoy score was 0.0000, below the configured gates \u2014 no decoy-based false-positive estimate is possible at this configuration."
+        "Small reference library (7 spectra): target-decoy FDR calibration is unvalidated; inspect surviving decoy counts and confidence_state. Library size alone establishes no error bound.",
+        "No decoy hits survived scoring; q-values are uncalibrated (legacy 1/N rank diagnostic). FDR claims are not supported for this file. Decoys were generated and scored (42 decoy pairs); the best decoy score was 0.0000, below the configured gates \u2014 no decoy-based false-positive estimate is possible at this configuration."
       ],
       "degraded_mode_flags": [
         "decoy_null_empty",
@@ -689,7 +689,7 @@
         "library_size": 7
       },
       "warnings": [
-        "Small reference library (7 spectra): target-decoy FDR is statistically weak below ~2000 entries; q-values are conservative."
+        "Small reference library (7 spectra): target-decoy FDR calibration is unvalidated; inspect surviving decoy counts and confidence_state. Library size alone establishes no error bound."
       ],
       "degraded_mode_flags": [],
       "queries": {
@@ -738,7 +738,7 @@
             "matched_peaks": 4,
             "q_value": 0.16666666666666666,
             "p_value": 0.14285714285714285,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": "{\"cosine\":1.0,\"modified_cosine\":1.0}"
           },
           {
@@ -747,7 +747,7 @@
             "matched_peaks": 4,
             "q_value": 0.16666666666666666,
             "p_value": 0.14285714285714285,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": "{\"cosine\":1.0,\"modified_cosine\":1.0}"
           },
           {
@@ -756,7 +756,7 @@
             "matched_peaks": 4,
             "q_value": 0.16666666666666666,
             "p_value": 0.14285714285714285,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": "{\"cosine\":1.0,\"modified_cosine\":1.0}"
           },
           {
@@ -765,7 +765,7 @@
             "matched_peaks": 2,
             "q_value": 0.16666666666666666,
             "p_value": 0.14285714285714285,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": "{\"cosine\":0.9467702576772113,\"modified_cosine\":0.9467702576772113}"
           },
           {
@@ -774,7 +774,7 @@
             "matched_peaks": 0,
             "q_value": 0.16666666666666666,
             "p_value": 0.14285714285714285,
-            "annotation_status": "Putative",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": "{\"cosine\":0.0,\"modified_cosine\":1.0}"
           },
           {
@@ -783,7 +783,7 @@
             "matched_peaks": 0,
             "q_value": 0.16666666666666666,
             "p_value": 0.14285714285714285,
-            "annotation_status": "Putative",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": "{\"cosine\":0.0,\"modified_cosine\":0.0}"
           }
         ],
@@ -794,7 +794,7 @@
             "matched_peaks": 3,
             "q_value": 0.16666666666666666,
             "p_value": 0.14285714285714285,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": "{\"cosine\":0.9941215181521759,\"modified_cosine\":0.9941215181521759}"
           },
           {
@@ -803,7 +803,7 @@
             "matched_peaks": 3,
             "q_value": 0.16666666666666666,
             "p_value": 0.14285714285714285,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": "{\"cosine\":0.9941215181521759,\"modified_cosine\":0.9941215181521759}"
           },
           {
@@ -812,7 +812,7 @@
             "matched_peaks": 3,
             "q_value": 0.16666666666666666,
             "p_value": 0.14285714285714285,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": "{\"cosine\":0.9941215181521759,\"modified_cosine\":0.9941215181521759}"
           },
           {
@@ -821,7 +821,7 @@
             "matched_peaks": 2,
             "q_value": 0.16666666666666666,
             "p_value": 0.14285714285714285,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": "{\"cosine\":0.9523687400279005,\"modified_cosine\":0.9523687400279005}"
           },
           {
@@ -830,7 +830,7 @@
             "matched_peaks": 0,
             "q_value": 0.16666666666666666,
             "p_value": 0.14285714285714285,
-            "annotation_status": "Putative",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": "{\"cosine\":0.0,\"modified_cosine\":0.9941215181521759}"
           },
           {
@@ -839,7 +839,7 @@
             "matched_peaks": 0,
             "q_value": 0.16666666666666666,
             "p_value": 0.14285714285714285,
-            "annotation_status": "Putative",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": "{\"cosine\":0.0,\"modified_cosine\":0.0}"
           }
         ],
@@ -850,7 +850,7 @@
             "matched_peaks": 0,
             "q_value": 0.16666666666666666,
             "p_value": 0.14285714285714285,
-            "annotation_status": "Putative",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": "{\"cosine\":0.0,\"modified_cosine\":1.0}"
           },
           {
@@ -859,7 +859,7 @@
             "matched_peaks": 0,
             "q_value": 0.16666666666666666,
             "p_value": 0.14285714285714285,
-            "annotation_status": "Putative",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": "{\"cosine\":0.0,\"modified_cosine\":1.0}"
           },
           {
@@ -868,7 +868,7 @@
             "matched_peaks": 0,
             "q_value": 0.16666666666666666,
             "p_value": 0.14285714285714285,
-            "annotation_status": "Putative",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": "{\"cosine\":0.0,\"modified_cosine\":1.0}"
           },
           {
@@ -877,7 +877,7 @@
             "matched_peaks": 0,
             "q_value": 0.16666666666666666,
             "p_value": 0.14285714285714285,
-            "annotation_status": "Putative",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": "{\"cosine\":0.0,\"modified_cosine\":0.9467702576772113}"
           },
           {
@@ -886,7 +886,7 @@
             "matched_peaks": 0,
             "q_value": 0.16666666666666666,
             "p_value": 0.14285714285714285,
-            "annotation_status": "Putative",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": "{\"cosine\":0.0,\"modified_cosine\":0.0}"
           },
           {
@@ -895,7 +895,7 @@
             "matched_peaks": 0,
             "q_value": 0.16666666666666666,
             "p_value": 0.14285714285714285,
-            "annotation_status": "Putative",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": "{\"cosine\":0.0,\"modified_cosine\":0.0}"
           }
         ],
@@ -906,7 +906,7 @@
             "matched_peaks": 2,
             "q_value": 0.16666666666666666,
             "p_value": 0.14285714285714285,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": "{\"cosine\":0.9437569903654319,\"modified_cosine\":0.9437569903654319}"
           },
           {
@@ -915,7 +915,7 @@
             "matched_peaks": 2,
             "q_value": 0.16666666666666666,
             "p_value": 0.14285714285714285,
-            "annotation_status": "Putative",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": "{\"cosine\":0.8935210489529493,\"modified_cosine\":0.8935210489529493}"
           },
           {
@@ -924,7 +924,7 @@
             "matched_peaks": 2,
             "q_value": 0.16666666666666666,
             "p_value": 0.14285714285714285,
-            "annotation_status": "Putative",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": "{\"cosine\":0.8935210489529493,\"modified_cosine\":0.8935210489529493}"
           },
           {
@@ -933,7 +933,7 @@
             "matched_peaks": 2,
             "q_value": 0.16666666666666666,
             "p_value": 0.14285714285714285,
-            "annotation_status": "Putative",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": "{\"cosine\":0.8935210489529493,\"modified_cosine\":0.8935210489529493}"
           },
           {
@@ -942,7 +942,7 @@
             "matched_peaks": 0,
             "q_value": 0.16666666666666666,
             "p_value": 0.14285714285714285,
-            "annotation_status": "Putative",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": "{\"cosine\":0.0,\"modified_cosine\":0.8935210489529493}"
           },
           {
@@ -951,7 +951,7 @@
             "matched_peaks": 0,
             "q_value": 0.16666666666666666,
             "p_value": 0.14285714285714285,
-            "annotation_status": "Putative",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": "{\"cosine\":0.0,\"modified_cosine\":0.0}"
           }
         ],
@@ -962,7 +962,7 @@
             "matched_peaks": 4,
             "q_value": 0.16666666666666666,
             "p_value": 0.14285714285714285,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": "{\"cosine\":0.9996355022735515,\"modified_cosine\":0.9996355022735515}"
           },
           {
@@ -971,7 +971,7 @@
             "matched_peaks": 4,
             "q_value": 0.16666666666666666,
             "p_value": 0.14285714285714285,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": "{\"cosine\":0.9996355022735515,\"modified_cosine\":0.9996355022735515}"
           },
           {
@@ -980,7 +980,7 @@
             "matched_peaks": 4,
             "q_value": 0.16666666666666666,
             "p_value": 0.14285714285714285,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": "{\"cosine\":0.9996355022735515,\"modified_cosine\":0.9996355022735515}"
           },
           {
@@ -989,7 +989,7 @@
             "matched_peaks": 2,
             "q_value": 0.16666666666666666,
             "p_value": 0.14285714285714285,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": "{\"cosine\":0.9464251620708188,\"modified_cosine\":0.9464251620708188}"
           },
           {
@@ -998,7 +998,7 @@
             "matched_peaks": 0,
             "q_value": 0.16666666666666666,
             "p_value": 0.14285714285714285,
-            "annotation_status": "Putative",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": "{\"cosine\":0.0,\"modified_cosine\":0.9996355022735515}"
           },
           {
@@ -1007,7 +1007,7 @@
             "matched_peaks": 0,
             "q_value": 0.16666666666666666,
             "p_value": 0.14285714285714285,
-            "annotation_status": "Putative",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": "{\"cosine\":0.0,\"modified_cosine\":0.0}"
           }
         ],
@@ -1018,7 +1018,7 @@
             "matched_peaks": 2,
             "q_value": 0.16666666666666666,
             "p_value": 0.14285714285714285,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": "{\"cosine\":1.0,\"modified_cosine\":1.0}"
           },
           {
@@ -1027,7 +1027,7 @@
             "matched_peaks": 2,
             "q_value": 0.16666666666666666,
             "p_value": 0.14285714285714285,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": "{\"cosine\":0.9467702576772113,\"modified_cosine\":0.9467702576772113}"
           },
           {
@@ -1036,7 +1036,7 @@
             "matched_peaks": 2,
             "q_value": 0.16666666666666666,
             "p_value": 0.14285714285714285,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": "{\"cosine\":0.9467702576772113,\"modified_cosine\":0.9467702576772113}"
           },
           {
@@ -1045,7 +1045,7 @@
             "matched_peaks": 2,
             "q_value": 0.16666666666666666,
             "p_value": 0.14285714285714285,
-            "annotation_status": "Matched",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": "{\"cosine\":0.9467702576772113,\"modified_cosine\":0.9467702576772113}"
           },
           {
@@ -1054,7 +1054,7 @@
             "matched_peaks": 0,
             "q_value": 0.16666666666666666,
             "p_value": 0.14285714285714285,
-            "annotation_status": "Putative",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": "{\"cosine\":0.0,\"modified_cosine\":0.9467702576772113}"
           },
           {
@@ -1063,7 +1063,7 @@
             "matched_peaks": 0,
             "q_value": 0.16666666666666666,
             "p_value": 0.14285714285714285,
-            "annotation_status": "Putative",
+            "annotation_status": "Uncalibrated",
             "score_breakdown": "{\"cosine\":0.0,\"modified_cosine\":0.0}"
           }
         ]
@@ -1099,8 +1099,8 @@
         "library_size": 7
       },
       "warnings": [
-        "Small reference library (7 spectra): target-decoy FDR is statistically weak below ~2000 entries; q-values are conservative.",
-        "No decoy hits survived scoring; q-values are uncalibrated (1/N rank bound). FDR claims are not supported for this file. The configured engine does not report decoy-side search statistics; decoys are generated and scored through its internal pipeline."
+        "Small reference library (7 spectra): target-decoy FDR calibration is unvalidated; inspect surviving decoy counts and confidence_state. Library size alone establishes no error bound.",
+        "No decoy hits survived scoring; q-values are uncalibrated (legacy 1/N rank diagnostic). FDR claims are not supported for this file. The configured engine does not report decoy-side search statistics; decoys are generated and scored through its internal pipeline."
       ],
       "degraded_mode_flags": [
         "fdr_uncalibrated"
@@ -1447,8 +1447,8 @@
         "library_size": 7
       },
       "warnings": [
-        "Small reference library (7 spectra): target-decoy FDR is statistically weak below ~2000 entries; q-values are conservative.",
-        "No decoy hits survived scoring; q-values are uncalibrated (1/N rank bound). FDR claims are not supported for this file. Decoys were generated and scored (42 decoy pairs); the best decoy score was 0.0000, below the configured gates \u2014 no decoy-based false-positive estimate is possible at this configuration."
+        "Small reference library (7 spectra): target-decoy FDR calibration is unvalidated; inspect surviving decoy counts and confidence_state. Library size alone establishes no error bound.",
+        "No decoy hits survived scoring; q-values are uncalibrated (legacy 1/N rank diagnostic). FDR claims are not supported for this file. Decoys were generated and scored (42 decoy pairs); the best decoy score was 0.0000, below the configured gates \u2014 no decoy-based false-positive estimate is possible at this configuration."
       ],
       "degraded_mode_flags": [
         "decoy_null_empty",
