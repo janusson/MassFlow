@@ -2,12 +2,17 @@
 
 [![CI](https://github.com/janusson/MassFlow/actions/workflows/ci.yml/badge.svg)](https://github.com/janusson/MassFlow/actions/workflows/ci.yml)
 [![Documentation](https://img.shields.io/badge/docs-available-blue.svg)](https://ericjanusson.github.io/MassFlow/)
-[![Python 3.13+](https://img.shields.io/badge/python-3.13+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.13](https://img.shields.io/badge/python-3.13-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-**MassFlow is a high-precision toolkit for tandem mass spectrometry (MS/MS) annotation.**
+**MassFlow searches small-molecule MS/MS spectra against local reference libraries.**
 
-It transforms your experimental spectra (`.mzML`, `.mgf`) and reference libraries (`.msp`, SQLite databases) into calibrated structural annotations. Designed for the lab, MassFlow prioritizes scientific rigor, reproducibility, and speed.
+It produces spectral similarity scores, ranked candidate annotations, and
+query-level numerical target/decoy estimates with provenance. These outputs are
+not experimentally confirmed identities. Version 0.1.0 does not claim independent
+identification validation or calibrated FDR. Those are deferred scientific
+research goals, not prerequisites for publishing this exploratory
+candidate-retrieval toolkit.
 
 ---
 
@@ -16,94 +21,128 @@ It transforms your experimental spectra (`.mzML`, `.mgf`) and reference librarie
 Get from installation to your first results in three simple steps.
 
 ### 1. Installation
-Run the setup script to configure your environment and install all necessary dependencies:
+For the source checkout, install the committed dependencies with Python 3.13:
 ```shell
 git clone https://github.com/janusson/MassFlow && cd MassFlow
-chmod +x setup.sh
-./setup.sh
+uv python pin 3.13
+uv sync --locked
 ```
 
 ### 2. Configure Your Project
-Instead of editing complex text files, use the interactive wizard to set up your analysis parameters:
+Create a configuration, then set input/library/output paths and review its parameters:
 ```shell
-uv run massflow config-wizard
+uv run massflow init --output massflow_config.yaml
 ```
-*Follow the prompts to define your input files, reference library, and scoring thresholds.*
+The configuration wizard and TUI are optional experimental conveniences.
 
 ### 3. Run Annotation
-Start the analysis using the configuration file created by the wizard:
+Start the analysis using the reviewed configuration file:
 ```shell
 uv run massflow annotate --config massflow_config.yaml
 ```
-*Your results will be saved as CSV or mzTab files in your output directory, accompanied by a provenance report for every file.*
+*Your results are saved as CSV files in your output directory, accompanied by a provenance report for every file. The `mztab` export is an experimental, non-conformant mzTab-shaped table; it is not the supported release export.*
 
 ---
 
 ## 🔬 Scientific Integrity
 
-MassFlow is built to ensure your annotations are chemically plausible and statistically sound.
+MassFlow separates spectral similarity, candidate ranking, chemical plausibility
+and statistical confidence. Passing software tests does not validate chemical
+identification accuracy.
 
-### The Physical Integrity Gate
-To prevent "garbage-in, garbage-out" results, MassFlow enforces a strict **5 ppm precursor validation**. If a spectrum's measured mass deviates from the theoretical mass of its claimed molecule by more than 5 ppm, it is rejected before it ever reaches the scoring engine. This ensures that your results are based on real chemistry, not random matches.
+### Chemical plausibility
 
-### Honest Confidence (FDR Calibration)
-We use **entropy-preserving decoys** to calibrate confidence. By creating fake spectra that mimic the information content of your real data, MassFlow provides a reliable **q-value** for every hit. You can trust your annotations because the program knows exactly how often a random match occurs in your specific dataset.
+Declared formula/structure/adduct metadata can be checked against a fixed 5-ppm
+precursor policy. Missing chemical context skips parts of that comparison;
+externally supplied persistent libraries are trusted inputs. This is metadata
+consistency checking, not proof of identity or a universal instrument specification.
 
-### Full Provenance
-Every result is linked back to its source. The generated provenance sidecars record the exact library version, processing parameters, and timestamps used, making your workflow fully auditable for publications.
+### Confidence availability and limitations
+
+The current estimator pools each query's best qualifying target and decoy scores.
+Synthetic decoys preserve precursor metadata and permute/jitter fragments; their
+ability to represent incorrect chemical matches has not been empirically validated.
+No output is labelled statistically calibrated solely because decoys survive.
+
+Results expose `confidence_state` (`estimated_uncalibrated`, `unavailable`, or
+`invalid`), nullable `confidence_q_value`, methodology and limitations. With no
+surviving decoys, the statistical estimate is unavailable. Historical `q_value`
+and `p_value` columns and their filtering remain for compatibility; their empty-null
+values are numerical rank diagnostics, not FDR estimates or error bounds.
+A q-value is not the probability that an individual candidate is incorrect.
+See [confidence semantics](docs/user-guide/confidence-semantics.md).
+
+### Traceability
+
+Provenance sidecars describe the library input, effective configuration and run
+context. Source-spectrum identity must be unique and retained separately from
+chemical identity. Legacy stores with missing/duplicate record identifiers need
+curation or rebuilding; sidecars cannot reconstruct provenance already lost.
 
 ---
 
 ## 🛠️ The Toolset
 
-### Interactive Console (TUI)
+### Interactive Console (TUI, experimental)
 Prefer a visual interface over the command line? Launch the MassFlow TUI to explore your data interactively:
 ```shell
-# Install the TUI extra (or use --all-extras for everything)
+# Install the TUI extra (optional; experimental and not release-qualified)
 uv sync --extra tui
 uv run massflow tui
 ```
 - **Browser:** Find and upload spectral files.
 - **Viewer:** Inspect centroid stick plots with a metadata panel.
-- **Identify:** Run target-decoy searches with real-time mirror plots.
+- **Review candidates:** Inspect search scores and mirror plots; these do not confirm identity.
 - **Diagnostics:** Get plain-English fixes for data problems.
 
 ### Library Management
-MassFlow uses optimized SQLite and Zarr databases for lightning-fast searches, even with massive libraries.
-- **Build:** `uv run massflow db build` converts raw libraries into optimized stores.
+SQLite is the supported library baseline. Zarr/hybrid backends are experimental.
+- **Build:** `uv run massflow db build` prepares raw libraries as inspectable local stores.
 - **Inspect:** `uv run massflow db inspect` views the lineage and history of your library.
 
-### Data Conversion
-If you have vendor-specific raw files (`.raw`, `.d`), MassFlow provides a wrapper for ProteoWizard's `msconvert` to bring your data into open formats:
-```shell
-uv run massflow convert --input raw_data/ --output converted_data/
-```
+### Input preparation
+The supported annotation path consumes open formats. Convert vendor data with an
+external tool before annotation. MassFlow's ProteoWizard wrapper is experimental
+and excluded from the supported 1.0 launch path.
 
 ---
 
 ## ⚙️ Technical Architecture (For Power Users)
 
-MassFlow is designed for high-performance "on-site" use.
+MassFlow is intended for transparent local candidate retrieval and review.
 
-- **Hybrid Storage:** Combines SQLite metadata with compressed Zarr arrays for lock-free, parallel reads.
-- **Sub-linear Search:** Uses a two-channel HNSW index (m/z and neutral losses) to find candidates in massive libraries instantly.
-- **ML Boundary:** Heavy ML engines (Spec2Vec, MS2DeepScore) run behind a remote REST/gRPC contract with a circuit breaker, ensuring the core remains lightweight and stable.
-- **Numba Acceleration:** JIT-compiled prefilters accelerate the classical scoring path.
+- **Hybrid Storage (experimental):** Combines SQLite metadata with compressed Zarr arrays.
+- **Approximate Search (experimental):** Optional HNSW candidate indexing requires separate recall measurements and stays off the supported launch path.
+- **ML Boundary (experimental):** Optional learned scoring and remote services have separate model/training and confidence limitations.
+- **Numba Acceleration (experimental):** Keep disabled until candidate-recall equivalence is qualified on the selected release version.
 
 ## Installation Details
 
-MassFlow requires **Python 3.13+**.
+MassFlow supports **Python >=3.13,<3.14**. Python 3.14 is not qualified. The distribution name is `massflow-msms`; the import package remains `MassFlow` and the CLI remains `massflow`.
+
+### Core installation contract
+
+A core installation is **not** RDKit-free. The locked `matchms` dependency requires `rdkit>=2024.3.5`, so `uv sync` or a package install pulls RDKit transitively even without the `chem` extra. The `chem` extra declares MassFlow’s own direct RDKit requirement for its cheminformatics APIs; it does not control whether RDKit is present.
+
+MassFlow’s core annotation path retains guarded fallbacks when RDKit is unavailable, but that fallback-only environment is not the supported core installation contract. A genuinely RDKit-free core installation is not claimed with the current locked `matchms`.
 
 ```shell
-# The recommended path is to run `setup.sh`, which automates environment pinning and dependency sync. You can also perform these steps manually:
-uv python pin 3.13 && uv sync
+# Install the committed environment from the lockfile
+uv python pin 3.13 && uv sync --locked
 
-# Optional extras
-# Install the TUI extra (or use --all-extras for everything)
+# Optional extras (experimental; not part of the release qualification)
+# Use individual extras rather than treating --all-extras as a support claim.
 uv sync --extra tui    # Interactive console
 uv sync --extra ml     # ML scoring engines
-uv sync --extra hnsw   # Sub-linear search acceleration
+uv sync --extra hnsw   # Experimental approximate candidate indexing
+uv sync --extra chem   # MassFlow direct chemistry APIs (RDKit is already transitive in core)
 ```
+
+Only the core install is release-qualified. Optional extras (`ml`, `hnsw`, `watch`, `tui`, `chem`) are experimental/optional and are not exercised by the 0.1.0 release qualification. `uv sync --all-extras` is a developer convenience, not a support claim.
+
+## Proposed 1.0 scope
+
+See the [release-scope decision and go/no-go gates](docs/release/1.0-readiness.md). The current package remains 0.1.0; no official 1.0 release is approved by this document.
 
 ## License
 MIT. See [LICENSE](LICENSE).

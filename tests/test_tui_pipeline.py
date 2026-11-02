@@ -250,7 +250,7 @@ class TestRunIdentification:
             if calls["count"] == 1:
                 raise RuntimeError(
                     "This scoring engine requires the machine-learning extras. "
-                    "Install them with: pip install massflow[ml]"
+                    "Install them with: pip install massflow-msms[ml]"
                 )
             return real_factory(config)
 

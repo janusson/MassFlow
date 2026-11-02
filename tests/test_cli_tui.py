@@ -24,7 +24,7 @@ def test_tui_missing_textual_exits_with_install_hint(monkeypatch):
     monkeypatch.setattr(builtins, "__import__", fake_import)
     result = runner.invoke(cli.app, ["tui"])
     assert result.exit_code == 1
-    assert "massflow[tui]" in result.output
+    assert "massflow-msms[tui]" in result.output
     assert "textual" in result.output
 
 

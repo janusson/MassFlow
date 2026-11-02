@@ -31,6 +31,10 @@ from typing import Any, Dict, List, Literal, Optional, cast
 from matchms import Spectrum
 
 from MassFlow import io, processing, similarity as similarity_module
+from MassFlow.diagnostics import (
+    DiagnosticReason,
+    RejectionSummary,
+)
 from MassFlow.config import MassFlowConfig, SimilarityConfig
 from MassFlow.library import LibrarySpec, open_library, prepare_library
 from MassFlow.storage import SpectralStore
@@ -111,7 +115,9 @@ class FileExecutionResult:
     query_spectra: List[Spectrum] = field(default_factory=list, repr=False)
     results: List[SearchResult] = field(default_factory=list, repr=False)
     fdr_summary: dict[str, int] | None = field(default=None, repr=False)
+    confidence_summary: dict[str, Any] | None = field(default=None, repr=False)
     library_provenance: dict[str, Any] | None = field(default=None, repr=False)
+    retrieval_diagnostics: dict[str, Any] | None = field(default=None, repr=False)
 
 
 _worker_engine: SimilarityEngine | _MLEngineBase | MLEngineProtocol | None = None
@@ -205,7 +211,7 @@ def optional_extra_warnings(config: MassFlowConfig) -> list[str]:
         warnings.append(
             f"Algorithm '{algorithm}' is configured without the machine-learning "
             f"extras: scoring will run with classical sub-engines only. "
-            f"Install the full engines with: pip install massflow[ml]"
+            f"Install the full engines with: pip install massflow-msms[ml]"
         )
     if (
         algorithm == "cascade"
@@ -216,7 +222,7 @@ def optional_extra_warnings(config: MassFlowConfig) -> list[str]:
             "Cascade is configured with hnsw_enabled: true but the optional "
             "'hnsw' extra (hnswlib) is not installed: candidate retrieval "
             "falls back to exact cascade scoring. Install it with: "
-            "pip install massflow[hnsw]"
+            "pip install massflow-msms[hnsw]"
         )
     return warnings
 
@@ -275,7 +281,7 @@ def preflight_annotation_run(config: MassFlowConfig) -> list[str]:
 
     1. The configured similarity surface can be constructed with the
        installed optional extras (raises ``RuntimeError`` with an install
-       hint when, e.g., ``spec2vec`` is requested without ``massflow[ml]``).
+       hint when, e.g., ``spec2vec`` is requested without ``massflow-msms[ml]``).
     2. The reference library is configured, exists, is not a vendor raw
        format, and has a format the loader can dispatch.
     3. The query input path exists; a single-file input must be loadable
@@ -404,27 +410,18 @@ def experimental_surface_flags(config: MassFlowConfig) -> list[str]:
 
 
 def _emit_small_library_warning(lib_size: int, fdr_threshold: float) -> None:
-    """Emit a critical scientific warning about small-library FDR invalidity.
+    """Emit a library-size advisory without asserting statistical sufficiency.
 
     In an interactive terminal the warning is rendered as a visually distinct
     Rich Panel.  When output is piped or redirected a clean single log line is
     emitted instead.  Only one rendering path is taken — never both.
     """
     msg = (
-        f"CRITICAL SCIENTIFIC WARNING: SMALL LIBRARY DETECTED\n"
-        f"The library contains only {lib_size} spectra.\n"
-        f"Target-Decoy False Discovery Rate (FDR) statistics are fundamentally\n"
-        f"invalid on small sample sizes because the decoy null-distribution\n"
-        f"will be too sparse. A strict FDR threshold (currently set to\n"
-        f"{fdr_threshold}) will likely eliminate all true and putative matches\n"
-        f"as false positives.\n"
-        f"\n"
-        f"Recommendation:\n"
-        f"1. Use a comprehensive library (e.g., GNPS, MoNA, NIST) for FDR\n"
-        f"   validation.\n"
-        f"2. Or, if using a small specialized library, relax the\n"
-        f"   `fdr_threshold` (e.g., 0.1 or 1.0) in your config to evaluate\n"
-        f"   raw Cosine scores directly."
+        f"Small library advisory: {lib_size} reference spectra; configured "
+        f"fdr_threshold={fdr_threshold}. Library size alone cannot establish "
+        "calibration or error control. Inspect surviving decoy counts and "
+        "confidence_state; sparse or absent decoy evidence limits interpretation. "
+        "Changing a threshold does not validate an estimate."
     )
 
     if sys.stderr.isatty():
@@ -553,6 +550,7 @@ def _build_classical_fallback_engine(
         min_score=similarity_config.min_score,
         min_matched_peaks=similarity_config.min_matched_peaks,
         rt_tolerance=similarity_config.rt_tolerance,
+        rt_tolerance_unit=similarity_config.rt_tolerance_unit,
     )
     return SimilarityEngine(fallback_config)
 
@@ -610,6 +608,24 @@ def _process_single_file(
         spectra and filtered results are carried on the result for export.
     """
     result = FileExecutionResult(status="success", input_path=query_file)
+    collect_diagnostics = config.similarity.collect_retrieval_diagnostics
+    rejection_summary = RejectionSummary() if collect_diagnostics else None
+    diagnostic_reporter = rejection_summary.record if rejection_summary else None
+    if collect_diagnostics:
+        run_sha, run_tree_dirty = _git_sha()
+        result.retrieval_diagnostics = {
+            "schema_version": 1,
+            "run_sha": run_sha,
+            "run_tree_dirty": run_tree_dirty,
+            "query_file": str(query_file),
+            "effective_configuration": config.normalized_config(),
+            "spectrum_counts": {},
+            "rejections": {},
+            "search": {"status": "not_started"},
+            "confidence": {"state": "unavailable"},
+            "terminal_query_outcomes": {},
+            "unknown_or_unattributable": 0,
+        }
     try:
         # ------------------------------------------------------------------
         # 1. Load, validate, and process query spectra
@@ -618,22 +634,29 @@ def _process_single_file(
         # collected so spectrum-level issues are observable and recorded in
         # provenance instead of vanishing into the quarantine log alone.
         rejection_collector = _RejectionCollector()
-        query_gen = io.load_spectra(
-            query_file,
-            file_format=config.input.format,
-            rejection_reporter=rejection_collector,
-        )
+        load_kwargs: dict[str, Any] = {
+            "file_format": config.input.format,
+            "rejection_reporter": rejection_collector,
+        }
+        if diagnostic_reporter is not None:
+            load_kwargs["diagnostic_reporter"] = diagnostic_reporter
+        query_gen = io.load_spectra(query_file, **load_kwargs)
         validated_queries = _CountingIterator(query_gen)
         # Rejections from the strict 5 ppm physical-integrity gate in
         # processing are collected separately so their reasons surface in the
         # file-level failure message (the drop itself is counted through the
         # usual processing length-delta accounting below).
         physics_collector = _RejectionCollector()
+        processing_kwargs: dict[str, Any] = {
+            "rejection_reporter": physics_collector,
+        }
+        if diagnostic_reporter is not None:
+            processing_kwargs["diagnostic_reporter"] = diagnostic_reporter
         query_spectra = list(
             processing.process_spectra(
                 validated_queries,
                 config.processing,
-                rejection_reporter=physics_collector,
+                **processing_kwargs,
             )
         )
 
@@ -641,6 +664,23 @@ def _process_single_file(
         n_processing_drops = max(n_validated - len(query_spectra), 0)
         result.spectra_loaded = n_validated
         result.spectra_rejected = rejection_collector.count + n_processing_drops
+        if result.retrieval_diagnostics is not None and rejection_summary is not None:
+            known_processing_rejections = sum(
+                count
+                for stage, count in rejection_summary.stage_counts.items()
+                if stage != "input_validation"
+            )
+            result.retrieval_diagnostics["spectrum_counts"] = {
+                "input_rejected": rejection_collector.count,
+                "validated_before_processing": n_validated,
+                "processing_rejected": n_processing_drops,
+                "processed": len(query_spectra),
+                "observed_by_pipeline": rejection_collector.count + n_validated,
+            }
+            result.retrieval_diagnostics["rejections"] = rejection_summary.as_dict()
+            result.retrieval_diagnostics["unknown_or_unattributable"] = max(
+                n_processing_drops - known_processing_rejections, 0
+            )
 
         if not query_spectra:
             # The file yielded no analyzable spectra: its data were NOT
@@ -653,6 +693,11 @@ def _process_single_file(
                     f" ({physics_collector.count} failed the strict 5 ppm "
                     f"physical-integrity validation: {physics_reasons})"
                 )
+            if result.retrieval_diagnostics is not None:
+                rejected = rejection_collector.count + n_processing_drops
+                result.retrieval_diagnostics["terminal_query_outcomes"] = {
+                    "preprocessing_rejected": rejected,
+                }
             result.status = "failed"
             result.fatal_errors.append(
                 f"No analyzable spectra: {rejection_collector.count} rejected "
@@ -786,14 +831,32 @@ def _process_single_file(
         decoy_diagnostics: dict[str, Any] = dict(
             getattr(active_engine, "decoy_diagnostics", {}) or {}
         )
+        search_diagnostics = dict(
+            getattr(active_engine, "retrieval_diagnostics", {}) or {}
+        )
+        if result.retrieval_diagnostics is not None:
+            result.retrieval_diagnostics["search"] = (
+                search_diagnostics
+                if search_diagnostics
+                else {
+                    "status": "unavailable",
+                    "reason": "active engine does not expose classical pair-stage counts",
+                }
+            )
 
         # Per-query target-decoy competition (TDC): the competition unit is the
         # query spectrum. Each query contributes its best target hit and its
         # best decoy hit exactly once (see
         # MassFlow.similarity.calculate_fdr for the full contract).
-        from MassFlow.similarity import calibrate_query_level_fdr
+        from MassFlow.confidence import assess_confidence
 
-        q_by_query, p_by_query, fdr_summary = calibrate_query_level_fdr(all_results)
+        assessment = assess_confidence(all_results)
+        result.confidence_summary = assessment.metadata()
+        if assessment.state == "invalid":
+            raise ValueError(f"Invalid confidence family: {assessment.invalid_reason}")
+        q_by_query = assessment.legacy_q_values
+        p_by_query = assessment.legacy_p_values
+        fdr_summary = assessment.summary
 
         # True processed library size (targets only): the explicit parameter
         # from the parent's store build is authoritative; direct-API callers
@@ -830,26 +893,19 @@ def _process_single_file(
         if is_small_library:
             result.warnings.append(
                 f"Small reference library ({lib_size} spectra): target-decoy FDR "
-                "is statistically weak below ~2000 entries; q-values are "
-                "conservative."
+                "calibration is unvalidated; inspect surviving decoy counts and "
+                "confidence_state. Library size alone establishes no error bound."
             )
 
         if fdr_summary["n_decoy_competitions"] == 0:
-            # No decoy evidence at all: q-values are the uncalibrated 1/N
-            # bound, not a target-decoy estimate. This must be explicit — and
-            # so must the reason, because the two possible reasons have very
-            # different fixes: decoys were never scored (configuration or
-            # plumbing problem) versus decoys were scored but no decoy hit
-            # reached the configured score/matched-peak gates (the decoy
-            # spectra share no fragment positions with real fragments at
-            # scoring tolerance, so production gates are out of reach for
-            # them; the accepted target hits are genuine matches and no
-            # false-positive rate can be estimated from this run).
+            # No decoy evidence: retain the historical numerical diagnostic,
+            # explicitly unavailable as a statistical estimate. Neither a
+            # target's correctness nor an error bound follows from this null.
             result.degraded_mode_flags.append("fdr_uncalibrated")
             detail = _describe_empty_decoy_null(decoy_diagnostics)
             result.warnings.append(
                 "No decoy hits survived scoring; q-values are uncalibrated "
-                "(1/N rank bound). FDR claims are not supported for this "
+                "(legacy 1/N rank diagnostic). FDR claims are not supported for this "
                 f"file. {detail}"
             )
 
@@ -874,6 +930,11 @@ def _process_single_file(
             q_val = q_by_query.get(query_id, 1.0)
             p_val = p_by_query.get(query_id, 1.0)
 
+            res["confidence_state"] = assessment.state
+            res["confidence_q_value"] = assessment.q_values.get(query_id)
+            res["confidence_method"] = "pooled_query_maxima_plus_one_v1"
+            res["confidence_scope"] = "query_best_target"
+            res["confidence_limitations"] = list(assessment.limitations)
             res["q_value"] = q_val
             res["p_value"] = p_val
 
@@ -882,6 +943,71 @@ def _process_single_file(
 
         # Sort results descending by score
         fdr_filtered_results.sort(key=lambda x: x["score"], reverse=True)
+        if result.retrieval_diagnostics is not None:
+            result.retrieval_diagnostics["confidence"] = {
+                "state": assessment.state,
+                "limitations": list(assessment.limitations),
+                "legacy_q_values_are_calibrated": False,
+            }
+            terminal_outcomes: dict[str, int] = {
+                "preprocessing_rejected": rejection_collector.count + n_processing_drops
+            }
+            unknown_count = int(
+                result.retrieval_diagnostics.get("unknown_or_unattributable", 0)
+            )
+            search_queries = search_diagnostics.get("queries", {})
+            if not isinstance(search_queries, dict):
+                search_queries = {}
+            processed_query_count = len(query_spectra)
+            confidence_state_counts: dict[str, int] = {}
+            if search_queries:
+                exported_query_ids = {
+                    str(row.get("query_id")) for row in fdr_filtered_results
+                }
+                for query_id, query_diagnostic in search_queries.items():
+                    query_diagnostic["confidence_state"] = assessment.state
+                    confidence_state_counts[assessment.state] = (
+                        confidence_state_counts.get(assessment.state, 0) + 1
+                    )
+                    target_diagnostic = query_diagnostic.get("target", {})
+                    if target_diagnostic.get("returned_by_search", 0) > 0:
+                        outcome = (
+                            DiagnosticReason.CANDIDATE_RETURNED.value
+                            if str(query_id) in exported_query_ids
+                            else DiagnosticReason.CONFIDENCE_FILTER_REJECTED.value
+                        )
+                        query_diagnostic["terminal_outcome"] = outcome
+                    outcome = str(query_diagnostic.get("terminal_outcome", "unknown"))
+                    terminal_outcomes[outcome] = terminal_outcomes.get(outcome, 0) + 1
+                    if outcome == DiagnosticReason.UNKNOWN.value:
+                        unknown_count += 1
+                missing_query_count = max(
+                    processed_query_count - len(search_queries), 0
+                )
+                if missing_query_count:
+                    unknown_outcome = DiagnosticReason.UNKNOWN.value
+                    terminal_outcomes[unknown_outcome] = (
+                        terminal_outcomes.get(unknown_outcome, 0) + missing_query_count
+                    )
+                    unknown_count += missing_query_count
+                    confidence_state_counts[assessment.state] = (
+                        confidence_state_counts.get(assessment.state, 0)
+                        + missing_query_count
+                    )
+            else:
+                unknown_outcome = DiagnosticReason.UNKNOWN.value
+                terminal_outcomes[unknown_outcome] = (
+                    terminal_outcomes.get(unknown_outcome, 0) + processed_query_count
+                )
+                unknown_count += processed_query_count
+                confidence_state_counts[assessment.state] = processed_query_count
+            result.retrieval_diagnostics["confidence_state_counts"] = dict(
+                sorted(confidence_state_counts.items())
+            )
+            result.retrieval_diagnostics["terminal_query_outcomes"] = dict(
+                sorted(terminal_outcomes.items())
+            )
+            result.retrieval_diagnostics["unknown_or_unattributable"] = unknown_count
 
         result.hits_produced = len(fdr_filtered_results)
         result.query_spectra = query_spectra
@@ -955,7 +1081,7 @@ def _handle_file_results(
 
     results_dict = cast(List[Dict[str, Any]], result.results)
     # A run whose decoy null was empty supports no FDR claim: its q-values are
-    # the conservative 1/N rank bound. The rows are exported (the score filter
+    # a legacy 1/N rank diagnostic. The rows are exported (the score filter
     # is real evidence) but labeled uncalibrated so the table can never be read
     # as FDR-controlled.
     uncalibrated = "fdr_uncalibrated" in result.degraded_mode_flags
@@ -1021,6 +1147,12 @@ def _write_analysis_report(
         "processing": config.processing.model_dump(mode="json"),
         "similarity": config.similarity.model_dump(mode="json"),
         "workflow": config.workflow.model_dump(mode="json"),
+        "retention_time": {
+            "unit": "seconds",
+            "tolerance_value": config.similarity.rt_tolerance,
+            "tolerance_unit": config.similarity.rt_tolerance_unit,
+            "tolerance_seconds": config.similarity.rt_tolerance_seconds,
+        },
         # Normalized configuration representation (schema version, source
         # config file, full effective config with resolved paths, digest).
         "config": config.normalized_config(),
@@ -1034,6 +1166,9 @@ def _write_analysis_report(
             **result.fdr_summary,
         }
 
+    if result.confidence_summary is not None:
+        report_payload["confidence"] = result.confidence_summary
+
     # Library lineage: the exact database store searched, its build-history
     # row (input file, config hash, processing fingerprint, exact build
     # timestamp), and the store's schema version. The recorded build digest
@@ -1042,6 +1177,22 @@ def _write_analysis_report(
     if result.library_provenance is not None:
         report_payload["library"] = result.library_provenance
 
+    if result.retrieval_diagnostics is not None:
+        diagnostic_path = report_path.with_name(
+            report_path.name.replace(".report.yaml", ".diagnostics.json")
+        )
+        fingerprints: dict[str, Any] = {}
+        if result.input_path.is_file():
+            fingerprints["query_file_sha256"] = _file_sha256(result.input_path)
+        if config.input.library_path is not None:
+            library_path = Path(config.input.library_path)
+            if library_path.exists() and library_path.is_file():
+                fingerprints["library_file_sha256"] = _file_sha256(library_path)
+        result.retrieval_diagnostics["fingerprints"] = fingerprints
+        report_payload["retrieval_diagnostics_json"] = str(diagnostic_path)
+        io.save_retrieval_diagnostics_json(
+            diagnostic_path, result.retrieval_diagnostics
+        )
     # Delegate to IO layer for file writing so tests can patch io.save_analysis_report
     io.save_analysis_report(report_path, report_payload)
 
@@ -1103,9 +1254,11 @@ def _dependency_versions() -> dict[str, str]:
     """Resolved versions of the direct dependencies (importlib.metadata)."""
     import importlib.metadata as metadata
 
+    from . import __distribution_name__
+
     versions: dict[str, str] = {}
     try:
-        dist = metadata.distribution("massflow")
+        dist = metadata.distribution(__distribution_name__)
         for requirement in dist.requires or []:
             name = requirement.split("[", 1)[0].split(";", 1)[0].strip().split(" ")[0]
             if not name:
@@ -1117,7 +1270,7 @@ def _dependency_versions() -> dict[str, str]:
     except metadata.PackageNotFoundError:
         pass
     try:
-        versions["massflow"] = metadata.version("massflow")
+        versions["massflow"] = metadata.version(__distribution_name__)
     except metadata.PackageNotFoundError:
         versions["massflow"] = "<not installed>"
     return versions
@@ -1455,7 +1608,7 @@ def run_annotation_pipeline(
         raw format; pre-flight, before any library store is built.
     RuntimeError
         If the configured similarity engine requires missing optional extras
-        (e.g. ``spec2vec`` without ``massflow[ml]``); pre-flight.
+        (e.g. ``spec2vec`` without ``massflow-msms[ml]``); pre-flight.
 
     Notes
     -----

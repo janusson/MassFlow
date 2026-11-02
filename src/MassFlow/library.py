@@ -53,6 +53,12 @@ from MassFlow.storage import SpectralStore, create_spectral_store
 
 logger = logging.getLogger(__name__)
 
+# Revision 5 adds canonical retention-time seconds and source-unit evidence
+# to revision 4 (missing precursors, fragment-only m/z windows, charge/adduct
+# consistency, and acquisition-record identity). This union invalidates caches
+# from both the stabilization and standalone retention-time predecessors.
+PROCESSING_SEMANTICS_REVISION = 5
+
 # Extension of MassFlow-native stores (opened directly by workers).
 _STORE_EXTENSIONS = {".db", ".sqlite", ".zarr"}
 
@@ -89,7 +95,7 @@ class RawFileLibraryStore(SpectralStore):
         """Nothing to open: the file is parsed lazily on each read."""
 
     def _iter_processed(self) -> Iterator[Spectrum]:
-        raw = io.load_spectra(self.store_path)
+        raw = io.load_spectra(self.store_path, assign_record_ids=True)
         for spectrum in processing.process_spectra(raw, self._processing_config):
             if spectrum is None:
                 continue
@@ -285,15 +291,34 @@ def open_library(
 
 
 def processing_fingerprint(processing_config: ProcessingConfig) -> str:
-    """Stable fingerprint of the processing pipeline (cache invalidation).
+    """Fingerprint processing settings and the combined semantics revision.
 
-    SHA-256 over the canonical JSON of the processing configuration. This is
-    the same fingerprint recorded in library-build provenance rows so that
-    ``db inspect`` history can be correlated with the annotated-store cache.
+    A revision change invalidates managed prepared caches even when the
+    configuration is unchanged. Direct persistent stores are not rewritten;
+    rebuild those from raw sources into a new destination. This digest is also
+    stored in library-build provenance.
+
+    Parameters
+    ----------
+    processing_config : ProcessingConfig
+        Processing settings to combine with the semantics revision.
+
+    Returns
+    -------
+    str
+        Deterministic hexadecimal SHA-256 digest.
+
+    Examples
+    --------
+    >>> len(processing_fingerprint(ProcessingConfig()))
+    64
     """
-    return hashlib.sha256(
-        processing_config.model_dump_json().encode("utf-8")
-    ).hexdigest()
+    payload = {
+        "processing_semantics_revision": PROCESSING_SEMANTICS_REVISION,
+        "processing": processing_config.model_dump(mode="json"),
+    }
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 # Backward-compatible alias for the pre-provenance private helper name.
@@ -377,7 +402,7 @@ def _build_prepared_library_store(
 
         build_id: Optional[int] = None
         try:
-            raw = io.load_spectra(library_path)
+            raw = io.load_spectra(library_path, assign_record_ids=True)
             processed = processing.process_spectra(
                 raw, config.processing, rejection_reporter=_collect_physics_rejection
             )

@@ -296,18 +296,19 @@ class TestProcessSpectraBatch:
         result = processing.process_spectra_batch([s1, s2], cfg)
         assert len(result) == 2
 
-    def test_batch_filters_by_precursor_range(self):
+    def test_batch_fragment_window_preserves_outside_precursor(self):
         s = Spectrum(
             mz=np.array([100.0], dtype=np.float64),
             intensities=np.array([1.0], dtype=np.float64),
             metadata={"id": "out_of_range", "precursor_mz": 2000.0, "charge": 1},
         )
-        # The precursor m/z window only applies when filter_by_mz is on.
+        # A fragment window must not discard this precursor at m/z 2000.
         cfg = config.ProcessingConfig(mz_max=1000.0, min_peaks=1, filter_by_mz=True)
         result = processing.process_spectra_batch([s], cfg)
-        assert len(result) == 0
+        assert len(result) == 1
+        np.testing.assert_array_equal(result[0].peaks.mz, [100.0])
 
-        # With the toggle off the spectrum is kept (documented semantics).
+        # With the toggle off the original peaks are also retained.
         cfg_off = config.ProcessingConfig(mz_max=1000.0, min_peaks=1)
         result_off = processing.process_spectra_batch([s], cfg_off)
         assert len(result_off) == 1

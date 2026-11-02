@@ -80,7 +80,7 @@ similarity:
 *   `ms2_tolerance`: Fragment mass tolerance (typically in `Da`).
 *   `min_score`: The absolute minimum score required to keep a hit.
 *   `min_matched_peaks`: Minimum number of matched fragment peaks.
-*   `fdr_threshold`: The target False Discovery Rate (e.g., `0.05` for 5%).
+*   `fdr_threshold`: Legacy cutoff for numerical query-level target/decoy estimates. Those estimates are uncalibrated; the cutoff is not a controlled FDR guarantee.
 
 Advanced `similarity` keys include `analog_search`, the `consensus_*` / `cascade_*` engine settings, the `hnsw_*` approximate-candidate retrieval knobs (requires the `hnsw` extra), and `ml_endpoints` for routing Spec2Vec/MS2DeepScore scoring to a remote REST/gRPC service with automatic fallback to the classical engines.
 
@@ -91,7 +91,7 @@ Defines the output format.
 export:
   format: "csv"
 ```
-*   `format`: `"csv"` (default) or `"mztab"` — the only formats in the stable v0.1 contract. (Other formats such as `fbmn` are documented in places but not implemented; see the [Results guide](results.md) and `docs/CAPABILITY_MATRIX.md`.)
+*   `format`: `"csv"` (default, stable) or `"mztab"` (experimental, non-conformant mzTab-shaped table). Only CSV is in the stable v0.1 export contract. `mztab` does not claim mzTab-M standards conformance. (Other formats such as `fbmn` are documented in places but not implemented; see the [Results guide](results.md) and `docs/CAPABILITY_MATRIX.md`.)
 
 ### `workflow`
 Reserved for future pipeline stages (peak picking, retention-time alignment, networking). It currently has **no active fields** — all orchestration is handled directly by the workflow module, and the stable annotation path runs on the `processing` + `similarity` sections alone.
@@ -169,3 +169,39 @@ The representation contains the schema version, the absolute source
 config path, the full effective configuration (all paths resolved), and
 a `config_digest_sha256` over the canonical JSON, so any result can be
 verified to have been produced by exactly the configuration it claims.
+
+
+## Retention-time units and migration
+
+Spectrum `retention_time` is always **seconds**. The tolerance has an explicit
+unit; these settings accept a difference of at most 12 seconds (inclusive):
+
+```yaml
+similarity:
+  rt_tolerance: 0.2
+  rt_tolerance_unit: minutes
+```
+
+`rt_tolerance_unit: seconds` with `rt_tolerance: 12` is equivalent. A missing
+tolerance disables the gate. Both values must have an interpretable retention
+time for the gate to apply; missing, invalid, or conflicting times remain missing.
+
+Existing configurations that set `rt_tolerance` without a unit retain the actual
+legacy **seconds** behavior and log a migration warning. Earlier documentation
+incorrectly called those values minutes. Set the unit explicitly after reviewing
+the intended window; no automatic factor-of-60 change is made to saved settings.
+The per-file report records the original tolerance and its effective seconds value.
+
+Unit-aware normalization changes prepared-library metadata. MassFlow-managed raw
+file caches rebuild once. Existing explicit SQLite/Zarr libraries are not rewritten;
+rebuild legacy libraries from the original files into new destinations before
+relying on retention-time filtering. A unit lost before storage cannot be recovered
+from its plain numeric value. Retention-time comparison also requires comparable
+chromatographic methods; matching numeric units does not establish method transfer.
+
+The combined stabilization and retention-time implementation uses processing
+semantics revision 5. It includes the precursor, fragment-window, charge/adduct,
+and record-identity corrections from revision 4 plus canonical seconds and
+source-unit evidence. Managed caches from either predecessor rebuild once; the
+next unchanged run reuses the replacement. Explicit persistent stores retain
+the manual-rebuild requirement above.

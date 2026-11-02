@@ -293,7 +293,7 @@ def run_identification(request: IdentificationRequest) -> IdentificationOutcome:
     6. Keep the top ``request.top_n`` target hits per query.
 
     If the requested engine cannot be instantiated (for example an ML
-    algorithm without the ``massflow[ml]`` extra), the run falls back to
+    algorithm without the ``massflow-msms[ml]`` extra), the run falls back to
     modified-cosine scoring and records a warning — the console never dies
     because a heavy engine is unavailable.
 

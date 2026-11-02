@@ -788,7 +788,7 @@ class TestEngineContrasts:
             "cosine": 0.0,
             "modified_cosine": 1.0,
         }
-        assert row["Annotation_Status"] == "Putative"
+        assert row["Annotation_Status"] == "Uncalibrated"
 
     def test_cascade_equals_final_stage_at_zero_lower_bound(self) -> None:
         """With cascade_lower_bound=0.0 every adduct/RT-passing reference

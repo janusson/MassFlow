@@ -71,7 +71,22 @@ def assert_csv_rows_equivalent(actual_path: Path, expected_path: Path) -> None:
         expected_fieldnames = expected_reader.fieldnames
         expected_rows = list(expected_reader)
 
-    assert actual_fieldnames == expected_fieldnames, (
+    additive_columns = {
+        "query_retention_time_seconds",
+        "query_retention_time_unit",
+        "query_retention_time_source",
+        "reference_metadata",
+        "confidence_state",
+        "confidence_q_value",
+        "confidence_method",
+        "confidence_scope",
+        "confidence_limitations",
+    }
+    assert additive_columns.issubset(set(actual_fieldnames or []))
+    legacy_fieldnames = [
+        name for name in (actual_fieldnames or []) if name not in additive_columns
+    ]
+    assert legacy_fieldnames == expected_fieldnames, (
         f"Result CSV columns changed: {actual_fieldnames} != {expected_fieldnames}"
     )
     assert len(actual_rows) == len(expected_rows), (
@@ -79,8 +94,16 @@ def assert_csv_rows_equivalent(actual_path: Path, expected_path: Path) -> None:
     )
 
     for index, (actual, expected) in enumerate(zip(actual_rows, expected_rows)):
+        assert actual["query_retention_time_seconds"] == actual["query_retention_time"]
+        assert actual["query_retention_time_unit"] == "seconds"
         for column, expected_value in expected.items():
             actual_value = actual[column]
+            if column == "Annotation_Status" and expected_value in {
+                "Matched",
+                "Putative",
+            }:
+                assert actual["confidence_state"] == "estimated_uncalibrated"
+                expected_value = "Uncalibrated"
             actual_number = _as_float(actual_value)
             expected_number = _as_float(expected_value)
             if actual_number is None or expected_number is None:

@@ -178,9 +178,10 @@ def test_mvp_workflow_mztab_export(tmp_path):
     assert mztab_path.exists()
 
     content = mztab_path.read_text()
-    assert "mzTab-version" in content
+    assert "mzTab-version" not in content
+    assert "NOT mzTab-M standards-conformant" in content
     assert "MassFlow_Export" in content
-    assert "SML" in content  # Small Molecule section
+    assert "SML" in content  # MassFlow-specific small-molecule-shaped section
 
 
 def test_mvp_workflow_mgf_library(tmp_path):

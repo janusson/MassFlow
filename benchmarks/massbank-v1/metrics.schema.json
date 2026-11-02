@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MassFlow benchmark metric report v1",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "identity_endpoint",
+    "counts",
+    "closed_set",
+    "open_set",
+    "precision",
+    "call_coverage",
+    "observed_fdp",
+    "outcomes",
+    "connectivity_endpoint",
+    "by_stratum",
+    "score_distributions"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    }
+  },
+  "additionalProperties": true
+}
