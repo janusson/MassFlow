@@ -7,6 +7,8 @@ before the production code exists. They are designed to fail (Red phase) until
 parameter on ``SimilarityConfig`` are implemented.
 """
 
+from __future__ import annotations
+
 import math
 
 import numpy as np
@@ -46,15 +48,9 @@ def test_mass_error_ppm_calculation() -> None:
 
 
 def test_retention_time_filtering() -> None:
-    """
-    Prove that structural isomers are separated by retention time.
+    """Reject a synthetic pair assigned times 36 seconds apart at 0.2 minutes.
 
-    Leucine and Isoleucine share an identical fragmentation pattern and
-    precursor mass but elute at different retention times.  This test
-    constructs a Leucine reference (RT = 2.5 min) and an Isoleucine query
-    (RT = 3.1 min), then configures the similarity engine with a narrow
-    ``rt_tolerance`` of 0.2 min.  The RT difference of 0.6 min exceeds the
-    tolerance, so the engine must reject the match.
+    This tests unit-aware filtering, not experimental separation of isomers.
     """
     # --- Build spectra for two structural isomers -------------------------
     # Identical peaks and precursor for both isomers
@@ -70,7 +66,7 @@ def test_retention_time_filtering() -> None:
             "id": "leucine_ref",
             "compound_name": "Leucine",
             "precursor_mz": precursor_mz,
-            "retention_time": 2.5,
+            "retention_time": 150.0,
         },
     )
 
@@ -82,7 +78,7 @@ def test_retention_time_filtering() -> None:
             "id": "isoleucine_query",
             "compound_name": "Isoleucine",
             "precursor_mz": precursor_mz,
-            "retention_time": 3.1,
+            "retention_time": 186.0,
         },
     )
 
@@ -93,6 +89,7 @@ def test_retention_time_filtering() -> None:
         min_score=0.0,
         min_matched_peaks=1,
         rt_tolerance=0.2,
+        rt_tolerance_unit="minutes",
     )
     engine = SimilarityEngine(config)
 

@@ -25,7 +25,6 @@ Numba-accelerated peak/neutral-loss prefilter used by `SimilarityEngine` to skip
 - `version_callback(value: bool) -> Any`
 - `main_callback(version: Optional[bool]) -> Any`
 - `run_init(output: str, force: bool) -> Any`
-- `run_tutorial(output: str, force: bool) -> Any`
 - `run_annotate(config: str) -> Any`
 - `run_convert(input: str, output: str) -> Any`
 - `run_db_build(input: str, output: str, config: str, category: str, backend: str) -> Any`
@@ -124,7 +123,7 @@ Numba-accelerated peak/neutral-loss prefilter used by `SimilarityEngine` to skip
 - **`class WorkflowConfig`**
   - (no active fields; reserved for future pipeline stages)
 - **`class ExportConfig`**
-  - `format: Literal['csv', 'mztab']` (only these two are wired into the workflow)
+  - `format: Literal['csv', 'mztab']`. `csv` is the stable export. `mztab` writes an experimental, non-conformant mzTab-shaped table and does not claim mzTab-M standards conformance.
 - **`class MassFlowConfig`**
   - `project: ProjectConfig`
   - `input: InputConfig`
@@ -188,7 +187,7 @@ SQLite-backed stores additionally persist a library-provenance history (`store_m
   - `save(path: Path) -> None`
   - `load(path: Path, ...) -> 'HNSWSpectralIndex'`
 
-hnswlib-backed two-channel candidate index (`[binned exact m/z, binned neutral losses]`) used by `CascadeEngine` for sub-linear approximate candidate retrieval. Requires the `hnsw` extra.
+Experimental hnswlib-backed two-channel candidate index (`[binned exact m/z, binned neutral losses]`) used by `CascadeEngine` for approximate retrieval; no general recall or sub-linear performance guarantee. Requires the `hnsw` extra.
 
 ## `MassFlow.io`
 
@@ -202,7 +201,7 @@ hnswlib-backed two-channel candidate index (`[binned exact m/z, binned neutral l
 - `save_spectra_to_msp(spectra: Iterable[Spectrum], export_path: Path) -> None`
 - `save_spectra_to_pickle(spectra: Iterable[Spectrum], export_path: Path) -> None`
 - `save_spectra_to_mgf(spectra: Iterable[Spectrum], export_path: Path) -> None`
-- `save_match_results_to_mztab(results: list[dict[str, Any]], output_path: Path, query_spectra: Optional[Iterable[Spectrum]]) -> None`
+- `save_match_results_to_mztab(results: list[dict[str, Any]], output_path: Path, query_spectra: Optional[Iterable[Spectrum]]) -> None` — experimental, non-conformant mzTab-shaped output; use `save_match_results` (CSV) for the stable export.
 
 ## `MassFlow.library`
 

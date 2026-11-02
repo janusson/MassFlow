@@ -1,6 +1,6 @@
 # Installation
 
-MassFlow requires **Python 3.13+**. It relies heavily on standard scientific Python libraries (like `numpy`, `polars`, and `matchms`) and is explicitly designed to remain lightweight and dependency-minimal.
+MassFlow requires **Python 3.13** (`>=3.13,<3.14`); Python 3.14 is not qualified. It relies heavily on standard scientific Python libraries (like `numpy`, `polars`, and `matchms`) and is explicitly designed to remain lightweight and dependency-minimal.
 
 ---
 
@@ -17,7 +17,7 @@ If you haven't already, install [uv](https://github.com/astral-sh/uv).
 Then, clone the repository and sync the environment:
 
 ```shell
-git clone https://github.com/yourusername/MassFlow.git
+git clone https://github.com/janusson/MassFlow.git
 cd MassFlow
 uv python pin 3.13
 uv sync
@@ -25,15 +25,35 @@ uv sync
 
 This will automatically create a `.venv` directory, resolve the locked dependencies, and install MassFlow as an editable CLI tool.
 
-### Optional Features
+### Core installation contract
 
-MassFlow keeps the core dependency set lightweight. Heavier external dependencies (PyTorch, RDKit, hnswlib, Textual, …) are available as **optional extras** that you opt into explicitly:
+The core install is **not** RDKit-free. The locked `matchms` dependency requires
+`rdkit>=2024.3.5`, so `uv sync` or `pip install massflow-msms` installs RDKit
+transitively even when no extra is selected. The `chem` extra declares MassFlow's
+own direct RDKit requirement; it does not add or remove RDKit from the transitive
+core resolution.
+
+MassFlow retains guarded fallbacks when RDKit is unavailable, but that is not the
+supported core installation contract with the current lockfile. A genuinely
+RDKit-free core installation is not claimed.
+
+The PyPI distribution name is `massflow-msms`. The installed import package is `MassFlow` and the command-line entry point is `massflow`; neither public interface is renamed by the distribution name.
+
+The locally tested contract is Python 3.13 on macOS arm64 and Linux. A clean
+no-extra wheel install was verified to import MassFlow from `site-packages`,
+expose the CLI, and install RDKit transitively. Windows is not qualified.
+
+### Optional features
+
+PyTorch/gensim/spec2vec/ms2deepscore (`ml`), hnswlib (`hnsw`), watchfiles
+(`watch`), Textual (`tui`), and MassFlow's direct chemistry APIs (`chem`) are
+available as explicit extras:
 
 ```shell
 # Machine-learning engines (Spec2Vec, MS2DeepScore, torch, gensim)
 uv sync --extra ml
 
-# Chemistry tools (RDKit-based structural validation)
+# MassFlow direct chemistry APIs (RDKit is already present transitively in core)
 uv sync --extra chem
 
 # HNSW approximate candidate retrieval (hnswlib)
@@ -47,6 +67,10 @@ uv sync --extra tui
 ```
 
 (Zarr needs no extra: it is always installed as a core dependency.)
+
+Only the default/core install is release-qualified. Optional extras are
+experimental/optional and are not exercised by the 0.1.0 release qualification;
+`ml` and `hnsw` in particular are unqualified backends.
 
 Extras can be combined, e.g. `uv sync --extra ml --extra hnsw`. The equivalent `pip` syntax is `pip install -e ".[ml,hnsw]"`.
 
@@ -63,7 +87,7 @@ uv run massflow --help
 If you cannot use `uv`, you can install MassFlow directly using standard `pip` within a virtual environment. However, you will not benefit from the strict dependency locking provided by `uv.lock`.
 
 ```shell
-git clone https://github.com/yourusername/MassFlow.git
+git clone https://github.com/janusson/MassFlow.git
 cd MassFlow
 
 # Create a virtual environment
@@ -88,6 +112,7 @@ If you intend to contribute to MassFlow or run the automated test gate, you need
 
 Using `uv` (recommended):
 ```shell
+# Developer convenience only; this does not qualify optional extras.
 uv sync --all-groups --all-extras
 uv run pytest
 ```

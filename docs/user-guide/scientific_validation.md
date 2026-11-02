@@ -21,8 +21,8 @@ The suite (`tests/test_scientific_validation.py`, fixtures in
 | RT filtering | `rt_tolerance` removes exactly the RT-violating reference |
 | Modified-cosine behavior | precursor-shift alignment (Watrous 2012), both-frame matching, `|shift| <= tolerance` → plain cosine |
 | Decoy generation | determinism, entropy preservation (Li et al. 2021), precursor preservation, decoy ≠ source, decoy matches tagged `is_decoy` for TDC |
-| FDR / q-values | per-query competition unit, q traceable to the query's best target score, 1/N rank bound on an empty decoy null, p-value is diagnostic only, `q <= fdr_threshold` is the only filter |
-| Unmatched queries | exported as `Unknown`, never calibrated |
+| Confidence diagnostics | per-query competition unit; q is traceable to the query-best target; empty-null `1/N` is a rank diagnostic, not an error bound; p-value is diagnostic; historical `fdr_threshold` filtering is not calibrated FDR control |
+| Unmatched queries | exported as `Unknown` with unavailable confidence; no identification claim |
 | Duplicate scores | identical scores → identical q-values; equal-score references both exported |
 | Large peak counts | 60-peak round trip, no peak loss, self-match counts all 60 |
 | Multiple engines | cosine / modified_cosine / consensus / cascade known answers, including consensus's 0.5 dilution of MS1-gated pairs and cascade's stage semantics |

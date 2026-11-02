@@ -1,6 +1,6 @@
-# Result Export & FDR
+# Result Export & Confidence States
 
-When MassFlow completes an annotation run, it writes reproducible, tabular outputs designed for downstream review and statistical confidence. The stable v0.1 contract generates per-file results (CSV, mzTab-M) accompanied by YAML provenance reports.
+MassFlow writes per-file candidate-search results in CSV with YAML provenance reports. CSV is the stable supported export. The `mztab` option writes an experimental, non-conformant mzTab-shaped table (see below). Scores and confidence states are evidence for review, not confirmed identities or calibrated error bounds.
 
 !!! warning "GNPS FBMN export is not shipped"
     The `fbmn` export format and `consensus_spectra.mgf` are documented in
@@ -19,9 +19,9 @@ The simplest and most common format.
 1.  **`experiment_results.csv`**: The main tabular annotation report.
 2.  **`experiment_results.report.yaml`**: The provenance sidecar containing the runtime context.
 
-### mzTab-M Export (`mztab`)
-An industry-standard, plain-text format specifically designed for reporting metabolomics results to public repositories (like MetaboLights).
-1.  **`experiment_results.mztab`**: Contains both the experimental metadata (MTD section) and the feature/annotation lists (SML/SME sections) in a tightly controlled schema.
+### Experimental mzTab-shaped Export (`mztab`)
+This option is **not** mzTab-M and is **not** standards-conformant. It is retained only for backward-compatible diagnostic interchange. It writes MassFlow-specific MTD/SMH/SML sections, omits the mandatory mzTab-M controlled vocabulary and table structure, and does not use the required `null` missing-value encoding. The file deliberately omits `mzTab-version`, because emitting it would assert conformance. Use CSV for the supported release export.
+1.  **`experiment_results.mztab`**: Contains MassFlow experimental metadata (MTD) and MassFlow-specific SMH/SML rows in an experimental schema.
 2.  **`experiment_results.report.yaml`**: The provenance sidecar.
 
 ### GNPS FBMN Export (`fbmn`) — not shipped
@@ -32,15 +32,21 @@ only — see `docs/CAPABILITY_MATRIX.md` §2.4.)
 
 ### The Result Table
 
-The CSV contains the actual annotation hits, including the computed `score`, `matched_peaks`, and an automated `Annotation_Status` tag (`Matched`, `Putative`, `Uncalibrated`, or `Unknown`).
+The table contains retained candidate matches, including `score`, `matched_peaks`, and a legacy `Annotation_Status` category. A candidate score is not an identification probability.
+
+Each candidate row also contains `reference_metadata`, a compact JSON object that
+preserves the source record ID, original accession/identifier, source path and
+SHA-256/ordinal locator when available, plus the acquisition metadata carried by
+the library record (for example collision energy, instrument, adduct and charge).
+This acquisition identity is distinct from chemical identity such as InChIKey.
 
 `Annotation_Status` values:
 
 | Status | Meaning |
 | :--- | :--- |
-| `Matched` | Score ≥ 0.9 and the run was FDR-calibrated (its queries competed against decoys). |
-| `Putative` | Score < 0.9 and the run was FDR-calibrated. |
-| `Uncalibrated` | The run produced **no decoy competition at all**, so its `q_value` column is the conservative `1/N` rank bound rather than a target-decoy FDR estimate; the file is also flagged `fdr_uncalibrated` + `decoy_null_empty` and carries a warning with the measured best decoy score. The scored hits are still exported — they remain score-filtered candidates — but no row may be read as FDR-controlled. See [Scoring & FDR](scoring_logic.md#5-when-is-fdr-used-what-happens-for-small-libraries). |
+| `Matched` | Legacy score category (score ≥ 0.9); never a confirmed identity. Assessed unvalidated rows use Uncalibrated. |
+| `Putative` | Legacy score category (score < 0.9); not a validated confidence level. |
+| `Uncalibrated` | The query confidence state is `estimated_uncalibrated`, `unavailable`, or `invalid`. Its legacy `q_value` may remain for compatibility, but neither a non-empty nor empty decoy null establishes FDR control. See [confidence semantics](confidence-semantics.md). |
 | `Unknown` | No hit for this query (base row). |
 
 **Example: `experiment_results.csv`**
@@ -52,7 +58,15 @@ The CSV contains the actual annotation hits, including the computed `score`, `ma
 | query_2 | 150.0 | ref_8 | Unknown_Metabolite | 0.75 | 3 | Putative |
 
 !!! note "Unmatched Queries"
-    The CSV includes matched *and* unmatched query spectra. If a query spectrum has no retained hit after score and FDR filtering, the row is still exported, but the reference-specific columns are left blank. This allows you to confirm that the input was successfully processed even when no annotation was found.
+    The CSV includes matched *and* unmatched query spectra. A query with no retained candidate still has a row with reference-specific columns left blank. Historical q-value filtering may affect candidate retention, but it is not validated FDR control.
+
+The retained `query_retention_time` column is in seconds. New
+`query_retention_time_seconds` and `query_retention_time_unit` columns make this
+explicit; `query_retention_time_source` contains JSON with the original input
+field, value, unit, and normalization status. A missing time is a blank numeric
+cell, never a fabricated zero. These additive fields are also emitted by the
+current mzTab-shaped exporter; they do not establish mzTab-M conformance (see
+[issue #123](https://github.com/janusson/MassFlow/issues/123)).
 
 ### The Provenance Sidecar Report
 
@@ -158,35 +172,42 @@ Batch runs continue across files: one bad file does not stop the others, but the
 
 ## False Discovery Rate (FDR)
 
-MassFlow natively calculates a Target-Decoy False Discovery Rate (FDR) to provide statistical confidence in the reported annotations. The full statistical contract — competition unit, tie handling, small-library behavior, and heterogeneous engines — is defined in [Scoring Logic](scoring_logic.md).
+MassFlow calculates a numerical query-maxima estimate, not empirically demonstrated
+FDR control. See [confidence semantics](confidence-semantics.md) for the exact
+formula, explicit states, nullable estimate, family, inherited-row limitations and
+historical column/filter compatibility. Both populated and empty nulls remain
+scientifically uncalibrated; no nominal q threshold proves an observed error rate.
 
-### How It Works
+Increasing `fdr_threshold` only changes selection; it does not cure a sparse or
+unrepresentative decoy null. Inspect counts, methodology and limitations before
+interpreting any confidence column.
+## Numerical confidence diagnostics
 
-1.  **Decoy Generation:** Before searching, MassFlow generates a set of "decoy" spectra from your reference library. These are shuffled, jittered versions of the true targets that are known *not* to exist in your sample. Decoy generation is deterministic and identical across single-file, multi-file, and streaming runs.
-2.  **Scoring:** Your experimental queries are scored against both the true target library and the decoy library.
-3.  **Per-Query Competition:** The competition unit is the **query spectrum**. Each query's best target hit competes against its best decoy hit exactly once — a query with many hits is never counted more than once.
-4.  **q-value Calculation:** By comparing the distribution of per-query best target scores to per-query best decoy scores, MassFlow estimates a *q*-value for each query. A *q*-value of 0.05 means that if all queries with `q ≤ 0.05` are accepted, an estimated 5% of the accepted queries' top annotations are false positives. Every exported row of a query carries that query's q-value.
-5.  **Filtering:** Any hit whose query's *q*-value exceeds the configured `fdr_threshold` (e.g., `0.05`) is discarded before the CSV is exported.
+The implemented target/decoy procedure reports a query-level numerical estimate;
+its empirical calibration is pending. Decoys are synthetic altered spectra
+intended to provide a null comparison, but exchangeability with incorrect
+chemical matches has not been established.
 
-An additional `p_value` column is exported as a **diagnostic**: the fraction of decoy competitions that matched or beat the query's best score. It is never used for filtering.
+1. Decoys are generated from reference records and searched using the configured
+   engine and candidate gates.
+2. Each query contributes at most its best target score and best surviving decoy
+   score to the numerical competition.
+3. The implementation computes a monotone q-like estimate. `estimated_uncalibrated`
+   means the calculation had target and decoy observations, not that its error
+   rate has been validated. An empty decoy null is `unavailable`; the historical
+   `1/N` value is a rank diagnostic, not an error bound.
+4. Candidate rows inherit the query-level assessment; it is not candidate-specific.
+5. `fdr_threshold` remains a compatibility filter on the numerical value. It does
+   not establish controlled FDR or confirm the retained structures.
 
-### Small Library Warnings
+The exported `p_value` remains a diagnostic only. See
+[confidence semantics](confidence-semantics.md) for the method, scope, explicit
+states, limitations and migration details.
 
-Statistical FDR requires a sufficiently large null distribution (decoy set) to be accurate. If your reference library is too small (currently defined as `< 2000` spectra), the FDR calculation will be fundamentally under-powered.
+### Decoy-count warnings
 
-If this happens, MassFlow will log a **CRITICAL SCIENTIFIC WARNING**:
-
-```text
-CRITICAL SCIENTIFIC WARNING: SMALL LIBRARY DETECTED
-The library contains only 150 spectra.
-Target-Decoy False Discovery Rate (FDR) statistics are fundamentally invalid on
-small sample sizes because the decoy null-distribution will be too sparse.
-A strict FDR threshold (currently set to 0.01) will likely eliminate all true and putative matches as false positives.
-
-Recommendation:
-1. Use a comprehensive library (e.g., GNPS, MoNA, NIST) for FDR validation.
-2. Or, if using a small specialized library, relax the `fdr_threshold`
-   (e.g., 0.1 or 1.0) in your config to evaluate raw Cosine scores directly.
-```
-
-If you see this warning, it is highly recommended to increase your `fdr_threshold` to `1.0` in your YAML config and rely purely on the absolute `min_score` and `min_matched_peaks` thresholds to filter your results.
+The workflow may warn when a library is below its configured count heuristic.
+That warning is not a scientifically validated minimum size, and no decoy count
+threshold establishes FDR control. A sparse or unrepresentative decoy null should
+be reported with its confidence state and limitations; relaxing `fdr_threshold`
+changes which candidates are retained, not the validity of the estimate.

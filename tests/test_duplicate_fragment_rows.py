@@ -21,6 +21,7 @@ from matchms import Spectrum
 from matchms.exporting import save_as_mgf, save_as_msp
 from pyteomics import mass
 
+from MassFlow import library
 from MassFlow.config import InputConfig, MassFlowConfig, ProjectConfig, SimilarityConfig
 from MassFlow.io import _validate_spectra_iterator, load_spectra
 from MassFlow.library import open_library, prepare_library
@@ -236,13 +237,20 @@ def test_legacy_cache_rebuilt_under_strict_row_validation(
     finally:
         legacy_store.close()
     source_stat = library_path.stat()
+    # Simulate a cache written under the previous ingestion policy: the
+    # fingerprint is the current revision minus one, so only the revision bump
+    # (5 -> 6) can force the rebuild this test requires.
+    legacy_payload = {
+        "processing_semantics_revision": library.PROCESSING_SEMANTICS_REVISION - 1,
+        "processing": config.processing.model_dump(mode="json"),
+    }
     legacy_metadata = {
         "source": str(library_path),
         "source_mtime_ns": source_stat.st_mtime_ns,
         "source_size": source_stat.st_size,
         "backend": backend_name,
         "fingerprint": hashlib.sha256(
-            config.processing.model_dump_json().encode()
+            json.dumps(legacy_payload, sort_keys=True, separators=(",", ":")).encode()
         ).hexdigest(),
     }
     cache_path.with_suffix(cache_path.suffix + ".meta.json").write_text(

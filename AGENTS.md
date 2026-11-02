@@ -179,7 +179,7 @@ The 5-ppm tolerance is **physically mandated** and **not configurable**:
 
 - **Supported direct inputs**: mzML, mzXML, MGF, MSP, SQLite (`.db`, `.sqlite`).
 - **Explicitly rejected**: vendor raw formats (`.raw`, `.d`, `.wiff`, `.lcd`, `.t2d`, `.baf`). Do not add internal conversion logic.
-- **Stable outputs**: CSV, mzTab-M, and FBMN consensus_spectra.mgf + CSV pair.
+- **Stable outputs**: CSV with YAML provenance. The `mztab` option is an experimental, non-conformant mzTab-shaped table and is not a stable mzTab-M claim. FBMN `consensus_spectra.mgf` is **not implemented** and must not be described as a shipped output.
 
 ---
 
@@ -189,7 +189,7 @@ The 5-ppm tolerance is **physically mandated** and **not configurable**:
 
 | Status | Features | Constraint |
 |---|---|---|
-| **v0.1 Stable** | `cosine`, `modified_cosine`, `massflow annotate`, `massflow db`, CSV/mzTab-M export, SQLite libraries | Must not regress; all `@pytest.mark.core` tests must pass |
+| **v0.1 Stable** | `cosine`, `modified_cosine`, `massflow annotate`, `massflow db`, CSV export, SQLite libraries | Must not regress; all `@pytest.mark.core` tests must pass. `mztab` is experimental/non-conformant; optional ML/HNSW backends are unqualified |
 | **Experimental** | `spec2vec`, `ms2deepscore`, `consensus`, `cascade`, GraphML networking, terminal browser | Can evolve freely; must not break stable paths |
 
 ### 6.2 Module Boundaries
@@ -212,7 +212,7 @@ The 5-ppm tolerance is **physically mandated** and **not configurable**:
 ```bash
 # Environment
 uv python pin 3.13 && uv sync               # core deps
-uv sync --all-extras                          # full install (includes chem, ml, watch)
+uv sync --all-extras                          # developer convenience; optional backends remain experimental/unqualified
 
 # Testing (mandatory before every change)
 uv run pytest --cov=src/MassFlow --cov-report=xml --cov-fail-under=80 -v

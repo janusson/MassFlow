@@ -11,6 +11,9 @@ from __future__ import annotations
 
 __version__ = "0.1.0"
 
+# PyPI distribution name (the import package and CLI stay MassFlow/massflow).
+__distribution_name__ = "massflow-msms"
+
 __all__ = [
     "MassFlowConfig",
     "MLEngineProtocol",

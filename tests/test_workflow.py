@@ -280,7 +280,7 @@ def test_run_annotation_pipeline_small_library_warning_threshold(
     tmp_path,
     caplog,
 ):
-    """Warn below the scientific threshold, but not at the threshold."""
+    """Retain the legacy advisory trigger without implying statistical sufficiency."""
     from concurrent.futures import ThreadPoolExecutor
 
     mock_executor.return_value.__enter__.return_value = ThreadPoolExecutor(
@@ -319,8 +319,7 @@ def test_run_annotation_pipeline_small_library_warning_threshold(
         run_annotation_pipeline(config)
 
     found_warning = any(
-        "CRITICAL SCIENTIFIC WARNING: SMALL LIBRARY DETECTED" in record.message
-        for record in caplog.records
+        "Small library advisory:" in record.message for record in caplog.records
     )
     assert found_warning is should_warn
     mock_save.assert_called_once()

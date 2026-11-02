@@ -67,11 +67,11 @@ count in their sidecar; an all-rejected query file fails explicitly, including
 the reason in its failure sidecar, and writes no result CSV.
 
 The managed raw-library cache fingerprint now includes
-`io.SPECTRUM_VALIDATION_REVISION`. Tests seed legacy SQLite, Zarr and hybrid
-caches with duplicate rows and verify that rebuilding removes the invalid
-record while preserving the valid one. This policy revision is independent of
-the processing-semantics revisions in the existing stabilization PRs; integration
-must retain both inputs to cache invalidation.
+`library.PROCESSING_SEMANTICS_REVISION`, bumped from 5 to 6 for this stricter
+raw-ingestion policy. Tests seed legacy SQLite, Zarr and hybrid caches with
+duplicate rows and verify that rebuilding removes the invalid record while
+preserving the valid one. The revision is shared with the retention-time and
+acquisition-record policies, so any earlier prepared cache is invalidated.
 
 ## Reproduction and qualification
 
