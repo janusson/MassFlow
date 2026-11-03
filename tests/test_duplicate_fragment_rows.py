@@ -263,3 +263,81 @@ def test_legacy_cache_rebuilt_under_strict_row_validation(
         assert [s.get("compound_name") for s in backend.iter_spectra()] == ["good"]
     finally:
         backend.close()
+
+
+def test_prepare_library_reports_quarantined_reference_rows(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A managed build must count quarantined reference rows, not drop them silently."""
+    library_path = tmp_path / "library.msp"
+    _write(library_path, [_spectrum("good"), _spectrum("duplicate", 3)])
+    output_directory = tmp_path / "results"
+    output_directory.mkdir()
+    config = MassFlowConfig(
+        project=ProjectConfig(output_directory=output_directory),
+        input=InputConfig(input_path=tmp_path / "query.mgf", library_path=library_path),
+    )
+    with caplog.at_level(logging.WARNING, logger="MassFlow.library"):
+        spec, count = prepare_library(config, output_directory)
+    assert count == 1
+    assert "Quarantined 1 reference spectra" in caplog.text
+    assert "Duplicate fragment m/z values" in caplog.text
+    store = open_library(spec, config.processing)
+    try:
+        builds = store.get_library_builds(limit=1)
+    finally:
+        store.close()
+    assert builds[0]["details"]["raw_ingestion_rejections"] == {
+        "Duplicate fragment m/z values": 1
+    }
+
+
+def test_db_build_reports_quarantined_rows(tmp_path: Path) -> None:
+    """`massflow db build` must report quarantined rows in stderr and provenance."""
+    from typer.testing import CliRunner
+
+    from MassFlow import cli
+
+    library_path = tmp_path / "library.msp"
+    _write(library_path, [_spectrum("good"), _spectrum("duplicate", 3)])
+    output_path = tmp_path / "built.db"
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        yaml.safe_dump(
+            {
+                "project": {"output_directory": str(tmp_path)},
+                "input": {
+                    "input_path": str(library_path),
+                    "library_path": str(library_path),
+                },
+            }
+        )
+    )
+    runner = CliRunner()
+    result = runner.invoke(
+        cli.app,
+        [
+            "db",
+            "build",
+            "--input",
+            str(library_path),
+            "--output",
+            str(output_path),
+            "--config",
+            str(config_path),
+            "--category",
+            "library",
+        ],
+    )
+    captured = (result.output or "") + (getattr(result, "stderr", "") or "")
+    assert result.exit_code == 0, result.output
+    assert "Quarantined 1 spectra" in captured
+    assert "Duplicate fragment m/z values" in captured
+    store = create_spectral_store(output_path, backend="sqlite")
+    try:
+        builds = store.get_library_builds(limit=1)
+    finally:
+        store.close()
+    assert builds[0]["details"]["raw_ingestion_rejections"] == {
+        "Duplicate fragment m/z values": 1
+    }

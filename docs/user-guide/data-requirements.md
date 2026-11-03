@@ -27,7 +27,11 @@ MassFlow does not merge these rows or infer a centroiding tolerance; resolve the
 source representation before importing it. Distinct masses remain separate even
 when they are closer than the scoring tolerance.
 
-Managed caches built from raw libraries are rebuilt under this validation policy.
+Managed caches built from raw libraries are rebuilt under this validation policy,
+and both `massflow annotate` and `massflow db build` log the number and reason of
+quarantined reference spectra and record them under `raw_ingestion_rejections` in
+the `library_builds` provenance row, so a library smaller than its source file is
+visible rather than silent.
 Explicitly supplied native stores and spectra passed directly to the scoring API
 remain caller-managed; rebuild or check them for duplicate fragment rows before
 interpreting matched-peak counts as distinct ion evidence. This check does not

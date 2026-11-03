@@ -2,7 +2,7 @@
 
 ## Finding
 
-On committed main `ffef50bff913fcf400cb3de72595dab50e4f3fd8`, raw MGF and MSP
+On the pre-fix baseline (`main` at `ffef50bff913fcf400cb3de72595dab50e4f3fd8`), raw MGF and MSP
 spectra containing exact duplicate fragment m/z rows pass ingestion. A synthetic
 pair sharing only one distinct ion then passes the default three-matched-peak
 gate when that ion is represented by three rows in each spectrum. The cosine
@@ -73,6 +73,23 @@ duplicate rows and verify that rebuilding removes the invalid record while
 preserving the valid one. The revision is shared with the retention-time and
 acquisition-record policies, so any earlier prepared cache is invalidated.
 
+### Observable quarantine
+
+Quarantine is never a silent row deletion. Every rejected spectrum invokes the
+loader's rejection callback and the quarantine log, and both library-build paths
+now aggregate the reasons:
+
+- The managed prepared-cache build behind `massflow annotate` logs
+  `Quarantined N reference spectra during raw ingestion of <path>: <reason (xN)>`
+  and records the per-reason counts under `raw_ingestion_rejections` in the
+  `library_builds.details` provenance row.
+- `massflow db build` emits the same summary and records the same provenance
+  field.
+
+Query files already report `spectra_rejected` and the rejection reason in the
+per-file sidecar, and an all-rejected file fails explicitly. These counts are
+ingestion evidence, not an identification or calibrated-FDR result.
+
 ## Reproduction and qualification
 
 The regression tests build the spectra, perform real chemistry validation,
@@ -84,19 +101,19 @@ uv run pytest tests/test_duplicate_fragment_rows.py -v
 uv run pytest --cov=src/MassFlow --cov-report=xml --cov-fail-under=80 -v
 ```
 
-The final 21-test regression file, run against a clean pinned baseline with
-verified imports, gives **15 failed / 6 passed**. The six passing cases protect
-distinct-mass boundaries. The corrected file gives **21 passed**. The wider
-ingestion/library selection gives **52 passed**. No dependency, score formula,
-confidence estimator or golden expectation is changed.
+The final 23-test regression file contains 21 pre-existing regressions plus
+two observability regressions. Against the pre-fix baseline (`main` at
+`3890462`) with verified imports it gives **17 failed / 6 passed**: the six
+passing cases protect distinct-mass boundaries. The corrected file gives
+**23 passed**. No dependency, score formula, confidence estimator or golden
+expectation is changed.
 
 The mandatory full coverage command passes on the corrected tree with
-**1,377 passed, 7 skipped, 35 deselected, 82 warnings and 82.41% coverage**.
-The unchanged baseline passed with 1,356 passed, 7 skipped, 35 deselected,
-81 warnings and 82.39% coverage. Ruff, mypy, lockfile checking, all pre-commit
-hooks and the strict documentation build pass. Independent read-only review
-found no remaining blocker and reran all 21 regressions, including with the
-quarantine logger configured not to propagate to the root logger.
+**1,720 passed, 7 skipped, 35 deselected, 90 warnings and 83.59% coverage** in a
+fresh `uv sync --locked` environment. Ruff lint/format, mypy, `uv lock --check`
+and the strict documentation build pass. Reverified after integrating `main` at
+`3890462` (the #134 release-candidate merge); hosted CI is reported on the PR
+head.
 
 ## Limits
 
@@ -106,9 +123,17 @@ independence of fragments and isotopic information require separate acquisition
 and processing decisions. Unique m/z values alone do not prove independent
 chemical evidence, correct identity or calibrated confidence.
 
-Explicit native stores used directly by `prepare_library` and in-memory spectra
-passed directly to the scoring API remain caller-managed. The ingestion check
-applies when `load_spectra` is used, including native stores read through that
-function; it does not retroactively scan or modify every existing native store.
-Rebuild or inspect such inputs before relying on distinct matched-ion support.
-The PR is based on main, not a qualified combined stabilization candidate.
+### Where the check applies
+
+- **Enforced:** raw MGF/MSP/mzML/mzXML ingestion through `load_spectra`, for
+  both query and reference files.
+- **Caller-managed:** explicit native stores passed directly to
+  `prepare_library` or the scorer, and in-memory `Spectrum` objects passed to the
+  scoring API. The check does not retroactively scan or rewrite those inputs.
+  Native stores read *through* `load_spectra` are validated like any other
+  source.
+
+Rebuild or inspect caller-managed inputs before relying on distinct
+matched-ion support.
+The branch is current with `main` at `3890462` and is a release candidate,
+not a tagged release.
