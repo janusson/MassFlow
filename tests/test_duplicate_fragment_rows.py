@@ -284,7 +284,7 @@ def test_prepare_library_reports_quarantined_reference_rows(
     assert "Duplicate fragment m/z values" in caplog.text
     store = open_library(spec, config.processing)
     try:
-        builds = store.get_library_builds(limit=1)
+        builds = getattr(store, "get_library_builds")(limit=1)
     finally:
         store.close()
     assert builds[0]["details"]["raw_ingestion_rejections"] == {
@@ -335,7 +335,7 @@ def test_db_build_reports_quarantined_rows(tmp_path: Path) -> None:
     assert "Duplicate fragment m/z values" in captured
     store = create_spectral_store(output_path, backend="sqlite")
     try:
-        builds = store.get_library_builds(limit=1)
+        builds = getattr(store, "get_library_builds")(limit=1)
     finally:
         store.close()
     assert builds[0]["details"]["raw_ingestion_rejections"] == {
