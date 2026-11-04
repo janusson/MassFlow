@@ -86,9 +86,14 @@ now aggregate the reasons:
 - `massflow db build` emits the same summary and records the same provenance
   field.
 
-Query files already report `spectra_rejected` and the rejection reason in the
-per-file sidecar, and an all-rejected file fails explicitly. These counts are
-ingestion evidence, not an identification or calibrated-FDR result.
+With the stacked issue #132 provenance follow-up, mixed query files export
+`spectra_rejected`, stable `raw_input_rejections.reason_counts`, and a
+hash-linked JSONL ledger of source-identified rejection events. Without that
+follow-up, PR #136 itself exports only the count for mixed successful query
+files, and preserves reasons in quarantine logs; all-rejected files fail
+explicitly with reasons. Pure Zarr builds do not retain the SQLite-only
+`library_builds` lineage history. These counts are input evidence, not an
+identification or calibrated-FDR result.
 
 ## Reproduction and qualification
 

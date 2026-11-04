@@ -23,6 +23,7 @@ from rich.table import Table
 from rich.text import Text
 
 from MassFlow import __version__
+from MassFlow.diagnostics import RejectionEvent, raw_rejection_category
 from MassFlow.log_config import setup_structured_logging
 from MassFlow.tui.diagnostics import suggest_fix
 
@@ -431,13 +432,14 @@ def run_db_build(
         logger.info(f"Streaming and processing spectra from {input}")
         ingestion_rejections: dict[str, int] = {}
 
-        def _collect_ingestion_rejection(reason: str) -> None:
-            ingestion_rejections[reason] = ingestion_rejections.get(reason, 0) + 1
+        def _collect_ingestion_rejection(event: RejectionEvent) -> None:
+            category = raw_rejection_category(event)
+            ingestion_rejections[category] = ingestion_rejections.get(category, 0) + 1
 
         raw_spectra = io.load_spectra(
             Path(input),
             assign_record_ids=True,
-            rejection_reporter=_collect_ingestion_rejection,
+            diagnostic_reporter=_collect_ingestion_rejection,
         )
         cleaned_spectra = processing.process_spectra(raw_spectra, cfg.processing)
 

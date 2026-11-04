@@ -28,10 +28,12 @@ source representation before importing it. Distinct masses remain separate even
 when they are closer than the scoring tolerance.
 
 Managed caches built from raw libraries are rebuilt under this validation policy,
-and both `massflow annotate` and `massflow db build` log the number and reason of
-quarantined reference spectra and record them under `raw_ingestion_rejections` in
-the `library_builds` provenance row, so a library smaller than its source file is
-visible rather than silent.
+and both `massflow annotate` and `massflow db build` log the number and
+grouped reason of quarantined reference spectra. SQLite-backed stores persist
+these category counts under `raw_ingestion_rejections` in the
+`library_builds` provenance row. Pure Zarr does not persist SQLite lineage
+rows; use the quarantine log for that backend. Raw query-file sidecars also
+link to a complete JSONL rejection ledger when any source records are rejected.
 Explicitly supplied native stores and spectra passed directly to the scoring API
 remain caller-managed; rebuild or check them for duplicate fragment rows before
 interpreting matched-peak counts as distinct ion evidence. This check does not

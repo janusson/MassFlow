@@ -154,11 +154,34 @@ Every experimental input file produces exactly one structured execution outcome 
 | `input_path` | The experimental input file |
 | `spectra_loaded` | Spectra that passed I/O validation and entered processing |
 | `spectra_rejected` | Spectra dropped by validation or processing (reported explicitly, never silently) |
+| `raw_input_rejections` | When applicable, an exact raw-input count, stable category breakdown, and link to a source-identified JSONL rejection ledger |
 | `hits_produced` | Annotation hits exported for the file |
 | `output_path` | Written results file (`None` for failed files) |
 | `warnings` | Non-fatal caveats (e.g. small-library FDR) |
 | `fatal_errors` | Non-empty iff the file failed |
 | `degraded_mode_flags` | Machine-readable degradation markers (`engine_fallback:<algo>`, `consensus_*`, `cascade_*`, `routing_*`, `decoy_null_empty`, `fdr_uncalibrated`) |
+
+For raw query records that fail validation, successful *and* failed per-file YAML
+sidecars contain `raw_input_rejections`: `total`, stable `reason_counts`,
+`source_path`, `source_sha256`, `ledger_path`, and `ledger_sha256`.
+The JSONL ledger stores every observed rejected loader record with
+`source_ordinal` (zero-based), available `spectrum_id`, source path, stage,
+machine-readable reason, and original human-readable detail. The ordinal
+refers to the sequence returned by the open-format loader; records discarded
+inside an upstream parser cannot be reconstructed from this audit. Rejected
+records never appear as annotation hits in the results CSV. The ledger
+is separate from the optional, bounded retrieval-diagnostics sample.
+
+Raw reference-library builds report grouped quarantine counts via
+`library_builds.details.raw_ingestion_rejections` on SQLite-backed stores;
+ordinary query YAML reports also expose them at
+`library.build.raw_ingestion_rejections` when that lineage is available.
+Pure Zarr does not support the SQLite lineage table. Individual rejected
+reference-record identities remain in the quarantine log, not a reference JSONL
+ledger. Input rejection categories are stable and do not incorporate unbounded
+raw values. A partially interrupted query scan marks
+`raw_input_rejections.input_scan_complete: false`. This
+is an input software audit, not identification accuracy or FDR evidence.
 
 The status is recorded in the provenance sidecar, so a degraded or partially failed run is never indistinguishable from a clean one:
 
