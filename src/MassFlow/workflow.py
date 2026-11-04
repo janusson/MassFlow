@@ -666,6 +666,7 @@ def _process_single_file(
         }
         if diagnostic_reporter is not None:
             processing_kwargs["diagnostic_reporter"] = diagnostic_reporter
+        raw_input_scan_complete = False
         try:
             with raw_ledger:
                 query_spectra = list(
@@ -675,6 +676,7 @@ def _process_single_file(
                         **processing_kwargs,
                     )
                 )
+                raw_input_scan_complete = True
         finally:
             # Include records for both successful mixed files and failed files.
             if raw_ledger.count:
@@ -682,6 +684,7 @@ def _process_single_file(
                     "schema_version": 1,
                     "source_path": str(query_file),
                     "total": raw_ledger.count,
+                    "input_scan_complete": raw_input_scan_complete,
                     "reason_counts": dict(sorted(raw_rejection_counts.items())),
                     "ledger_path": str(raw_ledger.path),
                 }
