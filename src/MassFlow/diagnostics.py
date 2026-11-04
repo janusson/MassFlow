@@ -98,6 +98,7 @@ class RejectionSummary:
             "samples": list(self.samples),
         }
 
+
 def raw_rejection_category(event: RejectionEvent) -> str:
     """Return a bounded-cardinality grouping key for raw-ingestion rejections."""
     if event.reason is not DiagnosticReason.INPUT_INVALID:
