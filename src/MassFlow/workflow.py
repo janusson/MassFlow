@@ -1593,6 +1593,15 @@ def _build_library_provenance(
                     "processing_fingerprint": latest.get("processing_fingerprint"),
                     "massflow_version": latest.get("massflow_version"),
                 }
+                details = latest.get("details")
+                if isinstance(details, dict):
+                    raw_rejections = details.get("raw_ingestion_rejections")
+                    if isinstance(raw_rejections, dict):
+                        # Surface the exact accepted-library lineage counts in
+                        # ordinary per-file YAML provenance, not just db inspect.
+                        payload["build"]["raw_ingestion_rejections"] = dict(
+                            sorted(raw_rejections.items())
+                        )
     finally:
         backend.close()
     return payload
