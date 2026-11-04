@@ -186,6 +186,7 @@ def test_mixed_query_exports_rejection_reasons_and_record_ledger(
     report, ledger = _read_report_and_ledger(
         tmp_path / "results" / "mixed_results.report.yaml"
     )
+    assert report["raw_input_rejections"]["input_scan_complete"] is True
     assert report["raw_input_rejections"]["reason_counts"] == {
         "precursor_missing": 1,
         "precursor_non_positive": 1,
@@ -208,6 +209,7 @@ def test_all_invalid_query_exports_failure_and_ledger_without_csv(
     report, ledger = _read_report_and_ledger(
         tmp_path / "results" / "invalid_failed.report.yaml"
     )
+    assert report["raw_input_rejections"]["input_scan_complete"] is True
     assert report["raw_input_rejections"]["reason_counts"] == {
         "precursor_missing": 1,
         "precursor_non_positive": 1,
