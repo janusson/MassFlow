@@ -103,8 +103,14 @@ def raw_rejection_category(event: RejectionEvent) -> str:
     """Return a bounded-cardinality grouping key for raw-ingestion rejections."""
     if event.reason is not DiagnosticReason.INPUT_INVALID:
         return event.reason.value
-    # Preserve stable legacy labels such as duplicate-fragment rows, but
-    # do not create one key per malformed pair of array lengths.
+    # Preserve known legacy labels without retaining arbitrary source values
+    # in dictionary keys; record-level detail is kept in the JSONL ledger.
     if event.detail.startswith("Mismatched array lengths ("):
         return "Mismatched array lengths"
-    return event.detail
+    stable_labels = {
+        "Duplicate fragment m/z values",
+        "Empty peak arrays",
+        "M/Z values are not monotonically increasing",
+        "Contains non-positive intensity values",
+    }
+    return event.detail if event.detail in stable_labels else "input_invalid"
