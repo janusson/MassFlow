@@ -23,7 +23,7 @@ import tempfile
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Iterable, Iterator, Optional, Sequence
+from typing import Any, Callable, Iterable, Iterator, Optional, Sequence, TextIO
 
 import numpy as np
 import polars as pl
@@ -224,6 +224,35 @@ def is_loadable_spectral_input(path: Path) -> bool:
 quarantine_logger = logging.getLogger("quarantine")
 
 
+class RawRejectionLedger:
+    """Stream complete raw-ingestion rejection events without retaining them in RAM."""
+
+    def __init__(self, path: Path) -> None:
+        self.path = path
+        self.count = 0
+        self._handle: Optional[TextIO] = None
+
+    def __enter__(self) -> "RawRejectionLedger":
+        return self
+
+    def record(self, event: RejectionEvent) -> None:
+        """Append one rejection; materialize the ledger only when needed."""
+        if self._handle is None:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            self._handle = self.path.open("w", encoding="utf-8")
+        self._handle.write(json.dumps(event.as_dict(), sort_keys=True) + "\n")
+        self.count += 1
+
+    def close(self) -> None:
+        """Close the output handle, if any."""
+        if self._handle is not None:
+            self._handle.close()
+            self._handle = None
+
+    def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
+        self.close()
+
+
 def _validate_spectra_iterator(
     spectra: Iterable[Spectrum],
     source_path: Path,
@@ -262,7 +291,7 @@ def _validate_spectra_iterator(
     Spectrum
         A valid spectrum object that has passed all checks.
     """
-    for spectrum in spectra:
+    for source_index, spectrum in enumerate(spectra):
         if spectrum is None:
             continue
 
@@ -298,12 +327,20 @@ def _validate_spectra_iterator(
                 if not np.isfinite(precursor_value):
                     is_valid = False
                     rejection_reason = f"Non-finite precursor_mz: {precursor_mz}"
+                    if np.isnan(precursor_value):
+                        diagnostic_reason = DiagnosticReason.PRECURSOR_NAN
+                    elif np.isposinf(precursor_value):
+                        diagnostic_reason = DiagnosticReason.PRECURSOR_POSITIVE_INFINITY
+                    else:
+                        diagnostic_reason = DiagnosticReason.PRECURSOR_NEGATIVE_INFINITY
                 elif precursor_value <= 0:
                     is_valid = False
                     rejection_reason = f"Non-positive precursor_mz: {precursor_mz}"
+                    diagnostic_reason = DiagnosticReason.PRECURSOR_NON_POSITIVE
             except (ValueError, TypeError):
                 is_valid = False
                 rejection_reason = f"Non-numeric precursor_mz: {precursor_mz}"
+                diagnostic_reason = DiagnosticReason.PRECURSOR_NON_NUMERIC
 
         # 2. Peaks Check
         if is_valid:
@@ -341,9 +378,16 @@ def _validate_spectra_iterator(
                         reason=diagnostic_reason,
                         detail=rejection_reason,
                         spectrum_id=(
-                            str(spectrum.get("id") or spectrum.get("spectrum_id") or "")
+                            str(
+                                spectrum.get("id")
+                                or spectrum.get("spectrum_id")
+                                or spectrum.get("scans")
+                                or ""
+                            )
                             or None
                         ),
+                        source_path=str(source_path),
+                        source_ordinal=source_index,
                     )
                 )
             quarantine_logger.warning(
