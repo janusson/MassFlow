@@ -174,8 +174,13 @@ is separate from the optional, bounded retrieval-diagnostics sample.
 
 Raw reference-library builds report grouped quarantine counts via
 `library_builds.details.raw_ingestion_rejections` on SQLite-backed stores;
-pure Zarr does not support this SQLite lineage table. Input rejection
-categories are stable and do not incorporate unbounded raw values. This
+ordinary query YAML reports also expose them at
+`library.build.raw_ingestion_rejections` when that lineage is available.
+Pure Zarr does not support the SQLite lineage table. Individual rejected
+reference-record identities remain in the quarantine log, not a reference JSONL
+ledger. Input rejection categories are stable and do not incorporate unbounded
+raw values. A partially interrupted query scan marks
+`raw_input_rejections.input_scan_complete: false`. This
 is an input software audit, not identification accuracy or FDR evidence.
 
 The status is recorded in the provenance sidecar, so a degraded or partially failed run is never indistinguishable from a clean one:
