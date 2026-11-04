@@ -217,3 +217,35 @@ def test_all_invalid_query_exports_failure_and_ledger_without_csv(
     assert len(ledger) == 2
     assert report["results_csv"] is None
     assert not (tmp_path / "results" / "invalid_results.csv").exists()
+
+
+def test_reference_rejection_counts_survive_query_report_export(
+    tmp_path: Path,
+) -> None:
+    query = tmp_path / "query.mgf"
+    library = tmp_path / "reference.mgf"
+    _write_mgf(query, [("query", "195.088")])
+    _write_mgf(library, [("accepted-reference", "195.088")])
+    # Append an actual open-format record with repeated fragment rows.
+    with library.open("a") as handle:
+        handle.write(
+            "BEGIN IONS\n"
+            "TITLE=duplicate-reference\n"
+            "PEPMASS=195.088\n"
+            "CHARGE=1+\n"
+            "100.0 1.0\n"
+            "100.0 1.0\n"
+            "150.0 2.0\n"
+            "200.0 1.0\n"
+            "END IONS\n"
+        )
+    result = run_annotation_pipeline(_config(tmp_path, query, library))[0]
+    assert result.status in {"success", "degraded"}
+    report = yaml.safe_load(
+        (tmp_path / "results" / "query_results.report.yaml").read_text()
+    )
+    assert report["library"]["build"]["raw_ingestion_rejections"] == {
+        "Duplicate fragment m/z values": 1
+    }
+    assert report["spectra_rejected"] == 0
+    assert "raw_input_rejections" not in report
