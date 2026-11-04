@@ -12,6 +12,11 @@ class DiagnosticReason(StrEnum):
 
     INPUT_INVALID = "input_invalid"
     PRECURSOR_MISSING = "precursor_missing"
+    PRECURSOR_NAN = "precursor_nan"
+    PRECURSOR_POSITIVE_INFINITY = "precursor_positive_infinity"
+    PRECURSOR_NEGATIVE_INFINITY = "precursor_negative_infinity"
+    PRECURSOR_NON_POSITIVE = "precursor_non_positive"
+    PRECURSOR_NON_NUMERIC = "precursor_non_numeric"
     PHYSICAL_INTEGRITY_REJECTED = "physical_integrity_rejected"
     INSUFFICIENT_PEAKS = "insufficient_peaks"
     PROCESSING_REJECTED_UNKNOWN = "processing_rejected_unknown"
@@ -46,15 +51,23 @@ class RejectionEvent:
     reason: DiagnosticReason
     detail: str
     spectrum_id: str | None = None
+    source_path: str | None = None
+    source_ordinal: int | None = None
 
     def as_dict(self) -> dict[str, Any]:
         """Return a JSON-safe event representation."""
-        return {
+        payload: dict[str, Any] = {
             "stage": self.stage.value,
             "reason": self.reason.value,
             "detail": self.detail,
             "spectrum_id": self.spectrum_id,
         }
+        # Leave non-ingestion diagnostic payloads backwards compatible.
+        if self.source_path is not None:
+            payload["source_path"] = self.source_path
+        if self.source_ordinal is not None:
+            payload["source_ordinal"] = self.source_ordinal
+        return payload
 
 
 @dataclass
@@ -84,3 +97,13 @@ class RejectionSummary:
             "sample_limit": self.sample_limit,
             "samples": list(self.samples),
         }
+
+def raw_rejection_category(event: RejectionEvent) -> str:
+    """Return a bounded-cardinality grouping key for raw-ingestion rejections."""
+    if event.reason is not DiagnosticReason.INPUT_INVALID:
+        return event.reason.value
+    # Preserve stable legacy labels such as duplicate-fragment rows, but
+    # do not create one key per malformed pair of array lengths.
+    if event.detail.startswith("Mismatched array lengths ("):
+        return "Mismatched array lengths"
+    return event.detail
