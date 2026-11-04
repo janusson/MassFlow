@@ -49,6 +49,7 @@ from matchms import Spectrum
 
 from MassFlow import io, processing
 from MassFlow.config import MassFlowConfig, ProcessingConfig
+from MassFlow.diagnostics import RejectionEvent, raw_rejection_category
 from MassFlow.storage import SpectralStore, create_spectral_store
 
 logger = logging.getLogger(__name__)
@@ -433,15 +434,16 @@ def _build_prepared_library_store(
         def _collect_physics_rejection(reason: str) -> None:
             physics_rejections[reason] = physics_rejections.get(reason, 0) + 1
 
-        def _collect_ingestion_rejection(reason: str) -> None:
-            ingestion_rejections[reason] = ingestion_rejections.get(reason, 0) + 1
+        def _collect_ingestion_rejection(event: RejectionEvent) -> None:
+            category = raw_rejection_category(event)
+            ingestion_rejections[category] = ingestion_rejections.get(category, 0) + 1
 
         build_id: Optional[int] = None
         try:
             raw = io.load_spectra(
                 library_path,
                 assign_record_ids=True,
-                rejection_reporter=_collect_ingestion_rejection,
+                diagnostic_reporter=_collect_ingestion_rejection,
             )
             processed = processing.process_spectra(
                 raw, config.processing, rejection_reporter=_collect_physics_rejection
