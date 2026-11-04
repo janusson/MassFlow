@@ -33,7 +33,9 @@ from matchms import Spectrum
 from MassFlow import io, processing, similarity as similarity_module
 from MassFlow.diagnostics import (
     DiagnosticReason,
+    RejectionEvent,
     RejectionSummary,
+    raw_rejection_category,
 )
 from MassFlow.config import MassFlowConfig, SimilarityConfig
 from MassFlow.library import LibrarySpec, open_library, prepare_library
@@ -118,6 +120,7 @@ class FileExecutionResult:
     confidence_summary: dict[str, Any] | None = field(default=None, repr=False)
     library_provenance: dict[str, Any] | None = field(default=None, repr=False)
     retrieval_diagnostics: dict[str, Any] | None = field(default=None, repr=False)
+    raw_input_rejections: dict[str, Any] | None = field(default=None, repr=False)
 
 
 _worker_engine: SimilarityEngine | _MLEngineBase | MLEngineProtocol | None = None
@@ -634,12 +637,23 @@ def _process_single_file(
         # collected so spectrum-level issues are observable and recorded in
         # provenance instead of vanishing into the quarantine log alone.
         rejection_collector = _RejectionCollector()
+        raw_rejection_counts: dict[str, int] = {}
+        raw_ledger = io.RawRejectionLedger(
+            config.output_directory / f"{query_file.stem}_raw_rejections.jsonl"
+        )
+
+        def _record_raw_rejection(event: RejectionEvent) -> None:
+            category = raw_rejection_category(event)
+            raw_rejection_counts[category] = raw_rejection_counts.get(category, 0) + 1
+            raw_ledger.record(event)
+            if diagnostic_reporter is not None:
+                diagnostic_reporter(event)
+
         load_kwargs: dict[str, Any] = {
             "file_format": config.input.format,
             "rejection_reporter": rejection_collector,
+            "diagnostic_reporter": _record_raw_rejection,
         }
-        if diagnostic_reporter is not None:
-            load_kwargs["diagnostic_reporter"] = diagnostic_reporter
         query_gen = io.load_spectra(query_file, **load_kwargs)
         validated_queries = _CountingIterator(query_gen)
         # Rejections from the strict 5 ppm physical-integrity gate in
@@ -652,13 +666,25 @@ def _process_single_file(
         }
         if diagnostic_reporter is not None:
             processing_kwargs["diagnostic_reporter"] = diagnostic_reporter
-        query_spectra = list(
-            processing.process_spectra(
-                validated_queries,
-                config.processing,
-                **processing_kwargs,
-            )
-        )
+        try:
+            with raw_ledger:
+                query_spectra = list(
+                    processing.process_spectra(
+                        validated_queries,
+                        config.processing,
+                        **processing_kwargs,
+                    )
+                )
+        finally:
+            # Include records for both successful mixed files and failed files.
+            if raw_ledger.count:
+                result.raw_input_rejections = {
+                    "schema_version": 1,
+                    "source_path": str(query_file),
+                    "total": raw_ledger.count,
+                    "reason_counts": dict(sorted(raw_rejection_counts.items())),
+                    "ledger_path": str(raw_ledger.path),
+                }
 
         n_validated = validated_queries.count
         n_processing_drops = max(n_validated - len(query_spectra), 0)
@@ -1157,6 +1183,17 @@ def _write_analysis_report(
         # config file, full effective config with resolved paths, digest).
         "config": config.normalized_config(),
     }
+
+    # Full raw-input rejection identities live in a streaming JSONL file.
+    # The sidecar retains exact category counts and hashes for auditability.
+    if result.raw_input_rejections is not None:
+        raw = dict(result.raw_input_rejections)
+        ledger_path = Path(raw["ledger_path"])
+        if ledger_path.is_file():
+            raw["ledger_sha256"] = _file_sha256(ledger_path)
+        if result.input_path.is_file():
+            raw["source_sha256"] = _file_sha256(result.input_path)
+        report_payload["raw_input_rejections"] = raw
 
     # FDR provenance: the competition-unit summary behind every exported
     # q-value.
