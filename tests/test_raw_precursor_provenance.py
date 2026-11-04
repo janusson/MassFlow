@@ -118,20 +118,26 @@ def test_rejection_ledger_retains_every_source_ordinal(tmp_path: Path) -> None:
 
 def test_reference_reason_grouping_avoids_source_value_cardinality() -> None:
     for value in ("bad-1", "bad-2", "bad-3"):
-        assert raw_rejection_category(
+        assert (
+            raw_rejection_category(
+                RejectionEvent(
+                    stage=DiagnosticStage.INPUT_VALIDATION,
+                    reason=DiagnosticReason.PRECURSOR_NON_NUMERIC,
+                    detail=f"Non-numeric precursor_mz: {value}",
+                )
+            )
+            == "precursor_non_numeric"
+        )
+    assert (
+        raw_rejection_category(
             RejectionEvent(
                 stage=DiagnosticStage.INPUT_VALIDATION,
-                reason=DiagnosticReason.PRECURSOR_NON_NUMERIC,
-                detail=f"Non-numeric precursor_mz: {value}",
+                reason=DiagnosticReason.INPUT_INVALID,
+                detail="Duplicate fragment m/z values",
             )
-        ) == "precursor_non_numeric"
-    assert raw_rejection_category(
-        RejectionEvent(
-            stage=DiagnosticStage.INPUT_VALIDATION,
-            reason=DiagnosticReason.INPUT_INVALID,
-            detail="Duplicate fragment m/z values",
         )
-    ) == "Duplicate fragment m/z values"
+        == "Duplicate fragment m/z values"
+    )
 
 
 def _write_mgf(path: Path, precursor_values: list[tuple[str, str | None]]) -> None:
@@ -160,10 +166,13 @@ def _read_report_and_ledger(report_path: Path) -> tuple[dict, list[dict]]:
     provenance = report["raw_input_rejections"]
     ledger = Path(provenance["ledger_path"])
     assert ledger.is_file()
-    assert provenance["source_sha256"] == hashlib.sha256(
-        Path(provenance["source_path"]).read_bytes()
-    ).hexdigest()
-    assert provenance["ledger_sha256"] == hashlib.sha256(ledger.read_bytes()).hexdigest()
+    assert (
+        provenance["source_sha256"]
+        == hashlib.sha256(Path(provenance["source_path"]).read_bytes()).hexdigest()
+    )
+    assert (
+        provenance["ledger_sha256"] == hashlib.sha256(ledger.read_bytes()).hexdigest()
+    )
     rows = [json.loads(line) for line in ledger.read_text().splitlines()]
     assert len(rows) == provenance["total"]
     return report, rows
