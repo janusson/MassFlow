@@ -53,11 +53,13 @@ from MassFlow.storage import SpectralStore, create_spectral_store
 
 logger = logging.getLogger(__name__)
 
-# Revision 5 adds canonical retention-time seconds and source-unit evidence
-# to revision 4 (missing precursors, fragment-only m/z windows, charge/adduct
-# consistency, and acquisition-record identity). This union invalidates caches
-# from both the stabilization and standalone retention-time predecessors.
-PROCESSING_SEMANTICS_REVISION = 5
+# Revision 6 adds the strict raw-ingestion policy that quarantines spectra with
+# exact duplicate fragment m/z rows, to revision 5 (canonical retention-time
+# seconds and source-unit evidence) and revision 4 (missing precursors,
+# fragment-only m/z windows, charge/adduct consistency, and acquisition-record
+# identity). A stricter reader must not reuse spectra accepted by an older
+# ingestion policy, so this union invalidates all earlier prepared caches.
+PROCESSING_SEMANTICS_REVISION = 6
 
 # Extension of MassFlow-native stores (opened directly by workers).
 _STORE_EXTENSIONS = {".db", ".sqlite", ".zarr"}
@@ -325,6 +327,36 @@ def processing_fingerprint(processing_config: ProcessingConfig) -> str:
 _processing_fingerprint = processing_fingerprint
 
 
+def summarize_rejection_reasons(rejections: dict[str, int], limit: int = 3) -> str:
+    """Render rejection counts for logs and build provenance.
+
+    Keeps the bounded ``reason (xN)`` form used in library-build errors so a
+    malformed or duplicate-row library never loses records without a visible
+    count.
+
+    Parameters
+    ----------
+    rejections : dict[str, int]
+        Mapping of rejection reason to number of quarantined spectra.
+    limit : int, default=3
+        Maximum number of distinct reasons to spell out.
+
+    Returns
+    -------
+    str
+        Semicolon-separated summary, with a remainder count when truncated.
+    """
+    ordered = list(rejections.items())
+    rendered = "; ".join(
+        f"{reason} (x{count})" if count > 1 else reason
+        for reason, count in ordered[:limit]
+    )
+    remaining = len(ordered) - limit
+    if remaining > 0:
+        rendered += f"; +{remaining} more reason(s)"
+    return rendered
+
+
 def _store_is_fresh(
     store_path: Path,
     source_path: Path,
@@ -396,13 +428,21 @@ def _build_prepared_library_store(
         )
         store = create_spectral_store(staged_store_path, backend=backend_name)
         physics_rejections: dict[str, int] = {}
+        ingestion_rejections: dict[str, int] = {}
 
         def _collect_physics_rejection(reason: str) -> None:
             physics_rejections[reason] = physics_rejections.get(reason, 0) + 1
 
+        def _collect_ingestion_rejection(reason: str) -> None:
+            ingestion_rejections[reason] = ingestion_rejections.get(reason, 0) + 1
+
         build_id: Optional[int] = None
         try:
-            raw = io.load_spectra(library_path, assign_record_ids=True)
+            raw = io.load_spectra(
+                library_path,
+                assign_record_ids=True,
+                rejection_reporter=_collect_ingestion_rejection,
+            )
             processed = processing.process_spectra(
                 raw, config.processing, rejection_reporter=_collect_physics_rejection
             )
@@ -410,12 +450,16 @@ def _build_prepared_library_store(
         except Exception:
             store.close()
             raise
+        if ingestion_rejections:
+            logger.warning(
+                "Quarantined %d reference spectra during raw ingestion of %s: %s",
+                sum(ingestion_rejections.values()),
+                library_path,
+                summarize_rejection_reasons(ingestion_rejections),
+            )
         if physics_rejections:
             store.close()
-            example_reasons = "; ".join(
-                f"{reason} (x{count})" if count > 1 else reason
-                for reason, count in list(physics_rejections.items())[:3]
-            )
+            example_reasons = summarize_rejection_reasons(physics_rejections)
             raise processing.PhysicalIntegrityError(
                 "Reference library %s contains %d spectrum/spectra that fail "
                 "the strict 5 ppm physical-integrity validation and was not "
@@ -435,6 +479,9 @@ def _build_prepared_library_store(
         from MassFlow.database import record_library_build_provenance
 
         normalized = config.normalized_config()
+        build_details: dict[str, Any] = {"annotate_prepared_store": True}
+        if ingestion_rejections:
+            build_details["raw_ingestion_rejections"] = dict(ingestion_rejections)
         build_id = record_library_build_provenance(
             store,
             logger_tag=f"annotate library store {store_path}",
@@ -446,7 +493,7 @@ def _build_prepared_library_store(
             similarity_config=config.similarity.model_dump(mode="json"),
             processing_fingerprint=fingerprint,
             config_digest_sha256=normalized["config_digest_sha256"],
-            details={"annotate_prepared_store": True},
+            details=build_details,
         )
         store.close()
 
