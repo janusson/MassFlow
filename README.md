@@ -15,7 +15,7 @@
 > warning — it aborts the run rather than biasing every query's FDR.
 
 [![CI](https://github.com/janusson/MassFlow/actions/workflows/ci.yml/badge.svg)](https://github.com/janusson/MassFlow/actions/workflows/ci.yml)
-[![Documentation](https://img.shields.io/badge/docs-available-blue.svg)](https://ericjanusson.github.io/MassFlow/)
+[![Documentation](https://img.shields.io/badge/docs-available-blue.svg)](https://ericjanusson.ca/MassFlow/)
 [![Python 3.13](https://img.shields.io/badge/python-3.13-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
