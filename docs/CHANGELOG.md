@@ -42,6 +42,23 @@ Unreleased section and current documentation take precedence.
   into a new destination. See the processing guide for migration and PR #103
   integration requirements.
 
+### Fixed — benchmark metric contract
+
+- Benchmark reachability metrics now count the true compound among the
+  candidates exported for a query, before the score, matched-peak, and q-value
+  operating point, so `true_compound_retrieval_rate_selected` no longer moves
+  with the sweep. A new `accepted_true_compound_rate_selected` reports the
+  reachable fraction that survives the operating point, and
+  `rank1_of_reachable` charges a reachable query that the operating point
+  rejects as a ranking miss.
+- A finite q-value threshold now raises instead of silently excluding every
+  candidate when the results table has no `q_value` column or a candidate row
+  carries no finite q-value.
+- Report comparison now raises a named error for a run that recorded only an
+  `error` entry or that lacks `candidate_rows_exported` or
+  `wall_time_seconds`, instead of raising `KeyError`. A present `null` wall time
+  remains a supported "not captured" value.
+
 ### Added
 
 - Opt-in retrieval-funnel diagnostics (`similarity.collect_retrieval_diagnostics`) emit a versioned JSON sidecar with bounded typed preprocessing rejections, sequential target/decoy pair-stage counts, mutually exclusive query outcomes, confidence states, effective configuration, and input/library fingerprints. The benchmark harness keeps truth labels separate and adds query-level truth-record loss/rank attribution. Diagnostics do not alter scoring or candidate order; unknown causes remain explicitly unattributed.

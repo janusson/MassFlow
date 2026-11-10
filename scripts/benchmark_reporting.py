@@ -56,6 +56,14 @@ def evaluate_query_retrieval(
     in the end-to-end denominator. The CSV contract requires one or more rows
     for every searched query, including queries with no candidate.
 
+    Reachability counts the true compound among the candidates exported for a
+    query, before the score, matched-peak, and q-value operating point is
+    applied. Ranking counts only candidates retained at that operating point,
+    so ``rank1_of_reachable`` stays a ranking measure rather than a restatement
+    of coverage. A finite ``q_threshold`` consequently requires a ``q_value`` on
+    every candidate row; otherwise the operating point would silently exclude
+    every candidate and report an empty call set.
+
     Parameters
     ----------
     labels : Mapping[str, Mapping[str, Any]]
@@ -196,6 +204,25 @@ def evaluate_query_retrieval(
                 }
             )
 
+    if candidate_rows and math.isfinite(q_threshold):
+        if q_value_column is None:
+            raise ValueError(
+                "a finite q-value threshold requires a q_value column in the "
+                "results; without it every candidate would be excluded"
+            )
+        without_q_value = sorted(
+            {
+                candidate["query_id"]
+                for candidate in candidate_rows
+                if not math.isfinite(candidate["q_value"])
+            }
+        )
+        if without_q_value:
+            raise ValueError(
+                "candidates for these queries have no q_value, so a finite "
+                f"q-value threshold cannot be applied: {without_q_value}"
+            )
+
     hits_by_query: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for candidate in candidate_rows:
         if candidate["query_id"] not in rejected_ids:
@@ -227,6 +254,22 @@ def evaluate_query_retrieval(
         ]
         threshold_hits[query_id] = query_hits
 
+    def truth_match_flags(
+        query_id: str, query_hits: Sequence[Mapping[str, Any]]
+    ) -> tuple[bool, bool]:
+        """Return whether the top hit and any hit match the labeled truth."""
+        true_references = set(labels[query_id]["true_lib_records"])
+        truth_connectivity = str(labels[query_id].get("connectivity", ""))
+        if identity_column is not None and truth_connectivity:
+            return (
+                query_hits[0]["identity"] == truth_connectivity,
+                any(hit["identity"] == truth_connectivity for hit in query_hits),
+            )
+        return (
+            query_hits[0]["reference_name"] in true_references,
+            any(hit["reference_name"] in true_references for hit in query_hits),
+        )
+
     def summarize(group_ids: set[str]) -> dict[str, Any]:
         group_rejected = group_ids & rejected_ids
         group_searched = group_ids - group_rejected
@@ -234,27 +277,25 @@ def evaluate_query_retrieval(
             query_id for query_id in group_searched if threshold_hits.get(query_id)
         }
         correct_top1 = 0
-        true_compound_in_candidates = 0
         for query_id in group_with_candidate:
-            true_references = set(labels[query_id]["true_lib_records"])
-            truth_connectivity = str(labels[query_id].get("connectivity", ""))
-            query_hits = threshold_hits[query_id]
-            if identity_column is not None and truth_connectivity:
-                top_matches_truth = query_hits[0]["identity"] == truth_connectivity
-                any_matches_truth = any(
-                    hit["identity"] == truth_connectivity for hit in query_hits
-                )
-            else:
-                top_matches_truth = query_hits[0]["reference_name"] in true_references
-                any_matches_truth = any(
-                    hit["reference_name"] in true_references for hit in query_hits
-                )
-            correct_top1 += int(top_matches_truth)
-            true_compound_in_candidates += int(any_matches_truth)
+            correct_top1 += int(
+                truth_match_flags(query_id, threshold_hits[query_id])[0]
+            )
+        # Reachability is a candidate-generation property and is measured on
+        # exported candidates, before the score/q-value operating point.
+        # Ranking success is measured after it.
+        true_compound_in_candidates = 0
+        true_compound_in_accepted = 0
+        for query_id in group_searched:
+            exported_hits = hits_by_query.get(query_id, [])
+            if exported_hits and truth_match_flags(query_id, exported_hits)[1]:
+                true_compound_in_candidates += 1
+            accepted_hits = threshold_hits[query_id]
+            if accepted_hits and truth_match_flags(query_id, accepted_hits)[1]:
+                true_compound_in_accepted += 1
         call_count = len(group_with_candidate)
         selected_count = len(group_ids)
         searched_count = len(group_searched)
-        reachable_count = true_compound_in_candidates
         return {
             "query_counts": {
                 "selected": selected_count,
@@ -263,7 +304,8 @@ def evaluate_query_retrieval(
                 "searched_without_candidate": searched_count - call_count,
                 "with_candidate": call_count,
                 "correct_top1": correct_top1,
-                "true_compound_in_candidates": reachable_count,
+                "true_compound_in_candidates": true_compound_in_candidates,
+                "true_compound_in_accepted_candidates": true_compound_in_accepted,
             },
             "metrics": {
                 "end_to_end_top1_accuracy": _ratio(correct_top1, selected_count),
@@ -272,9 +314,12 @@ def evaluate_query_retrieval(
                 "call_coverage_searched": _ratio(call_count, searched_count),
                 "accepted_call_accuracy": _ratio(correct_top1, call_count),
                 "true_compound_retrieval_rate_selected": _ratio(
-                    reachable_count, selected_count
+                    true_compound_in_candidates, selected_count
                 ),
-                "rank1_of_reachable": _ratio(correct_top1, reachable_count),
+                "accepted_true_compound_rate_selected": _ratio(
+                    true_compound_in_accepted, selected_count
+                ),
+                "rank1_of_reachable": _ratio(correct_top1, true_compound_in_candidates),
             },
             "candidate_rows_at_operating_point": sum(
                 len(threshold_hits.get(query_id, [])) for query_id in group_searched
@@ -303,6 +348,12 @@ def compare_benchmark_reports(
     Reports must use this module's schema and identify the same exact query and
     library inputs. Configuration differences are returned explicitly; a
     two-tolerance change is labeled descriptive rather than attributable.
+
+    A run that recorded only an ``error`` entry, or that lacks
+    ``candidate_rows_exported`` or ``wall_time_seconds``, has no comparable
+    metrics and raises ``ValueError`` naming the run and the side. An absent
+    ``wall_time_seconds`` key is a defect, while a present ``null`` value means
+    wall time was not captured and is reported as ``null``.
 
     Parameters
     ----------
@@ -379,6 +430,19 @@ def compare_benchmark_reports(
             current_run, Mapping
         ):
             raise ValueError(f"run {run_name!r} must be a mapping")
+        for side, run in (("baseline", baseline_run), ("current", current_run)):
+            if "error" in run:
+                raise ValueError(
+                    f"cannot compare {side} run {run_name!r}: it recorded no "
+                    f"metrics ({run['error']})"
+                )
+            missing_fields = [
+                field
+                for field in ("candidate_rows_exported", "wall_time_seconds")
+                if field not in run
+            ]
+            if missing_fields:
+                raise ValueError(f"{side} run {run_name!r} is missing {missing_fields}")
         baseline_rows = int(baseline_run["candidate_rows_exported"])
         current_rows = int(current_run["candidate_rows_exported"])
         baseline_time = optional_seconds(baseline_run, str(run_name))
