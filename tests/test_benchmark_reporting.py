@@ -95,6 +95,7 @@ def test_retrieval_metrics_use_explicit_query_denominators(
         "with_candidate": 3,
         "correct_top1": 1,
         "true_compound_in_candidates": 2,
+        "true_compound_in_accepted_candidates": 2,
     }
     assert result["candidate_rows_exported"] == 4
     assert result["metrics"] == {
@@ -104,6 +105,7 @@ def test_retrieval_metrics_use_explicit_query_denominators(
         "call_coverage_searched": 1.0,
         "accepted_call_accuracy": pytest.approx(1 / 3),
         "true_compound_retrieval_rate_selected": 0.5,
+        "accepted_true_compound_rate_selected": 0.5,
         "rank1_of_reachable": 0.5,
     }
     assert result["by_source"]["QTOF"]["query_counts"]["selected"] == 2
@@ -741,3 +743,150 @@ def test_truth_ranking_ties_break_on_structure_identity_not_accession() -> None:
     )
 
     assert rank == 1
+
+
+def test_retrieval_metrics_reject_finite_q_threshold_without_q_value_column(
+    labels: dict[str, dict[str, object]], rows: list[dict[str, str]]
+) -> None:
+    rows_without_q = [
+        {key: value for key, value in row.items() if key != "q_value"} for row in rows
+    ]
+
+    with pytest.raises(ValueError, match="requires a q_value column"):
+        evaluate_query_retrieval(
+            labels, rows_without_q, min_query_peaks=3, q_threshold=0.05
+        )
+
+
+def test_retrieval_metrics_reject_blank_q_value_under_finite_threshold(
+    labels: dict[str, dict[str, object]], rows: list[dict[str, str]]
+) -> None:
+    rows_with_blank_q = [dict(row) for row in rows]
+    rows_with_blank_q[0]["q_value"] = ""
+
+    with pytest.raises(ValueError, match="have no q_value"):
+        evaluate_query_retrieval(
+            labels, rows_with_blank_q, min_query_peaks=3, q_threshold=0.05
+        )
+
+
+def test_candidate_reachability_is_measured_before_the_operating_point() -> None:
+    labels = {
+        "q1": {
+            "connectivity": "A",
+            "true_lib_records": ["A_ref"],
+            "source": "QTOF",
+            "peak_count": 4,
+        }
+    }
+    rows = [
+        {
+            "query_id": "q1",
+            "reference_name": "A_ref",
+            "score": "0.20",
+            "matched_peaks": "3",
+            "q_value": "1.0",
+        }
+    ]
+
+    strict = evaluate_query_retrieval(labels, rows, min_query_peaks=3, min_score=0.5)
+    permissive = evaluate_query_retrieval(
+        labels, rows, min_query_peaks=3, min_score=0.0
+    )
+
+    assert strict["query_counts"]["true_compound_in_candidates"] == 1
+    assert strict["query_counts"]["true_compound_in_accepted_candidates"] == 0
+    assert strict["query_counts"]["with_candidate"] == 0
+    assert strict["metrics"]["true_compound_retrieval_rate_selected"] == 1.0
+    assert strict["metrics"]["accepted_true_compound_rate_selected"] == 0.0
+    assert strict["metrics"]["rank1_of_reachable"] == 0.0
+
+    assert permissive["query_counts"]["true_compound_in_candidates"] == 1
+    assert permissive["query_counts"]["true_compound_in_accepted_candidates"] == 1
+    assert permissive["metrics"]["rank1_of_reachable"] == 1.0
+
+
+def test_candidate_reachability_survives_a_q_value_operating_point() -> None:
+    labels = {
+        "q1": {
+            "connectivity": "A",
+            "true_lib_records": ["A_ref"],
+            "source": "QTOF",
+            "peak_count": 4,
+        }
+    }
+    rows = [
+        {
+            "query_id": "q1",
+            "reference_name": "A_ref",
+            "score": "0.90",
+            "matched_peaks": "3",
+            "q_value": "0.40",
+        }
+    ]
+
+    strict = evaluate_query_retrieval(labels, rows, min_query_peaks=3, q_threshold=0.05)
+
+    assert strict["query_counts"]["true_compound_in_candidates"] == 1
+    assert strict["query_counts"]["true_compound_in_accepted_candidates"] == 0
+    assert strict["metrics"]["true_compound_retrieval_rate_selected"] == 1.0
+    assert strict["metrics"]["accepted_true_compound_rate_selected"] == 0.0
+    assert strict["metrics"]["rank1_of_reachable"] == 0.0
+
+
+def test_comparison_rejects_runs_that_recorded_no_metrics() -> None:
+    baseline = {
+        "schema_version": REPORT_SCHEMA_VERSION,
+        "dataset_fingerprint": "same-data",
+        "runs": {"cosine": {"error": "no rows"}},
+    }
+
+    with pytest.raises(ValueError, match="recorded no metrics"):
+        compare_benchmark_reports(baseline, baseline)
+
+
+def test_comparison_rejects_runs_missing_comparison_fields() -> None:
+    baseline = {
+        "schema_version": REPORT_SCHEMA_VERSION,
+        "dataset_fingerprint": "same-data",
+        "runs": {"cosine": {"candidate_rows_exported": 1, "configuration": {}}},
+    }
+
+    with pytest.raises(ValueError, match="missing") as excinfo:
+        compare_benchmark_reports(baseline, baseline)
+
+    assert "wall_time_seconds" in str(excinfo.value)
+
+
+def test_comparison_rejects_runs_missing_candidate_row_counts() -> None:
+    baseline = {
+        "schema_version": REPORT_SCHEMA_VERSION,
+        "dataset_fingerprint": "same-data",
+        "runs": {"cosine": {"wall_time_seconds": 1.0, "configuration": {}}},
+    }
+
+    with pytest.raises(ValueError, match="missing") as excinfo:
+        compare_benchmark_reports(baseline, baseline)
+
+    assert "candidate_rows_exported" in str(excinfo.value)
+
+
+def test_comparison_names_the_side_that_failed() -> None:
+    baseline = {
+        "schema_version": REPORT_SCHEMA_VERSION,
+        "dataset_fingerprint": "same-data",
+        "runs": {
+            "cosine": {
+                "candidate_rows_exported": 4,
+                "wall_time_seconds": 1.0,
+                "configuration": {},
+            }
+        },
+    }
+    current = {
+        **baseline,
+        "runs": {"cosine": {"error": "no rows"}},
+    }
+
+    with pytest.raises(ValueError, match="current run 'cosine'"):
+        compare_benchmark_reports(baseline, current)
