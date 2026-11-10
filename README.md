@@ -1,5 +1,19 @@
 # MassFlow
 
+> **What this is.** A local-first MS/MS annotation engine. Ingest `mzML`/`mzXML`/`MGF`,
+> search local MSP/SQLite libraries with classical spectral similarity, calibrate
+> confidence with target-decoy FDR, export CSV/mzTab-M with a provenance sidecar
+> per output file.
+>
+> **Status.** The v0.1 product surface is defined in
+> [`docs/CAPABILITY_MATRIX.md`](docs/CAPABILITY_MATRIX.md), which governs where docs
+> disagree. The stable paths (CLI, FDR, export) are gated by the test suite and
+> coverage gate in CI.
+>
+> **The design commitment.** Every result travels with the parameters and inputs
+> that produced it. A silently shrunk target pool is treated as corruption, not a
+> warning — it aborts the run rather than biasing every query's FDR.
+
 [![CI](https://github.com/janusson/MassFlow/actions/workflows/ci.yml/badge.svg)](https://github.com/janusson/MassFlow/actions/workflows/ci.yml)
 [![Documentation](https://img.shields.io/badge/docs-available-blue.svg)](https://ericjanusson.github.io/MassFlow/)
 [![Python 3.13](https://img.shields.io/badge/python-3.13-blue.svg)](https://www.python.org/downloads/)
