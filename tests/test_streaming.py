@@ -2109,3 +2109,55 @@ class TestAnnotateBatch:
 
         results = engine.annotate_batch([], [])
         assert results == []
+
+    def test_packet_to_search_result_preserves_zero_metrics(self):
+        """Exact 0.0 mass error or structural similarity must not become NaN."""
+        from MassFlow.streaming.engine import _packet_to_search_result
+        from MassFlow.streaming.queue import QueuedPacket
+
+        packet = QueuedPacket(
+            spectrum_id="scan_zero_metrics",
+            mz_array=[100.0, 200.0],
+            intensity_array=[100.0, 50.0],
+            precursor_mz=350.0,
+            retention_time_seconds=60.0,
+            charge=1,
+            ion_mode="positive",
+            adduct="[M+H]+",
+            collision_energy=20.0,
+            acquisition_timestamp_ns=0,
+        )
+        zero_hit = {
+            "reference_id": "ref_0",
+            "reference_name": "ExactMatch",
+            "smiles": "C",
+            "inchikey": "VNWKTOKETHGBQD-UHFFFAOYSA-N",
+            "score": 1.0,
+            "matched_peaks": 2,
+            "mass_error_ppm": 0.0,
+            "annotation_tier": "gold",
+            "structural_similarity": 0.0,
+            "q_value": 0.0,
+        }
+        missing_hit = {
+            "reference_id": "ref_1",
+            "reference_name": None,
+            "smiles": None,
+            "inchikey": None,
+            "score": 0.5,
+            "matched_peaks": 1,
+            "mass_error_ppm": None,
+            "annotation_tier": None,
+            "structural_similarity": None,
+            "q_value": None,
+        }
+
+        zero_row = _packet_to_search_result(packet, zero_hit)  # type: ignore[arg-type]
+        assert zero_row["precursor_mz_error_ppm"] == 0.0
+        assert zero_row["structural_similarity"] == 0.0
+        assert zero_row["fdr_q_value"] == 0.0
+
+        missing_row = _packet_to_search_result(packet, missing_hit)  # type: ignore[arg-type]
+        assert np.isnan(missing_row["precursor_mz_error_ppm"])
+        assert np.isnan(missing_row["structural_similarity"])
+        assert np.isnan(missing_row["fdr_q_value"])
