@@ -410,9 +410,11 @@ def test_batch_score_rejects_opposite_ionmode() -> None:
     [
         ("positive", 1),
         (" POS ", 1),
+        ("P", 1),
         ("+", 1),
         ("negative", -1),
         ("neg", -1),
+        ("n", -1),
         ("-", -1),
         ("neutral", None),
         ("n/a", None),
@@ -478,5 +480,17 @@ def test_spectrum_polarity_state_handles_raw_ion_mode_and_string_charge() -> Non
         metadata_harmonization=False,
     )
 
+    neg_raw_ion_mode_alias = Spectrum(
+        mz=_caffeine_fragments(1),
+        intensities=np.array([1.0, 1.0, 1.0], dtype=np.float64),
+        metadata={
+            "id": "neg_raw_alias",
+            "precursor_mz": 195.08765,
+            "ion_mode": "N",
+        },
+        metadata_harmonization=False,
+    )
+
     assert _spectrum_polarity_state(pos_raw) == 1
     assert _spectrum_polarity_state(neg_raw) == -1
+    assert _spectrum_polarity_state(neg_raw_ion_mode_alias) == -1

@@ -732,9 +732,9 @@ def _ionmode_sign(ionmode: Any) -> int | None:
     if not isinstance(ionmode, str):
         return None
     normalized = ionmode.strip().lower()
-    if normalized in {"positive", "pos", "+"}:
+    if normalized in {"positive", "pos", "p", "+"}:
         return 1
-    if normalized in {"negative", "neg", "-"}:
+    if normalized in {"negative", "neg", "n", "-"}:
         return -1
     return None
 
@@ -784,7 +784,7 @@ def _spectrum_polarity_state(spectrum: Spectrum) -> int | None:
         raw_adduct if isinstance(raw_adduct, str) else None
     )
     raw_ionmode = spectrum.get("ionmode")
-    if raw_ionmode is None:
+    if not isinstance(raw_ionmode, str) or not raw_ionmode.strip():
         raw_ionmode = spectrum.get("ion_mode")
     ionmode_sign = _ionmode_sign(raw_ionmode)
     if (
