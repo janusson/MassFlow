@@ -173,12 +173,15 @@ threshold loss, polarity/RT loss, confidence filtering, and ranking among
 returned candidates. Any reason not directly observed is recorded as unknown;
 truth labels are not passed into the annotation pipeline.
 
-The real-corpus harness currently normalizes every query with `IONMODE=Positive`
-and `CHARGE=1` and does not emit source precursor-type metadata as an adduct.
-Its source metadata audit records the original polarity/adduct values separately
-and warns that these normalized cross-instrument runs do not test the original
-source polarity/adduct gates. Do not interpret them as evidence that LTQ/QTOF
-polarity metadata were compatible.
+The real-corpus harness preserves source `IONMODE`, `ADDUCT`, and `CHARGE`
+metadata when writing queries and supports `--polarity` filtering (`all`,
+`positive`, `negative`) plus `--ion-conflict-policy` (`mark` default or
+`exclude`). In `mark` mode, raw records whose declared polarity/charge conflict
+with their precursor adduct (for example MoNA LTQ `Ion_mode: P` with
+`Precursor_type: M-H`) remain in the query set so MassFlow's processing gate
+quarantines them, while `source_metadata_audit.source_ion_conflict_audit`
+records every flagged discrepancy. In `exclude` mode, conflicting raw records
+are filtered out before corpus sampling.
 
 When a search configuration allows zero-score/zero-match rows (`min_score <= 0`
 and `min_matched_peaks == 0`), the legacy sparse-cosine output can contain a
@@ -200,9 +203,11 @@ query-reference score matrix.
 The benchmark report adds `retrieval_diagnostics_by_source`: per-instrument
 selected/preprocessing-rejected/searched/no-call counts, target/decoy pair
 funnel totals, score histograms, confidence states, and terminal outcomes. Its
-preprocessing-rejected denominator is derived from benchmark peak-count labels
-and checked against the production query-ID funnel; unobserved non-preprocessing
-records are kept as unknown rather than silently classified.
+preprocessing-rejected denominator combines benchmark peak-count/precursor labels
+with verified production pipeline rejections reconciled against the run's
+`.diagnostics.json` (`search.queries`, `spectrum_counts`, and
+`terminal_query_outcomes.preprocessing_rejected`), keeping any unexplained
+missing records as `unknown` or raising on inconsistency.
 
 `truth_precursor_eligibility_audit` compares the serialized query precursor
 masses to the serialized precursor masses of the benchmark-labelled truth

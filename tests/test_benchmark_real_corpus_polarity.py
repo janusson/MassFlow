@@ -14,6 +14,7 @@ from MassFlow.io import load_spectra
 from MassFlow.processing import metadata_processing
 from MassFlow.similarity import SimilarityEngine
 from scripts.benchmark_real_corpus import (
+    _assess_source_ion_metadata,
     _resolve_source_ion_metadata,
     build_real_benchmark,
     fmt_mgf,
@@ -270,3 +271,139 @@ def test_build_real_benchmark_preserves_polarity_and_supports_stratification(
     assert built_neg["stats"]["queries_write_check"]["ionmode_counts"] == {
         "Negative": 1
     }
+
+
+def test_assess_source_ion_metadata_flags_conflicts() -> None:
+    ltq_conflict = _assess_source_ion_metadata(
+        {"ion_mode": "P", "precursor_type": "M-H", "charge": "1+"}
+    )
+    assert ltq_conflict["status"] == "conflicting"
+    assert ltq_conflict["conflict_reason"] == "ionmode Positive contradicts adduct M-H"
+
+    qtof_conflict = _assess_source_ion_metadata(
+        {"ion_mode": "N", "precursor_type": "[M+Na]+"}
+    )
+    assert qtof_conflict["status"] == "conflicting"
+    assert (
+        qtof_conflict["conflict_reason"]
+        == "ionmode Negative contradicts adduct [M+Na]+"
+    )
+
+    charge_conflict = _assess_source_ion_metadata(
+        {"ion_mode": "P", "precursor_type": "[M+H]+", "charge": "1-"}
+    )
+    assert charge_conflict["status"] == "conflicting"
+    assert (
+        charge_conflict["conflict_reason"] == "ionmode Positive contradicts charge 1-"
+    )
+
+    clean = _assess_source_ion_metadata(
+        {"ion_mode": "P", "precursor_type": "[M+H]+", "charge": "1+"}
+    )
+    assert clean["status"] == "consistent"
+    assert clean["conflict_reason"] is None
+
+
+def test_build_real_benchmark_ion_conflict_policy_mark_vs_exclude(
+    tmp_path: Path,
+) -> None:
+    corpus_dir = tmp_path / "corpus"
+    corpus_dir.mkdir()
+    lib_ik = "RYYVLZVUVIJVGH-UHFFFAOYSA-N"
+    caff_pos_mz = _caffeine_mz("[M+H]+")
+    lib_peaks = [(100.0 + i, 100.0 + i * 37.0) for i in range(12)]
+    valid_q_peaks = [(100.0 + i, 200.0 + i * 19.0) for i in range(12)]
+    corrupt_q_peaks = [(100.0 + i, 300.0 + i * 23.0) for i in range(12)]
+
+    (corpus_dir / "lib.msp").write_text(
+        _msp_block(
+            name="CaffeineRefPos",
+            inchikey=lib_ik,
+            precursor_mz=caff_pos_mz,
+            ion_mode="P",
+            precursor_type="[M+H]+",
+            peaks=lib_peaks,
+        )
+    )
+    (corpus_dir / "queries.msp").write_text(
+        _msp_block(
+            name="CaffeineValidPos",
+            inchikey=lib_ik,
+            precursor_mz=caff_pos_mz,
+            ion_mode="P",
+            precursor_type="[M+H]+",
+            peaks=valid_q_peaks,
+        )
+        + _msp_block(
+            name="CaffeineCorruptLTQ",
+            inchikey=lib_ik,
+            precursor_mz=caff_pos_mz,
+            ion_mode="P",
+            precursor_type="M-H",
+            peaks=corrupt_q_peaks,
+        )
+    )
+
+    marked = build_real_benchmark(
+        corpus=corpus_dir,
+        workdir=tmp_path / "mark",
+        library_file="lib.msp",
+        query_files=["queries.msp"],
+        max_queries=10,
+        seed=20260921,
+        polarity="positive",
+        ion_conflict_policy="mark",
+    )
+    assert marked["stats"]["ion_conflict_policy"] == "mark"
+    assert marked["stats"]["query_sources"]["queries.msp"]["selected"] == 2
+    assert (
+        marked["stats"]["query_sources"]["queries.msp"][
+            "rejected_conflicting_ion_metadata"
+        ]
+        == 0
+    )
+    audit_marked = marked["stats"]["source_ion_conflict_audit"]["query_sources"][
+        "queries.msp"
+    ]
+    assert audit_marked["status_counts"] == {"conflicting": 1, "consistent": 1}
+    assert audit_marked["excluded_conflicting"] == 0
+    statuses = {
+        meta["ion_metadata_status"]
+        for meta in marked["stats"]["selected_source_metadata"].values()
+    }
+    assert statuses == {"consistent", "conflicting"}
+
+    excluded = build_real_benchmark(
+        corpus=corpus_dir,
+        workdir=tmp_path / "exclude",
+        library_file="lib.msp",
+        query_files=["queries.msp"],
+        max_queries=10,
+        seed=20260921,
+        polarity="positive",
+        ion_conflict_policy="exclude",
+    )
+    assert excluded["stats"]["ion_conflict_policy"] == "exclude"
+    assert excluded["stats"]["query_sources"]["queries.msp"]["selected"] == 1
+    assert (
+        excluded["stats"]["query_sources"]["queries.msp"][
+            "rejected_conflicting_ion_metadata"
+        ]
+        == 1
+    )
+    audit_excluded = excluded["stats"]["source_ion_conflict_audit"]["query_sources"][
+        "queries.msp"
+    ]
+    assert audit_excluded["status_counts"] == {"conflicting": 1, "consistent": 1}
+    assert audit_excluded["excluded_conflicting"] == 1
+
+    with pytest.raises(ValueError, match="Unsupported ion_conflict_policy"):
+        build_real_benchmark(
+            corpus=corpus_dir,
+            workdir=tmp_path / "bad_policy",
+            library_file="lib.msp",
+            query_files=["queries.msp"],
+            max_queries=10,
+            seed=20260921,
+            ion_conflict_policy="drop",
+        )

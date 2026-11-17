@@ -40,6 +40,91 @@ def _to_float(value: Any, *, field_name: str, query_id: str) -> float:
         ) from error
 
 
+def _reconcile_pipeline_rejections(
+    selected_ids: set[str],
+    label_rejected_ids: set[str],
+    observed_ids: Optional[set[str]],
+    diagnostics: Optional[Mapping[str, Any]],
+    *,
+    strict: bool = False,
+) -> set[str]:
+    """Identify queries rejected by MassFlow when diagnostics counts reconcile.
+
+    MassFlow quarantines malformed or physically contradictory queries during raw
+    ingestion or processing and writes CSV/search entries only for surviving
+    queries. When the production retrieval-diagnostics payload reports both the
+    surviving ``search.queries`` map and the exact pre-search rejection count,
+    this helper verifies count consistency so genuine pipeline rejections move
+    into ``preprocessing_rejected`` while unrecorded missing queries still fail
+    loudly.
+    """
+    if not isinstance(diagnostics, Mapping):
+        return set()
+    search = diagnostics.get("search")
+    search_queries = search.get("queries") if isinstance(search, Mapping) else None
+    if not isinstance(search_queries, Mapping):
+        return set()
+
+    searched_diag_ids = {str(query_id) for query_id in search_queries}
+    if not searched_diag_ids.issubset(selected_ids):
+        if strict:
+            unexpected = sorted(searched_diag_ids - selected_ids)
+            raise ValueError(
+                f"diagnostics search.queries contains unknown query ids: {unexpected}"
+            )
+        return set()
+    if observed_ids is not None and searched_diag_ids != observed_ids:
+        if strict:
+            raise ValueError(
+                "diagnostics search.queries does not match CSV query_ids: "
+                f"diag_only={sorted(searched_diag_ids - observed_ids)}, "
+                f"csv_only={sorted(observed_ids - searched_diag_ids)}"
+            )
+        return set()
+    if label_rejected_ids & searched_diag_ids:
+        if strict:
+            raise ValueError(
+                "label-rejected queries unexpectedly appear in diagnostics search.queries: "
+                f"{sorted(label_rejected_ids & searched_diag_ids)}"
+            )
+        return set()
+
+    counts: list[int] = []
+    outcomes = diagnostics.get("terminal_query_outcomes")
+    if (
+        isinstance(outcomes, Mapping)
+        and outcomes.get("preprocessing_rejected") is not None
+    ):
+        counts.append(int(outcomes["preprocessing_rejected"]))
+    spectrum_counts = diagnostics.get("spectrum_counts")
+    if isinstance(spectrum_counts, Mapping) and (
+        "input_rejected" in spectrum_counts or "processing_rejected" in spectrum_counts
+    ):
+        counts.append(
+            int(spectrum_counts.get("input_rejected", 0))
+            + int(spectrum_counts.get("processing_rejected", 0))
+        )
+    if not counts:
+        return set()
+    if len(set(counts)) > 1:
+        if strict:
+            raise ValueError(
+                f"diagnostics pre-search rejection counts disagree: {counts}"
+            )
+        return set()
+
+    pipeline_rejected_ids = selected_ids - searched_diag_ids
+    if len(pipeline_rejected_ids) != counts[0]:
+        if strict:
+            raise ValueError(
+                "queries missing from search outputs "
+                f"({len(pipeline_rejected_ids)}) do not match diagnostics "
+                f"preprocessing_rejected count ({counts[0]})"
+            )
+        return set()
+    return pipeline_rejected_ids
+
+
 def evaluate_query_retrieval(
     labels: Mapping[str, Mapping[str, Any]],
     rows: Sequence[Mapping[str, Any]],
@@ -48,13 +133,15 @@ def evaluate_query_retrieval(
     min_score: float = 0.0,
     q_threshold: float = math.inf,
     min_matched_peaks: int = 1,
+    diagnostics: Optional[Mapping[str, Any]] = None,
 ) -> dict[str, Any]:
     """Compute query-level retrieval metrics from labels and exported rows.
 
-    A query is searched when it passes the configured minimum-peak gate and
-    appears in the exported result table. Queries rejected by that gate remain
-    in the end-to-end denominator. The CSV contract requires one or more rows
-    for every searched query, including queries with no candidate.
+    A query is searched when it passes all configured preprocessing/physical
+    gates and appears in the exported result table. Queries rejected at raw
+    ingestion or processing remain in the end-to-end denominator. The CSV
+    contract requires one or more rows for every searched query, including
+    queries with no candidate.
 
     Reachability counts the true compound among the candidates exported for a
     query, before the score, matched-peak, and q-value operating point is
@@ -81,6 +168,10 @@ def evaluate_query_retrieval(
         Maximum q-value; infinity disables q-value filtering.
     min_matched_peaks : int, default=1
         Minimum matched-fragment count used for this metric operating point.
+    diagnostics : Mapping[str, Any], optional
+        Production retrieval-diagnostics payload used to reconcile additional
+        pre-search rejections (such as physical-integrity or duplicate-fragment
+        quarantines) against ``search.queries`` and ``preprocessing_rejected``.
 
     Returns
     -------
@@ -144,6 +235,15 @@ def evaluate_query_retrieval(
             "preprocessing-rejected queries unexpectedly appear in results: "
             f"{sorted(rejected_with_rows)}"
         )
+    rejected_ids.update(
+        _reconcile_pipeline_rejections(
+            selected_ids,
+            rejected_ids,
+            observed_ids,
+            diagnostics,
+            strict=True,
+        )
+    )
     searched_ids = selected_ids - rejected_ids
     missing_ids = searched_ids - observed_ids
     if missing_ids:
@@ -1108,6 +1208,19 @@ def summarize_diagnostics_by_source(
     source_ids: dict[str, set[str]] = defaultdict(set)
     for query_id, label in labels.items():
         source_ids[str(label.get("source", "unknown"))].add(str(query_id))
+    all_selected_ids = {str(query_id) for query_id in labels}
+    all_label_rejections = {
+        str(query_id)
+        for query_id, label in labels.items()
+        if int(label.get("peak_count", min_query_peaks)) < min_query_peaks
+    }
+    verified_pipeline_rejections = _reconcile_pipeline_rejections(
+        all_selected_ids,
+        all_label_rejections,
+        None,
+        diagnostics,
+        strict=False,
+    )
 
     by_source: dict[str, Any] = {}
     for source, selected_ids in sorted(source_ids.items()):
@@ -1121,7 +1234,7 @@ def summarize_diagnostics_by_source(
             for query_id in selected_ids
             if int(labels[query_id].get("peak_count", min_query_peaks))
             < min_query_peaks
-        }
+        } | (selected_ids & verified_pipeline_rejections)
         unobserved_ids = selected_ids - set(queries)
         unknown_ids = unobserved_ids - expected_preprocessing_rejections
         terminal_counts: dict[str, int] = defaultdict(int)

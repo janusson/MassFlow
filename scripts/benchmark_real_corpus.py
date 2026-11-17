@@ -49,13 +49,17 @@ import sys
 import time
 
 import numpy as np
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, Iterable, Optional
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
+if str(REPO_ROOT / "src") not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT / "src"))
 
+from MassFlow.cheminformatics import adduct_charge  # noqa: E402
 from scripts.benchmark_reporting import (  # noqa: E402
     REPORT_SCHEMA_VERSION,
     attribute_truth_candidates,
@@ -271,6 +275,78 @@ def _resolve_source_ion_metadata(meta: dict[str, str]) -> dict[str, Optional[str
     return {"ionmode": ionmode, "adduct": adduct, "charge": charge}
 
 
+def _parse_source_charge_int(charge: Optional[str]) -> Optional[int]:
+    """Parse explicit signed charge strings (e.g. '1+', '-1', '2+') to int."""
+    if not charge:
+        return None
+    text = charge.strip()
+    if not text:
+        return None
+    try:
+        if text[-1] in {"+", "-"} and text[:-1].isdigit():
+            magnitude = int(text[:-1])
+            parsed = magnitude if text[-1] == "+" else -magnitude
+        elif text[0] in {"+", "-"} and text[1:].isdigit():
+            parsed = int(text)
+        elif text.isdigit():
+            parsed = int(text)
+        else:
+            return None
+    except ValueError:
+        return None
+    return parsed if parsed != 0 else None
+
+
+def _assess_source_ion_metadata(meta: dict[str, str]) -> dict[str, Any]:
+    """Audit agreement between source ionmode, adduct/precursor_type, and charge."""
+    ion_meta = _resolve_source_ion_metadata(meta)
+    ionmode = ion_meta["ionmode"]
+    adduct = ion_meta["adduct"]
+    charge = ion_meta["charge"]
+    ionmode_sign = (
+        1 if ionmode == "Positive" else (-1 if ionmode == "Negative" else None)
+    )
+    resolved_adduct_charge = adduct_charge(adduct) if adduct is not None else None
+    parsed_charge = _parse_source_charge_int(charge)
+
+    conflict_reason: Optional[str] = None
+    if (
+        ionmode_sign is not None
+        and resolved_adduct_charge is not None
+        and (resolved_adduct_charge > 0) != (ionmode_sign > 0)
+    ):
+        conflict_reason = f"ionmode {ionmode} contradicts adduct {adduct}"
+    elif (
+        ionmode_sign is not None
+        and parsed_charge is not None
+        and (parsed_charge > 0) != (ionmode_sign > 0)
+    ):
+        conflict_reason = f"ionmode {ionmode} contradicts charge {charge}"
+    elif (
+        resolved_adduct_charge is not None
+        and parsed_charge is not None
+        and resolved_adduct_charge != parsed_charge
+    ):
+        conflict_reason = f"charge {charge} contradicts adduct {adduct}"
+
+    if conflict_reason is not None:
+        status = "conflicting"
+    elif (
+        ionmode_sign is not None
+        or resolved_adduct_charge is not None
+        or parsed_charge is not None
+    ):
+        status = "consistent"
+    else:
+        status = "incomplete"
+
+    return {
+        **ion_meta,
+        "status": status,
+        "conflict_reason": conflict_reason,
+    }
+
+
 def fmt_msp(rec: dict[str, Any], name: str) -> str:
     meta, peaks = rec["meta"], rec["peaks"]
     ion_meta = _resolve_source_ion_metadata(meta)
@@ -400,17 +476,30 @@ def build_real_benchmark(
     seed: int,
     *,
     polarity: str = "all",
+    ion_conflict_policy: str = "mark",
 ) -> dict[str, Any]:
+    if ion_conflict_policy not in {"mark", "exclude"}:
+        raise ValueError(f"Unsupported ion_conflict_policy: {ion_conflict_policy}")
     lib_path = corpus / library_file
     if not lib_path.exists():
         raise FileNotFoundError(f"library not found: {lib_path}")
 
     source_lib_records = parse_msp(lib_path)
-    lib_records = [
-        rec
-        for rec in source_lib_records
-        if _matches_polarity_filter(rec["meta"], polarity)
-    ]
+    lib_records: list[dict[str, Any]] = []
+    lib_status_counts: Counter[str] = Counter()
+    lib_conflict_reasons: Counter[str] = Counter()
+    lib_rejected_conflicts = 0
+    for rec in source_lib_records:
+        if not _matches_polarity_filter(rec["meta"], polarity):
+            continue
+        assessment = _assess_source_ion_metadata(rec["meta"])
+        lib_status_counts[assessment["status"]] += 1
+        if assessment["conflict_reason"]:
+            lib_conflict_reasons[assessment["conflict_reason"]] += 1
+        if ion_conflict_policy == "exclude" and assessment["status"] == "conflicting":
+            lib_rejected_conflicts += 1
+            continue
+        lib_records.append(rec)
     # InChIKey -> library record indices
     lib_by_key: dict[str, list[int]] = {}
     lib_hashes: set[str] = {peak_hash(rec["peaks"]) for rec in source_lib_records}
@@ -450,6 +539,7 @@ def build_real_benchmark(
     stats: dict[str, Any] = {
         "library_file": library_file,
         "polarity_filter": polarity,
+        "ion_conflict_policy": ion_conflict_policy,
         "library_source_records_total": len(source_lib_records),
         "library_records": len(lib_records),
         "library_distinct_connectivity": len(lib_by_key),
@@ -465,6 +555,15 @@ def build_real_benchmark(
             "precursor_type": dict(sorted(library_type_counts.items())),
             "adduct": dict(sorted(library_adduct_counts.items())),
             "charge": dict(sorted(library_charge_counts.items())),
+        },
+        "source_ion_conflict_audit": {
+            "policy": ion_conflict_policy,
+            "library": {
+                "status_counts": dict(sorted(lib_status_counts.items())),
+                "excluded_conflicting": lib_rejected_conflicts,
+                "conflict_reasons": dict(lib_conflict_reasons.most_common()),
+            },
+            "query_sources": {},
         },
         "query_sources": {},
         "selected_source_metadata": {},
@@ -498,9 +597,22 @@ def build_real_benchmark(
         }
         candidates: list[tuple[dict[str, Any], str, str]] = []
         n_no_key = n_not_in_lib = n_identical = n_polarity_excluded = 0
+        n_conflict_excluded = 0
+        q_status_counts: Counter[str] = Counter()
+        q_conflict_reasons: Counter[str] = Counter()
         for rec in q_records:
             if not _matches_polarity_filter(rec["meta"], polarity):
                 n_polarity_excluded += 1
+                continue
+            assessment = _assess_source_ion_metadata(rec["meta"])
+            q_status_counts[assessment["status"]] += 1
+            if assessment["conflict_reason"]:
+                q_conflict_reasons[assessment["conflict_reason"]] += 1
+            if (
+                ion_conflict_policy == "exclude"
+                and assessment["status"] == "conflicting"
+            ):
+                n_conflict_excluded += 1
                 continue
             ik = inchikey_of(rec["meta"])
             if not ik:
@@ -542,12 +654,17 @@ def build_real_benchmark(
             source_adduct = rec["meta"].get("adduct") or rec["meta"].get(
                 "adductionname"
             )
+            source_ion_assessment = _assess_source_ion_metadata(rec["meta"])
             stats["selected_source_metadata"][qid] = {
                 "source": qf,
                 "ion_mode": source_ion_mode,
                 "precursor_type": source_precursor_type,
                 "adduct": source_adduct,
                 "charge": rec["meta"].get("charge"),
+                "ion_metadata_status": source_ion_assessment["status"],
+                "ion_metadata_conflict_reason": source_ion_assessment[
+                    "conflict_reason"
+                ],
                 "precursor_mz": precursor_of(rec["meta"]),
                 "search_precursor_mz": (
                     float(f"{precursor_of(rec['meta']):.6f}")
@@ -602,12 +719,18 @@ def build_real_benchmark(
         stats["query_sources"][qf] = {
             "records": len(q_records),
             "rejected_polarity_filter": n_polarity_excluded,
+            "rejected_conflicting_ion_metadata": n_conflict_excluded,
             "rejected_no_inchikey": n_no_key,
             "rejected_not_in_library": n_not_in_lib,
             "rejected_identical_spectrum": n_identical,
             "candidates": len(candidates),
             "after_compound_dedup": len(deduped),
             "selected": len(selected),
+        }
+        stats["source_ion_conflict_audit"]["query_sources"][qf] = {
+            "status_counts": dict(sorted(q_status_counts.items())),
+            "excluded_conflicting": n_conflict_excluded,
+            "conflict_reasons": dict(q_conflict_reasons.most_common()),
         }
 
     stats["truth_pair_source_ion_mode_cross_tab"] = dict(
@@ -858,6 +981,7 @@ def evaluate_real(
     q_thresholds: Iterable[float] = (float("inf"),),
     min_matched_peaks: int = 1,
     min_query_peaks: int = 3,
+    diagnostics: Optional[Mapping[str, Any]] = None,
 ) -> dict[str, Any]:
     """Evaluate retrieval and ranking from the complete exported query table."""
     ref_col = _col(rows, "reference_name")
@@ -875,6 +999,7 @@ def evaluate_real(
         min_query_peaks=min_query_peaks,
         min_score=0.0,
         min_matched_peaks=min_matched_peaks,
+        diagnostics=diagnostics,
     )
     candidate_rows = [row for row in rows if ref_col and row.get(ref_col)]
     if candidate_rows and (ref_col is None or score_col is None):
@@ -919,6 +1044,7 @@ def evaluate_real(
                 min_score=score_threshold,
                 q_threshold=q_threshold,
                 min_matched_peaks=min_matched_peaks,
+                diagnostics=diagnostics,
             )
             out["sweep"].append(
                 {
@@ -1116,6 +1242,12 @@ def main(argv: Optional[list[str]] = None) -> int:
         help="restrict library and query selection to one source polarity or keep all",
     )
     ap.add_argument(
+        "--ion-conflict-policy",
+        choices=["mark", "exclude"],
+        default="mark",
+        help="mark conflicting source ionmode/adduct/charge records in stats or exclude them during selection",
+    )
+    ap.add_argument(
         "--compare-results-to",
         type=Path,
         default=None,
@@ -1153,6 +1285,13 @@ def main(argv: Optional[list[str]] = None) -> int:
                 f"does not match requested --polarity {args.polarity}; "
                 "rerun without --keep-data"
             )
+        if s.get("ion_conflict_policy", "mark") != args.ion_conflict_policy:
+            raise RuntimeError(
+                "prepared benchmark ion_conflict_policy "
+                f"({s.get('ion_conflict_policy', 'mark')}) does not match "
+                f"requested --ion-conflict-policy {args.ion_conflict_policy}; "
+                "rerun without --keep-data"
+            )
         if s["dataset_fingerprint"] != _dataset_fingerprint(args.workdir, labels):
             raise RuntimeError(
                 "prepared benchmark inputs no longer match stats.json; "
@@ -1174,6 +1313,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             max_queries=args.max_queries,
             seed=args.seed,
             polarity=args.polarity,
+            ion_conflict_policy=args.ion_conflict_policy,
         )
         if any("peak_count" not in label for label in built["labels"].values()):
             raise RuntimeError("prepared query labels are missing peak_count")
@@ -1231,7 +1371,9 @@ def main(argv: Optional[list[str]] = None) -> int:
                 "charge_preserved_when_present": True,
                 "substitutes_positive_for_negative_or_unknown": False,
                 "polarity_filter": s.get("polarity_filter", "all"),
+                "ion_conflict_policy": s.get("ion_conflict_policy", "mark"),
             },
+            "source_ion_conflict_audit": s.get("source_ion_conflict_audit", {}),
             "raw_query_ion_mode_counts_by_source": _metadata_counts_by_source(
                 s.get("selected_source_metadata", {}), "ion_mode"
             ),
@@ -1297,6 +1439,18 @@ def main(argv: Optional[list[str]] = None) -> int:
             print("      no rows produced")
             results["runs"][algorithm] = {"error": "no rows"}
             continue
+        diagnostics_payload: dict[str, Any] = {
+            "status": "unavailable",
+            "reason": "diagnostic JSON was not produced by the annotation run",
+        }
+        truth_attribution: dict[str, Any] = {
+            "status": "unavailable",
+            "reason": "run output or prepared library store was unavailable",
+        }
+        if csvs:
+            diagnostic_path = csvs[0].with_name(f"{csvs[0].stem}.diagnostics.json")
+            if diagnostic_path.is_file():
+                diagnostics_payload = json.loads(diagnostic_path.read_text())
         metrics = evaluate_real(
             rows,
             labels,
@@ -1304,6 +1458,9 @@ def main(argv: Optional[list[str]] = None) -> int:
             q_thresholds=args.sweep_q or (float("inf"),),
             min_matched_peaks=args.min_matched_peaks,
             min_query_peaks=args.min_query_peaks,
+            diagnostics=diagnostics_payload
+            if diagnostics_payload.get("status") != "unavailable"
+            else None,
         )
         metrics.update(
             {
@@ -1317,21 +1474,12 @@ def main(argv: Optional[list[str]] = None) -> int:
                     "ms1_tolerance": args.ms1_tolerance,
                     "ms2_tolerance": args.ms2_tolerance,
                     "min_query_peaks": args.min_query_peaks,
+                    "polarity": args.polarity,
+                    "ion_conflict_policy": args.ion_conflict_policy,
                 },
             }
         )
-        diagnostics_payload: dict[str, Any] = {
-            "status": "unavailable",
-            "reason": "diagnostic JSON was not produced by the annotation run",
-        }
-        truth_attribution: dict[str, Any] = {
-            "status": "unavailable",
-            "reason": "run output or prepared library store was unavailable",
-        }
         if csvs:
-            diagnostic_path = csvs[0].with_name(f"{csvs[0].stem}.diagnostics.json")
-            if diagnostic_path.is_file():
-                diagnostics_payload = json.loads(diagnostic_path.read_text())
             prepared_library_path = csvs[0].parent / "library_library.db"
             if prepared_library_path.is_file() and run_config_path.is_file():
                 truth_attribution = attribute_truth_candidates(
