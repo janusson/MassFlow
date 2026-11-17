@@ -890,3 +890,160 @@ def test_comparison_names_the_side_that_failed() -> None:
 
     with pytest.raises(ValueError, match="current run 'cosine'"):
         compare_benchmark_reports(baseline, current)
+
+
+def test_evaluate_query_retrieval_reconciles_pipeline_rejections_from_diagnostics() -> (
+    None
+):
+    labels = {
+        "q_ok": {
+            "connectivity": "A",
+            "true_lib_records": ["A_ref"],
+            "source": "QTOF",
+            "peak_count": 5,
+            "missing_precursor": False,
+        },
+        "q_conflict": {
+            "connectivity": "B",
+            "true_lib_records": ["B_ref"],
+            "source": "LTQ",
+            "peak_count": 5,
+            "missing_precursor": False,
+        },
+    }
+    rows = [
+        {
+            "query_id": "q_ok",
+            "reference_name": "A_ref",
+            "inchikey": "A-BBBB-C",
+            "score": "0.95",
+            "matched_peaks": "4",
+            "q_value": "0.01",
+        }
+    ]
+    empty_dist = {
+        "bin_edges": [index / 10 for index in range(11)],
+        "counts": [0] * 10,
+        "below_range": 0,
+        "above_range": 0,
+        "nonfinite": 0,
+    }
+    called_pair = {
+        "reference_pairs_total": 1,
+        "prefilter_pairs": 1,
+        "scored_pairs": 1,
+        "score_threshold_pass_pairs": 1,
+        "matched_peak_pass_pairs": 1,
+        "polarity_compatible_pairs": 1,
+        "rt_eligible_pairs": 1,
+        "eligible_before_top_n": 1,
+        "returned_by_search": 1,
+        "unattributable_pairs": 0,
+        "rejection_counts": {},
+        "score_distribution": empty_dist,
+    }
+    diagnostics = {
+        "spectrum_counts": {"input_rejected": 0, "processing_rejected": 1},
+        "terminal_query_outcomes": {"preprocessing_rejected": 1},
+        "search": {
+            "queries": {
+                "q_ok": {
+                    "terminal_outcome": "candidate_returned",
+                    "confidence_state": "confident",
+                    "target": called_pair,
+                    "decoy": {
+                        **called_pair,
+                        "reference_pairs_total": 0,
+                        "returned_by_search": 0,
+                    },
+                }
+            }
+        },
+    }
+
+    with pytest.raises(ValueError, match="missing from the results"):
+        evaluate_query_retrieval(labels, rows, min_query_peaks=3)
+
+    metrics = evaluate_query_retrieval(
+        labels, rows, min_query_peaks=3, diagnostics=diagnostics
+    )
+    assert metrics["query_counts"]["selected"] == 2
+    assert metrics["query_counts"]["preprocessing_rejected"] == 1
+    assert metrics["query_counts"]["searched"] == 1
+    assert metrics["query_counts"]["with_candidate"] == 1
+    assert metrics["metrics"]["end_to_end_top1_accuracy"] == pytest.approx(0.5)
+
+    real_metrics = evaluate_real(
+        rows,
+        labels,
+        score_thresholds=(0.7,),
+        min_query_peaks=3,
+        diagnostics=diagnostics,
+    )
+    assert real_metrics["query_counts"]["preprocessing_rejected"] == 1
+    assert real_metrics["query_counts"]["searched"] == 1
+
+    by_source = summarize_diagnostics_by_source(labels, diagnostics, min_query_peaks=3)
+    assert by_source["by_source"]["LTQ"]["preprocessing_rejected"] == 1
+    assert by_source["by_source"]["LTQ"]["unknown_or_unattributable"] == 0
+    assert by_source["by_source"]["QTOF"]["searched"] == 1
+    assert by_source["by_source"]["QTOF"]["with_candidate"] == 1
+
+
+def test_evaluate_query_retrieval_rejects_inconsistent_diagnostics_accounting() -> None:
+    labels = {
+        "q_ok": {
+            "connectivity": "A",
+            "true_lib_records": ["A_ref"],
+            "source": "QTOF",
+            "peak_count": 5,
+            "missing_precursor": False,
+        },
+        "q_missing": {
+            "connectivity": "B",
+            "true_lib_records": ["B_ref"],
+            "source": "LTQ",
+            "peak_count": 5,
+            "missing_precursor": False,
+        },
+    }
+    rows = [
+        {
+            "query_id": "q_ok",
+            "reference_name": "A_ref",
+            "score": "0.95",
+            "matched_peaks": "4",
+        }
+    ]
+
+    wrong_count = {
+        "spectrum_counts": {"input_rejected": 0, "processing_rejected": 2},
+        "terminal_query_outcomes": {"preprocessing_rejected": 2},
+        "search": {"queries": {"q_ok": {}}},
+    }
+    with pytest.raises(
+        ValueError, match="do not match diagnostics preprocessing_rejected count"
+    ):
+        evaluate_query_retrieval(
+            labels, rows, min_query_peaks=3, diagnostics=wrong_count
+        )
+
+    mismatched_counters = {
+        "spectrum_counts": {"input_rejected": 0, "processing_rejected": 0},
+        "terminal_query_outcomes": {"preprocessing_rejected": 1},
+        "search": {"queries": {"q_ok": {}}},
+    }
+    with pytest.raises(ValueError, match="disagree"):
+        evaluate_query_retrieval(
+            labels, rows, min_query_peaks=3, diagnostics=mismatched_counters
+        )
+
+    mismatched_csv = {
+        "spectrum_counts": {"input_rejected": 0, "processing_rejected": 1},
+        "terminal_query_outcomes": {"preprocessing_rejected": 1},
+        "search": {"queries": {"q_ok": {}, "q_missing": {}}},
+    }
+    with pytest.raises(ValueError, match="does not match CSV query_ids"):
+        evaluate_query_retrieval(
+            labels, rows, min_query_peaks=3, diagnostics=mismatched_csv
+        )
