@@ -29,14 +29,13 @@ computed zero must never be interpreted as certainty.
 
 ## Compatibility and filtering
 
-The historical `q_value`/`p_value` columns and existing `fdr_threshold` filtering
-retain their API names. A proven partial-tie undercount is corrected, so values
-and threshold selection can change for tied target/decoy scores.
-On an empty decoy null, historical q is `1/N_target` and p is 1: these are arithmetic
-diagnostics, **not an estimated false discovery rate or a conservative error bound**.
-Use `confidence_state` and `confidence_q_value` to determine estimate availability.
-Changing query-file partitioning changes N and can change the historical filter.
-Do not use the legacy column without checking the explicit state.
+The historical `q_value`/`p_value` columns and `fdr_threshold` configuration retain their API names. A proven partial-tie undercount is corrected, so values and threshold selection can change for tied target/decoy scores.
+On an empty decoy null (`confidence_state=unavailable`), `confidence_q_value` is null (`None` / empty cell) and historical `q_value` is `1/N_target` while `p_value` is `1`: these legacy values are arithmetic diagnostics, **not an estimated false discovery rate or a conservative error bound**.
+Because confidence is unavailable in that regime, `fdr_threshold` filtering is **bypassed** rather than silently discarding valid score/MS1/polarity-eligible candidates using the legacy `1/N_target` diagnostic; retained rows remain explicitly labelled `Annotation_Status=Uncalibrated` with `confidence_state=unavailable` and explicit warnings/`fdr_uncalibrated`.
+When decoys survive into target-decoy competition (`confidence_state=estimated_uncalibrated` and finite `confidence_q_value`), `fdr_threshold` filters strictly against `confidence_q_value` (never against `p_value`).
+Use `confidence_state` and `confidence_q_value` to determine estimate availability, and inspect `confidence.filtering` in the sidecar/diagnostics to verify whether `fdr_threshold` filtering was applied.
+Changing query-file partitioning changes `N` and therefore changes both legacy `q_value` diagnostics and decoy-competed estimates.
+Do not use the legacy `q_value` column without checking `confidence_state`.
 
 Newly assessed candidate rows are labelled `Uncalibrated` even when a decoy survived.
 No-hit queries remain `Unknown` with unavailable confidence. Existing direct export

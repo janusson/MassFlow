@@ -660,25 +660,62 @@ class TestFDRInterpretation:
                 assert query_truth["p_value"] == pytest.approx(1 / 7, abs=1e-12)
 
     def test_q_value_is_the_only_filter(self, tmp_path) -> None:
-        """fdr_threshold filters on q only; p is never compared to it."""
-        cosine_manifest = MANIFEST["runs"]["cosine"]
-        for threshold, expected_hits in [(0.1, 0), (0.2, 20), (0.5, 20)]:
-            settings = cosine_manifest["settings"]
+        """When decoys competed, fdr_threshold filters on q only (never p);
+        when confidence is unavailable (empty decoy null), candidates are
+        retained uncalibrated rather than filtered on legacy 1/N."""
+        consensus_manifest = MANIFEST["runs"]["consensus"]
+        # consensus has 6 competing queries & 6 decoy competitions (q=1/6, p=1/7):
+        # threshold 0.15 < q (even though p <= 0.15) rejects all hits; >= 0.2 keeps all.
+        for threshold, expected_hits in [
+            (0.15, 0),
+            (0.2, consensus_manifest["hits_produced"]),
+            (0.5, consensus_manifest["hits_produced"]),
+        ]:
+            settings = consensus_manifest["settings"]
             settings = {
                 "processing": settings["processing"],
                 "similarity": {**settings["similarity"], "fdr_threshold": threshold},
             }
             result, rows, _ = run_fixture_pipeline(
-                tmp_path / f"t{threshold}", "cosine", settings
+                tmp_path / f"consensus_t{threshold}", "consensus", settings
             )
             assert result.hits_produced == expected_hits, (
-                f"threshold {threshold}: expected {expected_hits} hits"
+                f"consensus threshold {threshold}: expected {expected_hits} hits"
             )
             if expected_hits == 0:
                 for row in rows:
                     assert not row.get("reference_name"), (
-                        "no hit may be exported when every q > threshold"
+                        "no hit may be exported when every confidence q > threshold"
                     )
+
+        # cosine has an empty decoy null (confidence.state == 'unavailable'):
+        # strict fdr_threshold=0.1 must not discard eligible hits via legacy 1/N=0.2.
+        cosine_manifest = MANIFEST["runs"]["cosine"]
+        cosine_settings = {
+            "processing": cosine_manifest["settings"]["processing"],
+            "similarity": {
+                **cosine_manifest["settings"]["similarity"],
+                "fdr_threshold": 0.1,
+            },
+        }
+        cosine_result, cosine_rows, _ = run_fixture_pipeline(
+            tmp_path / "cosine_t0.1", "cosine", cosine_settings
+        )
+        assert cosine_result.hits_produced == cosine_manifest["hits_produced"]
+        assert all(
+            row["Annotation_Status"] == "Uncalibrated"
+            for row in cosine_rows
+            if row.get("reference_name")
+        )
+        assert all(
+            row["confidence_state"] == "unavailable" and row["confidence_q_value"] == ""
+            for row in cosine_rows
+            if row.get("reference_name")
+        )
+        assert any(
+            "was not applied because confidence is unavailable" in warning
+            for warning in cosine_result.warnings
+        )
 
     def test_duplicate_scores_across_queries_share_q_value(self) -> None:
         """Q_CAFFEINE_PERFECT and Q_NO_RT both have best target 1.0: identical

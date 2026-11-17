@@ -250,6 +250,230 @@ def test_exhaustive_small_tie_blocks_match_complete_thresholds() -> None:
                 ), (targets, decoys, score)
 
 
+def _spectrum(spec_id: str, precursor_mz: float) -> Spectrum:
+    return Spectrum(
+        np.array([50.0, 80.0, 110.0], dtype=np.float64),
+        np.array([1.0, 0.5, 0.2], dtype=np.float64),
+        metadata={
+            "id": spec_id,
+            "precursor_mz": precursor_mz,
+            "adduct": "[M+H]+",
+            "charge": 1,
+            "ionmode": "positive",
+        },
+        metadata_harmonization=False,
+    )
+
+
+def test_unavailable_confidence_does_not_discard_candidates_with_legacy_rank(
+    tmp_path: Path,
+) -> None:
+    """Empty decoy null + strict fdr_threshold preserves eligible uncalibrated hits."""
+    queries = [_spectrum(f"q{i}", 200.0) for i in range(3)]
+    ref = _spectrum("ref1", 200.0)
+    fake_hits = [
+        {
+            "query_id": f"q{i}",
+            "query_precursor_mz": 200.0,
+            "reference_id": "ref1",
+            "reference_name": "ref1",
+            "reference_precursor_mz": 200.0,
+            "score": 0.9 - 0.05 * i,
+            "matched_peaks": 3,
+            "smiles": None,
+            "inchikey": "RYYVLZVUVIJVGH-UHFFFAOYSA-N",
+            "is_decoy": False,
+            "q_value": 1.0,
+            "p_value": None,
+        }
+        for i in range(3)
+    ]
+
+    class _StubEngine:
+        degraded_mode_flags = ["decoy_null_empty"]
+        decoy_diagnostics = {
+            "n_decoy_pairs_scored": 9,
+            "best_decoy_score": 0.0,
+            "n_decoy_hits": 0,
+            "decoy_null_empty": True,
+        }
+        retrieval_diagnostics = {
+            "algorithm": "cosine",
+            "candidate_generation": "ms1_precursor_window",
+            "queries": {
+                f"q{i}": {
+                    "target": {"returned_by_search": 1},
+                    "decoy": {"returned_by_search": 0},
+                    "terminal_outcome": "candidate_returned",
+                }
+                for i in range(3)
+            },
+        }
+
+        def search(
+            self, query_spectra: Any, reference_spectra: Any, **kwargs: Any
+        ) -> Any:
+            list(reference_spectra)
+            return [dict(h) for h in fake_hits]
+
+    from unittest.mock import patch
+
+    for threshold in (0.01, 0.0):
+        out_dir = tmp_path / f"empty_{threshold}"
+        q_path = tmp_path / "q.mgf"
+        r_path = tmp_path / "r.msp"
+        io.save_spectra_to_mgf(queries, q_path)
+        io.save_spectra_to_msp([ref], r_path)
+        config = MassFlowConfig(
+            project=ProjectConfig(output_directory=out_dir),
+            input=InputConfig(input_path=q_path, library_path=r_path, format="mgf"),
+            similarity=SimilarityConfig(
+                algorithm="cosine",
+                fdr_threshold=threshold,
+                collect_retrieval_diagnostics=True,
+            ),
+        )
+        with patch("MassFlow.workflow._worker_engine", _StubEngine()):
+            result = workflow.run_annotation_pipeline(config)[0]
+        assert len(result.results) == 3
+        assert all(r["confidence_state"] == "unavailable" for r in result.results)
+        assert all(r["confidence_q_value"] is None for r in result.results)
+        assert all(r["q_value"] == pytest.approx(1.0 / 3.0) for r in result.results)
+        assert "fdr_uncalibrated" in result.degraded_mode_flags
+        assert any(
+            "was not applied because confidence is unavailable" in w
+            for w in result.warnings
+        )
+        assert result.confidence_summary is not None
+        assert result.confidence_summary["filtering"] == {
+            "applied": False,
+            "fdr_threshold": threshold,
+            "reason": "bypassed_unavailable_empty_decoy_null",
+        }
+        assert result.retrieval_diagnostics is not None
+        assert result.retrieval_diagnostics["confidence"]["filtering_applied"] is False
+        assert (
+            result.retrieval_diagnostics["terminal_query_outcomes"][
+                "candidate_returned"
+            ]
+            == 3
+        )
+
+
+@pytest.mark.parametrize(
+    ("threshold", "expected_ids"),
+    [
+        (0.05, set()),
+        (0.40, {"q0", "q1", "q2"}),
+        (1.00, {"q0", "q1", "q2", "q3"}),
+    ],
+)
+def test_populated_decoy_and_small_batch_filtering_respects_confidence_q(
+    tmp_path: Path, threshold: float, expected_ids: set[str]
+) -> None:
+    """When decoys survive, fdr_threshold filters strictly via confidence_q_value."""
+    # Small 4-query batch: 3 clean targets (q0=0.95, q1=0.90, q2=0.85 -> q=1/3)
+    # and 1 decoy-outscored target (q3=0.40 vs decoy=0.70 -> q=2/4=0.5).
+    queries = [_spectrum(f"q{i}", 200.0) for i in range(4)]
+    ref = _spectrum("ref1", 200.0)
+    fake_hits = [
+        {
+            "query_id": "q0",
+            "reference_id": "r0",
+            "reference_name": "r0",
+            "score": 0.95,
+            "is_decoy": False,
+        },
+        {
+            "query_id": "q1",
+            "reference_id": "r1",
+            "reference_name": "r1",
+            "score": 0.90,
+            "is_decoy": False,
+        },
+        {
+            "query_id": "q2",
+            "reference_id": "r2",
+            "reference_name": "r2",
+            "score": 0.85,
+            "is_decoy": False,
+        },
+        {
+            "query_id": "q3",
+            "reference_id": "r3",
+            "reference_name": "r3",
+            "score": 0.40,
+            "is_decoy": False,
+        },
+        {
+            "query_id": "q3",
+            "reference_id": "d3",
+            "reference_name": "d3",
+            "score": 0.70,
+            "is_decoy": True,
+        },
+    ]
+
+    class _StubEngine:
+        degraded_mode_flags: list[str] = []
+        decoy_diagnostics = {
+            "n_decoy_pairs_scored": 4,
+            "best_decoy_score": 0.70,
+            "n_decoy_hits": 1,
+            "decoy_null_empty": False,
+        }
+        retrieval_diagnostics = {
+            "algorithm": "cosine",
+            "candidate_generation": "ms1_precursor_window",
+            "queries": {
+                f"q{i}": {
+                    "target": {"returned_by_search": 1},
+                    "decoy": {"returned_by_search": 1 if i == 3 else 0},
+                    "terminal_outcome": "candidate_returned",
+                }
+                for i in range(4)
+            },
+        }
+
+        def search(
+            self, query_spectra: Any, reference_spectra: Any, **kwargs: Any
+        ) -> Any:
+            list(reference_spectra)
+            return [dict(h) for h in fake_hits]
+
+    from unittest.mock import patch
+
+    out_dir = tmp_path / f"pop_{threshold}"
+    q_path = tmp_path / "q.mgf"
+    r_path = tmp_path / "r.msp"
+    io.save_spectra_to_mgf(queries, q_path)
+    io.save_spectra_to_msp([ref], r_path)
+    config = MassFlowConfig(
+        project=ProjectConfig(output_directory=out_dir),
+        input=InputConfig(input_path=q_path, library_path=r_path, format="mgf"),
+        similarity=SimilarityConfig(
+            algorithm="cosine",
+            fdr_threshold=threshold,
+            collect_retrieval_diagnostics=True,
+        ),
+    )
+    with patch("MassFlow.workflow._worker_engine", _StubEngine()):
+        result = workflow.run_annotation_pipeline(config)[0]
+
+    assert {r["query_id"] for r in result.results} == expected_ids
+    assert result.confidence_summary is not None
+    assert result.confidence_summary["state"] == "estimated_uncalibrated"
+    assert result.confidence_summary["filtering"] == {
+        "applied": True,
+        "fdr_threshold": threshold,
+        "reason": "query_best_target_tdc_q_value",
+    }
+    assert result.retrieval_diagnostics is not None
+    outcomes = result.retrieval_diagnostics["terminal_query_outcomes"]
+    assert outcomes.get("confidence_filter_rejected", 0) == 4 - len(expected_ids)
+    assert outcomes.get("candidate_returned", 0) == len(expected_ids)
+
+
 def test_small_library_warning_makes_no_error_bound_claim(caplog: Any) -> None:
     workflow._emit_small_library_warning(12, 0.01)
     text = caplog.text
