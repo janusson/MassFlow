@@ -724,6 +724,93 @@ def _adduct_modes_compatible(ref_adduct: str | None, query_adduct: str | None) -
     return ref_sign == query_sign
 
 
+_POLARITY_CONFLICT: int = 0
+
+
+def _ionmode_sign(ionmode: Any) -> int | None:
+    """Return +1 or -1 for explicit ``ionmode`` / ``ion_mode`` text."""
+    if not isinstance(ionmode, str):
+        return None
+    normalized = ionmode.strip().lower()
+    if normalized in {"positive", "pos", "p", "+"}:
+        return 1
+    if normalized in {"negative", "neg", "n", "-"}:
+        return -1
+    return None
+
+
+def _charge_sign(charge: Any) -> int | None:
+    """Return +1 or -1 for non-zero signed precursor charge metadata."""
+    if charge is None or isinstance(charge, bool):
+        return None
+    numeric: float
+    if isinstance(charge, str):
+        text = charge.strip()
+        if not text:
+            return None
+        if text.endswith(("+", "-")) and len(text) > 1:
+            try:
+                magnitude = float(text[:-1].strip())
+            except ValueError:
+                return None
+            if not np.isfinite(magnitude) or magnitude <= 0.0:
+                return None
+            return 1 if text.endswith("+") else -1
+        try:
+            numeric = float(text)
+        except ValueError:
+            return None
+    else:
+        try:
+            numeric = float(charge)
+        except (TypeError, ValueError):
+            return None
+    if not np.isfinite(numeric) or numeric == 0.0:
+        return None
+    return 1 if numeric > 0.0 else -1
+
+
+def _spectrum_polarity_state(spectrum: Spectrum) -> int | None:
+    """Resolve ionisation polarity (+1/-1), conflict sentinel (0), or None.
+
+    Uses ``adduct``, ``ionmode``/``ion_mode``, and signed ``charge``. Explicit
+    contradiction between ``adduct`` and ``ionmode`` returns ``0`` so malformed
+    records fail closed rather than leaking cross-polarity false hits, while
+    explicit ``adduct`` or ``ionmode`` takes precedence over stale default
+    ``charge`` values.
+    """
+    raw_adduct = spectrum.get("adduct")
+    adduct_sign = _adduct_ion_mode_sign(
+        raw_adduct if isinstance(raw_adduct, str) else None
+    )
+    raw_ionmode = spectrum.get("ionmode")
+    if not isinstance(raw_ionmode, str) or not raw_ionmode.strip():
+        raw_ionmode = spectrum.get("ion_mode")
+    ionmode_sign = _ionmode_sign(raw_ionmode)
+    if (
+        adduct_sign is not None
+        and ionmode_sign is not None
+        and adduct_sign != ionmode_sign
+    ):
+        return _POLARITY_CONFLICT
+    if adduct_sign is not None:
+        return adduct_sign
+    if ionmode_sign is not None:
+        return ionmode_sign
+    return _charge_sign(spectrum.get("charge"))
+
+
+def _polarity_states_compatible(
+    ref_polarity: int | None, query_polarity: int | None
+) -> bool:
+    """Return False for opposite or internally conflicting polarity states."""
+    if ref_polarity == _POLARITY_CONFLICT or query_polarity == _POLARITY_CONFLICT:
+        return False
+    if ref_polarity is None or query_polarity is None:
+        return True
+    return ref_polarity == query_polarity
+
+
 def _ms1_reference_missing_mask(ref_mzs: np.ndarray, missing: np.ndarray) -> np.ndarray:
     """Preserve the legacy non-positive reference sentinel as missing.
 
@@ -2005,7 +2092,7 @@ class SimilarityEngine:
             q_id = str(q.get("id", f"query_{i}"))
             q_mz = q.get("precursor_mz")
             q_mz_val = float(q_mz) if q_mz is not None else None
-            q_adduct: str | None = q.get("adduct")  # type: ignore[assignment]
+            q_polarity = _spectrum_polarity_state(q)
 
             for idx in final_indices:
                 ref = all_references[idx]
@@ -2013,9 +2100,9 @@ class SimilarityEngine:
                     "decoy" if bool(effective_decoy_mask[idx]) else "target"
                 )
 
-                # --- Adduct-mode compatibility gate ---
-                ref_adduct: str | None = ref.get("adduct")  # type: ignore[assignment]
-                if not _adduct_modes_compatible(ref_adduct, q_adduct):
+                # --- Polarity-mode compatibility gate ---
+                ref_polarity = _spectrum_polarity_state(ref)
+                if not _polarity_states_compatible(ref_polarity, q_polarity):
                     continue
                 if collect_diagnostics:
                     query_stage_counts[i][diagnostic_class][
