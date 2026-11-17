@@ -298,3 +298,20 @@ def test_provenance_results_summary_records_warnings_and_degraded(
     assert summary["failed_files"][0]["fatal_errors"]
     # The successful file's hash is still recorded.
     assert any(str(query) in p for p in provenance["input_file_hashes"])
+
+
+def test_dependency_versions_strip_specifiers_and_resolve_core_packages(
+    tmp_path: Path,
+) -> None:
+    """Dependency provenance resolves PEP 508 specifiers cleanly to package versions."""
+    provenance = _read_run_provenance(tmp_path)
+    deps = provenance["dependencies"]
+
+    for key in deps:
+        assert not any(op in key for op in ("<", ">", "=", "!", "~", ";", " "))
+
+    for core_pkg in ("matchms", "numpy", "packaging", "polars", "pydantic", "typer"):
+        assert core_pkg in deps
+        assert deps[core_pkg] != "<not installed>"
+        assert deps[core_pkg]
+    assert deps["massflow"] == provenance["massflow_version"]

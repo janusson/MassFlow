@@ -1253,20 +1253,28 @@ def _git_sha() -> tuple[Optional[str], bool]:
 def _dependency_versions() -> dict[str, str]:
     """Resolved versions of the direct dependencies (importlib.metadata)."""
     import importlib.metadata as metadata
+    import re
+
+    from packaging.requirements import InvalidRequirement, Requirement
 
     from . import __distribution_name__
 
     versions: dict[str, str] = {}
     try:
         dist = metadata.distribution(__distribution_name__)
-        for requirement in dist.requires or []:
-            name = requirement.split("[", 1)[0].split(";", 1)[0].strip().split(" ")[0]
+        for requirement_str in dist.requires or []:
+            try:
+                req = Requirement(requirement_str)
+            except InvalidRequirement:
+                name = re.split(r"[<>=!~;\[\s]", requirement_str.strip(), maxsplit=1)[0]
+            else:
+                name = req.name
             if not name:
                 continue
             try:
                 versions[name] = metadata.version(name)
             except metadata.PackageNotFoundError:
-                versions[name] = "<not installed>"
+                versions.setdefault(name, "<not installed>")
     except metadata.PackageNotFoundError:
         pass
     try:
