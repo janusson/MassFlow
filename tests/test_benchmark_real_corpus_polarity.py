@@ -407,3 +407,21 @@ def test_build_real_benchmark_ion_conflict_policy_mark_vs_exclude(
             seed=20260921,
             ion_conflict_policy="drop",
         )
+
+
+def test_benchmark_writers_preserve_library_inchikey_only(tmp_path: Path) -> None:
+    """Library MSP records retain InChIKey for evaluation while query MGF stays blind."""
+    sample = {
+        "meta": {
+            "inchikey": "RYYVLZVUVIJVGH-UHFFFAOYSA-N",
+            "ion_mode": "P",
+            "precursor_type": "[M+H]+",
+            "precursormz": "195.08765",
+        },
+        "peaks": [(138.066, 999.0), (195.087, 500.0)],
+    }
+    msp_text = fmt_msp(sample, "LIB_000001")
+    mgf_text = fmt_mgf(sample, "Q_000001")
+    assert "INCHIKEY: RYYVLZVUVIJVGH-UHFFFAOYSA-N" in msp_text
+    assert "INCHIKEY" not in mgf_text
+    assert "RYYVLZVUVIJVGH" not in mgf_text

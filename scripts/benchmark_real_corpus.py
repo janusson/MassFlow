@@ -351,6 +351,9 @@ def fmt_msp(rec: dict[str, Any], name: str) -> str:
     meta, peaks = rec["meta"], rec["peaks"]
     ion_meta = _resolve_source_ion_metadata(meta)
     lines = [f"NAME: {name}", f"ID: {name}"]
+    ik = inchikey_of(meta)
+    if ik:
+        lines.append(f"INCHIKEY: {ik}")
     pmz = precursor_of(meta)
     if pmz:
         lines.append(f"PRECURSOR_MZ: {pmz:.6f}")
@@ -1014,14 +1017,14 @@ def evaluate_real(
             )
         query_id = str(row[query_col])
         raw_identity = row.get(identity_col) if identity_col else None
-        identity = (
-            str(raw_identity).split("-")[0]
-            if raw_identity not in (None, "")
-            else str(row[ref_col])
+        connectivity = (
+            str(raw_identity).split("-")[0] if raw_identity not in (None, "") else None
         )
+        identity = connectivity if connectivity is not None else str(row[ref_col])
         hits_by_query.setdefault(query_id, []).append(
             {
                 "ref": str(row[ref_col]),
+                "connectivity": connectivity,
                 "identity": identity,
                 "score": float(row[score_col]) if score_col else 0.0,
             }
@@ -1079,8 +1082,8 @@ def evaluate_real(
         truth_connectivity = str(labels[qid].get("connectivity", ""))
         for rank, h in enumerate(hits, start=1):
             matches = (
-                h["identity"] == truth_connectivity
-                if identity_col is not None and truth_connectivity
+                h["connectivity"] == truth_connectivity
+                if h["connectivity"] is not None and truth_connectivity
                 else h["ref"] in lib_of[qid]
             )
             if matches:

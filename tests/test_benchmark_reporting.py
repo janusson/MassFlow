@@ -1047,3 +1047,116 @@ def test_evaluate_query_retrieval_rejects_inconsistent_diagnostics_accounting() 
         evaluate_query_retrieval(
             labels, rows, min_query_peaks=3, diagnostics=mismatched_csv
         )
+
+
+def test_retrieval_and_real_evaluator_handle_blank_inchikey_cells() -> None:
+    """MassFlow CSVs always include an inchikey header even when cells are blank."""
+    labels = {
+        "q1": {
+            "connectivity": "RYYVLZVUVIJVGH",
+            "true_lib_records": ["LIB_000001"],
+            "source": "QTOF",
+            "peak_count": 4,
+            "precursor_mz": 195.088,
+        },
+        "q2": {
+            "connectivity": "BSYNRYMUTXBXSQ",
+            "true_lib_records": ["LIB_000002"],
+            "source": "QTOF",
+            "peak_count": 4,
+            "precursor_mz": 181.050,
+        },
+    }
+    rows = [
+        {
+            "query_id": "q1",
+            "reference_name": "LIB_000001",
+            "inchikey": "",
+            "score": "0.95",
+            "matched_peaks": "4",
+            "q_value": "1.0",
+        },
+        {
+            "query_id": "q2",
+            "reference_name": "LIB_999999",
+            "inchikey": "",
+            "score": "0.90",
+            "matched_peaks": "3",
+            "q_value": "1.0",
+        },
+        {
+            "query_id": "q2",
+            "reference_name": "LIB_000002",
+            "inchikey": "",
+            "score": "0.80",
+            "matched_peaks": "3",
+            "q_value": "1.0",
+        },
+    ]
+
+    retrieval = evaluate_query_retrieval(labels, rows, min_query_peaks=3)
+    assert retrieval["query_counts"]["correct_top1"] == 1
+    assert retrieval["query_counts"]["true_compound_in_candidates"] == 2
+    assert retrieval["metrics"]["end_to_end_top1_accuracy"] == pytest.approx(0.5)
+    assert retrieval["identity_metric_levels"] == {
+        "primary_endpoint": "connectivity_with_reference_fallback",
+        "connectivity_evaluated_top1_calls": 0,
+        "reference_fallback_top1_calls": 2,
+        "connectivity_top1": 0,
+        "connectivity_in_candidates": 0,
+        "exact_reference_top1": 1,
+        "exact_reference_in_candidates": 2,
+    }
+
+    real = evaluate_real(rows, labels, score_thresholds=(0.7,), min_query_peaks=3)
+    assert real["query_counts"]["correct_top1"] == 1
+    assert real["query_counts"]["true_compound_in_candidates"] == 2
+    assert real["ranking_funnel"]["true_compound_among_candidates"] == 2
+    assert real["ranking_funnel"]["true_compound_ranked_first"] == 1
+
+
+def test_retrieval_handles_mixed_populated_and_blank_inchikey_rows() -> None:
+    """Explicit row InChIKeys govern connectivity matching; blank rows use record IDs."""
+    labels = {
+        "q_stereo": {
+            "connectivity": "ABCABCDEFGHIJK",
+            "true_lib_records": ["LIB_000010"],
+            "source": "QTOF",
+            "peak_count": 4,
+        },
+        "q_mismatch": {
+            "connectivity": "DEFABCDEFGHIJK",
+            "true_lib_records": ["LIB_000020"],
+            "source": "QTOF",
+            "peak_count": 4,
+        },
+    }
+    rows = [
+        {
+            "query_id": "q_stereo",
+            "reference_name": "LIB_OTHER_STEREO",
+            "inchikey": "ABCABCDEFGHIJK-STEREOISOM-N",
+            "score": "0.92",
+            "matched_peaks": "4",
+        },
+        {
+            "query_id": "q_mismatch",
+            "reference_name": "LIB_000020",
+            "inchikey": "ZZZABCDEFGHIJK-DIFFERENT-N",
+            "score": "0.91",
+            "matched_peaks": "4",
+        },
+    ]
+
+    retrieval = evaluate_query_retrieval(labels, rows, min_query_peaks=3)
+    assert retrieval["query_counts"]["correct_top1"] == 1
+    assert retrieval["query_counts"]["true_compound_in_candidates"] == 1
+    assert retrieval["identity_metric_levels"] == {
+        "primary_endpoint": "connectivity_with_reference_fallback",
+        "connectivity_evaluated_top1_calls": 2,
+        "reference_fallback_top1_calls": 0,
+        "connectivity_top1": 1,
+        "connectivity_in_candidates": 1,
+        "exact_reference_top1": 1,
+        "exact_reference_in_candidates": 1,
+    }
