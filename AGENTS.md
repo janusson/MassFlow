@@ -233,8 +233,8 @@ pre-commit run --all-files                   # all hooks
 uv run massflow annotate --config massflow_config.yaml
 uv run massflow init --output test_config.yaml
 uv run massflow db build --input <library> --output <out.db> --config <cfg> --category library
-uv run massflow db inspect --database <out.db>
-uv run massflow db merge --databases <a.db> <b.db> --output merged.db
+uv run massflow db inspect <out.db>
+uv run massflow db merge --inputs <a.db> --inputs <b.db> --output merged.db
 ```
 
 ---
