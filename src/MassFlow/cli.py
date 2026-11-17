@@ -429,10 +429,28 @@ def run_db_build(
         store = create_spectral_store(Path(output), backend=effective_backend)
 
         logger.info(f"Streaming and processing spectra from {input}")
-        raw_spectra = io.load_spectra(Path(input), assign_record_ids=True)
+        ingestion_rejections: dict[str, int] = {}
+
+        def _collect_ingestion_rejection(reason: str) -> None:
+            ingestion_rejections[reason] = ingestion_rejections.get(reason, 0) + 1
+
+        raw_spectra = io.load_spectra(
+            Path(input),
+            assign_record_ids=True,
+            rejection_reporter=_collect_ingestion_rejection,
+        )
         cleaned_spectra = processing.process_spectra(raw_spectra, cfg.processing)
 
         added = store.add_spectra(cleaned_spectra, category=category)
+        if ingestion_rejections:
+            from MassFlow.library import summarize_rejection_reasons
+
+            logger.warning(
+                "Quarantined %d spectra during raw ingestion of %s: %s",
+                sum(ingestion_rejections.values()),
+                input,
+                summarize_rejection_reasons(ingestion_rejections),
+            )
         if added == 0:
             store.close()
             raise ValueError(f"No valid spectra were extracted from {input}.")
@@ -455,6 +473,11 @@ def run_db_build(
             similarity_config=cfg.similarity.model_dump(mode="json"),
             processing_fingerprint=processing_fingerprint(cfg.processing),
             config_digest_sha256=normalized["config_digest_sha256"],
+            details=(
+                {"raw_ingestion_rejections": dict(ingestion_rejections)}
+                if ingestion_rejections
+                else None
+            ),
         )
         store.close()
 
