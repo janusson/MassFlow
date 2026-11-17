@@ -21,8 +21,9 @@ matched-peak, and (when enabled) q-value operating point.
 | `call_coverage_selected` | Queries with an accepted candidate | All selected queries | Fraction of the selected set receiving an accepted call |
 | `call_coverage_searched` | Queries with an accepted candidate | Searched queries | Fraction of searched queries receiving an accepted call |
 | `accepted_call_accuracy` | Correct top-ranked compound calls | Queries with an accepted candidate | Accuracy among accepted calls; undefined (`null`) when there are no calls |
-| `true_compound_retrieval_rate_selected` | Queries with the true compound anywhere among retained candidates | All selected queries | Candidate-generation reachability across the selected set |
-| `rank1_of_reachable` | Correct top-ranked compound calls | Queries with the true compound among retained candidates | Ranking success conditional on candidate reachability |
+| `true_compound_retrieval_rate_selected` | Queries with the true compound anywhere among exported candidates | All selected queries | Candidate-generation reachability across the selected set; independent of the score, matched-peak, and q-value operating point |
+| `accepted_true_compound_rate_selected` | Queries with the true compound among candidates accepted at the operating point | All selected queries | Reachability that survives the operating point |
+| `rank1_of_reachable` | Correct top-ranked compound calls | Queries with the true compound among exported candidates | Ranking success conditional on candidate reachability; a reachable query that the operating point rejects counts as a ranking miss |
 | `candidate_rows_exported` | Candidate rows in the saved result table | Not a rate; this is a count | Export volume, not a query metric |
 
 For a headline, use `end_to_end_top1_accuracy` and print its correct-call and
@@ -90,6 +91,21 @@ attribute effects, hold other settings fixed and vary one tolerance at a time,
 or run a 2×2 MS1/MS2 tolerance design. The score and q-value sweeps evaluate
 only candidates retained and exported by the actual run gates; they cannot
 recover rows filtered out during annotation.
+
+Reachability and ranking move with the operating point in different ways.
+`true_compound_retrieval_rate_selected` counts the true compound among the
+candidates exported for a query, so it does not change as the sweep tightens
+`min_score`, `min_matched_peaks`, or `q_threshold`.
+`accepted_true_compound_rate_selected` counts only reachable queries whose true
+compound survives the operating point, and `rank1_of_reachable` charges a
+reachable query that the operating point rejects as a ranking miss. Report both
+when a sweep is the point of the analysis; a lone `rank1_of_reachable` at a
+strict operating point conflates coverage loss with ranking error.
+
+A finite `q_threshold` requires a `q_value` column carrying a finite value on
+every candidate row. Without it the metric contract raises instead of returning
+a zero-call operating point, because every candidate would be silently
+excluded.
 
 ## FDR wording for benchmark reports
 
