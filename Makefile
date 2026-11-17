@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help lint format-check format typecheck test test-cov build clean all
+.PHONY: help lock-check lint format-check format typecheck test test-core test-scientific test-optional test-cov build clean all
 
 # ── Tooling ──────────────────────────────────────────────────────────────────
 UV := uv run
@@ -9,7 +9,10 @@ help: ## Show this help message
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
 		awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
 
-# ── Lint & Format ────────────────────────────────────────────────────────────
+# ── Lockfile, Lint & Format ──────────────────────────────────────────────────
+lock-check: ## Verify uv.lock matches pyproject.toml
+	uv lock --check
+
 lint: ## Run ruff linter
 	$(UV) ruff check .
 
@@ -24,18 +27,29 @@ typecheck: ## Run mypy static type checker
 	$(UV) mypy .
 
 # ── Tests ────────────────────────────────────────────────────────────────────
-test: ## Run the full test suite
+test: ## Run the default release test suite
 	$(UV) pytest
 
-test-cov: ## Run tests with HTML coverage report (threshold 80 %)
+test-core: ## Run v0.1 stable contract tests (-m core)
+	$(UV) pytest -m core -v
+
+test-scientific: ## Run scientific-validation test group (-m scientific)
+	$(UV) pytest -m scientific -v
+
+test-optional: ## Run optional-dependency test group (-m optional)
+	$(UV) pytest -m optional -v
+
+test-cov: ## Run release test suite with coverage report (threshold 80%)
 	$(UV) pytest \
 		--cov=src/MassFlow \
 		--cov-report=term \
 		--cov-report=html \
-		--cov-fail-under=80
+		--cov-report=xml \
+		--cov-fail-under=80 \
+		-v
 
 # ── Build & Clean ────────────────────────────────────────────────────────────
-build: ## Build the wheel via hatchling
+build: ## Build wheel and sdist via uv
 	uv build
 
 clean: ## Remove build artifacts, caches, and coverage output
@@ -48,4 +62,4 @@ clean: ## Remove build artifacts, caches, and coverage output
 	find . -type d -name .ruff_cache -exec rm -rf {} + 2>/dev/null || true
 
 # ── CI Pipeline ──────────────────────────────────────────────────────────────
-all: lint format-check typecheck test-cov ## Run the full CI pipeline
+all: lock-check lint format-check typecheck test-cov test-scientific ## Run the full CI verification pipeline
