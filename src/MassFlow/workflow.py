@@ -910,12 +910,43 @@ def _process_single_file(
             )
 
         fdr_threshold = getattr(config.similarity, "fdr_threshold", 0.01)
+        confidence_filtering_applied = assessment.state == "estimated_uncalibrated"
+        filtering_reason = (
+            "query_best_target_tdc_q_value"
+            if confidence_filtering_applied
+            else (
+                "bypassed_unavailable_empty_decoy_null"
+                if fdr_summary["n_target_competitions"] > 0
+                else "no_target_observations"
+            )
+        )
+        if result.confidence_summary is not None:
+            result.confidence_summary["filtering"] = {
+                "applied": confidence_filtering_applied,
+                "fdr_threshold": fdr_threshold,
+                "reason": filtering_reason,
+            }
 
-        # Single filter, single concept: the per-query TDC q-value. The
-        # empirical p-value is exported as a diagnostic column only; it is
-        # never compared against fdr_threshold (mixing FWER/Bonferroni
-        # semantics with an FDR threshold would silently switch statistical
-        # concepts).
+        if (
+            not confidence_filtering_applied
+            and fdr_threshold < 1.0
+            and fdr_summary["n_target_competitions"] > 0
+        ):
+            bypass_warning = (
+                f"Requested confidence filter (fdr_threshold={fdr_threshold}) could "
+                "not be applied because confidence is unavailable (empty decoy null); "
+                "retained candidates are uncalibrated and not confidence-filtered "
+                f"(they do not satisfy a {fdr_threshold:g} FDR criterion)."
+            )
+            logger.warning(bypass_warning)
+            result.warnings.append(bypass_warning)
+
+        # Conceptual separation: candidate eligibility and scoring ran inside
+        # search; assess_confidence produced confidence_state and nullable
+        # confidence_q_value; confidence filtering runs ONLY when a real
+        # decoy-competed confidence_q_value is available ("estimated_uncalibrated").
+        # When confidence is unavailable, legacy_q_values retains the historical
+        # 1/N rank diagnostic for compatibility without discarding valid candidates.
         fdr_filtered_results = []
         for res in all_results:
             if res.get("is_decoy", False):
@@ -929,16 +960,20 @@ def _process_single_file(
 
             q_val = q_by_query.get(query_id, 1.0)
             p_val = p_by_query.get(query_id, 1.0)
+            confidence_q = assessment.q_values.get(query_id)
 
             res["confidence_state"] = assessment.state
-            res["confidence_q_value"] = assessment.q_values.get(query_id)
+            res["confidence_q_value"] = confidence_q
             res["confidence_method"] = "pooled_query_maxima_plus_one_v1"
             res["confidence_scope"] = "query_best_target"
             res["confidence_limitations"] = list(assessment.limitations)
             res["q_value"] = q_val
             res["p_value"] = p_val
 
-            if q_val <= fdr_threshold:
+            if confidence_filtering_applied:
+                if confidence_q is not None and confidence_q <= fdr_threshold:
+                    fdr_filtered_results.append(res)
+            else:
                 fdr_filtered_results.append(res)
 
         # Sort results descending by score
@@ -948,6 +983,9 @@ def _process_single_file(
                 "state": assessment.state,
                 "limitations": list(assessment.limitations),
                 "legacy_q_values_are_calibrated": False,
+                "filtering_applied": confidence_filtering_applied,
+                "fdr_threshold": fdr_threshold,
+                "filtering_reason": filtering_reason,
             }
             terminal_outcomes: dict[str, int] = {
                 "preprocessing_rejected": rejection_collector.count + n_processing_drops
