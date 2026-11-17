@@ -106,6 +106,7 @@ _META_KEYS = {
     "cas",
     "mw",
     "exactmass",
+    "precursor_type",
     "precursortype",
     "collisionenergy",
 }
@@ -229,17 +230,60 @@ def peak_hash(peaks: Iterable[tuple[float, float]]) -> str:
     return hashlib.sha256(repr(norm).encode()).hexdigest()
 
 
+_MISSING_METADATA_TOKENS = {"", "N/A", "NA", "NONE", "NULL", "-"}
+
+
+def _clean_meta_value(raw: Optional[str]) -> Optional[str]:
+    """Return stripped metadata text or None for empty/placeholder sentinels."""
+    if raw is None:
+        return None
+    cleaned = str(raw).strip()
+    if cleaned.upper() in _MISSING_METADATA_TOKENS:
+        return None
+    return cleaned
+
+
+def _normalize_benchmark_ionmode(raw: Optional[str]) -> Optional[str]:
+    """Normalize explicit source ion-mode tags without inventing defaults."""
+    cleaned = _clean_meta_value(raw)
+    if cleaned is None:
+        return None
+    lowered = cleaned.lower()
+    if lowered in {"positive", "pos", "p", "+"}:
+        return "Positive"
+    if lowered in {"negative", "neg", "n", "-"}:
+        return "Negative"
+    if lowered == "neutral":
+        return "Neutral"
+    return cleaned
+
+
+def _resolve_source_ion_metadata(meta: dict[str, str]) -> dict[str, Optional[str]]:
+    """Extract normalized ionmode, adduct/precursor_type, and charge cleanly."""
+    ionmode = _normalize_benchmark_ionmode(meta.get("ionmode") or meta.get("ion_mode"))
+    adduct = _clean_meta_value(
+        meta.get("adduct")
+        or meta.get("adductionname")
+        or meta.get("precursor_type")
+        or meta.get("precursortype")
+    )
+    charge = _clean_meta_value(meta.get("charge"))
+    return {"ionmode": ionmode, "adduct": adduct, "charge": charge}
+
+
 def fmt_msp(rec: dict[str, Any], name: str) -> str:
     meta, peaks = rec["meta"], rec["peaks"]
+    ion_meta = _resolve_source_ion_metadata(meta)
     lines = [f"NAME: {name}", f"ID: {name}"]
     pmz = precursor_of(meta)
     if pmz:
         lines.append(f"PRECURSOR_MZ: {pmz:.6f}")
-    lines.append("CHARGE: 1")
-    lines.append("IONMODE: Positive")
-    adduct = meta.get("adduct") or meta.get("adductionname")
-    if adduct:
-        lines.append(f"ADDUCT: {adduct}")
+    if ion_meta["charge"] is not None:
+        lines.append(f"CHARGE: {ion_meta['charge']}")
+    if ion_meta["ionmode"] is not None:
+        lines.append(f"IONMODE: {ion_meta['ionmode']}")
+    if ion_meta["adduct"] is not None:
+        lines.append(f"ADDUCT: {ion_meta['adduct']}")
     lines.append(f"NUM PEAKS: {len(peaks)}")
     lines += [f"{mz:.5f}\t{i:.6g}" for mz, i in peaks]
     return "\n".join(lines) + "\n"
@@ -247,11 +291,18 @@ def fmt_msp(rec: dict[str, Any], name: str) -> str:
 
 def fmt_mgf(rec: dict[str, Any], name: str) -> str:
     meta, peaks = rec["meta"], rec["peaks"]
+    ion_meta = _resolve_source_ion_metadata(meta)
     pmz = precursor_of(meta)
     lines = ["BEGIN IONS", f"TITLE={name}", f"ID={name}"]
     if pmz:
         lines.append(f"PEPMASS={pmz:.6f}")
-    lines += ["CHARGE=1", "MSLEVEL=2", "IONMODE=Positive"]
+    if ion_meta["charge"] is not None:
+        lines.append(f"CHARGE={ion_meta['charge']}")
+    lines.append("MSLEVEL=2")
+    if ion_meta["ionmode"] is not None:
+        lines.append(f"IONMODE={ion_meta['ionmode']}")
+    if ion_meta["adduct"] is not None:
+        lines.append(f"ADDUCT={ion_meta['adduct']}")
     lines += [f"{mz:.5f} {i:.6g}" for mz, i in peaks]
     lines.append("END IONS")
     return "\n".join(lines) + "\n"
@@ -299,11 +350,45 @@ def verify_written_spectra(
             f"{path.name}: only {len(intensity_values)} distinct intensity values "
             "in the sample; intensities were almost certainly rounded away"
         )
+    roundtrip_ionmode_counts: Counter[str] = Counter()
+    adduct_preserved_count = 0
+    charge_preserved_count = 0
+    mismatched_metadata = 0
+    for src, out in zip(source, reparsed):
+        expected_ion = _resolve_source_ion_metadata(src["meta"])
+        actual_ion = _resolve_source_ion_metadata(out["meta"])
+        if expected_ion != actual_ion:
+            mismatched_metadata += 1
+        roundtrip_ionmode_counts[actual_ion["ionmode"] or "unknown"] += 1
+        if actual_ion["adduct"] is not None:
+            adduct_preserved_count += 1
+        if actual_ion["charge"] is not None:
+            charge_preserved_count += 1
+    if mismatched_metadata:
+        raise AssertionError(
+            f"{path.name}: {mismatched_metadata}/{len(source)} records failed "
+            "ionmode/adduct/charge round-trip fidelity"
+        )
     return {
         "records": len(reparsed),
         "sampled_distinct_intensities": len(intensity_values),
         "sampled_max_intensity": max_intensity,
+        "ionmode_counts": dict(sorted(roundtrip_ionmode_counts.items())),
+        "adduct_present_count": adduct_preserved_count,
+        "charge_present_count": charge_preserved_count,
     }
+
+
+def _matches_polarity_filter(meta: dict[str, str], polarity: str) -> bool:
+    """Return True if *meta* satisfies the requested benchmark polarity filter."""
+    if polarity == "all":
+        return True
+    normalized = _resolve_source_ion_metadata(meta)["ionmode"]
+    if polarity == "positive":
+        return normalized == "Positive"
+    if polarity == "negative":
+        return normalized == "Negative"
+    raise ValueError(f"Unsupported polarity filter: {polarity}")
 
 
 def build_real_benchmark(
@@ -313,20 +398,26 @@ def build_real_benchmark(
     query_files: list[str],
     max_queries: int,
     seed: int,
+    *,
+    polarity: str = "all",
 ) -> dict[str, Any]:
     lib_path = corpus / library_file
     if not lib_path.exists():
         raise FileNotFoundError(f"library not found: {lib_path}")
 
-    lib_records = parse_msp(lib_path)
+    source_lib_records = parse_msp(lib_path)
+    lib_records = [
+        rec
+        for rec in source_lib_records
+        if _matches_polarity_filter(rec["meta"], polarity)
+    ]
     # InChIKey -> library record indices
     lib_by_key: dict[str, list[int]] = {}
-    lib_hashes: set[str] = set()
+    lib_hashes: set[str] = {peak_hash(rec["peaks"]) for rec in source_lib_records}
     for idx, rec in enumerate(lib_records):
         ik = inchikey_of(rec["meta"])
         if ik:
             lib_by_key.setdefault(ik[:14], []).append(idx)
-        lib_hashes.add(peak_hash(rec["peaks"]))
 
     workdir.mkdir(parents=True, exist_ok=True)
     library_mode_counts: Counter[str] = Counter()
@@ -335,6 +426,7 @@ def build_real_benchmark(
     library_charge_counts: Counter[str] = Counter()
     for library_record in lib_records:
         library_metadata = library_record["meta"]
+        ion_meta = _resolve_source_ion_metadata(library_metadata)
         library_mode_counts[
             (
                 library_metadata.get("ionmode")
@@ -353,14 +445,21 @@ def build_real_benchmark(
             .strip()
             .upper()
         ] += 1
-        library_charge_counts[
-            (library_metadata.get("charge") or "unknown").strip()
-        ] += 1
+        library_adduct_counts[ion_meta["adduct"] or "unknown"] += 1
+        library_charge_counts[ion_meta["charge"] or "unknown"] += 1
     stats: dict[str, Any] = {
         "library_file": library_file,
+        "polarity_filter": polarity,
+        "library_source_records_total": len(source_lib_records),
         "library_records": len(lib_records),
         "library_distinct_connectivity": len(lib_by_key),
-        "library_duplicate_spectra": len(lib_records) - len(lib_hashes),
+        "library_duplicate_spectra": len(source_lib_records) - len(lib_hashes),
+        "source_files": {
+            library_file: {
+                "sha256": _sha256_file(lib_path),
+                "records": len(source_lib_records),
+            }
+        },
         "library_source_metadata_counts": {
             "ion_mode": dict(sorted(library_mode_counts.items())),
             "precursor_type": dict(sorted(library_type_counts.items())),
@@ -393,9 +492,16 @@ def build_real_benchmark(
             stats["query_sources"][qf] = {"error": "not found"}
             continue
         q_records = parse_msp(qpath)
+        stats["source_files"][qf] = {
+            "sha256": _sha256_file(qpath),
+            "records": len(q_records),
+        }
         candidates: list[tuple[dict[str, Any], str, str]] = []
-        n_no_key = n_not_in_lib = n_identical = 0
+        n_no_key = n_not_in_lib = n_identical = n_polarity_excluded = 0
         for rec in q_records:
+            if not _matches_polarity_filter(rec["meta"], polarity):
+                n_polarity_excluded += 1
+                continue
             ik = inchikey_of(rec["meta"])
             if not ik:
                 n_no_key += 1
@@ -495,6 +601,7 @@ def build_real_benchmark(
             }
         stats["query_sources"][qf] = {
             "records": len(q_records),
+            "rejected_polarity_filter": n_polarity_excluded,
             "rejected_no_inchikey": n_no_key,
             "rejected_not_in_library": n_not_in_lib,
             "rejected_identical_spectrum": n_identical,
@@ -1003,6 +1110,12 @@ def main(argv: Optional[list[str]] = None) -> int:
         help="compare this report.json to a prior schema-v2 report on the same dataset",
     )
     ap.add_argument(
+        "--polarity",
+        choices=["all", "positive", "negative"],
+        default="all",
+        help="restrict library and query selection to one source polarity or keep all",
+    )
+    ap.add_argument(
         "--compare-results-to",
         type=Path,
         default=None,
@@ -1034,6 +1147,12 @@ def main(argv: Optional[list[str]] = None) -> int:
                 "prepared benchmark data predates reporting schema v2; "
                 "rerun without --keep-data"
             )
+        if s.get("polarity_filter", "all") != args.polarity:
+            raise RuntimeError(
+                f"prepared benchmark polarity ({s.get('polarity_filter', 'all')}) "
+                f"does not match requested --polarity {args.polarity}; "
+                "rerun without --keep-data"
+            )
         if s["dataset_fingerprint"] != _dataset_fingerprint(args.workdir, labels):
             raise RuntimeError(
                 "prepared benchmark inputs no longer match stats.json; "
@@ -1054,6 +1173,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             query_files=args.query_files,
             max_queries=args.max_queries,
             seed=args.seed,
+            polarity=args.polarity,
         )
         if any("peak_count" not in label for label in built["labels"].values()):
             raise RuntimeError("prepared query labels are missing peak_count")
@@ -1106,9 +1226,11 @@ def main(argv: Optional[list[str]] = None) -> int:
         ),
         "source_metadata_audit": {
             "normalized_query_writer": {
-                "ionmode": "Positive",
-                "charge": 1,
-                "adduct_emitted": False,
+                "ionmode_preserved_from_source": True,
+                "adduct_preserved_from_source": True,
+                "charge_preserved_when_present": True,
+                "substitutes_positive_for_negative_or_unknown": False,
+                "polarity_filter": s.get("polarity_filter", "all"),
             },
             "raw_query_ion_mode_counts_by_source": _metadata_counts_by_source(
                 s.get("selected_source_metadata", {}), "ion_mode"
@@ -1133,9 +1255,9 @@ def main(argv: Optional[list[str]] = None) -> int:
             ),
             "selected_query_metadata": s.get("selected_source_metadata", {}),
             "interpretation": (
-                "The normalized benchmark inputs do not preserve source ion mode, "
-                "charge, or precursor-type metadata; polarity/adduct eligibility "
-                "in the MassFlow search therefore cannot explain these benchmark calls."
+                "Normalized benchmark inputs preserve source ion mode, adduct or "
+                "precursor_type, and explicit charge without substituting Positive/+1 "
+                "for negative or missing source metadata."
             ),
         },
         "runs": {},
