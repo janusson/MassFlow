@@ -278,6 +278,9 @@ def _packet_to_search_result(
 ) -> dict:
     """Convert a ``SearchResult`` and its originating packet into a dict
     suitable for building an ``AnnotationResponse`` protobuf message."""
+    mass_error_ppm = result.get("mass_error_ppm")
+    structural_similarity = result.get("structural_similarity")
+    q_value = result.get("q_value")
     return {
         "spectrum_id": packet.spectrum_id,
         "reference_id": result["reference_id"],
@@ -286,12 +289,16 @@ def _packet_to_search_result(
         "inchikey": result.get("inchikey") or "",
         "score": float(result["score"]),
         "matched_peaks": int(result.get("matched_peaks", 0)),
-        "precursor_mz_error_ppm": float(result.get("mass_error_ppm") or np.nan),
+        "precursor_mz_error_ppm": (
+            float(mass_error_ppm) if mass_error_ppm is not None else float("nan")
+        ),
         "annotation_tier": result.get("annotation_tier") or "",
-        "structural_similarity": float(result.get("structural_similarity") or np.nan),
-        "fdr_q_value": float(result["q_value"])
-        if result.get("q_value") is not None
-        else float("nan"),
+        "structural_similarity": (
+            float(structural_similarity)
+            if structural_similarity is not None
+            else float("nan")
+        ),
+        "fdr_q_value": float(q_value) if q_value is not None else float("nan"),
     }
 
 
