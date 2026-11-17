@@ -288,15 +288,17 @@ def evaluate_query_retrieval(
                     raw_q_value, field_name="q_value", query_id=query_id
                 )
             raw_identity = row.get(identity_column) if identity_column else None
-            identity = (
+            connectivity = (
                 str(raw_identity).split("-")[0]
                 if raw_identity not in (None, "")
-                else str(reference_name)
+                else None
             )
+            identity = connectivity if connectivity is not None else str(reference_name)
             candidate_rows.append(
                 {
                     "query_id": query_id,
                     "reference_name": str(reference_name),
+                    "connectivity": connectivity,
                     "identity": identity,
                     "score": score,
                     "matched_peaks": matched_peaks,
@@ -360,14 +362,16 @@ def evaluate_query_retrieval(
         """Return whether the top hit and any hit match the labeled truth."""
         true_references = set(labels[query_id]["true_lib_records"])
         truth_connectivity = str(labels[query_id].get("connectivity", ""))
-        if identity_column is not None and truth_connectivity:
-            return (
-                query_hits[0]["identity"] == truth_connectivity,
-                any(hit["identity"] == truth_connectivity for hit in query_hits),
-            )
+
+        def matches(hit: Mapping[str, Any]) -> bool:
+            hit_connectivity = hit.get("connectivity")
+            if hit_connectivity is not None and truth_connectivity:
+                return bool(hit_connectivity == truth_connectivity)
+            return str(hit["reference_name"]) in true_references
+
         return (
-            query_hits[0]["reference_name"] in true_references,
-            any(hit["reference_name"] in true_references for hit in query_hits),
+            matches(query_hits[0]),
+            any(matches(hit) for hit in query_hits),
         )
 
     def summarize(group_ids: set[str]) -> dict[str, Any]:
@@ -377,7 +381,29 @@ def evaluate_query_retrieval(
             query_id for query_id in group_searched if threshold_hits.get(query_id)
         }
         correct_top1 = 0
+        connectivity_evaluated = 0
+        reference_fallback_evaluated = 0
+        connectivity_top1 = 0
+        exact_reference_top1 = 0
         for query_id in group_with_candidate:
+            top_hit = threshold_hits[query_id][0]
+            true_references = set(labels[query_id]["true_lib_records"])
+            truth_connectivity = str(labels[query_id].get("connectivity", ""))
+            top_connectivity = top_hit.get("connectivity")
+            top_is_exact_ref = str(top_hit["reference_name"]) in true_references
+            top_is_connectivity = (
+                top_connectivity is not None
+                and bool(truth_connectivity)
+                and top_connectivity == truth_connectivity
+            )
+            if top_connectivity is not None and truth_connectivity:
+                connectivity_evaluated += 1
+            else:
+                reference_fallback_evaluated += 1
+            if top_is_connectivity:
+                connectivity_top1 += 1
+            if top_is_exact_ref:
+                exact_reference_top1 += 1
             correct_top1 += int(
                 truth_match_flags(query_id, threshold_hits[query_id])[0]
             )
@@ -386,8 +412,25 @@ def evaluate_query_retrieval(
         # Ranking success is measured after it.
         true_compound_in_candidates = 0
         true_compound_in_accepted = 0
+        connectivity_in_candidates = 0
+        exact_reference_in_candidates = 0
         for query_id in group_searched:
             exported_hits = hits_by_query.get(query_id, [])
+            if exported_hits:
+                true_references = set(labels[query_id]["true_lib_records"])
+                truth_connectivity = str(labels[query_id].get("connectivity", ""))
+                if any(
+                    hit.get("connectivity") is not None
+                    and truth_connectivity
+                    and hit.get("connectivity") == truth_connectivity
+                    for hit in exported_hits
+                ):
+                    connectivity_in_candidates += 1
+                if any(
+                    str(hit["reference_name"]) in true_references
+                    for hit in exported_hits
+                ):
+                    exact_reference_in_candidates += 1
             if exported_hits and truth_match_flags(query_id, exported_hits)[1]:
                 true_compound_in_candidates += 1
             accepted_hits = threshold_hits[query_id]
@@ -406,6 +449,15 @@ def evaluate_query_retrieval(
                 "correct_top1": correct_top1,
                 "true_compound_in_candidates": true_compound_in_candidates,
                 "true_compound_in_accepted_candidates": true_compound_in_accepted,
+            },
+            "identity_metric_levels": {
+                "primary_endpoint": "connectivity_with_reference_fallback",
+                "connectivity_evaluated_top1_calls": connectivity_evaluated,
+                "reference_fallback_top1_calls": reference_fallback_evaluated,
+                "connectivity_top1": connectivity_top1,
+                "connectivity_in_candidates": connectivity_in_candidates,
+                "exact_reference_top1": exact_reference_top1,
+                "exact_reference_in_candidates": exact_reference_in_candidates,
             },
             "metrics": {
                 "end_to_end_top1_accuracy": _ratio(correct_top1, selected_count),
