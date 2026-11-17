@@ -1,0 +1,195 @@
+{
+  "checked_on_utc": "2026-10-22",
+  "timestamp_note": "Live tool responses from this audit; exact retrieval timestamps not supplied by the connector.",
+  "baseline_main": "ffef50bff913fcf400cb3de72595dab50e4f3fd8",
+  "open_issues": [
+    {
+      "number": 97,
+      "title": "[Benchmark audit] Verify report metrics, denominators, comparisons, and provenance",
+      "url": "https://github.com/janusson/MassFlow/issues/97"
+    },
+    {
+      "number": 91,
+      "title": "[Hermes Queue] Reproduce and diagnose zero-decoy FDR behavior",
+      "url": "https://github.com/janusson/MassFlow/issues/91"
+    },
+    {
+      "number": 95,
+      "title": "[P0 / T-003] Correct fragment m/z filtering and version processing fingerprints",
+      "url": "https://github.com/janusson/MassFlow/issues/95"
+    },
+    {
+      "number": 90,
+      "title": "[Hermes Queue] Audit network PR stack and scientific merge gates",
+      "url": "https://github.com/janusson/MassFlow/issues/90"
+    },
+    {
+      "number": 68,
+      "title": "[Validation] Debug fdr_uncalibrated results & zero decoy hits",
+      "url": "https://github.com/janusson/MassFlow/issues/68"
+    },
+    {
+      "number": 82,
+      "title": "R-2: `ms1_tolerance` (0.02 Da) conflates the precursor candidacy window with the fragment tolerance",
+      "url": "https://github.com/janusson/MassFlow/issues/82"
+    },
+    {
+      "number": 81,
+      "title": "R-3: no node-quality filtering — `TriageProfile` is unused, so chimeric/low-SNR spectra become graph nodes",
+      "url": "https://github.com/janusson/MassFlow/issues/81"
+    },
+    {
+      "number": 75,
+      "title": "Extend MassFlow from independent MS/MS annotation into graph-based molecular analysis",
+      "url": "https://github.com/janusson/MassFlow/issues/75"
+    },
+    {
+      "number": 71,
+      "title": "[Validation] Validate Modified Cosine vs Cosine candidate noise",
+      "url": "https://github.com/janusson/MassFlow/issues/71"
+    },
+    {
+      "number": 70,
+      "title": "[Validation] Evaluate 5 ppm Gate impact on library spectra",
+      "url": "https://github.com/janusson/MassFlow/issues/70"
+    },
+    {
+      "number": 67,
+      "title": "[Epic 3] Profile Numba prefilter & Polars memory allocations",
+      "url": "https://github.com/janusson/MassFlow/issues/67"
+    },
+    {
+      "number": 66,
+      "title": "[Epic 2] Benchmark storage backends & multi-core scaling",
+      "url": "https://github.com/janusson/MassFlow/issues/66"
+    },
+    {
+      "number": 65,
+      "title": "[Epic 2] Run regression & experimental benchmarks",
+      "url": "https://github.com/janusson/MassFlow/issues/65"
+    },
+    {
+      "number": 64,
+      "title": "[Epic 1] Structured JSON report output",
+      "url": "https://github.com/janusson/MassFlow/issues/64"
+    },
+    {
+      "number": 63,
+      "title": "[Epic 1] Memory tracking & CLI configuration",
+      "url": "https://github.com/janusson/MassFlow/issues/63"
+    },
+    {
+      "number": 62,
+      "title": "[Epic 1] Phase-aware metric collection & timers",
+      "url": "https://github.com/janusson/MassFlow/issues/62"
+    },
+    {
+      "number": 61,
+      "title": "[Epic 1] Implement benchmark_annotation.py script",
+      "url": "https://github.com/janusson/MassFlow/issues/61"
+    },
+    {
+      "number": 60,
+      "title": "Implement `benchmark_annotation.ppy` function wrapping / monkeypatching hooks",
+      "url": "https://github.com/janusson/MassFlow/issues/60"
+    }
+  ],
+  "reviewed_open_prs": [
+    {
+      "number": 101,
+      "title": "fix: preserve missing precursor m/z as NaN",
+      "url": "https://github.com/janusson/MassFlow/pull/101",
+      "state": "open",
+      "draft": false,
+      "merged": false,
+      "head": "codex/fix-missing-precursor-nan",
+      "head_sha": "db774aacfa969d3422d6818832d146555499bc77",
+      "base": "main",
+      "base_sha": "0c5fe8c7266be2871fd9dc18e4f17ec8470d64be"
+    },
+    {
+      "number": 103,
+      "title": "fix: reject charge/adduct contradictions before spectral matching",
+      "url": "https://github.com/janusson/MassFlow/pull/103",
+      "state": "open",
+      "draft": true,
+      "merged": false,
+      "head": "codex/red-team-charge-adduct-consistency",
+      "head_sha": "113df604e84d65ea85f7cbbb3c0d861682f816e7",
+      "base": "main",
+      "base_sha": "5b847c0c45af32f2a2286371b4893c2af5481903"
+    },
+    {
+      "number": 104,
+      "title": "fix: preserve mixed-frame modified-cosine candidates",
+      "url": "https://github.com/janusson/MassFlow/pull/104",
+      "state": "open",
+      "draft": true,
+      "merged": false,
+      "head": "codex/red-team-mixed-frame-prefilter",
+      "head_sha": "134a204a283a66e7ea68c663196b85707d1590ed",
+      "base": "main",
+      "base_sha": "ffef50bff913fcf400cb3de72595dab50e4f3fd8"
+    },
+    {
+      "number": 105,
+      "title": "fix: apply m/z windows to fragments and version prepared caches",
+      "url": "https://github.com/janusson/MassFlow/pull/105",
+      "state": "open",
+      "draft": true,
+      "merged": false,
+      "head": "codex/issue95-fragment-window-20261021",
+      "head_sha": "93fc25b56ac2bb537d1e0708ac254a28da47ace7",
+      "base": "main",
+      "base_sha": "ffef50bff913fcf400cb3de72595dab50e4f3fd8"
+    },
+    {
+      "number": 106,
+      "title": "fix: apply top-N limit after match eligibility checks",
+      "url": "https://github.com/janusson/MassFlow/pull/106",
+      "state": "open",
+      "draft": true,
+      "merged": false,
+      "head": "codex/red-team-top-n-eligibility",
+      "head_sha": "f377ef3999006cb27c5aa94665b25e3a3a54f655",
+      "base": "main",
+      "base_sha": "ffef50bff913fcf400cb3de72595dab50e4f3fd8"
+    },
+    {
+      "number": 107,
+      "title": "fix: preserve spectral record identity and acquisition provenance",
+      "url": "https://github.com/janusson/MassFlow/pull/107",
+      "state": "open",
+      "draft": true,
+      "merged": false,
+      "head": "codex/fix-spectral-record-provenance",
+      "head_sha": "2f8d4088afb82e9d00fab205c758d611e5e27d89",
+      "base": "main",
+      "base_sha": "ffef50bff913fcf400cb3de72595dab50e4f3fd8"
+    },
+    {
+      "number": 80,
+      "title": "[Experimental] Network-Aware MS Annotation — graph data layer, stages 1–6, offline MSMCP",
+      "url": "https://github.com/janusson/MassFlow/pull/80",
+      "state": "open",
+      "draft": false,
+      "merged": false,
+      "head": "experimental/network-aware-annotation",
+      "head_sha": "73deedf3378c27cbef83c04d3dfa43ba682639cf",
+      "base": "main",
+      "base_sha": "a9d5cca4fff7c49cdf6e42ebf14930eb718a0f6a"
+    },
+    {
+      "number": 92,
+      "title": "feat: advisory annotation feasibility preflight (zero-hit / FDR diagnostics)",
+      "url": "https://github.com/janusson/MassFlow/pull/92",
+      "state": "open",
+      "draft": false,
+      "merged": false,
+      "head": "feat/advisory-feasibility-preflight",
+      "head_sha": "e5b62e5d50dbc2c5a2d4c33cca32bb48399608d8",
+      "base": "main",
+      "base_sha": "a9d5cca4fff7c49cdf6e42ebf14930eb718a0f6a"
+    }
+  ]
+}

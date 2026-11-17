@@ -1,0 +1,93 @@
+{
+  "audit_timestamp_utc": "2026-10-22T04:18:43.724384+00:00",
+  "application_baseline": "ffef50bff913fcf400cb3de72595dab50e4f3fd8",
+  "remote_main_verified_same": true,
+  "scope": "Documentation design and independent recount of saved outputs only. No new acquisition or annotation run.",
+  "historical_run_base_directory": "/tmp/massflow-benchmark-20261018",
+  "historical_dataset_fingerprint": "ac4428a0c5bb54eb9ce3ec7c81deefcf88290305f6e699c6bc4095f78a61331e",
+  "recount_truth_basis": "Existing labels.json true_lib_records; not independent chemical identity authentication.",
+  "runs": {
+    "narrow": {
+      "selected_labelled_queries": 600,
+      "exported_rows_including_unknowns": 824,
+      "candidate_rows": 472,
+      "called_queries": 148,
+      "correct_top1_connectivity": 116,
+      "true_in_candidates": 134,
+      "top_score_tie_queries": 0,
+      "calls_by_source": {
+        "MoNA-export-VF-NPL_QTOF.msp": 148
+      },
+      "selected_end_to_end_accuracy": 0.19333333333333333,
+      "accepted_call_accuracy": 0.7837837837837838
+    },
+    "wide": {
+      "selected_labelled_queries": 600,
+      "exported_rows_including_unknowns": 853,
+      "candidate_rows": 508,
+      "called_queries": 155,
+      "correct_top1_connectivity": 116,
+      "true_in_candidates": 136,
+      "top_score_tie_queries": 0,
+      "calls_by_source": {
+        "MoNA-export-VF-NPL_QTOF.msp": 155
+      },
+      "selected_end_to_end_accuracy": 0.19333333333333333,
+      "accepted_call_accuracy": 0.7483870967741936
+    }
+  },
+  "asset_hashes": {
+    "/tmp/massflow-benchmark-20261018/real_cosine_narrow/queries_results.csv": {
+      "sha256": "920ca7910eabb309b37447887ebc8d37398e8558628417001ff53a495a581307",
+      "bytes": 78756
+    },
+    "/tmp/massflow-benchmark-20261018/real_cosine_narrow/queries_results.report.yaml": {
+      "sha256": "02e1dea7d97201e720bba6c6073a0f81144aab12331c1531a2a11b3c6484e6af",
+      "bytes": 6071
+    },
+    "/tmp/massflow-benchmark-20261018/real_cosine_narrow/run_provenance.json": {
+      "sha256": "0e03f85f7d9fe0345fcbefa653598990f5c4f41d0a36faf374a586aa8dfac5da",
+      "bytes": 7639
+    },
+    "/tmp/massflow-benchmark-20261018/real_cosine_wide/queries_results.csv": {
+      "sha256": "15e2fe450c282ad3300fdd9fc761ff640354ac3a102d8bdc4c65b984efd759bb",
+      "bytes": 83626
+    },
+    "/tmp/massflow-benchmark-20261018/real_cosine_wide/queries_results.report.yaml": {
+      "sha256": "8f1fb68eb9b35a227753eae3b1aa493553539876a8aca3df070da6ba9ec820be",
+      "bytes": 6059
+    },
+    "/tmp/massflow-benchmark-20261018/real_cosine_wide/run_provenance.json": {
+      "sha256": "7bb70435a9077d239e7a753bf35de05d26c3c4aaa152c8f2783340c839c614f4",
+      "bytes": 7631
+    },
+    "/tmp/massflow-benchmark-20261018/labels.json": {
+      "sha256": "6ad6126a7b263a46d32e5f2a191d9ec8a3745441929a7491c25869ecee4f0ae4",
+      "bytes": 300007
+    },
+    "/tmp/massflow-benchmark-20261018/queries.mgf": {
+      "sha256": "2fbc0529770cc40815aa167d0bbd2f3f534d4c8b46efb4e15c9d6c413a8730f5",
+      "bytes": 3772614
+    },
+    "/tmp/massflow-benchmark-20261018/library.msp": {
+      "sha256": "e17b2bd25bdbc5285993871471f69af141b149067e5f57e1c4acaed45f190217",
+      "bytes": 246908959
+    },
+    "/tmp/massflow-benchmark-20261018/report.json": {
+      "sha256": "a1ca5ff0996495ff01f63390b5617b64d430f13dcb04ffcec3172fef7809f37b",
+      "bytes": 6430
+    },
+    "/tmp/massflow-benchmark-20261018/report-narrow.json": {
+      "sha256": "972375f67c41528910201dc0da018fe99d890d0383c79eb3e7c48423d869c6ee",
+      "bytes": 5574
+    }
+  },
+  "constraints": [
+    "Historical run used a dirty checkout; complete uncommitted behavior not reconstructed.",
+    "Labels, original contributor standard evidence, data rights and acquisition independence not independently authenticated.",
+    "Selected 600 / rejected 100 / searched 500 from saved reports; only candidate/count metrics recounted directly.",
+    "Both historical nulls empty; numerical q values do not demonstrate statistical calibration.",
+    "LTQ zero-call discrepancy remains unresolved.",
+    "Dataset source inventories and eligible independent-pair counts for MVB-1 are proposed work."
+  ]
+}

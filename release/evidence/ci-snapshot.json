@@ -1,0 +1,247 @@
+{
+  "inspected_on": "2026-10-22",
+  "baseline": "ffef50bff913fcf400cb3de72595dab50e4f3fd8",
+  "scope": "individual unmerged heads only; no combined release qualification",
+  "pull_requests": [
+    {
+      "number": 103,
+      "head": "113df604e84d65ea85f7cbbb3c0d861682f816e7",
+      "checks": [
+        {
+          "name": "test (macos-latest, 3.13)",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/janusson/MassFlow/actions/runs/39095472308/job/117580994620"
+        },
+        {
+          "name": "test (ubuntu-latest, 3.13)",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/janusson/MassFlow/actions/runs/39095472308/job/117580994596"
+        },
+        {
+          "name": "CodeQL",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/janusson/MassFlow/runs/117580981349"
+        },
+        {
+          "name": "smoke",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/janusson/MassFlow/actions/runs/39095472308/job/117580894459"
+        },
+        {
+          "name": "lockfile-and-lint",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/janusson/MassFlow/actions/runs/39095472308/job/117580894205"
+        },
+        {
+          "name": "Analyze (python)",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/janusson/MassFlow/actions/runs/39095470777/job/117580891244"
+        },
+        {
+          "name": "Analyze (actions)",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/janusson/MassFlow/actions/runs/39095470777/job/117580891148"
+        }
+      ]
+    },
+    {
+      "number": 104,
+      "head": "134a204a283a66e7ea68c663196b85707d1590ed",
+      "checks": [
+        {
+          "name": "test (macos-latest, 3.13)",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/janusson/MassFlow/actions/runs/39531821196/job/118999393546"
+        },
+        {
+          "name": "test (ubuntu-latest, 3.13)",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/janusson/MassFlow/actions/runs/39531821196/job/118999393542"
+        },
+        {
+          "name": "CodeQL",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/janusson/MassFlow/runs/118999349021"
+        },
+        {
+          "name": "smoke",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/janusson/MassFlow/actions/runs/39531821196/job/118999239248"
+        },
+        {
+          "name": "lockfile-and-lint",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/janusson/MassFlow/actions/runs/39531821196/job/118999238992"
+        },
+        {
+          "name": "Analyze (actions)",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/janusson/MassFlow/actions/runs/39531819331/job/118999237241"
+        },
+        {
+          "name": "Analyze (python)",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/janusson/MassFlow/actions/runs/39531819331/job/118999236948"
+        }
+      ]
+    },
+    {
+      "number": 105,
+      "head": "93fc25b56ac2bb537d1e0708ac254a28da47ace7",
+      "checks": [
+        {
+          "name": "test (macos-latest, 3.13)",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/janusson/MassFlow/actions/runs/39674423489/job/119480691743"
+        },
+        {
+          "name": "test (ubuntu-latest, 3.13)",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/janusson/MassFlow/actions/runs/39674423489/job/119480691736"
+        },
+        {
+          "name": "CodeQL",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/janusson/MassFlow/runs/119480605830"
+        },
+        {
+          "name": "smoke",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/janusson/MassFlow/actions/runs/39674423489/job/119480411336"
+        },
+        {
+          "name": "lockfile-and-lint",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/janusson/MassFlow/actions/runs/39674423489/job/119480411311"
+        },
+        {
+          "name": "Analyze (python)",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/janusson/MassFlow/actions/runs/39674420298/job/119480408376"
+        },
+        {
+          "name": "Analyze (actions)",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/janusson/MassFlow/actions/runs/39674420298/job/119480407791"
+        }
+      ]
+    },
+    {
+      "number": 106,
+      "head": "f377ef3999006cb27c5aa94665b25e3a3a54f655",
+      "checks": [
+        {
+          "name": "test (ubuntu-latest, 3.13)",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/janusson/MassFlow/actions/runs/39717716097/job/119623887645"
+        },
+        {
+          "name": "test (macos-latest, 3.13)",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/janusson/MassFlow/actions/runs/39717716097/job/119623887626"
+        },
+        {
+          "name": "CodeQL",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/janusson/MassFlow/runs/119623870343"
+        },
+        {
+          "name": "smoke",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/janusson/MassFlow/actions/runs/39717716097/job/119623723937"
+        },
+        {
+          "name": "lockfile-and-lint",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/janusson/MassFlow/actions/runs/39717716097/job/119623723801"
+        },
+        {
+          "name": "Analyze (actions)",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/janusson/MassFlow/actions/runs/39717713252/job/119623721037"
+        },
+        {
+          "name": "Analyze (python)",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/janusson/MassFlow/actions/runs/39717713252/job/119623720676"
+        }
+      ]
+    },
+    {
+      "number": 107,
+      "head": "2f8d4088afb82e9d00fab205c758d611e5e27d89",
+      "checks": [
+        {
+          "name": "test (ubuntu-latest, 3.13)",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/janusson/MassFlow/actions/runs/39720220737/job/119631914072"
+        },
+        {
+          "name": "test (macos-latest, 3.13)",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/janusson/MassFlow/actions/runs/39720220737/job/119631913963"
+        },
+        {
+          "name": "CodeQL",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/janusson/MassFlow/runs/119631834868"
+        },
+        {
+          "name": "smoke",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/janusson/MassFlow/actions/runs/39720220737/job/119631724670"
+        },
+        {
+          "name": "lockfile-and-lint",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/janusson/MassFlow/actions/runs/39720220737/job/119631724554"
+        },
+        {
+          "name": "Analyze (python)",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/janusson/MassFlow/actions/runs/39720218549/job/119631721163"
+        },
+        {
+          "name": "Analyze (actions)",
+          "status": "completed",
+          "conclusion": "success",
+          "url": "https://github.com/janusson/MassFlow/actions/runs/39720218549/job/119631721148"
+        }
+      ]
+    }
+  ]
+}

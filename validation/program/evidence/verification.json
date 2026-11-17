@@ -1,0 +1,95 @@
+{
+  "created_at_utc": "2026-10-22T04:24:18.254598+00:00",
+  "application_baseline": "ffef50bff913fcf400cb3de72595dab50e4f3fd8",
+  "branch": "codex/scientific-validation-program",
+  "production_source_tests_lockfile_changed": false,
+  "study_executed": false,
+  "checks": [
+    {
+      "command": "uv sync --locked",
+      "exit_code": 0
+    },
+    {
+      "command": "uv run pytest tests/test_mathematical_proof.py tests/test_fdr_statistics.py tests/test_scientific_validation.py -q",
+      "exit_code": 0,
+      "passed": 67,
+      "log": "focused-tests.log"
+    },
+    {
+      "command": "uv run pytest --cov=src/MassFlow --cov-report=xml --cov-fail-under=80 -v",
+      "exit_code": 0,
+      "passed": 1356,
+      "skipped": 7,
+      "deselected": 35,
+      "warnings": 81,
+      "coverage_percent": 82.39,
+      "log": "full-tests.log"
+    },
+    {
+      "command": "uv run mkdocs build --strict",
+      "exit_code": 0,
+      "note": "Final strict build completed after artifact completion; non-fatal upstream MkDocs Material advisory."
+    },
+    {
+      "command": "uv run ruff check docs/validation/program/evidence/recount_saved_outputs.py",
+      "exit_code": 0
+    },
+    {
+      "command": "uv run ruff format --check docs/validation/program/evidence/recount_saved_outputs.py",
+      "exit_code": 0
+    },
+    {
+      "command": "uv run mypy docs/validation/program/evidence/recount_saved_outputs.py",
+      "exit_code": 0,
+      "source_files": 1
+    },
+    {
+      "command": "uv run --with jsonschema python (documented in evidence/README.md)",
+      "exit_code": 0,
+      "schema_count": 2,
+      "valid_draft_templates": 1,
+      "expected_empty_frozen_errors": 6
+    },
+    {
+      "command": "Compare independent recount runs and asset_hashes with audit-snapshot.json",
+      "exit_code": 0,
+      "historical_asset_count": 11
+    },
+    {
+      "command": "Local Markdown target existence and JSON parsing checks",
+      "exit_code": 0
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0
+    }
+  ],
+  "independent_review": {
+    "read_only": true,
+    "important_findings": 3,
+    "corrected_findings": 3,
+    "focused_followup_remaining_P1": 0,
+    "boundaries": "Review of design and pinned-source semantics only; no empirical chemical validation."
+  },
+  "reproduction_limitations": [
+    "Original historical benchmark assets remain outside this repository; hashes identify required files.",
+    "No new dataset freeze or annotation benchmark was executed.",
+    "MVB-1 independent-pair inventory, primary source-label authentication and redistribution audit remain proposed.",
+    "No identification accuracy or FDR-control certificate is conferred by these checks."
+  ],
+  "artifact_sha256": {
+    "docs/validation/program/README.md": "048804295e46d8804a3d5c04e1a01b201ccf90ccbd17a928de2a63540b62ba17",
+    "docs/validation/program/datasets.md": "e33bafe582d66d7e7a6a434003e6866408526bc9af083e0da99b05c9243f7daf",
+    "docs/validation/program/evidence/README.md": "5db4110026516b6d05687ca3819d396b61fa5528cfabf6175c2f9c711d70abc2",
+    "docs/validation/program/evidence/audit-snapshot.json": "43dda63a5d513a89ebf766b58aafce0d1e8b7359a2ebe2e60f762e0a0e9ba8fe",
+    "docs/validation/program/evidence/github-snapshot.json": "5b4928149cfe7db222df227d2f2d771a43873543354244868d346bce42efe04a",
+    "docs/validation/program/evidence/recount_saved_outputs.py": "6c721c5d7d0da2596354715b3f84561245c6fa7218015d84cc1e48ac1d5af4c6",
+    "docs/validation/program/implementation-audit.md": "5c9c8366c7151f1f4b2d0d1a01881b546f74844c28fc852cad9ca4ed3cf0d82e",
+    "docs/validation/program/issue-backlog.md": "465265a77a35465d010e0cdfe70ffa7e06a17558813fd363651296002192582f",
+    "docs/validation/program/manifest-contract.md": "e506715b125984a9adb76abd94d86b79db67c5c5dbb2163a08ca80f392b56ac2",
+    "docs/validation/program/manifest.schema.json": "135a56e9ecab067308071d4e7cc924c13afb6f5245b17b20fd1abfca95a21d99",
+    "docs/validation/program/manifest.template.json": "8e8370498da72e076c68635f06b1acc78bc7af47d0e79fbd7f085834b4a4244f",
+    "docs/validation/program/record.schema.json": "e5cf8050252a1302603fb13feec413c0c8fbeb9086b60af21c9cc8e6f86e72ba"
+  },
+  "log_directory": "/Users/ericjanusson/.codex/automations/mission-scientific-red-team-act-as-an-adversarial-scientific-software-reviewe/runs/2026-10-22-validation-program"
+}

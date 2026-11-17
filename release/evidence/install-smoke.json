@@ -1,0 +1,22 @@
+{
+  "qualification_directory": "/var/folders/sz/mcs6p35d16zb4gxd_724ml3m0000gn/T/massflow-wheel-qualification-sn6vebx3",
+  "wheel_sha256": "d6fbfc32a9c183bff44abea00e8e7840bc91aa6471fd6546d81dd01d8521eb41",
+  "install": "offline wheel into fresh environment without extras",
+  "installed_import_isolation": "python -I outside repository",
+  "commands_passed": [
+    "wheel install",
+    "isolated package import",
+    "CLI help",
+    "tutorial annotate"
+  ],
+  "limitations": [
+    "Local macOS arm64/Python3.13 only.",
+    "Built from confidence worktree before final commit; not a qualified 1.0 release artifact.",
+    "RDKit is required transitively by matchms."
+  ],
+  "log_sha256": {
+    "smoke.log": "27e8824d4b319e18a2751c02c75e8436b05dc15c2fbf78a4e6dab60edd164213",
+    "massflow_quarantine.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "install.log": "b7a93c30ebf85d7a5fc6ddd5c4e7265127d8269403e64a3a11715d3506a7b2a4"
+  }
+}
