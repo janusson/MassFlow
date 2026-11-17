@@ -9,7 +9,7 @@ package version and handles sub-module imports for convenient access.
 
 from __future__ import annotations
 
-__version__ = "0.1.0"
+__version__ = "0.1.0a1"
 
 # PyPI distribution name (the import package and CLI stay MassFlow/massflow).
 __distribution_name__ = "massflow-msms"

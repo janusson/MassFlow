@@ -19,14 +19,15 @@
 [![Python 3.13](https://img.shields.io/badge/python-3.13-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-**MassFlow searches small-molecule MS/MS spectra against local reference libraries.**
+**MassFlow is exploratory MS/MS candidate-retrieval software for searching small-molecule spectra against local reference libraries.**
 
 It produces spectral similarity scores, ranked candidate annotations, and
-query-level numerical target/decoy estimates with provenance. These outputs are
-not experimentally confirmed identities. Version 0.1.0 does not claim independent
-identification validation or calibrated FDR. Those are deferred scientific
-research goals, not prerequisites for publishing this exploratory
-candidate-retrieval toolkit.
+query-level numerical target/decoy diagnostics with provenance. These outputs are
+not experimentally confirmed identities. Exploratory release `0.1.0a1` does not
+claim independent identification validation or statistically calibrated FDR;
+statistical FDR calibration and optional experimental capabilities (`[chem]`,
+`[ml]`, `[hnsw]`, `[watch]`, `[tui]`, `mztab`, `consensus`, `cascade`, routing,
+Zarr/hybrid stores, and streaming) remain outside the qualified release.
 
 ---
 

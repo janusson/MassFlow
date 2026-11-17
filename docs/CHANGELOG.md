@@ -7,6 +7,17 @@ Unreleased section and current documentation take precedence.
 
 ## [Unreleased]
 
+## [0.1.0a1] - 2026-11-17
+
+> **Exploratory alpha scope:** MassFlow `0.1.0a1` is **exploratory MS/MS candidate-retrieval software**, not validated compound-identification software. Statistical FDR calibration and optional experimental capabilities (`[chem]`, `[ml]`, `[hnsw]`, `[watch]`, `[tui]`, non-conformant `mztab` export, `consensus`, `cascade`, routing, Zarr/hybrid stores, and gRPC streaming) remain outside the qualified release.
+
+### Confidence, Provenance & Benchmark Corrections (pre-0.1.0a1)
+
+- **Confidence filtering separation (#146):** Kept candidate eligibility/ranking, confidence estimation, and `fdr_threshold` filtering distinct. When `confidence.state == "unavailable"` (empty decoy null), eligible score-ranked candidates are retained as uncalibrated and explicitly flagged as **not confidence-filtered** (both in CLI warnings and report sidecars) rather than silently discarded by the legacy `1/N` rank diagnostic. Filtering on `confidence_q_value <= fdr_threshold` remains preserved when decoys compete (`estimated_uncalibrated`), which stays explicitly uncalibrated (not validated FDR control).
+- **Dependency provenance resolution (#147):** Fixed `_dependency_versions()` in `MassFlow.workflow` using `packaging.requirements.Requirement` so `run_provenance.json` records resolved package names and installed versions without PEP 508 constraint strings, and updated `AGENTS.md` `massflow db inspect`/`merge` examples.
+- **Benchmark accounting & identity separation (#144, #145):** Aligned preprocessing rejection accounting across benchmark reporting/corpus runs and separated `INCHIKEY`-based connectivity matching from exact-reference fallback (`identity_metric_levels`) without label leakage.
+- **Build/CI alignment (#148):** Updated `Makefile` targets (`lock-check`, `test-core`, `test-scientific`, `test-optional`, `--cov-report=xml`) to match CI workflows.
+
 ### Removed
 
 - Removed the unsupported `massflow tutorial` CLI command. The synthetic generator

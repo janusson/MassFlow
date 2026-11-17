@@ -1,7 +1,7 @@
 [project]
 name = "massflow-msms"
-version = "0.1.0"
-description = "Reproducible MS/MS reference-library candidate retrieval and annotation-evidence toolkit."
+version = "0.1.0a1"
+description = "Exploratory MS/MS reference-library candidate retrieval and annotation-evidence toolkit."
 readme = "README.md"
 license = {text = "MIT"}
 classifiers = [
