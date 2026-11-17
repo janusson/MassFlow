@@ -713,7 +713,8 @@ class TestFDRInterpretation:
             if row.get("reference_name")
         )
         assert any(
-            "was not applied because confidence is unavailable" in warning
+            "could not be applied because confidence is unavailable" in warning
+            and "not confidence-filtered" in warning
             for warning in cosine_result.warnings
         )
 

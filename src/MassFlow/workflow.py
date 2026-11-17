@@ -932,11 +932,14 @@ def _process_single_file(
             and fdr_threshold < 1.0
             and fdr_summary["n_target_competitions"] > 0
         ):
-            result.warnings.append(
-                f"Confidence-based filtering (fdr_threshold={fdr_threshold}) was not "
-                "applied because confidence is unavailable (empty decoy null); "
-                "eligible candidates are retained uncalibrated and ranked by score."
+            bypass_warning = (
+                f"Requested confidence filter (fdr_threshold={fdr_threshold}) could "
+                "not be applied because confidence is unavailable (empty decoy null); "
+                "retained candidates are uncalibrated and not confidence-filtered "
+                f"(they do not satisfy a {fdr_threshold:g} FDR criterion)."
             )
+            logger.warning(bypass_warning)
+            result.warnings.append(bypass_warning)
 
         # Conceptual separation: candidate eligibility and scoring ran inside
         # search; assess_confidence produced confidence_state and nullable
