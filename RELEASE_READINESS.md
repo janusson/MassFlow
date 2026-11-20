@@ -3,7 +3,7 @@
 **Assessment date:** 2026-11-17
 **Target version:** `0.1.0a1` (exploratory alpha pre-release; not stable `0.1.0` and not `1.0`)
 **Verified `main` baseline prior to release-prep PR:** `fd36a149433fd2ddc058b03698412d2ccd04bf53` (includes `#144`, `#145`, `#146`, `#147`, `#148`)
-**Assessment:** **GO for exploratory `0.1.0a1` pre-release readiness**, subject to merging this release-preparation PR, passing hosted CI + `release.yml` `qualify` mode on the merged SHA, and owner approval for tagging/PyPI publishing. **NO tag or PyPI publication was performed by this work.**
+**Assessment:** Exploratory scope defined. Alpha release qualification is pending hosted CI and a successful `release.yml` qualification run on the exact merged SHA. Tagging and publication require separate owner approval.
 
 ---
 
@@ -64,18 +64,18 @@ Integration was by merge/cherry-pick onto a clean branch. Source PRs remain open
 
 ---
 
-## 3. Final candidate SHA and branch
+## 3. Historical `0.1.0` candidate and qualification run
 
 - **Qualified code/artifact SHA:** `1d0cdeb1a972b269f3187b4a3950a6d23ecf9c44`
 - **PR branch:** `codex/final-release-candidate`
 - **Release-candidate branch:** `release/0.1.0-candidate` at the same SHA
 - **PR:** https://github.com/janusson/MassFlow/pull/134
 - **Qualification run:** https://github.com/janusson/MassFlow/actions/runs/40439344703 — `success`; publish job correctly skipped.
-- The final `RELEASE_READINESS.md` update is documentation-only; the PR description records the resulting head SHA. No scoring, preprocessing, retrieval, ranking, confidence, packaging-dependency, or metric code changed after the qualified SHA.
+- The run and artifacts below are historical evidence for `0.1.0` at `1d0cdeb`. The alpha requires fresh evidence tied to its exact merged SHA.
 
 ---
 
-## 4. Verification evidence
+## 4. Historical verification evidence
 
 ### 4.1 Guarded non-publishing qualification (exact SHA `1d0cdeb`)
 
@@ -140,7 +140,7 @@ The frozen MassBank diagnostic was run on `97014ba54e16cf2e495e32116888fe532e4aa
 
 Positive: the candidate reproduces the frozen #116/#117 counts exactly; cosine remains the stronger candidate ranker. Negative findings are preserved: modified cosine calls 46/50 absent truths in the mixed arm and 75/91 calls are wrong at legacy q ≤ 0.05; confidence is not calibrated (0 or 1 decoy competition); eight minimum-peak drops and one prespecified leakage exclusion remain in accounting; the Numba prefilter is disabled in the frozen parameters, so this cohort does not qualify the mixed-frame pruning fix; deposited labels are not independently authenticated.
 
-Benchmark result hashes remain those recorded for `97014ba` in the PR evidence. This is descriptive cohort evidence, not a deployment error rate or calibrated-FDR certificate.
+Benchmark result hashes remain those recorded for `97014ba` in the PR evidence. For alpha qualification, refresh the frozen diagnostic to cover the intervening retrieval, confidence, and reporting changes and include its result in the durable evidence. This is descriptive cohort evidence, not a deployment error rate or calibrated-FDR certificate.
 
 ---
 
@@ -176,14 +176,14 @@ license = {text = "MIT"}
 
 ---
 
-## 7. Publication steps (owner-only, after explicit approval)
+## 7. Qualification and owner-approved publication
 
-1. Create the PyPI pending publisher and confirm the GitHub `release` environment/reviewer policy as described in `.github/PYPI_TRUSTED_PUBLISHING.md`.
-2. Merge this release-preparation PR via GitHub PR review; do not push directly to `main`.
-3. Run `.github/workflows/release.yml` in `qualify` mode on the exact merged `main` SHA (`version="0.1.0a1"`, `allow_prerelease=true`, no tag). Review the full suite, scientific/core tests, lock-pinned installed smoke, `dist/SHA256SUMS`, and `release-provenance.json`.
+1. Merge the approved release-preparation PR via GitHub PR review.
+2. Run `.github/workflows/release.yml` in `qualify` mode on the exact merged `main` SHA with `action=qualify`, the full merged `candidate_sha`, `version=0.1.0a1`, and a durable `evidence_url` (HTTPS URL or committed `docs/` path). Omit the tag. The workflow requires `allow_prerelease=true` only in publish mode. Review the full suite, scientific/core tests, lock-pinned installed smoke, `dist/SHA256SUMS`, and `release-provenance.json`.
+3. Before tagging or publishing, confirm the PyPI pending publisher and GitHub `release` environment and reviewer policy as described in `.github/PYPI_TRUSTED_PUBLISHING.md`. These settings are publication prerequisites.
 4. Only after qualification and review are accepted and the owner approves proceeding, create an annotated tag `v0.1.0a1` on that same qualified SHA.
 5. Run `publish` mode with `version="0.1.0a1"`, `tag="v0.1.0a1"`, `allow_prerelease=true`, `confirmation="PUBLISH 0.1.0a1"`, the exact SHA, evidence URL, and migration/rollback notes. The protected `release` environment must approve.
-6. The publish job verifies the qualified wheel/sdist against `SHA256SUMS` and provenance, creates the GitHub release, stages only those two files, and uploads them to PyPI with OIDC Trusted Publishing and PEP 740 attestations without rebuilding.
+6. Publish mode runs qualification again on the same SHA. The protected publish job verifies that run’s wheel/sdist against `SHA256SUMS` and provenance, creates the GitHub release, stages only those two files, and uploads them to PyPI with OIDC Trusted Publishing and PEP 740 attestations without rebuilding.
 7. Verify from a clean environment outside the checkout: `pip install --pre massflow-msms==0.1.0a1`, `massflow --help`, `massflow init`, and a small CSV annotation. Compare PyPI file hashes with the GitHub release `SHA256SUMS`/provenance.
 8. Rollback: yank affected PyPI files (do not delete/reuse the version), delete the GitHub release, fix forward with a new pre-release/patch version/tag, and requalify.
 
@@ -191,4 +191,4 @@ license = {text = "MIT"}
 
 ## 8. GO / NO-GO
 
-**GO for exploratory `0.1.0a1` pre-release publication readiness** once the release-preparation PR merges and passes `.github/workflows/release.yml` (`qualify`). Do not promote this exploratory alpha release to validated compound identification or calibrated-FDR control.
+**Publication is pending.** Record the exact merged SHA, hosted CI, qualification run URL, artifact hashes, and provenance. Complete owner setup and record explicit approval before tagging or publishing. Keep the release claim limited to exploratory candidate retrieval.

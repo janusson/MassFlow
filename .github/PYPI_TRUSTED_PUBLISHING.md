@@ -39,15 +39,19 @@ GPL-3.0 project. The import package remains `MassFlow` and the CLI remains
 
 ## Publication path
 
-1. Run `release.yml` in `qualify` mode on the exact candidate SHA. This does not
-   publish. Review the full-suite/scientific/core results, installed-wheel smoke,
+1. Run `release.yml` in `qualify` mode on the exact candidate SHA with the version
+   and a durable evidence URL or committed `docs/` path. Omit the tag. For
+   `0.1.0a1`, use the full merged `main` SHA. Review the full-suite/scientific/core
+   results, installed-wheel smoke,
    `dist/SHA256SUMS`, and `release-provenance.json`.
-2. Create an annotated tag `v<version>` on that SHA.
+2. After the owner accepts qualification and approves tagging, create an
+   annotated tag `v<version>` on that SHA.
 3. Run `release.yml` in `publish` mode with the exact candidate SHA, version,
    tag, `confirmation="PUBLISH <version>"`, evidence URL, migration notes, and
-   rollback notes.
-4. The publish job:
-   - downloads the qualified artifact from the qualifying run;
+   rollback notes. Set `allow_prerelease=true` for the alpha.
+4. Publish mode first requalifies the same SHA. After approval in the protected
+   `release` environment, the publish job:
+   - downloads the qualified artifact from the qualification job in the same dispatch;
    - verifies `SHA256SUMS` and `release-provenance.json`;
    - stages **only** the verified wheel and sdist;
    - creates the GitHub release;
