@@ -118,8 +118,11 @@ jobs:
 
           if not re.fullmatch(r"[0-9a-f]{40}", sha):
               fail("candidate_sha must be a full 40-character lowercase commit SHA")
-          if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+(?:[-.][0-9A-Za-z.-]+)?", version):
-              fail("version must be a SemVer-like X.Y.Z value")
+          if not re.fullmatch(
+              r"[0-9]+\.[0-9]+\.[0-9]+(?:(?:a|b|rc)[0-9]+|\.(?:dev|post)[0-9]+|[-.][0-9A-Za-z.-]+)?",
+              version,
+          ):
+              fail("version must be a SemVer-like X.Y.Z or PEP 440 pre-release value")
           if tag and tag != f"v{version}":
               fail("tag must be exactly 'v' + version")
           if action == "publish" and not tag:
@@ -472,7 +475,11 @@ jobs:
           TAG: ${{ inputs.tag }}
           VERSION: ${{ inputs.version }}
         run: |
-          gh release create "$TAG" \
+          prerelease_flag=()
+          if [[ "$VERSION" =~ (a|b|rc|dev) ]]; then
+            prerelease_flag+=(--prerelease)
+          fi
+          gh release create "$TAG" "${prerelease_flag[@]}" \
             release/dist/* \
             release/release-provenance.json \
             --repo "$GITHUB_REPOSITORY" \

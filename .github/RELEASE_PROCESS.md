@@ -36,13 +36,15 @@ no `push` trigger.
    benchmark result if the candidate changes scoring, preprocessing, retrieval,
    ranking, confidence, or reported metrics. The evidence must be reachable at
    an `https://` URL or a committed `docs/` path.
-4. Run the workflow in `qualify` mode before creating a version tag (UI or CLI):
+4. Run the workflow in `qualify` mode before creating a version tag (UI or CLI).
+   For `0.1.0a1`, set `candidate_sha` to the full SHA that landed on `main`
+   and `evidence_url` to the durable evidence location before running the command.
    ```bash
    gh workflow run release.yml --ref main \
      -f action=qualify \
-     -f candidate_sha=<candidate_sha> \
-     -f version=0.1.0 \
-     -f evidence_url=https://example.invalid/massflow-0.1.0-qualification
+     -f candidate_sha="$candidate_sha" \
+     -f version=0.1.0a1 \
+     -f evidence_url="$evidence_url"
    ```
    `qualify` does not publish. It checks out the exact SHA, verifies the input
    agreements, runs the lockfile/lint/type/full-coverage/scientific/core gates,
@@ -87,8 +89,8 @@ After the qualification evidence is reviewed and accepted, and the owner
 approves proceeding, create and push an **annotated** tag on that exact SHA:
 
 ```bash
-git tag -a v0.1.0 <candidate_sha> -m "MassFlow 0.1.0 candidate"
-git push origin v0.1.0
+git tag -a v0.1.0a1 "$candidate_sha" -m "MassFlow 0.1.0a1 candidate"
+git push origin v0.1.0a1
 ```
 
 Pushing the tag does not run the release workflow. If the candidate SHA or
@@ -102,23 +104,27 @@ Only after the qualification and review are accepted, run the workflow again in
 ```bash
 gh workflow run release.yml --ref main \
   -f action=publish \
-  -f candidate_sha=<candidate_sha> \
-  -f version=0.1.0 \
-  -f tag=v0.1.0 \
-  -f confirmation="PUBLISH 0.1.0" \
-  -f evidence_url=https://example.invalid/massflow-0.1.0-qualification \
+  -f candidate_sha="$candidate_sha" \
+  -f version=0.1.0a1 \
+  -f allow_prerelease=true \
+  -f tag=v0.1.0a1 \
+  -f confirmation="PUBLISH 0.1.0a1" \
+  -f evidence_url="$evidence_url" \
   -f migration_notes="<migration notes>" \
   -f rollback_notes="<rollback procedure>"
 ```
 
-The `publish` job re-runs qualification from scratch on the same SHA, waits for
-the `release` environment approval, re-verifies every artifact hash and the
-annotated tag, and then creates a GitHub release. It attaches the wheel, sdist,
+Publish mode runs qualification again on the same SHA. The publish job waits
+for `release` environment approval, verifies the artifact hashes and annotated
+tag, and creates the GitHub release. It marks alpha, beta, release-candidate,
+and development versions as prereleases and attaches the wheel, sdist,
 `SHA256SUMS`, and `release-provenance.json`. In the same protected job it stages
 only the verified wheel and sdist and uploads them to PyPI using OIDC Trusted
 Publishing. It never rebuilds or substitutes an artifact. If the GitHub release
-succeeds but the PyPI upload fails, retry only the publish workflow after
-verifying that the qualified artifact hashes are unchanged; do not rebuild.
+succeeds but the PyPI upload fails, review the existing GitHub release and
+artifact hashes before an owner-approved recovery. A new publish dispatch
+requalifies the SHA and attempts to create the GitHub release again, which
+can fail while the release already exists.
 
 ## Provenance and rollback
 

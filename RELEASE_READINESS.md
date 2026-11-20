@@ -1,19 +1,15 @@
-# MassFlow Release Readiness — massflow-msms 0.1.0
+# MassFlow Release Readiness — massflow-msms 0.1.0a1
 
-**Assessment date:** 2026-10-27
-**Branch:** `codex/final-release-candidate` (draft PR #134)
-**Qualified code/artifact SHA:** `1d0cdeb1a972b269f3187b4a3950a6d23ecf9c44`
-**Candidate line:** `release/0.1.0-candidate` at the same SHA
-**Base:** `main` at `ffef50bff913fcf400cb3de72595dab50e4f3fd8`
-**Assessment:** **GO for publication readiness under the documented exploratory scope**, conditional on owner-only PyPI/environment setup and recorded approval. **NO publication was performed by this work.**
-
-No GitHub PR was merged, no tag was created, no package was uploaded, and no release was created. `main`, the primary checkout, and all pre-existing dirty worktrees were preserved.
+**Assessment date:** 2026-11-17
+**Target version:** `0.1.0a1` (exploratory alpha pre-release; not stable `0.1.0` and not `1.0`)
+**Verified `main` baseline prior to release-prep PR:** `fd36a149433fd2ddc058b03698412d2ccd04bf53` (includes `#144`, `#145`, `#146`, `#147`, `#148`)
+**Assessment:** Exploratory scope defined. Alpha release qualification is pending hosted CI and a successful `release.yml` qualification run on the exact merged SHA. Tagging and publication require separate owner approval.
 
 ---
 
-## 1. Supported release scope
+## 1. Supported exploratory release scope (`0.1.0a1`)
 
-MassFlow 0.1.0 is an **exploratory MS/MS reference-library candidate-retrieval and annotation-evidence toolkit**. It retrieves and ranks library candidates, reports spectral similarity and provenance, and exposes numerical target/decoy diagnostics. It does **not** claim confirmed identities or calibrated error control.
+MassFlow `0.1.0a1` is **exploratory MS/MS candidate-retrieval software**, **not validated identification software**. It retrieves and ranks library candidates, reports spectral similarity and provenance, and exposes explicit confidence states. **Statistical FDR calibration and optional experimental capabilities remain outside the qualified release.**
 
 **Qualified core surface**
 
@@ -22,24 +18,20 @@ MassFlow 0.1.0 is an **exploratory MS/MS reference-library candidate-retrieval a
 - `matchms` metadata/peak processing with float64 m/z and intensities, explicit missingness, and fragment-only m/z windows.
 - Classical `cosine` and `modified_cosine` candidate ranking under declared tolerances.
 - SQLite library stores with build lineage.
-- CSV results plus YAML provenance/report sidecars.
-- Explicit confidence states (`estimated_uncalibrated`, `unavailable`, `invalid`); no state implies calibrated FDR.
+- CSV results plus YAML provenance/report sidecars and `run_provenance.json` with resolved core dependency versions.
+- Explicit confidence states (`estimated_uncalibrated`, `unavailable`, `invalid`): when `confidence.state == "unavailable"` (empty decoy null), eligible candidates are retained uncalibrated and explicitly marked as **not confidence-filtered** in CSV/reports/CLI warnings rather than discarded via legacy `1/N`; neither state implies calibrated FDR control.
 - Source-record identity and acquisition provenance, separate from chemical identity.
 
-**Not claimed for 0.1.0**
+**Explicitly excluded from the qualified `0.1.0a1` release**
 
-- Independent identification validation or authenticated standard-compound truth.
-- Calibrated FDR, q-value error control, or candidate-specific error probabilities.
-- Confirmed molecular identity from similarity alone.
-- Validated performance across untested instruments, matrices, ion modes, or acquisition protocols.
-- Standards-conformant mzTab-M output.
-- Supported/qualified ML, HNSW, streaming, TUI, watch, or Numba acceleration.
+- Statistical FDR calibration, calibrated q-values, or validated identification accuracy.
+- Confirmed molecular identity from spectral similarity or retention-time matching alone.
+- Standards-conformant mzTab-M output (`format: mztab` writes an experimental non-conformant table; CSV is the supported export).
+- Optional extras (`[chem]`, `[ml]`, `[hnsw]`, `[watch]`, `[tui]`), ML/meta scoring (`spec2vec`, `ms2deepscore`, `consensus`, `cascade`, routing), Numba prefiltering, HNSW indexing, Zarr/hybrid stores, and gRPC streaming.
 
-Independent identification validation and calibrated FDR are **deferred scientific research**. They are prerequisites for stronger identification/FDR claims and for 1.0, not prerequisites for publishing this documented exploratory candidate-retrieval toolkit.
+Independent identification validation and calibrated FDR are **deferred scientific research**. They are prerequisites for stronger identification/FDR claims and for stable releases, not prerequisites for publishing this exploratory candidate-retrieval alpha.
 
-`mztab` remains an **experimental, non-conformant mzTab-shaped table**. It omits `mzTab-version` and states in-file that it is not mzTab-M. CSV is the stable export. The synthetic tutorial generator is a source-checkout-only script; the unsupported `massflow tutorial` CLI command has been removed.
-
-Optional extras (`ml`, `hnsw`, `watch`, `tui`, `chem`) are **experimental/unqualified**. `uv sync --all-extras` is a developer convenience, not a support claim. Release qualification installs only the default/core dependency set.
+The synthetic tutorial generator remains a source-checkout-only script; the unsupported `massflow tutorial` CLI command has been removed. Release qualification installs only the core dependency set without optional extras.
 
 ---
 
@@ -72,18 +64,18 @@ Integration was by merge/cherry-pick onto a clean branch. Source PRs remain open
 
 ---
 
-## 3. Final candidate SHA and branch
+## 3. Historical `0.1.0` candidate and qualification run
 
 - **Qualified code/artifact SHA:** `1d0cdeb1a972b269f3187b4a3950a6d23ecf9c44`
 - **PR branch:** `codex/final-release-candidate`
 - **Release-candidate branch:** `release/0.1.0-candidate` at the same SHA
 - **PR:** https://github.com/janusson/MassFlow/pull/134
 - **Qualification run:** https://github.com/janusson/MassFlow/actions/runs/40439344703 — `success`; publish job correctly skipped.
-- The final `RELEASE_READINESS.md` update is documentation-only; the PR description records the resulting head SHA. No scoring, preprocessing, retrieval, ranking, confidence, packaging-dependency, or metric code changed after the qualified SHA.
+- The run and artifacts below are historical evidence for `0.1.0` at `1d0cdeb`. The alpha requires fresh evidence tied to its exact merged SHA.
 
 ---
 
-## 4. Verification evidence
+## 4. Historical verification evidence
 
 ### 4.1 Guarded non-publishing qualification (exact SHA `1d0cdeb`)
 
@@ -148,7 +140,7 @@ The frozen MassBank diagnostic was run on `97014ba54e16cf2e495e32116888fe532e4aa
 
 Positive: the candidate reproduces the frozen #116/#117 counts exactly; cosine remains the stronger candidate ranker. Negative findings are preserved: modified cosine calls 46/50 absent truths in the mixed arm and 75/91 calls are wrong at legacy q ≤ 0.05; confidence is not calibrated (0 or 1 decoy competition); eight minimum-peak drops and one prespecified leakage exclusion remain in accounting; the Numba prefilter is disabled in the frozen parameters, so this cohort does not qualify the mixed-frame pruning fix; deposited labels are not independently authenticated.
 
-Benchmark result hashes remain those recorded for `97014ba` in the PR evidence. This is descriptive cohort evidence, not a deployment error rate or calibrated-FDR certificate.
+Benchmark result hashes remain those recorded for `97014ba` in the PR evidence. For alpha qualification, refresh the frozen diagnostic to cover the intervening retrieval, confidence, and reporting changes and include its result in the durable evidence. This is descriptive cohort evidence, not a deployment error rate or calibrated-FDR certificate.
 
 ---
 
@@ -166,39 +158,37 @@ Independent identification validation and calibrated FDR are **not** in this blo
 
 ---
 
-## 6. Proposed package/version metadata
+## 6. Package/version metadata
 
 ```toml
 [project]
 name = "massflow-msms"
-version = "0.1.0"
+version = "0.1.0a1"
 requires-python = ">=3.13,<3.14"
 license = {text = "MIT"}
 ```
 
 - **Distribution:** `massflow-msms` (pending publisher not yet created).
 - **Import package:** `MassFlow`; **CLI:** `massflow` (unchanged).
-- **Version:** `0.1.0`, pre-1.0 exploratory candidate. No 1.0 bump; the project’s 1.0 decision remains NO-GO.
+- **Version:** `0.1.0a1`, exploratory alpha pre-release. No stable `0.1.0` or `1.0` claim; statistical FDR calibration and optional experimental capabilities remain excluded.
 - **Alternative:** `massflow-ms` is also unregistered; changing it is packaging metadata only.
 - **Never use:** `massflow` — owned by an unrelated project.
 
 ---
 
-## 7. Publication steps (owner-only, after explicit approval)
+## 7. Qualification and owner-approved publication
 
-1. Create the PyPI pending publisher and confirm the GitHub `release` environment/reviewer policy as described in `.github/PYPI_TRUSTED_PUBLISHING.md`.
-2. Merge the approved candidate via PR; do not push directly to `main`.
-3. Run `.github/workflows/release.yml` in `qualify` mode on the exact merged SHA, without creating or supplying a version tag. Review the full suite, scientific/core tests, lock-pinned installed smoke, `dist/SHA256SUMS`, and `release-provenance.json`. This does not publish.
-4. Only after qualification and review are accepted and the owner approves proceeding, create an annotated tag `v0.1.0` on that same qualified SHA.
-5. Run `publish` mode with `confirmation="PUBLISH 0.1.0"`, the exact SHA/tag/version, evidence URL, and migration/rollback notes. The protected `release` environment must approve.
-6. The publish job verifies the qualified wheel/sdist against `SHA256SUMS` and provenance, creates the GitHub release, stages only those two files, and uploads them to PyPI with OIDC Trusted Publishing and PEP 740 attestations. It does not rebuild.
-7. Verify from a clean environment outside the checkout: `pip install massflow-msms==0.1.0`, `massflow --help`, `massflow init`, and a small CSV annotation. Compare PyPI file hashes with the GitHub release `SHA256SUMS`/provenance.
-8. Rollback: yank affected PyPI files (do not delete/reuse the version), delete the GitHub release, fix forward with a new patch version/tag, and requalify.
+1. Merge the approved release-preparation PR via GitHub PR review.
+2. Run `.github/workflows/release.yml` in `qualify` mode on the exact merged `main` SHA with `action=qualify`, the full merged `candidate_sha`, `version=0.1.0a1`, and a durable `evidence_url` (HTTPS URL or committed `docs/` path). Omit the tag. The workflow requires `allow_prerelease=true` only in publish mode. Review the full suite, scientific/core tests, lock-pinned installed smoke, `dist/SHA256SUMS`, and `release-provenance.json`.
+3. Before tagging or publishing, confirm the PyPI pending publisher and GitHub `release` environment and reviewer policy as described in `.github/PYPI_TRUSTED_PUBLISHING.md`. These settings are publication prerequisites.
+4. Only after qualification and review are accepted and the owner approves proceeding, create an annotated tag `v0.1.0a1` on that same qualified SHA.
+5. Run `publish` mode with `version="0.1.0a1"`, `tag="v0.1.0a1"`, `allow_prerelease=true`, `confirmation="PUBLISH 0.1.0a1"`, the exact SHA, evidence URL, and migration/rollback notes. The protected `release` environment must approve.
+6. Publish mode runs qualification again on the same SHA. The protected publish job verifies that run’s wheel/sdist against `SHA256SUMS` and provenance, creates the GitHub release, stages only those two files, and uploads them to PyPI with OIDC Trusted Publishing and PEP 740 attestations without rebuilding.
+7. Verify from a clean environment outside the checkout: `pip install --pre massflow-msms==0.1.0a1`, `massflow --help`, `massflow init`, and a small CSV annotation. Compare PyPI file hashes with the GitHub release `SHA256SUMS`/provenance.
+8. Rollback: yank affected PyPI files (do not delete/reuse the version), delete the GitHub release, fix forward with a new pre-release/patch version/tag, and requalify.
 
 ---
 
 ## 8. GO / NO-GO
 
-**GO for publication readiness.** The qualified core candidate has green local and hosted gates, a clean core dependency audit, verified qualified artifacts, a tested non-publishing qualification workflow, and a bounded evidence-backed scope. The only remaining steps are owner-only setup and approval: PyPI pending publisher, `release` environment configuration, and the owner’s choice of independent or auditable solo approval.
-
-**NO publication is performed or authorized by this report.** If the owner requires independent review, complete Option A before publishing; otherwise use Option B and label the release as solo-approved, not independently reviewed. Do not promote this candidate to validated unknown-compound identification or calibrated-FDR use.
+**Publication is pending.** Record the exact merged SHA, hosted CI, qualification run URL, artifact hashes, and provenance. Complete owner setup and record explicit approval before tagging or publishing. Keep the release claim limited to exploratory candidate retrieval.
