@@ -379,7 +379,8 @@ def experimental_surface_flags(config: MassFlowConfig) -> list[str]:
     """Return the active experimental surfaces of a configuration.
 
     The stable product contract covers cosine / modified_cosine scoring,
-    SQLite libraries, and CSV/mzTab-M exports. Everything else — meta-
+    SQLite libraries, and CSV exports (the mzTab-shaped exporter is an
+    experimental, non-conformant diagnostic format). Everything else — meta-
     engines (consensus, cascade), ML engines (spec2vec, ms2deepscore), ML
     routing, HNSW candidate retrieval, and remote ML endpoints — is
     experimental and must be visibly flagged at the run boundary so an
