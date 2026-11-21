@@ -203,7 +203,7 @@ def test_save_match_results_serializes_nested_score_breakdown(tmp_path):
     assert rows[0]["score_breakdown"] == '{"cosine":0.0,"modified_cosine":1.0}'
     assert rows[0]["score"] == "0.5"
 
-    # The same dict must not break the mzTab-M exporter either.
+    # The same dict must not break the mzTab-shaped exporter either.
     mztab_path = tmp_path / "results.mztab"
     io.save_match_results_to_mztab(results, mztab_path)
     assert '{"cosine":0.0,"modified_cosine":1.0}' in mztab_path.read_text()

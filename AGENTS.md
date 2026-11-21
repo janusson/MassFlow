@@ -70,7 +70,7 @@ Tests that **can** use formula-based fallbacks (via `pyteomics`) should have **t
 
 ### 2.5 Pytest Markers
 
-- `@pytest.mark.core` — must pass for the v0.1 stable release contract. Use this for tests of `cosine`, `modified_cosine`, CSV/mzTab-M export, and SQLite DB workflows.
+- `@pytest.mark.core` — must pass for the v0.1 stable release contract. Use this for tests of `cosine`, `modified_cosine`, CSV export (the `mztab` format is experimental and non-conformant), and SQLite DB workflows.
 - Tests for experimental features (`spec2vec`, `ms2deepscore`, `consensus`, `cascade`, GraphML networking) should NOT be marked `core`.
 
 ---

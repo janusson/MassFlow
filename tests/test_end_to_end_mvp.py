@@ -145,7 +145,7 @@ def test_mvp_workflow_multiple_queries(tmp_path):
 
 
 def test_mvp_workflow_mztab_export(tmp_path):
-    """Pipeline with mzTab-M export format produces a .mztab file."""
+    """Pipeline with the experimental mzTab-shaped export produces a .mztab file."""
     query = _make_spectrum([100.0, 200.0], [0.5, 1.0], "Query", 150.0)
     ref = _make_spectrum([100.0, 200.0], [0.5, 1.0], "Ref", 150.0)
 

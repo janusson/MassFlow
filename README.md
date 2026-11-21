@@ -1,14 +1,14 @@
 # MassFlow
 
-> **What this is.** A local-first MS/MS annotation engine. Ingest `mzML`/`mzXML`/`MGF`,
-> search local MSP/SQLite libraries with classical spectral similarity, calibrate
-> confidence with target-decoy FDR, export CSV/mzTab-M with a provenance sidecar
+> **What this is.** A local-first MS/MS candidate-retrieval engine. Ingest `mzML`/`mzXML`/`MGF`,
+> search local MSP/SQLite libraries with classical spectral similarity, report
+> uncalibrated target-decoy diagnostics, export CSV with a provenance sidecar
 > per output file.
 >
 > **Status.** The v0.1 product surface is defined in
 > [`docs/CAPABILITY_MATRIX.md`](docs/CAPABILITY_MATRIX.md), which governs where docs
-> disagree. The stable paths (CLI, FDR, export) are gated by the test suite and
-> coverage gate in CI.
+> disagree. The stable paths (CLI, uncalibrated confidence diagnostics, CSV export)
+> are gated by the test suite and coverage gate in CI.
 >
 > **The design commitment.** Every result travels with the parameters and inputs
 > that produced it. A silently shrunk target pool is treated as corruption, not a

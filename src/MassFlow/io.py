@@ -3,8 +3,9 @@ I/O helpers for MassFlow spectral data.
 
 This module is the file-system boundary for MassFlow. It loads spectra from
 open interchange formats such as mzML, mzXML, MGF, and MSP, as well as
-SQLite databases. It exports search results to CSV and mzTab-M formats and
-provides utilities for writing provenance reports and open-format spectra.
+SQLite databases. It exports search results to CSV (stable) and to an
+experimental, non-conformant mzTab-shaped table, and provides utilities for
+writing provenance reports and open-format spectra.
 
 The loader is intentionally narrow in scope: it does not auto-convert
 proprietary vendor files and it does not sanitize metadata during import.
@@ -886,7 +887,7 @@ def save_match_results_to_mztab(
     results : list of dict
         Match result rows to export.
     output_path : Path
-        The destination file path for the mzTab-M output.
+        The destination file path for the mzTab-shaped output.
     query_spectra : Optional[Iterable[Spectrum]]
         Full set of experimental query spectra.
     uncalibrated : bool
